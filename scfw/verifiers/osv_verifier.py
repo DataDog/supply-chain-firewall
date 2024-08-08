@@ -24,4 +24,5 @@ class OsvVerifier(InstallTargetVerifier):
         request = requests.post(OSV_DEV_QUERY_URL, json=query)
         request.raise_for_status()
 
+        # TODO: Deal with the case of multiple matches
         return request.json().get("id")

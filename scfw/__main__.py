@@ -1,6 +1,7 @@
 import sys
 
 from ecosystem import ECOSYSTEM
+from resolvers.npm_resolver import NpmInstallTargetsResolver
 from resolvers.pip_resolver import PipInstallTargetsResolver
 from verifiers.osv_verifier import OsvVerifier
 
@@ -13,7 +14,7 @@ try:
         case ECOSYSTEM.PIP.value:
             install_targets = PipInstallTargetsResolver().resolve_targets(sys.argv[1:])
         case ECOSYSTEM.NPM.value:
-            sys.stderr.write("npm not yet supported\n")
+            install_targets = NpmInstallTargetsResolver().resolve_targets(sys.argv[1:])
         case _:
             raise Exception(f"Unsupported ecosystem '{sys.argv[1]}'")
     

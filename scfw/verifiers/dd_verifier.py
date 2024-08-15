@@ -6,20 +6,28 @@ from ecosystem import ECOSYSTEM
 from target import InstallTarget
 from verifier import InstallTargetVerifier
 
-DD_DATASET_ECOSYSTEMS = {ECOSYSTEM.PIP: "pypi", ECOSYSTEM.NPM: "npm"}
-
 DD_DATASET_SAMPLES_URL = "https://raw.githubusercontent.com/DataDog/malicious-software-packages-dataset/main/samples"
 
 
 class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
+    def __init__(self):
+        def download_manifest(ecosystem: str) -> dict[str, list[str]]:
+            manifest_url = f"{DD_DATASET_SAMPLES_URL}/{ecosystem}/manifest.json"
+            request = requests.get(manifest_url)
+            request.raise_for_status()
+
+            return request.json()
+
+        self.pypi_manifest = download_manifest("pypi")
+        self.npm_manifest = download_manifest("npm")
+
     def verify(self, target: InstallTarget) -> Optional[str]:
-        manifest_url = f"{DD_DATASET_SAMPLES_URL}/{DD_DATASET_ECOSYSTEMS[target.ecosystem]}/manifest.json"
+        match target.ecosystem:
+            case ECOSYSTEM.PIP:
+                manifest = self.pypi_manifest
+            case ECOSYSTEM.NPM:
+                manifest = self.npm_manifest
 
-        # TODO: Download both manifests once at initialization
-        request = requests.get(manifest_url)
-        request.raise_for_status()
-
-        manifest = request.json()
         if target.package not in manifest:
             return None
 

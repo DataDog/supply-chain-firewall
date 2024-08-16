@@ -45,11 +45,11 @@ def run_firewall() -> int:
         findings = verify_install_targets(targets, verifiers)
         if findings:
             # TODO: Structure this output better
-            print("Installation blocked")
             for target, target_findings in findings.items():
                 print(f"Installation target {target.show()}:")
                 for finding in target_findings:
                     print(f"  - {finding}")
+            print("\nThe installation request was blocked.  No changes have been made.")
         else:
             subprocess.run(sys.argv[1:])
 

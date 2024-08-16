@@ -3,11 +3,15 @@ from dataclasses import dataclass
 from scfw.ecosystem import ECOSYSTEM
 
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class InstallTarget:
     ecosystem: ECOSYSTEM
     package: str
     version: str
 
     def show(self) -> str:
-        return f"{self.ecosystem.value}|{self.package}:{self.version}"
+        match self.ecosystem:
+            case ECOSYSTEM.PIP:
+                return f"{self.package}-{self.version}"
+            case ECOSYSTEM.NPM:
+                return f"{self.package}@{self.version}"

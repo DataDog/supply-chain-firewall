@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from ecosystem import ECOSYSTEM
+from scfw.ecosystem import ECOSYSTEM
 
 
 @dataclass

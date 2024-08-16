@@ -1,9 +1,9 @@
 import subprocess
 import sys
 
-from ecosystem import ECOSYSTEM
-from resolver import InstallTargetsResolver
-from target import InstallTarget
+from scfw.ecosystem import ECOSYSTEM
+from scfw.resolver import InstallTargetsResolver
+from scfw.target import InstallTarget
 
 
 class PipInstallTargetsResolver(InstallTargetsResolver):
@@ -21,7 +21,7 @@ class PipInstallTargetsResolver(InstallTargetsResolver):
         if pip_install_command[:2] != ["pip", "install"]:
             raise Exception("Invalid pip install command")
         
-        dry_run_command = [sys.executable, "-m", "pip", "install", "--dry-run", "--ignore-installed"]
+        dry_run_command = [sys.executable, "-m", "pip", "install", "--dry-run"]
         dry_run_command.extend(pip_install_command[2:])
 
         dry_run = subprocess.run(dry_run_command, text=True, check=True, capture_output=True)

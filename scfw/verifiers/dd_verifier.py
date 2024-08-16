@@ -2,9 +2,9 @@ from typing import Optional
 
 import requests
 
-from ecosystem import ECOSYSTEM
-from target import InstallTarget
-from verifier import InstallTargetVerifier
+from scfw.ecosystem import ECOSYSTEM
+from scfw.target import InstallTarget
+from scfw.verifier import InstallTargetVerifier
 
 DD_DATASET_SAMPLES_URL = "https://raw.githubusercontent.com/DataDog/malicious-software-packages-dataset/main/samples"
 

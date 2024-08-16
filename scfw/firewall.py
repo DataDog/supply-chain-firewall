@@ -1,8 +1,8 @@
 import itertools
 import multiprocessing as mp
 
-from target import InstallTarget
-from verifier import InstallTargetVerifier
+from scfw.target import InstallTarget
+from scfw.verifier import InstallTargetVerifier
 
 
 def _perform_verify_task(target: InstallTarget, verifier: InstallTargetVerifier, findings: dict[InstallTarget, list[str]]):

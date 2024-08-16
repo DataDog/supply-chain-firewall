@@ -1,12 +1,12 @@
-import itertools
+import subprocess
 import sys
 
-from ecosystem import ECOSYSTEM
-from firewall import verify_install_targets
-from resolvers.npm_resolver import NpmInstallTargetsResolver
-from resolvers.pip_resolver import PipInstallTargetsResolver
-from verifiers.dd_verifier import DatadogMaliciousPackagesVerifier
-from verifiers.osv_verifier import OsvVerifier
+from scfw.ecosystem import ECOSYSTEM
+from scfw.firewall import verify_install_targets
+from scfw.resolvers.npm_resolver import NpmInstallTargetsResolver
+from scfw.resolvers.pip_resolver import PipInstallTargetsResolver
+from scfw.verifiers.dd_verifier import DatadogMaliciousPackagesVerifier
+from scfw.verifiers.osv_verifier import OsvVerifier
 
 
 def main() -> int:
@@ -35,7 +35,7 @@ def main() -> int:
                 for finding in target_findings:
                     print(f"  - {finding}")
         else:
-            print("No security advisories found for installation targets")
+            subprocess.run(sys.argv[1:])
 
         return 0
     except Exception as e:

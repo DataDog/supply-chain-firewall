@@ -1,7 +1,7 @@
 from abc import (ABCMeta, abstractmethod)
 from typing import Optional
 
-from target import InstallTarget
+from scfw.target import InstallTarget
 
 
 class InstallTargetVerifier(metaclass=ABCMeta):

@@ -1,6 +1,6 @@
 from abc import (ABCMeta, abstractmethod)
 
-from target import InstallTarget
+from scfw.target import InstallTarget
 
 
 class InstallTargetsResolver(metaclass=ABCMeta):

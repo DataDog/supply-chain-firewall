@@ -1,9 +1,8 @@
 import subprocess
-import sys
 
-from ecosystem import ECOSYSTEM
-from resolver import InstallTargetsResolver
-from target import InstallTarget
+from scfw.ecosystem import ECOSYSTEM
+from scfw.resolver import InstallTargetsResolver
+from scfw.target import InstallTarget
 
 
 class NpmInstallTargetsResolver(InstallTargetsResolver):

@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scfw"
+version = "0.1.0"
+dependencies = [
+    "requests",
+]
+requires-python = ">=3.10"
+authors = [
+    {name = "Ian Kretz", email = "ian.kretz@datadoghq.com"},
+]
+description = "A tool to prevent installation of vulnerable or malicious open source packages"
+readme = "README.md"

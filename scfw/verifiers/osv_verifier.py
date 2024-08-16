@@ -2,9 +2,9 @@ from typing import Optional
 
 import requests
 
-from ecosystem import ECOSYSTEM
-from target import InstallTarget
-from verifier import InstallTargetVerifier
+from scfw.ecosystem import ECOSYSTEM
+from scfw.target import InstallTarget
+from scfw.verifier import InstallTargetVerifier
 
 OSV_ECOSYSTEMS = {ECOSYSTEM.PIP: "PyPI", ECOSYSTEM.NPM: "npm"}
 

@@ -1,5 +1,7 @@
+import sys
+
 from scfw.firewall import run_firewall
 
 
 if __name__ == "__main__":
-    run_firewall()
+    sys.exit(run_firewall())

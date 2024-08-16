@@ -28,6 +28,7 @@ $ scfw pip install -r requirements.txt
 $ scfw npm install basementio
 Installation target basementio@0.0.1-security:
   - Package basementio has been determined to be malicious by Datadog Security Research
+  - An OSV.dev disclosure for target basementio@0.0.1-security exists (OSVID: MAL-2024-7874)
 
 The installation request was blocked.  No changes have been made.
 ```

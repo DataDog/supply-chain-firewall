@@ -25,4 +25,12 @@ class OsvVerifier(InstallTargetVerifier):
         request.raise_for_status()
 
         # TODO: Deal with the case of multiple matches
+        if (vulns := request.json().get("vulns")):
+            osv_id = vulns[0].get("id")
+            return f"An OSV.dev disclosure for target {target.show()} exists (OSVID: {osv_id})"
+        else:
+            return None
+
+
+
         return request.json().get("id")

@@ -14,7 +14,10 @@ def _perform_verify_task(target: InstallTarget, verifier: InstallTargetVerifier,
         if target not in findings:
             findings[target] = [finding]
         else:
-            findings[target].append(finding)
+            # https://bugs.python.org/issue36119
+            # The manager does not monitor the lists for changes, so appending in place does nothing
+            # Must replace the list after updating in order for the manager to register the change
+            findings[target] += [finding]
 
 
 def verify_install_targets(targets: list[InstallTarget], verifiers: list[InstallTargetVerifier]) -> dict[InstallTarget, list[str]]:

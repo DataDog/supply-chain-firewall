@@ -30,7 +30,3 @@ class OsvVerifier(InstallTargetVerifier):
             return f"An OSV.dev disclosure for target {target.show()} exists (OSVID: {osv_id})"
         else:
             return None
-
-
-
-        return request.json().get("id")

@@ -12,5 +12,11 @@ requires-python = ">=3.10"
 authors = [
     {name = "Ian Kretz", email = "ian.kretz@datadoghq.com"},
 ]
+maintainers = [
+    {name = "Ian Kretz", email = "ian.kretz@datadoghq.com"},
+]
 description = "A tool to prevent installation of vulnerable or malicious open source packages"
 readme = "README.md"
+
+[project.scripts]
+scfw = "scfw.firewall:run_firewall"

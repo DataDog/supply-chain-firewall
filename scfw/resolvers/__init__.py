@@ -4,11 +4,9 @@ from scfw.resolvers.npm_resolver import NpmInstallTargetsResolver
 from scfw.resolvers.pip_resolver import PipInstallTargetsResolver
 
 
-def get_install_targets_resolver(ecosystem: str) -> InstallTargetsResolver:
+def get_install_targets_resolver(ecosystem: ECOSYSTEM) -> InstallTargetsResolver:
      match ecosystem:
-        case ECOSYSTEM.PIP.value:
+        case ECOSYSTEM.PIP:
             return PipInstallTargetsResolver()
-        case ECOSYSTEM.NPM.value:
+        case ECOSYSTEM.NPM:
             return NpmInstallTargetsResolver()
-        case _:
-            raise Exception(f"Unsupported ecosystem '{ecosystem}'")

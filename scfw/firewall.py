@@ -3,6 +3,7 @@ import multiprocessing as mp
 import subprocess
 import sys
 
+from scfw.cli import parse_command_line
 from scfw.resolvers import get_install_targets_resolver
 from scfw.target import InstallTarget
 from scfw.verifier import InstallTargetVerifier
@@ -37,12 +38,14 @@ def verify_install_targets(targets: list[InstallTarget], verifiers: list[Install
 
 def run_firewall() -> int:
     try:
-        # TODO: Add a real CLI
-        if len(sys.argv) < 2:
+        firewall_args, install_command = parse_command_line()
+        # TODO: Print usage message and exit in this case
+        if not install_command:
             return 0
+        ecosystem, install_command = install_command
 
-        resolver = get_install_targets_resolver(sys.argv[1])
-        targets = resolver.resolve_targets(sys.argv[1:])
+        resolver = get_install_targets_resolver(ecosystem)
+        targets = resolver.resolve_targets(install_command)
         verifiers = get_install_target_verifiers()
 
         findings = verify_install_targets(targets, verifiers)
@@ -52,9 +55,12 @@ def run_firewall() -> int:
                 print(f"Installation target {target.show()}:")
                 for finding in target_findings:
                     print(f"  - {finding}")
-            print("\nThe installation request was blocked.  No changes have been made.")
+            print("\nThe installation request was blocked. No changes have been made.")
         else:
-            subprocess.run(sys.argv[1:])
+            if firewall_args.dry_run:
+                print("Exiting without installing, no issues found for installation targets.")
+            else:
+                subprocess.run(install_command)
 
         return 0
     except Exception as e:

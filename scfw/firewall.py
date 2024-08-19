@@ -26,13 +26,13 @@ def verify_install_targets(targets: list[InstallTarget], verifiers: list[Install
 
     verify_tasks = itertools.product(targets, verifiers)
 
-    with manager.Pool() as pool:
+    with mp.Pool() as pool:
         pool.starmap(
             _perform_verify_task,
             [(target, verifier, findings) for target, verifier in verify_tasks]
         )
 
-    return findings
+    return dict(findings)
 
 
 def run_firewall() -> int:

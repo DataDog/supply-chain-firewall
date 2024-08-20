@@ -8,7 +8,7 @@ from scfw.ecosystem import ECOSYSTEM
 def _cli() -> ArgumentParser:
     parser = ArgumentParser(
         prog="scfw",
-        usage="%(prog)s [options] INSTALL-COMMAND",
+        usage="%(prog)s [options] COMMAND",
         description="A tool to prevent the installation of vulnerable or malicious pip and npm packages"
     )
 

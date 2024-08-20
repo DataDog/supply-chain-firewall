@@ -1,22 +1,24 @@
 import subprocess
 
+from scfw.command import PackageManagerCommand
 from scfw.ecosystem import ECOSYSTEM
-from scfw.resolver import InstallTargetsResolver
 from scfw.target import InstallTarget
 
 
-class NpmInstallTargetsResolver(InstallTargetsResolver):
-    def resolve_targets(self, npm_install_command: list[str]) -> list[InstallTarget]:
+class NpmCommand(PackageManagerCommand):
+    def __init__(self, command: list[str]):
+        if len(command) < 3 or command[:2] != ["npm", "install"]:
+            raise Exception("Unsupported npm command")
+        self._command = command
+
+    def run(self):
+        subprocess.run(self._command)
+
+    def would_install(self) -> list[InstallTarget]:
         targets = []
 
-        # TODO: Allow more flexibility of form in the `npm install` command
-        if not npm_install_command:
-            return []
-        if npm_install_command[:2] != ["npm", "install"]:
-            raise Exception("Invalid npm install command")
-
         dry_run_command = ["npm", "install", "--dry-run"]
-        dry_run_command.extend(npm_install_command[2:])
+        dry_run_command.extend(self._command[2:])
 
         dry_run = subprocess.run(dry_run_command, text=True, check=True, capture_output=True)
         for line in dry_run.stdout.split('\n'):

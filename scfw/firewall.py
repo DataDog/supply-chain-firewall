@@ -4,13 +4,13 @@ import subprocess
 import sys
 
 from scfw.cli import parse_command_line
-from scfw.resolvers import get_install_targets_resolver
+from scfw.commands import get_package_manager_command
 from scfw.target import InstallTarget
 from scfw.verifier import InstallTargetVerifier
 from scfw.verifiers import get_install_target_verifiers
 
 
-def _perform_verify_task(target: InstallTarget, verifier: InstallTargetVerifier, findings: dict[InstallTarget, list[str]]):
+def _perform_verify_task(verifier: InstallTargetVerifier, target: InstallTarget, findings: dict[InstallTarget, list[str]]):
     if (finding := verifier.verify(target)):
         if target not in findings:
             findings[target] = [finding]
@@ -21,16 +21,16 @@ def _perform_verify_task(target: InstallTarget, verifier: InstallTargetVerifier,
             findings[target] += [finding]
 
 
-def verify_install_targets(targets: list[InstallTarget], verifiers: list[InstallTargetVerifier]) -> dict[InstallTarget, list[str]]:
+def verify_install_targets(verifiers: list[InstallTargetVerifier], targets: list[InstallTarget]) -> dict[InstallTarget, list[str]]:
     manager = mp.Manager()
     findings = manager.dict()
 
-    verify_tasks = itertools.product(targets, verifiers)
+    verify_tasks = itertools.product(verifiers, targets)
 
     with mp.Pool() as pool:
         pool.starmap(
             _perform_verify_task,
-            [(target, verifier, findings) for target, verifier in verify_tasks]
+            [(verifier, target, findings) for verifier, target in verify_tasks]
         )
 
     return dict(findings)
@@ -38,17 +38,16 @@ def verify_install_targets(targets: list[InstallTarget], verifiers: list[Install
 
 def run_firewall() -> int:
     try:
-        firewall_args, install_command = parse_command_line()
+        firewall_args, command = parse_command_line()
         # TODO: Print usage message and exit in this case
-        if not install_command:
+        if not command:
             return 0
-        ecosystem, install_command = install_command
+        ecosystem, command = command
 
-        resolver = get_install_targets_resolver(ecosystem)
-        targets = resolver.resolve_targets(install_command)
+        command = get_package_manager_command(ecosystem, command)
         verifiers = get_install_target_verifiers()
 
-        findings = verify_install_targets(targets, verifiers)
+        findings = verify_install_targets(verifiers, command.would_install())
         if findings:
             # TODO: Structure this output better
             for target, target_findings in findings.items():
@@ -60,7 +59,7 @@ def run_firewall() -> int:
             if firewall_args.dry_run:
                 print("Exiting without installing, no issues found for installation targets.")
             else:
-                subprocess.run(install_command)
+                command.run()
 
         return 0
     except Exception as e:

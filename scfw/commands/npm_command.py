@@ -1,4 +1,5 @@
 import subprocess
+from typing import Optional
 
 from scfw.command import PackageManagerCommand
 from scfw.ecosystem import ECOSYSTEM
@@ -6,10 +7,14 @@ from scfw.target import InstallTarget
 
 
 class NpmCommand(PackageManagerCommand):
-    def __init__(self, command: list[str]):
+    def __init__(self, command: list[str], executable: Optional[str] = None):
         if len(command) < 3 or command[:2] != ["npm", "install"]:
             raise Exception("Unsupported npm command")
         self._command = command
+
+        # TODO: Validate the given executable path
+        if executable:
+            self._command[0] = executable
 
     def run(self):
         subprocess.run(self._command)

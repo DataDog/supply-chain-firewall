@@ -18,8 +18,6 @@ $ cd path/to/repo/directory
 $ pip install .
 ```
 
-Given current limitations (see below), it is also recommended to install the supply-chain firewall program into each new virtual environment you plan to use.  Activate the virtual environment (`source venv/bin/activate`) before following the above instructions.
-
 ## Usage
 
 To use the supply-chain firewall, just prepend `scfw` to the `pip install` or `npm install` command you want to run.
@@ -28,6 +26,8 @@ To use the supply-chain firewall, just prepend `scfw` to the `pip install` or `n
 $ scfw npm install react
 $ scfw pip install -r requirements.txt
 ```
+
+For `pip install` commands, the firewall will install packages in the same environment (virtual or global) in which the command was run.
 
 ## Sample blocked installation output
 
@@ -43,8 +43,6 @@ The installation request was blocked.  No changes have been made.
 ## Current limitations
 
 Only commands that begin with `pip install` or `npm install` are currently allowed.  We plan to support a more diverse range of commands over time.
-
-At the moment, the firewall installs Python packages into the same environment where its own script has been installed.  In particular, if the firewall has been installed globally, it will install packages globally even if run from within a virtual environment.  This is why we recommend installing the firewall afresh in each new virtual environment.  However, this is clearly not ideal, and we are actively looking into a fix for this issue.
 
 ## Testing
 

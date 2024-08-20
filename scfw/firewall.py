@@ -38,13 +38,13 @@ def verify_install_targets(verifiers: list[InstallTargetVerifier], targets: list
 
 def run_firewall() -> int:
     try:
-        firewall_args, command = parse_command_line()
+        args, command = parse_command_line()
         # TODO: Print usage message and exit in this case
         if not command:
             return 0
         ecosystem, command = command
 
-        command = get_package_manager_command(ecosystem, command)
+        command = get_package_manager_command(ecosystem, command, executable=args.executable)
         verifiers = get_install_target_verifiers()
 
         findings = verify_install_targets(verifiers, command.would_install())
@@ -56,7 +56,7 @@ def run_firewall() -> int:
                     print(f"  - {finding}")
             print("\nThe installation request was blocked. No changes have been made.")
         else:
-            if firewall_args.dry_run:
+            if args.dry_run:
                 print("Exiting without installing, no issues found for installation targets.")
             else:
                 command.run()

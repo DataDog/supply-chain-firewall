@@ -18,6 +18,14 @@ def _cli() -> ArgumentParser:
         help="Skip installation step regardless of verification results"
     )
 
+    parser.add_argument(
+        "--executable",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="The Python or npm executable to use when running commands (default: environmentally determined)"
+    )
+
     return parser
 
 

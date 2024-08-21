@@ -36,8 +36,18 @@ def verify_install_targets(verifiers: list[InstallTargetVerifier], targets: list
     return dict(findings)
 
 
+def print_findings(findings: dict[InstallTarget, list[str]]):
+    # TODO: Format this output in a more robust way
+    for target, target_findings in findings.items():
+        print(f"Installation target {target.show()}:")
+        for finding in target_findings:
+            print(f"  - {finding}")
+
+
 def run_firewall() -> int:
     try:
+        run_command = False
+
         args, command = parse_command_line()
         # TODO: Print usage message and exit in this case
         if not command:
@@ -45,21 +55,20 @@ def run_firewall() -> int:
         ecosystem, command = command
 
         command = get_package_manager_command(ecosystem, command, executable=args.executable)
-        verifiers = get_install_target_verifiers()
-
-        findings = verify_install_targets(verifiers, command.would_install())
-        if findings:
-            # TODO: Structure this output better
-            for target, target_findings in findings.items():
-                print(f"Installation target {target.show()}:")
-                for finding in target_findings:
-                    print(f"  - {finding}")
-            print("\nThe installation request was blocked. No changes have been made.")
-        else:
-            if args.dry_run:
+        if (targets := command.would_install()):
+            verifiers = get_install_target_verifiers()
+            if (findings := verify_install_targets(verifiers, targets)):
+                print_findings(findings)
+                print("\nThe installation request was blocked. No changes have been made.")
+            elif args.dry_run:
                 print("Exiting without installing, no issues found for installation targets.")
             else:
-                command.run()
+                run_command = True
+        else:
+            run_command = True
+
+        if run_command:
+            command.run()
 
         return 0
     except Exception as e:

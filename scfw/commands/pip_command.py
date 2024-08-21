@@ -21,14 +21,20 @@ class PipCommand(PackageManagerCommand):
             raise Exception("Malformed pip command")
         self._command = command
 
+        # TODO: Validate the given executable path
+        self._executable = executable if executable else get_executable()
+
+        # pip only installs or upgrades packages via the `pip install` subcommand
+        # If `install` is not present, the command is automatically safe to run
+        # If `install` is present with any of the below options, a usage or error
+        # message is printed or a dry-run install occurs: nothing will be installed
         if "install" not in command or any(opt in command for opt in {"-h", "--help", "--dry-run"}):
             self._install_subcommand = None
         else:
-            # The index of the first token of the install subcommand, if it exists
+            # Otherwise, this is probably a "live" install command
+            # Save the index of the first argument to the install subcommand
+            # Short of writing a from-scratch pip parser, this is the best we can do
             self._install_subcommand = command.index("install") + 1
-
-        # TODO: Validate the given executable path
-        self._executable = executable if executable else get_executable()
 
     def run(self):
         subprocess.run([self._executable, "-m"] + self._command)

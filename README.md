@@ -42,7 +42,7 @@ The installation request was blocked.  No changes have been made.
 
 ## Current limitations
 
-Only commands that begin with `pip install` or `npm install` are currently allowed.  We plan to support a more diverse range of commands over time.
+For npm, only commands that begin with `npm install` are currently allowed.  We plan to support a more diverse range of commands over time.
 
 ## Testing
 

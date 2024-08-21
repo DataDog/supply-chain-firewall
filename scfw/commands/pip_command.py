@@ -10,15 +10,22 @@ from scfw.target import InstallTarget
 
 class PipCommand(PackageManagerCommand):
     def __init__(self, command: list[str], executable: Optional[str] = None):
+        # TODO: Deal with the fact that pip commands can specify the executable to use
         def get_executable() -> str:
             if (venv := os.environ.get("VIRTUAL_ENV")):
                 return os.path.join(venv, "bin/python")
             else:
                 return sys.executable
 
-        if len(command) < 3 or command[:2] != ["pip", "install"]:
-            raise Exception("Unsupported pip command")
+        if not command or command[0] != "pip":
+            raise Exception("Malformed pip command")
         self._command = command
+
+        if "install" not in command or any(opt in command for opt in {"-h", "--help", "--dry-run"}):
+            self._install_subcommand = None
+        else:
+            # The index of the first token of the install subcommand, if it exists
+            self._install_subcommand = command.index("install") + 1
 
         # TODO: Validate the given executable path
         self._executable = executable if executable else get_executable()
@@ -34,7 +41,14 @@ class PipCommand(PackageManagerCommand):
 
             return InstallTarget(ECOSYSTEM.PIP, package, version)
 
-        dry_run_command = [self._executable, "-m", "pip", "install", "--dry-run"] + self._command[2:]
+        if not self._install_subcommand:
+            return []
+
+        # TODO: Make use of the `--report` option of `pip install`
+        # Inserting the `--dry-run` flag at the opening of the `install` subcommand
+        dry_run_command = (
+            [self._executable, "-m"] + self._command[:self._install_subcommand] + ["--dry-run"] + self._command[self._install_subcommand:]
+        )
 
         dry_run = subprocess.run(dry_run_command, text=True, check=True, capture_output=True)
         for line in dry_run.stdout.split('\n'):

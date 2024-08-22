@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -27,9 +28,10 @@ class PipCommand(PackageManagerCommand):
         subprocess.run([self._executable, "-m"] + self._command)
 
     def would_install(self) -> list[InstallTarget]:
-        def str_to_install_target(target_str: str) -> InstallTarget:
-            package, _, version = target_str.rpartition('-')
-            assert version != target_str, "Failed to parse pip install target"
+        def report_to_install_targets(install_report: dict) -> InstallTarget:
+            assert (metadata := install_report.get("metadata")), "Missing metadata for pip install target"
+            assert (package := metadata.get("name")), "Missing name for pip install target"
+            assert (version := metadata.get("version")), "Missing version for pip install target"
             return InstallTarget(ECOSYSTEM.PIP, package, version)
 
         # pip only installs or upgrades packages via the `pip install` subcommand
@@ -42,11 +44,8 @@ class PipCommand(PackageManagerCommand):
         # TODO: Make use of the `--report` option of `pip install`
         # Otherwise, this is probably a "live" `pip install` command
         # To be certain, we would need to write a full parser for pip
-        dry_run_command = [self._executable, "-m"] + self._command + ["--dry-run"]
-
+        dry_run_command = [self._executable, "-m"] + self._command + ["--dry-run", "--quiet", "--report", "-"]
         dry_run = subprocess.run(dry_run_command, text=True, check=True, capture_output=True)
-        for line in dry_run.stdout.split('\n'):
-            if line.startswith("Would install"):
-                return list(map(str_to_install_target, line.split()[2:]))
+        install_report = json.loads(dry_run.stdout).get("install", [])
 
-        return []
+        return list(map(report_to_install_targets, install_report))

@@ -14,7 +14,7 @@ def _cli() -> ArgumentParser:
 
         This parser only handles the firewall's optional arguments.  It cannot be used to parse
         the firewall's entire command line, as this contains a command for a supported ecosystem's
-        package manager which would otherwise be parsed greedily (and incorrectly) by `argparse.
+        package manager which would otherwise be parsed greedily (and incorrectly) by `argparse`.
     """
     parser = ArgumentParser(
         prog="scfw",

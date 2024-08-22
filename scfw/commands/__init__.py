@@ -11,6 +11,17 @@ def get_package_manager_command(
     command: list[str],
     executable: Optional[str] = None
 ) -> PackageManagerCommand:
+    """
+    Return a `PackageManagerCommand` for the given ecosystem and arguments.
+
+    Args:
+        ecosystem: The ecosystem of the desired command.
+        command: The command line of the desired command as provided to the supply-chain firewall.
+        executable: An optional executable to use when running the package manager command.
+
+    Returns:
+        A `PackageManagerCommand` initialized from the given args in the desired ecosystem.
+    """
     match ecosystem:
         case ECOSYSTEM.PIP:
             return PipCommand(command, executable)

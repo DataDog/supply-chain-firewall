@@ -7,7 +7,18 @@ from scfw.target import InstallTarget
 
 
 class NpmCommand(PackageManagerCommand):
+    """
+    A representation of npm commands via the `PackageManagerCommand` interface.
+    """
     def __init__(self, command: list[str], executable: Optional[str] = None):
+        """
+        Initialize a new `NpmCommand`.
+
+        Args:
+            self: The `NpmCommand` to be initialized.
+            command: The npm command line as provided to the supply-chain firewall.
+            `executable`: An optional path to the npm executable to use to run the command.
+        """
         assert command and command[0] == "npm", "Malformed npm command"
         self._command = command
 
@@ -16,9 +27,24 @@ class NpmCommand(PackageManagerCommand):
             self._command[0] = executable
 
     def run(self):
+        """
+        Run an npm command.
+
+        Args:
+            self: The `NpmCommand` to run.
+        """
         subprocess.run(self._command)
 
     def would_install(self) -> list[InstallTarget]:
+        """
+        Determine the list of packages an npm command would install if it were run.
+
+        Args:
+            self: The `NpmCommand` to inspect.
+
+        Returns:
+            The list of packages the npm command would install if it were run.
+        """
         def line_to_install_target(line: str) -> Optional[InstallTarget]:
             # TODO: Determine whether these "add" lines always have this format
             # TODO: Determine whether all dry runs identify install targets this way

@@ -10,6 +10,15 @@ from scfw.verifiers import get_install_target_verifiers
 
 
 def _perform_verify_task(verifier: InstallTargetVerifier, target: InstallTarget, findings: dict[InstallTarget, list[str]]):
+    """
+    Execute a single verification task (i.e., for a single verifier-target pair)
+    and collect the results.
+
+    Args:
+        verifier: The `InstallTargetVerifier` to use in the task.
+        target: The `InstallTarget` to be verified
+        findings: A `dict` for accumulating verification findings across tasks
+    """
     if (finding := verifier.verify(target)):
         if target not in findings:
             findings[target] = [finding]
@@ -21,6 +30,20 @@ def _perform_verify_task(verifier: InstallTargetVerifier, target: InstallTarget,
 
 
 def verify_install_targets(verifiers: list[InstallTargetVerifier], targets: list[InstallTarget]) -> dict[InstallTarget, list[str]]:
+    """
+    Verify a set of installation targets against a set of verifiers.
+
+    Args:
+        verifiers: The set of verifiers to use against the installation targets.
+        targers: A list of installation targets to be verified.
+
+    Returns:
+        A `dict` associating installation targets with its verification findings.
+
+        If a given target is not present as a key in the returned `dict`, there
+        were no findings for it. An empty returned `dict` indicates that no target
+        had findings, i.e., that the installation can proceed.
+    """
     manager = mp.Manager()
     findings = manager.dict()
 
@@ -36,7 +59,12 @@ def verify_install_targets(verifiers: list[InstallTargetVerifier], targets: list
 
 
 def print_findings(findings: dict[InstallTarget, list[str]]):
-    # TODO: Format this output in a more robust way
+    """
+    Print the findings accrued for targets during verification.
+
+    Args:
+        findings: The `dict` of findings for the verified installation targets.
+    """
     for target, target_findings in findings.items():
         print(f"Installation target {target.show()}:")
         for finding in target_findings:
@@ -44,11 +72,16 @@ def print_findings(findings: dict[InstallTarget, list[str]]):
 
 
 def run_firewall() -> int:
+    """
+    The main routine for the supply-chain firewall.
+
+    Returns:
+        An integer exit code (0 or 1).
+    """
     try:
         run_command = False
 
         args, command = parse_command_line()
-        # TODO: Print usage message and exit in this case
         if not command:
             return 0
         ecosystem, command = command

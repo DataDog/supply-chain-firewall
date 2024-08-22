@@ -6,6 +6,16 @@ from scfw.ecosystem import ECOSYSTEM
 
 
 def _cli() -> ArgumentParser:
+    """
+    Defines the command-line interface for the supply-chain firewall itself.
+
+    Returns:
+        An `argparse.ArgumentParser` that encodes the supply-chain firewall's command line.
+
+        This parser only handles the firewall's optional arguments.  It cannot be used to parse
+        the firewall's entire command line, as this contains a command for a supported ecosystem's
+        package manager which would otherwise be parsed greedily (and incorrectly) by `argparse.
+    """
     parser = ArgumentParser(
         prog="scfw",
         usage="%(prog)s [options] COMMAND",
@@ -30,6 +40,15 @@ def _cli() -> ArgumentParser:
 
 
 def parse_command_line() -> tuple[Namespace, Optional[tuple[ECOSYSTEM, list[str]]]]:
+    """
+    Parse the supply-chain firewall's command line.
+
+    Returns:
+        A `tuple` of
+            1. A `Namespace` containing the firewall's own parsed command-line options and
+            2. An optional `tuple` of an `ECOSYSTEM` and a command in that ecosystem's package manager
+            (`None` if no such command was found)
+    """
     install_command = None
 
     hinge = 0

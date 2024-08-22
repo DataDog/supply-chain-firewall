@@ -40,10 +40,6 @@ Installation target basementio@0.0.1-security:
 The installation request was blocked.  No changes have been made.
 ```
 
-## Current limitations
-
-For npm, only commands that begin with `npm install` are currently allowed.  We plan to support a more diverse range of commands over time.
-
 ## Testing
 
 To facilitate testing against known-good packages, `scfw` has a `--dry-run` option that will verify installation targets and exit without executing the given install command:

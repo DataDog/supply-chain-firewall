@@ -23,7 +23,7 @@ def _cli() -> ArgumentParser:
         type=str,
         default=None,
         metavar="PATH",
-        help="The Python or npm executable to use when running commands (default: environmentally determined)"
+        help="Python or npm executable to use for running commands (default: environmentally determined)"
     )
 
     return parser

@@ -1,6 +1,5 @@
 import itertools
 import multiprocessing as mp
-import subprocess
 import sys
 
 from scfw.cli import parse_command_line

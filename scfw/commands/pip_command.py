@@ -17,8 +17,14 @@ class PipCommand(PackageManagerCommand):
             else:
                 return sys.executable
 
-        if not command or command[0] != "pip":
-            raise Exception("Malformed pip command")
+        # Short of writing a from-scratch pip parser, this is the best we can do
+        def find_install_subcommand() -> Optional[int]:
+            try:
+                return command.index("install") + 1
+            except ValueError:
+                return None
+
+        assert command and command[0] == "pip", "Malformed pip command"
         self._command = command
 
         # TODO: Validate the given executable path
@@ -28,13 +34,13 @@ class PipCommand(PackageManagerCommand):
         # If `install` is not present, the command is automatically safe to run
         # If `install` is present with any of the below options, a usage or error
         # message is printed or a dry-run install occurs: nothing will be installed
-        if "install" not in command or any(opt in command for opt in {"-h", "--help", "--dry-run"}):
+        install_subcommand = find_install_subcommand()
+        if not install_subcommand or any(opt in command for opt in {"-h", "--help", "--dry-run"}):
             self._install_subcommand = None
         else:
             # Otherwise, this is probably a "live" install command
             # Save the index of the first argument to the install subcommand
-            # Short of writing a from-scratch pip parser, this is the best we can do
-            self._install_subcommand = command.index("install") + 1
+            self._install_subcommand = install_subcommand
 
     def run(self):
         subprocess.run([self._executable, "-m"] + self._command)
@@ -42,8 +48,7 @@ class PipCommand(PackageManagerCommand):
     def would_install(self) -> list[InstallTarget]:
         def str_to_install_target(target_str: str) -> InstallTarget:
             package, _, version = target_str.rpartition('-')
-            if version == target_str:
-                raise Exception("Failed to parse pip install target")
+            assert version != target_str, "Failed to parse pip install target"
 
             return InstallTarget(ECOSYSTEM.PIP, package, version)
 

@@ -36,9 +36,13 @@ class OsvVerifier(InstallTargetVerifier):
         request = requests.post(OSV_DEV_QUERY_URL, json=query)
         request.raise_for_status()
 
-        # TODO: Deal with the case of multiple matches
         if (vulns := request.json().get("vulns")):
-            osv_id = vulns[0].get("id")
-            return f"An OSV.dev disclosure for package {target.package} exists (OSVID: {osv_id})"
+            osv_id = None
+            for vuln in vulns:
+                if (osv_id := vuln.get("id")):
+                    break
+            return (
+                f"An OSV.dev disclosure for package {target.package} exists (OSVID: {osv_id if osv_id else 'Unknown'})"
+            )
         else:
             return None

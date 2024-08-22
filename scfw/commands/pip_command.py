@@ -23,7 +23,6 @@ class PipCommand(PackageManagerCommand):
             `executable`: An optional path to the Python executable to use to run the
             pip command.  Determined by the environment if not provided.
         """
-        # TODO: Deal with the fact that pip commands can specify the executable to use
         def get_executable() -> str:
             if (venv := os.environ.get("VIRTUAL_ENV")):
                 return os.path.join(venv, "bin/python")
@@ -33,7 +32,6 @@ class PipCommand(PackageManagerCommand):
         assert command and command[0] == "pip", "Malformed pip command"
         self._command = command
 
-        # TODO: Validate the given executable path
         self._executable = executable if executable else get_executable()
 
     def run(self):

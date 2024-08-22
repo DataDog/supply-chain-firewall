@@ -22,7 +22,6 @@ class NpmCommand(PackageManagerCommand):
         assert command and command[0] == "npm", "Malformed npm command"
         self._command = command
 
-        # TODO: Validate the given executable path
         if executable:
             self._command[0] = executable
 
@@ -46,8 +45,6 @@ class NpmCommand(PackageManagerCommand):
             The list of packages the npm command would install if it were run.
         """
         def line_to_install_target(line: str) -> Optional[InstallTarget]:
-            # TODO: Determine whether these "add" lines always have this format
-            # TODO: Determine whether all dry runs identify install targets this way
             if line.startswith("add") and not line.startswith("added"):
                 assert len(line.split()) == 3, "Failed to parse npm install target"
                 _, package, version = line.split()

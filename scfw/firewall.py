@@ -81,12 +81,12 @@ def run_firewall() -> int:
     try:
         run_command = False
 
-        args, command = parse_command_line()
-        if not command:
+        args, help = parse_command_line()
+        if not args.command:
+            print(help)
             return 0
-        ecosystem, command = command
 
-        command = get_package_manager_command(ecosystem, command, executable=args.executable)
+        command = get_package_manager_command(args.command, executable=args.executable)
         if (targets := command.would_install()):
             verifiers = get_install_target_verifiers()
             if (findings := verify_install_targets(verifiers, targets)):

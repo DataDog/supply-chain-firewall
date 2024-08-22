@@ -6,7 +6,7 @@ from scfw.ecosystem import ECOSYSTEM
 @dataclass(eq=True, frozen=True)
 class InstallTarget:
     """
-    Represents an installation target in a particular ecosystem.
+    An installation target in a particular ecosystem.
     """
     ecosystem: ECOSYSTEM
     package: str

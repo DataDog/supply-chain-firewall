@@ -9,8 +9,8 @@ class InstallTargetVerifier(metaclass=ABCMeta):
     Abstract base class for installation target verifiers.
 
     Each installation target verifier should implement a service for verifying
-    installation targets against a single reputable source of data on vulnerable
-    and malicious open source packages in all supported ecosystems.
+    installation targets in all supported ecosystems against a single reputable
+    source of data on vulnerable and malicious open source packages.
     """
     @abstractmethod
     def verify(self, target: InstallTarget) -> Optional[str]:
@@ -18,14 +18,13 @@ class InstallTargetVerifier(metaclass=ABCMeta):
         Verify the given installation target.
 
         Args:
-            self: The `InstallTargetVerifier` to be used for verification
-            target: The installation target to verify
+            self: The `InstallTargetVerifier` to be used for verification.
+            target: The installation target to verify.
 
         Returns:
-            If the given installation target is neither vulnerable nor malicious,
-            `None` must be returned.
-
-            Otherwise, a string describing the finding for the target from the
-            backing data source should be returned.
+            In the case that the target is considered vulnerable or malicious
+            by the backing data source, a `str` should be returned stating
+            this and (as much as possible) describing why.  Otherwise, `None`
+            should be returned.
         """
         pass

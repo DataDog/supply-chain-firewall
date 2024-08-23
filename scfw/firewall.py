@@ -1,12 +1,16 @@
 import itertools
 import multiprocessing as mp
 import sys
+import logging
 
 from scfw.cli import parse_command_line
 from scfw.commands import get_package_manager_command
 from scfw.target import InstallTarget
 from scfw.verifier import InstallTargetVerifier
 from scfw.verifiers import get_install_target_verifiers
+from scfw.config import LOG_DD
+
+log = logging.getLogger()
 
 
 def _perform_verify_task(verifier: InstallTargetVerifier, target: InstallTarget, findings: dict[InstallTarget, list[str]]):
@@ -28,9 +32,9 @@ def verify_install_targets(verifiers: list[InstallTargetVerifier], targets: list
 
     with mp.Pool() as pool:
         pool.starmap(
-            _perform_verify_task,
-            [(verifier, target, findings) for verifier, target in verify_tasks]
-        )
+        _perform_verify_task,
+        [(verifier, target, findings) for verifier, target in verify_tasks]
+    )
 
     return dict(findings)
 
@@ -45,31 +49,32 @@ def print_findings(findings: dict[InstallTarget, list[str]]):
 
 def run_firewall() -> int:
     try:
-        run_command = False
 
-        args, command = parse_command_line()
+        cli_args, cli_command = parse_command_line()
         # TODO: Print usage message and exit in this case
-        if not command:
+        if not cli_command:
             return 0
-        ecosystem, command = command
+        ecosystem, command = cli_command
 
-        command = get_package_manager_command(ecosystem, command, executable=args.executable)
-        if (targets := command.would_install()):
+        pkgmgr_command = get_package_manager_command(ecosystem, command, executable=cli_args.executable)
+        if targets := pkgmgr_command.would_install():
+
             verifiers = get_install_target_verifiers()
+
             if (findings := verify_install_targets(verifiers, targets)):
                 print_findings(findings)
                 print("\nThe installation request was blocked. No changes have been made.")
-            elif args.dry_run:
+                return 0
+
+            if cli_args.dry_run:
                 print("Exiting without installing, no issues found for installation targets.")
-            else:
-                run_command = True
-        else:
-            run_command = True
+                return 0
 
-        if run_command:
-            command.run()
-
+        ddlog = logging.getLogger(LOG_DD)
+        ddlog.info(f"Running {command}")
+        pkgmgr_command.run()
         return 0
+
     except Exception as e:
         sys.stderr.write(f"Error: {e}\n")
         return 1

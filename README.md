@@ -58,11 +58,7 @@ $ . venv/bin/activate
 (venv) $ pip install -r requirements-dev.txt
 ```
 
-You can now simply run the `pytest` command to run the test suite.  The code can also be typechecked using `mypy` by running the following command from the repo directory:
-
-```bash
-(venv) $ mypy --install-types --non-interactive scfw
-```
+You can now simply run the `pytest` command to run the test suite.
 
 To facilitate testing "in the wild", `scfw` provides a `--dry-run` option that will verify any installation targets and exit without executing the given install command:
 
@@ -72,6 +68,14 @@ Exiting without installing, no issues found for installation targets.
 ```
 
 Of course, one can always test inside a container or VM for an added layer of protection, if desired.
+
+## Code quality
+
+After setting up for local testing, the code can also be typechecked using `mypy` by running the following command from the top-level repo directory:
+
+```bash
+(venv) $ mypy --install-types --non-interactive scfw
+```
 
 ## Feedback
 

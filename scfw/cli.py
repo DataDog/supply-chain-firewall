@@ -59,7 +59,7 @@ def parse_command_line() -> tuple[Namespace, str]:
     
     parser = _cli()
     args = parser.parse_args(sys.argv[1:hinge])
-    vs = vars(args)
-    vs["command"] = sys.argv[hinge:]
+    args_dict = vars(args)
+    args_dict["command"] = sys.argv[hinge:]
 
     return args, parser.format_help()

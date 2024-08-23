@@ -49,22 +49,29 @@ The installation request was blocked.  No changes have been made.
 
 ## Testing
 
-To facilitate testing against known-good packages, `scfw` has a `--dry-run` option that will verify installation targets and exit without executing the given install command:
+To run the test suite, first install `scfw` and the development dependencies.  It is recommended to create a fresh virtual environment for testing:
+
+```bash
+$ python -m venv venv
+$ . venv/bin/activate
+(venv) $ pip install .
+(venv) $ pip install -r requirements-dev.txt
+```
+
+You can now simply run the `pytest` command to run the test suite.  The code can also be typechecked using `mypy` by running the following command from the repo directory:
+
+```bash
+(venv) $ mypy --install-types --non-interactive scfw
+```
+
+To facilitate testing "in the wild", `scfw` provides a `--dry-run` option that will verify any installation targets and exit without executing the given install command:
 
 ```bash
 $ scfw --dry-run npm install axios
 Exiting without installing, no issues found for installation targets.
 ```
 
-As for testing against known-malicious targets, any of the packages listed in Datadog's public malicious software packages [dataset](https://github.com/DataDog/malicious-software-packages-dataset) should be reliably blocked.  As for additional precautions, one can always use the `--dry-run` flag or test inside a container or VM, if desired.
-
-## Code quality checks
-
-The code can be typechecked using `mypy` by running the following command in the repo directory:
-
-```bash
-$ mypy --install-types --non-interactive scfw
-```
+Of course, one can always test inside a container or VM for an added layer of protection, if desired.
 
 ## Feedback
 

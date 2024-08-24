@@ -38,7 +38,6 @@ def _test_dd_verifier_malicious(ecosystem: ECOSYSTEM):
         InstallTarget(ecosystem, package, "dummy version") for package in manifest
     ]
     findings = verify_install_targets([DD_VERIFIER], test_set)
-    assert findings
     for target in test_set:
         assert target in findings
         assert findings[target]

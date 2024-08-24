@@ -237,7 +237,6 @@ def _test_osv_verifier_malicious(ecosystem: ECOSYSTEM):
 
     test_targets = list(map(lambda t: InstallTarget(ecosystem, t[0], t[1]), test_set))
     findings = verify_install_targets([OsvVerifier()], test_targets)
-    assert findings
     for target in test_targets:
         assert target in findings
         assert findings[target]

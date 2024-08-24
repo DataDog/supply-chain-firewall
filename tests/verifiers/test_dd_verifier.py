@@ -7,12 +7,12 @@ from scfw.verifiers.dd_verifier import DatadogMaliciousPackagesVerifier
 DD_VERIFIER = DatadogMaliciousPackagesVerifier()
 
 
-def test_dd_verifier_malicious_pypi():
+def test_dd_verifier_malicious_pip():
     """
     Test that every Python package in the Datadog malicious packages dataset
     has a `DatadogMaliciousPackagesVerifier` finding (and therefore would block)
     """
-    _test_dd_verifier_backend(ECOSYSTEM.PIP)
+    _test_dd_verifier_malicious(ECOSYSTEM.PIP)
 
 
 def test_dd_verifier_malicious_npm():
@@ -20,12 +20,12 @@ def test_dd_verifier_malicious_npm():
     Test that every npm package in the Datadog malicious packages dataset
     has a `DatadogMaliciousPackagesVerifier` finding (and therefore would block)
     """
-    _test_dd_verifier_backend(ECOSYSTEM.NPM)
+    _test_dd_verifier_malicious(ECOSYSTEM.NPM)
 
 
-def _test_dd_verifier_backend(ecosystem: ECOSYSTEM):
+def _test_dd_verifier_malicious(ecosystem: ECOSYSTEM):
     """
-    Backend function for implementing the tests in this module.
+    Backend testing function for the `test_dd_verifier_malicious_*` tests.
     """
     match ecosystem:
         case ECOSYSTEM.PIP:

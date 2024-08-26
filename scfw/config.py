@@ -30,17 +30,23 @@ logger.addHandler(stderrHandler)
 
 class DDLogHandler(logging.Handler):
     def emit(self, record):
+        tags = {f"env:{DD_ENV}"}
+        extra_tags = record.__dict__.get("tags", {})
+
+        tags |= set(map(lambda e: f"target:{e}",extra_tags))
+
         log_entry = self.format(record)
         body = HTTPLog(
             [
                 HTTPLogItem(
-                    ddtags=f"env:{DD_ENV}",
+                    ddtags=",".join(tags),
                     hostname=socket.gethostname(),
                     message=log_entry,
                     service=DD_SERVICE,
                 ),
             ]
         )
+        
         configuration = Configuration()
         with ApiClient(configuration) as api_client:
             api_instance = LogsApi(api_client)

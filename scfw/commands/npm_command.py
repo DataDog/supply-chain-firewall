@@ -7,27 +7,50 @@ from scfw.target import InstallTarget
 
 
 class NpmCommand(PackageManagerCommand):
+    """
+    A representation of npm commands via the `PackageManagerCommand` interface.
+    """
     def __init__(self, command: list[str], executable: Optional[str] = None):
+        """
+        Initialize a new `NpmCommand`.
+
+        Args:
+            self: The `NpmCommand` to be initialized.
+            command: The npm command line as provided to the supply-chain firewall.
+            `executable`: An optional path to the npm executable to use to run the command.
+        """
         assert command and command[0] == "npm", "Malformed npm command"
         self._command = command
 
-        # TODO: Validate the given executable path
         if executable:
             self._command[0] = executable
 
     def run(self):
+        """
+        Run an npm command.
+
+        Args:
+            self: The `NpmCommand` to run.
+        """
         subprocess.run(self._command)
 
     def would_install(self) -> list[InstallTarget]:
-        def line_to_install_target(line: str) -> Optional[InstallTarget]:
-            # TODO: Determine whether these "add" lines always have this format
-            # TODO: Determine whether all dry runs identify install targets this way
-            if line.startswith("add") and not line.startswith("added"):
-                assert len(line.split()) == 3, "Failed to parse npm install target"
-                _, package, version = line.split()
-                return InstallTarget(ECOSYSTEM.NPM, package, version)
-            else:
-                return None
+        """
+        Determine the list of packages an npm command would install if it were run.
+
+        Args:
+            self: The `NpmCommand` to inspect.
+
+        Returns:
+            The list of packages the npm command would install if it were run.
+        """
+        def is_add_line(line: str) -> bool:
+            return line.startswith("add") and not line.startswith("added")
+
+        def line_to_install_target(line: str) -> InstallTarget:
+            assert len(line.split()) == 3, "Failed to parse npm install target"
+            _, package, version = line.split()
+            return InstallTarget(ECOSYSTEM.NPM, package, version)
 
         # If any of the below options are present, a help message is printed or
         # a dry-run of an installish action occurs: nothing will be installed
@@ -37,4 +60,4 @@ class NpmCommand(PackageManagerCommand):
         dry_run_command = self._command + ["--dry-run"]
         dry_run = subprocess.run(dry_run_command, text=True, check=True, capture_output=True)
 
-        return list(filter(lambda x: x is not None, map(line_to_install_target, dry_run.stdout.split('\n'))))
+        return list(map(line_to_install_target, filter(is_add_line, dry_run.stdout.split('\n'))))

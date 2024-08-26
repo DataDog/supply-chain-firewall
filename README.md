@@ -29,6 +29,13 @@ $ scfw pip install -r requirements.txt
 
 For `pip install` commands, the firewall will install packages in the same environment (virtual or global) in which the command was run.
 
+If desired, the following aliases can be added to one's `.bashrc`/`.zshrc` file to passively run all `pip` and `npm` commands through the firewall.
+
+```
+alias pip="scfw pip"
+alias npm="scfw npm"
+```
+
 ## Sample blocked installation output
 
 ```bash
@@ -51,6 +58,13 @@ Exiting without installing, no issues found for installation targets.
 
 As for testing against known-malicious targets, any of the packages listed in Datadog's public malicious software packages [dataset](https://github.com/DataDog/malicious-software-packages-dataset) should be reliably blocked.  As for additional precautions, one can always use the `--dry-run` flag or test inside a container or VM, if desired.
 
+## Code quality checks
+
+The code can be typechecked using `mypy` by running the following command in the repo directory:
+
+```bash
+$ mypy --install-types --non-interactive scfw
+```
 
 ## Feedback
 

@@ -10,8 +10,19 @@ from scfw.target import InstallTarget
 
 
 class PipCommand(PackageManagerCommand):
+    """
+    A representation of pip commands via the `PackageManagerCommand` interface.
+    """
     def __init__(self, command: list[str], executable: Optional[str] = None):
-        # TODO: Deal with the fact that pip commands can specify the executable to use
+        """
+        Initialize a new `PipCommand`.
+
+        Args:
+            self: The `PipCommand` to be initialized.
+            command: The pip command line as provided to the supply-chain firewall.
+            `executable`: An optional path to the Python executable to use to run the
+            pip command.  Determined by the environment if not provided.
+        """
         def get_executable() -> str:
             if (venv := os.environ.get("VIRTUAL_ENV")):
                 return os.path.join(venv, "bin/python")
@@ -21,13 +32,27 @@ class PipCommand(PackageManagerCommand):
         assert command and command[0] == "pip", "Malformed pip command"
         self._command = command
 
-        # TODO: Validate the given executable path
         self._executable = executable if executable else get_executable()
 
     def run(self):
+        """
+        Run a pip command.
+
+        Args:
+            self: The `PipCommand` to run.
+        """
         subprocess.run([self._executable, "-m"] + self._command)
 
     def would_install(self) -> list[InstallTarget]:
+        """
+        Determine the list of Python packages a pip command would install if it were run.
+
+        Args:
+            self: The `PipCommand` to inspect.
+
+        Returns:
+            The list of Python packages the pip command would install if it were run.
+        """
         def report_to_install_targets(install_report: dict) -> InstallTarget:
             assert (metadata := install_report.get("metadata")), "Missing metadata for pip install target"
             assert (package := metadata.get("name")), "Missing name for pip install target"
@@ -41,7 +66,6 @@ class PipCommand(PackageManagerCommand):
         if not "install" in self._command or any(opt in self._command for opt in {"-h", "--help", "--dry-run"}):
             return []
 
-        # TODO: Make use of the `--report` option of `pip install`
         # Otherwise, this is probably a "live" `pip install` command
         # To be certain, we would need to write a full parser for pip
         dry_run_command = [self._executable, "-m"] + self._command + ["--dry-run", "--quiet", "--report", "-"]

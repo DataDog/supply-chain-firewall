@@ -30,26 +30,22 @@ def select_test_install_target(top_packages: set[str], pip_list: str) -> str:
     Select a test target from `top_packages` that is not in the given `pip_list`
     output.
 
-    This allows us to be certain when testing that nothing was installed by dry-run
+    This allows us to be certain when testing that nothing was installed in a
+    dry-run.
     """
-    installed_packages = set()
-    for line in pip_list.split('\n'):
-        fields = line.split()
-        if len(fields) == 2:
-            installed_packages.add(fields[0])
-
     try:
-        test_package_options = top_packages - installed_packages
-        return test_package_options.pop()
+        while (choice := top_packages.pop()) in pip_list:
+            pass
     except KeyError:
-        # In the unlikely case that all top packages are already installed,
-        # pick something safe
-        return "requests"
+        # Pick something safe in the unlikely case that all top packages are
+        # already installed
+        choice = "requests"
+
+    return choice
 
 
-TOP_PIP_PACKAGES = read_top_packages()
 INIT_PIP_STATE = pip_list(sys.executable)
-TEST_TARGET = select_test_install_target(TOP_PIP_PACKAGES, INIT_PIP_STATE)
+TEST_TARGET = select_test_install_target(read_top_packages(), INIT_PIP_STATE)
 
 
 def test_pip_help_short():

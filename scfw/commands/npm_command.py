@@ -58,6 +58,10 @@ class NpmCommand(PackageManagerCommand):
             return []
 
         dry_run_command = self._command + ["--dry-run"]
-        dry_run = subprocess.run(dry_run_command, text=True, check=True, capture_output=True)
-
-        return list(map(line_to_install_target, filter(is_add_line, dry_run.stdout.split('\n'))))
+        try:
+            dry_run = subprocess.run(dry_run_command, check=True, text=True, capture_output=True)
+            return list(map(line_to_install_target, filter(is_add_line, dry_run.stdout.split('\n'))))
+        except subprocess.CalledProcessError:
+            # An error must have resulted from the given npm command
+            # As nothing will be installed in this case, allow the command
+            return []

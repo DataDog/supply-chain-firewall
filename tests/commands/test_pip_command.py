@@ -111,7 +111,6 @@ def test_pip_command_would_install_error():
     Test that `PipCommand.would_install` returns nothing and does not modify the pip
     state when the given command encounters an error.
     """
-    # Nonexistent pip install option
     command_line = ["pip", "install", "--non-existent-option", TEST_TARGET]
     command = PipCommand(command_line, executable=sys.executable)
     targets = command.would_install()

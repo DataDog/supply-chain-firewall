@@ -5,12 +5,12 @@ repos:
   - id: typecheck
     name: Typecheck the firewall code
     language: system
-    entry: mypy --install-types --non-interactive scfw
+    entry: make typecheck
   - id: lint
     name: Lint the firewall code
     language: system
-    entry: flake8 scfw --count --show-source --statistics --max-line-length=120
+    entry: make lint
   - id: test
     name: Run the test suite
     language: system
-    entry: pytest
+    entry: make test

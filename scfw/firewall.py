@@ -55,9 +55,9 @@ def verify_install_targets(verifiers: list[InstallTargetVerifier], targets: list
 
     with mp.Pool() as pool:
         pool.starmap(
-        _perform_verify_task,
-        [(verifier, target, findings) for verifier, target in verify_tasks]
-    )
+            _perform_verify_task,
+            [(verifier, target, findings) for verifier, target in verify_tasks],
+        )
 
     return dict(findings)
 
@@ -97,8 +97,8 @@ def run_firewall() -> int:
             verifiers = get_install_target_verifiers()
 
             if (findings := verify_install_targets(verifiers, targets)):
-                tags = map(lambda x: f"{x.package}@{x.version}", findings.keys())
-                ddlog.info(f"Instalation was block while attempting to run {command}", extra={"tags":[tags]})
+                tags = map(lambda x: x.show(), findings)
+                ddlog.info(f"Instalation was blocked while attempting to run {command}", extra={"tags":[tags]})
                 print_findings(findings)
                 print("\nThe installation request was blocked. No changes have been made.")
                 return 0
@@ -107,7 +107,7 @@ def run_firewall() -> int:
                 print("Exiting without installing, no issues found for installation targets.")
                 return 0
 
-        tags = map(lambda x: f"{x.package}@{x.version}", targets)
+        tags = map(lambda x: x.show(),targets)
         ddlog.info(f"Running {args.command}", extra={"tags":tags})
         command.run()
         return 0

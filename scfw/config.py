@@ -29,6 +29,9 @@ logger.addHandler(stderrHandler)
 
 
 class DDLogHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+
     def emit(self, record):
         tags = {f"env:{DD_ENV}"}
         extra_tags = record.__dict__.get("tags", {})

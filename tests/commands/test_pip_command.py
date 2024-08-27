@@ -2,6 +2,7 @@ import sys
 
 from scfw.commands.pip_command import PipCommand
 from scfw.ecosystem import ECOSYSTEM
+from scfw.target import InstallTarget
 
 from .test_pip import INIT_PIP_STATE, TEST_TARGET, pip_list
 
@@ -96,3 +97,28 @@ def test_pip_command_would_install_error():
     state when the given command encounters an error.
     """
     _test_pip_command_would_install(["pip", "install", "--non-existent-option", TEST_TARGET], has_targets=False)
+
+
+def test_pip_command_would_install_exact():
+    """
+    Test that `PipCommand.would_install` gives the right answer relative to an
+    exact top-level installation target and its dependencies.
+    """
+    true_targets = list(
+        map(
+            lambda p: InstallTarget(ECOSYSTEM.PIP, p[0], p[1]),
+            [
+                ("certifi", "2024.7.4"),
+                ("charset-normalizer", "3.3.2"),
+                ("idna", "3.8"),
+                ("requests", "2.32.3"),
+                ("urllib3", "2.2.2")
+            ]
+        )
+    )
+
+    command_line = ["pip", "install", "--ignore-installed", "requests==2.32.3"]
+    command = PipCommand(command_line, executable=sys.executable)
+    targets = command.would_install()
+    assert len(targets) == len(true_targets)
+    assert all(target in true_targets for target in targets)

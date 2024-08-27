@@ -12,7 +12,7 @@ def read_top_packages() -> set[str]:
     """
     test_dir = os.path.dirname(os.path.realpath(__file__, strict=True))
     top_packages_file = os.path.join(test_dir, "top_pip_packages.txt")
-    with open(top_packages_file, 'r') as f:
+    with open(top_packages_file) as f:
         return set(f.read().split())
 
 

@@ -1,6 +1,7 @@
 import sys
 
 from scfw.commands.pip_command import PipCommand
+from scfw.ecosystem import ECOSYSTEM
 
 from .test_pip import INIT_PIP_STATE, TEST_TARGET, pip_list
 
@@ -14,7 +15,7 @@ def test_pip_command_would_install_basic_usage():
     command = PipCommand(command_line, executable=sys.executable)
     targets = command.would_install()
     assert targets
-    assert pip_list(sys.executable) == INIT_PIP_STATE
+    assert pip_list() == INIT_PIP_STATE
 
 
 def test_pip_command_would_install_help_pip_short():
@@ -27,7 +28,7 @@ def test_pip_command_would_install_help_pip_short():
     command = PipCommand(command_line, executable=sys.executable)
     targets = command.would_install()
     assert not targets
-    assert pip_list(sys.executable) == INIT_PIP_STATE
+    assert pip_list() == INIT_PIP_STATE
 
 
 def test_pip_command_would_install_help_pip_long():
@@ -40,7 +41,7 @@ def test_pip_command_would_install_help_pip_long():
     command = PipCommand(command_line, executable=sys.executable)
     targets = command.would_install()
     assert not targets
-    assert pip_list(sys.executable) == INIT_PIP_STATE
+    assert pip_list() == INIT_PIP_STATE
 
 
 def test_pip_command_would_install_help_pip_install_short():
@@ -53,7 +54,7 @@ def test_pip_command_would_install_help_pip_install_short():
     command = PipCommand(command_line, executable=sys.executable)
     targets = command.would_install()
     assert not targets
-    assert pip_list(sys.executable) == INIT_PIP_STATE
+    assert pip_list() == INIT_PIP_STATE
 
 
 def test_pip_command_would_install_help_pip_install_long():
@@ -66,7 +67,7 @@ def test_pip_command_would_install_help_pip_install_long():
     command = PipCommand(command_line, executable=sys.executable)
     targets = command.would_install()
     assert not targets
-    assert pip_list(sys.executable) == INIT_PIP_STATE
+    assert pip_list() == INIT_PIP_STATE
 
 
 def test_pip_command_would_install_dry_run_correct():
@@ -78,7 +79,7 @@ def test_pip_command_would_install_dry_run_correct():
     command = PipCommand(command_line, executable=sys.executable)
     targets = command.would_install()
     assert not targets
-    assert pip_list(sys.executable) == INIT_PIP_STATE
+    assert pip_list() == INIT_PIP_STATE
 
 
 def test_pip_command_would_install_dry_run_incorrect():
@@ -91,7 +92,7 @@ def test_pip_command_would_install_dry_run_incorrect():
     command = PipCommand(command_line, executable=sys.executable)
     targets = command.would_install()
     assert not targets
-    assert pip_list(sys.executable) == INIT_PIP_STATE
+    assert pip_list() == INIT_PIP_STATE
 
 
 def test_pip_command_would_install_report():
@@ -103,7 +104,7 @@ def test_pip_command_would_install_report():
     command = PipCommand(command_line, executable=sys.executable)
     targets = command.would_install()
     assert targets
-    assert pip_list(sys.executable) == INIT_PIP_STATE
+    assert pip_list() == INIT_PIP_STATE
 
 
 def test_pip_command_would_install_error():
@@ -115,4 +116,4 @@ def test_pip_command_would_install_error():
     command = PipCommand(command_line, executable=sys.executable)
     targets = command.would_install()
     assert not targets
-    assert pip_list(sys.executable) == INIT_PIP_STATE
+    assert pip_list() == INIT_PIP_STATE

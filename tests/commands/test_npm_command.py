@@ -1,4 +1,5 @@
 from scfw.commands.npm_command import NpmCommand
+from scfw.ecosystem import ECOSYSTEM
 
 from .test_npm import INIT_NPM_STATE, TEST_TARGET, npm_list
 

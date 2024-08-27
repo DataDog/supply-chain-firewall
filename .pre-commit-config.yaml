@@ -1,0 +1,16 @@
+fail_fast: true
+repos:
+- repo: local
+  hooks:
+  - id: typecheck
+    name: Typecheck the firewall code
+    language: system
+    entry: mypy --install-types --non-interactive scfw
+  - id: lint
+    name: Lint the firewall code
+    language: system
+    entry: flake8 scfw --count --show-source --statistics --max-line-length=120
+  - id: test
+    name: Run the test suite
+    language: system
+    entry: pytest

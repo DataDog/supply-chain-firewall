@@ -16,7 +16,18 @@ TEST_TARGET = select_test_install_target(read_top_packages("top_pip_packages.txt
 PIP_COMMAND_PREFIX = [sys.executable, "-m", "pip"]
 
 
-def _test_pip_command_no_change(command_line: list[str]):
+@pytest.mark.parametrize(
+        "command_line",
+        [
+            PIP_COMMAND_PREFIX + ["-h", "install", TEST_TARGET],
+            PIP_COMMAND_PREFIX + ["--help", "install", TEST_TARGET],
+            PIP_COMMAND_PREFIX + ["install", "-h", TEST_TARGET],
+            PIP_COMMAND_PREFIX + ["install", "--help", TEST_TARGET],
+            PIP_COMMAND_PREFIX + ["install", "--dry-run", TEST_TARGET],
+            PIP_COMMAND_PREFIX + ["install", "--dry-run", TEST_TARGET, "--dry-run"]
+        ]
+)
+def test_pip_command_no_change(command_line: list[str]):
     """
     Backend function for testing that a pip command does not encounter any
     errors and does not modify the local pip installation state.
@@ -25,7 +36,14 @@ def _test_pip_command_no_change(command_line: list[str]):
     assert pip_list() == INIT_PIP_STATE
 
 
-def _test_pip_command_no_change_error(command_line: list[str]):
+@pytest.mark.parametrize(
+        "command_line",
+        [
+            PIP_COMMAND_PREFIX + ["--dry-run", "install", TEST_TARGET],
+            PIP_COMMAND_PREFIX + ["install", "--dry-run", "!!!a_nonexistent_p@ckage_name"]
+        ]
+)
+def test_pip_command_no_change_error(command_line: list[str]):
     """
     Backend function for testing that a pip command raises an error and
     does not modify the local pip installation state.
@@ -33,62 +51,6 @@ def _test_pip_command_no_change_error(command_line: list[str]):
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.run(command_line, check=True)
     assert pip_list() == INIT_PIP_STATE
-
-
-def test_pip_help_short():
-    """
-    Test that nothing is installed when the short form help option is present
-    and attached to the pip command itself.
-    """
-    _test_pip_command_no_change(PIP_COMMAND_PREFIX + ["-h", "install", TEST_TARGET])
-
-
-def test_pip_help_long():
-    """
-    Test that nothing is installed when the long form help option is present
-    and attached to the pip command itself.
-    """
-    _test_pip_command_no_change(PIP_COMMAND_PREFIX + ["--help", "install", TEST_TARGET])
-
-
-def test_pip_install_help_short():
-    """
-    Test that nothing is installed when the short form help option is present
-    and attached to the pip install subcommand.
-    """
-    _test_pip_command_no_change(PIP_COMMAND_PREFIX + ["install", "-h", TEST_TARGET])
-
-
-def test_pip_install_help_long():
-    """
-    Test that nothing is installed when the long form help option is present
-    and attached to the pip install subcommand.
-    """
-    _test_pip_command_no_change(PIP_COMMAND_PREFIX + ["install", "--help", TEST_TARGET])
-
-
-def test_pip_install_dry_run_correct():
-    """
-    Test that nothing is installed when the pip install `--dry-run` option is
-    used correctly.
-    """
-    _test_pip_command_no_change(PIP_COMMAND_PREFIX + ["install", "--dry-run", TEST_TARGET])
-
-
-def test_pip_install_dry_run_incorrect():
-    """
-    Test that an error occurs and that nothing is installed when the pip install
-    `--dry-run` option is used incorrectly.
-    """
-    _test_pip_command_no_change_error(PIP_COMMAND_PREFIX + ["--dry-run", "install", TEST_TARGET])
-
-
-def test_pip_install_dry_run_multiple():
-    """
-    Test that multiple correct instances of the pip install `--dry-run` option
-    may be given without causing an error.
-    """
-    _test_pip_command_no_change(PIP_COMMAND_PREFIX + ["install", "--dry-run", TEST_TARGET, "--dry-run"])
 
 
 def test_pip_install_report_multiple():
@@ -108,11 +70,3 @@ def test_pip_install_report_multiple():
         assert report.get("install")
         # Nothing was written to the temporary file
         assert tmpfile.read() == b''
-
-
-def test_pip_install_nonexistent_package():
-    """
-    Test that pip raises an error when a user requests to install a
-    nonexistent package.
-    """
-    _test_pip_command_no_change_error(PIP_COMMAND_PREFIX + ["install", "--dry-run", "!!!a_nonexistent_p@ckage_name"])

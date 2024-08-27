@@ -1,3 +1,5 @@
+import pytest
+
 from scfw.ecosystem import ECOSYSTEM
 from scfw.firewall import verify_install_targets
 from scfw.target import InstallTarget
@@ -207,27 +209,11 @@ NPM_TEST_SET = [
 ]
 
 
-def test_osv_verifier_malicious_pip():
+@pytest.mark.parametrize("ecosystem", [ECOSYSTEM.PIP, ECOSYSTEM.NPM])
+def test_osv_verifier_malicious(ecosystem: ECOSYSTEM):
     """
-    Test that every vulnerable or malicious package in a random sample of OSV.dev
-    PyPI publications of the given size (default OSV_SAMPLE_SIZE) has an `OsvVerifier`
-    finding (and therefore would block).
-    """
-    _test_osv_verifier_malicious(ECOSYSTEM.PIP)
-
-
-def test_osv_verifier_malicious_npm():
-    """
-    Test that every vulnerable or malicious package in a random sample of OSV.dev
-    npm publications of the given size (default OSV_SAMPLE_SIZE) has an `OsvVerifier`
-    finding (and therefore would block).
-    """
-    _test_osv_verifier_malicious(ECOSYSTEM.NPM)
-
-
-def _test_osv_verifier_malicious(ecosystem: ECOSYSTEM):
-    """
-    Backend testing function for the `test_osv_verifier_malicious_*` tests.
+    Run a test of the `OsvVerifier` against the list of selected packages
+    corresponding to the given ecosystem.
     """
     match ecosystem:
         case ECOSYSTEM.PIP:

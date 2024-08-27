@@ -1,3 +1,5 @@
+import pytest
+
 from scfw.ecosystem import ECOSYSTEM
 from scfw.firewall import verify_install_targets
 from scfw.target import InstallTarget
@@ -7,25 +9,11 @@ from scfw.verifiers.dd_verifier import DatadogMaliciousPackagesVerifier
 DD_VERIFIER = DatadogMaliciousPackagesVerifier()
 
 
-def test_dd_verifier_malicious_pip():
+@pytest.mark.parametrize("ecosystem", [ECOSYSTEM.PIP, ECOSYSTEM.NPM])
+def test_dd_verifier_malicious(ecosystem: ECOSYSTEM):
     """
-    Test that every Python package in the Datadog malicious packages dataset
-    has a `DatadogMaliciousPackagesVerifier` finding (and therefore would block)
-    """
-    _test_dd_verifier_malicious(ECOSYSTEM.PIP)
-
-
-def test_dd_verifier_malicious_npm():
-    """
-    Test that every npm package in the Datadog malicious packages dataset
-    has a `DatadogMaliciousPackagesVerifier` finding (and therefore would block)
-    """
-    _test_dd_verifier_malicious(ECOSYSTEM.NPM)
-
-
-def _test_dd_verifier_malicious(ecosystem: ECOSYSTEM):
-    """
-    Backend testing function for the `test_dd_verifier_malicious_*` tests.
+    Run a test of the `DatadogMaliciousPackagesVerifier` against all samples
+    present for the given ecosystem.
     """
     match ecosystem:
         case ECOSYSTEM.PIP:

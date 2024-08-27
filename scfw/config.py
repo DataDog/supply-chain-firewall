@@ -70,8 +70,7 @@ if DD_API_KEY:
     ddlog.setLevel(logging.INFO)
     ddlog_handler = DDLogHandler()
     FORMAT = (
-        '%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d]'
-        ' - %(message)s'
+        "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
     )
     ddlog_handler.setFormatter(logging.Formatter(FORMAT))
     ddlog.addHandler(ddlog_handler)

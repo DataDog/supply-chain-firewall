@@ -58,7 +58,7 @@ $ . venv/bin/activate
 (venv) $ pip install -r requirements-dev.txt
 ```
 
-You can now simply run the `pytest` command to run the test suite.
+You can now run the test suite by running `make test`.  To additionally view code coverage, run `make coverage`.
 
 To facilitate testing "in the wild", `scfw` provides a `--dry-run` option that will verify any installation targets and exit without executing the given install command:
 
@@ -71,14 +71,9 @@ Of course, one can always test inside a container or VM for an added layer of pr
 
 ## Code quality
 
-After setting up for local testing, the code can also be typechecked with `mypy` and linted with `flake8` by running the following commands in the top-level directory:
+After setting up for local testing, the code can also be typechecked with `mypy` and linted with `flake8`.
 
-```bash
-(venv) $ mypy --install-types --non-interactive scfw
-```
-```bash
-(venv) $ flake8 scfw --count --show-source --statistics --max-line-length=120
-```
+Run `make checks` to run the full suite of code quality checks (including tests).  You can also only typecheck or only lint with `make typecheck` and `make lint`, respectively.
 
 ## Feedback
 

@@ -56,7 +56,7 @@ def _parse_command_line(argv: list[str]) -> tuple[Namespace, str]:
             hinge = min(hinge, argv.index(ecosystem.value))
         except ValueError:
             pass
-    
+
     parser = _cli()
     args = parser.parse_args(argv[1:hinge])
     args_dict = vars(args)

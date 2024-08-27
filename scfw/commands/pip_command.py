@@ -63,7 +63,7 @@ class PipCommand(PackageManagerCommand):
         # If `install` is not present, the command is automatically safe to run
         # If `install` is present with any of the below options, a usage or error
         # message is printed or a dry-run install occurs: nothing will be installed
-        if not "install" in self._command or any(opt in self._command for opt in {"-h", "--help", "--dry-run"}):
+        if "install" not in self._command or any(opt in self._command for opt in {"-h", "--help", "--dry-run"}):
             return []
 
         # Otherwise, this is probably a "live" `pip install` command

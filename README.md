@@ -71,10 +71,13 @@ Of course, one can always test inside a container or VM for an added layer of pr
 
 ## Code quality
 
-After setting up for local testing, the code can also be typechecked using `mypy` by running the following command from the top-level repo directory:
+After setting up for local testing, the code can also be typechecked with `mypy` and linted with `flake8` by running the following commands in the top-level directory:
 
 ```bash
 (venv) $ mypy --install-types --non-interactive scfw
+```
+```bash
+(venv) $ flake8 scfw --count --show-source --statistics --max-line-length=120
 ```
 
 ## Feedback

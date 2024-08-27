@@ -1,12 +1,16 @@
 import itertools
 import multiprocessing as mp
 import sys
+import logging
 
 from scfw.cli import parse_command_line
 from scfw.commands import get_package_manager_command
 from scfw.target import InstallTarget
 from scfw.verifier import InstallTargetVerifier
 from scfw.verifiers import get_install_target_verifiers
+from scfw.config import LOG_DD
+
+log = logging.getLogger()
 
 
 def _perform_verify_task(verifier: InstallTargetVerifier, target: InstallTarget, findings: dict[InstallTarget, list[str]]):
@@ -52,7 +56,7 @@ def verify_install_targets(verifiers: list[InstallTargetVerifier], targets: list
     with mp.Pool() as pool:
         pool.starmap(
             _perform_verify_task,
-            [(verifier, target, findings) for verifier, target in verify_tasks]
+            [(verifier, target, findings) for verifier, target in verify_tasks],
         )
 
     return dict(findings)
@@ -79,7 +83,8 @@ def run_firewall() -> int:
         An integer exit code (0 or 1).
     """
     try:
-        run_command = False
+
+        ddlog = logging.getLogger(LOG_DD)
 
         args, help = parse_command_line()
         if not args.command:
@@ -87,22 +92,26 @@ def run_firewall() -> int:
             return 0
 
         command = get_package_manager_command(args.command, executable=args.executable)
-        if (targets := command.would_install()):
+        if targets := command.would_install():
+
             verifiers = get_install_target_verifiers()
+
             if (findings := verify_install_targets(verifiers, targets)):
+                tags = map(lambda x: x.show(), findings)
+                ddlog.info(f"Instalation was blocked while attempting to run {command}", extra={"tags":[tags]})
                 print_findings(findings)
                 print("\nThe installation request was blocked. No changes have been made.")
-            elif args.dry_run:
+                return 0
+
+            if args.dry_run:
                 print("Exiting without installing, no issues found for installation targets.")
-            else:
-                run_command = True
-        else:
-            run_command = True
+                return 0
 
-        if run_command:
-            command.run()
-
+        tags = map(lambda x: x.show(),targets)
+        ddlog.info(f"Running {args.command}", extra={"tags":tags})
+        command.run()
         return 0
+
     except Exception as e:
         sys.stderr.write(f"Error: {e}\n")
         return 1

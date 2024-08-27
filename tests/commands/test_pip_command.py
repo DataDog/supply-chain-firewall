@@ -6,16 +6,27 @@ from scfw.ecosystem import ECOSYSTEM
 from .test_pip import INIT_PIP_STATE, TEST_TARGET, pip_list
 
 
+def _test_pip_command_would_install(command_line: list[str], has_targets: bool):
+    """
+    Backend function for testing that a `PipCommand.would_install` call either
+    does or does not have install targets and does not modify the local pip
+    installation state.
+    """
+    command = PipCommand(command_line, executable=sys.executable)
+    targets = command.would_install()
+    if has_targets:
+        assert targets
+    else:
+        assert not targets
+    assert pip_list() == INIT_PIP_STATE
+
+
 def test_pip_command_would_install_basic_usage():
     """
     Test that `PipCommand.would_install` does not modify the pip state in the
     basic use case of a "live" install command.
     """
-    command_line = ["pip", "install", TEST_TARGET]
-    command = PipCommand(command_line, executable=sys.executable)
-    targets = command.would_install()
-    assert targets
-    assert pip_list() == INIT_PIP_STATE
+    _test_pip_command_would_install(["pip", "install", TEST_TARGET], has_targets=True)
 
 
 def test_pip_command_would_install_help_pip_short():
@@ -24,11 +35,7 @@ def test_pip_command_would_install_help_pip_short():
     pip state when the short form help option is present and attached to the `pip`
     portion of the command.
     """
-    command_line = ["pip", "-h", "install", TEST_TARGET]
-    command = PipCommand(command_line, executable=sys.executable)
-    targets = command.would_install()
-    assert not targets
-    assert pip_list() == INIT_PIP_STATE
+    _test_pip_command_would_install(["pip", "-h", "install", TEST_TARGET], has_targets=False)
 
 
 def test_pip_command_would_install_help_pip_long():
@@ -37,11 +44,7 @@ def test_pip_command_would_install_help_pip_long():
     pip state when the long form help option is present and attached to the `pip`
     portion of the command.
     """
-    command_line = ["pip", "--help", "install", TEST_TARGET]
-    command = PipCommand(command_line, executable=sys.executable)
-    targets = command.would_install()
-    assert not targets
-    assert pip_list() == INIT_PIP_STATE
+    _test_pip_command_would_install(["pip", "--help", "install", TEST_TARGET], has_targets=False)
 
 
 def test_pip_command_would_install_help_pip_install_short():
@@ -50,11 +53,7 @@ def test_pip_command_would_install_help_pip_install_short():
     pip state when the short form help option is present and attached to the `pip`
     portion of the command.
     """
-    command_line = ["pip", "install", "-h", TEST_TARGET]
-    command = PipCommand(command_line, executable=sys.executable)
-    targets = command.would_install()
-    assert not targets
-    assert pip_list() == INIT_PIP_STATE
+    _test_pip_command_would_install(["pip", "install", "-h", TEST_TARGET], has_targets=False)
 
 
 def test_pip_command_would_install_help_pip_install_long():
@@ -63,11 +62,7 @@ def test_pip_command_would_install_help_pip_install_long():
     pip state when the long form help option is present and attached to the `pip`
     portion of the command.
     """
-    command_line = ["pip", "install", "--help", TEST_TARGET]
-    command = PipCommand(command_line, executable=sys.executable)
-    targets = command.would_install()
-    assert not targets
-    assert pip_list() == INIT_PIP_STATE
+    _test_pip_command_would_install(["pip", "install", "--help", TEST_TARGET], has_targets=False)
 
 
 def test_pip_command_would_install_dry_run_correct():
@@ -75,11 +70,7 @@ def test_pip_command_would_install_dry_run_correct():
     Test that `PipCommand.would_install` returns nothing and does not modify the pip
     state when the dry-run option is already present and used correctly in the command.
     """
-    command_line = ["pip", "install" "--dry-run", TEST_TARGET]
-    command = PipCommand(command_line, executable=sys.executable)
-    targets = command.would_install()
-    assert not targets
-    assert pip_list() == INIT_PIP_STATE
+    _test_pip_command_would_install(["pip", "install" "--dry-run", TEST_TARGET], has_targets=False)
 
 
 def test_pip_command_would_install_dry_run_incorrect():
@@ -88,11 +79,7 @@ def test_pip_command_would_install_dry_run_incorrect():
     state when the dry-run options is already present but used incorrectly in the
     command.
     """
-    command_line = ["pip", "--dry-run", "install", TEST_TARGET]
-    command = PipCommand(command_line, executable=sys.executable)
-    targets = command.would_install()
-    assert not targets
-    assert pip_list() == INIT_PIP_STATE
+    _test_pip_command_would_install(["pip", "--dry-run", "install", TEST_TARGET], has_targets=False)
 
 
 def test_pip_command_would_install_report():
@@ -100,11 +87,7 @@ def test_pip_command_would_install_report():
     Test that `PipCommand.would_install` is able to override any `--report` options
     already present in the pip command line (i.e., to obtain the report on stdout).
     """
-    command_line = ["pip", "install", "--report", "report.json", TEST_TARGET]
-    command = PipCommand(command_line, executable=sys.executable)
-    targets = command.would_install()
-    assert targets
-    assert pip_list() == INIT_PIP_STATE
+    _test_pip_command_would_install(["pip", "install", "--report", "report.json", TEST_TARGET], has_targets=True)
 
 
 def test_pip_command_would_install_error():
@@ -112,8 +95,4 @@ def test_pip_command_would_install_error():
     Test that `PipCommand.would_install` returns nothing and does not modify the pip
     state when the given command encounters an error.
     """
-    command_line = ["pip", "install", "--non-existent-option", TEST_TARGET]
-    command = PipCommand(command_line, executable=sys.executable)
-    targets = command.would_install()
-    assert not targets
-    assert pip_list() == INIT_PIP_STATE
+    _test_pip_command_would_install(["pip", "install", "--non-existent-option", TEST_TARGET], has_targets=False)

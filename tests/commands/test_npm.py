@@ -15,7 +15,7 @@ TEST_TARGET = select_test_install_target(read_top_packages("top_npm_packages.txt
 def _test_npm_command_no_change(command_line: list[str]):
     """
     Backend function for testing that an npm command does not encounter any
-    errors and does not modify the state of the local npm installation state.
+    errors and does not modify the local npm installation state.
     """
     subprocess.run(command_line, check=True)
     assert npm_list() == INIT_NPM_STATE

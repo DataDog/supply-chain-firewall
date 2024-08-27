@@ -19,7 +19,7 @@ PIP_COMMAND_PREFIX = [sys.executable, "-m", "pip"]
 def _test_pip_command_no_change(command_line: list[str]):
     """
     Backend function for testing that a pip command does not encounter any
-    errors and does not modify the state of the local pip installation state.
+    errors and does not modify the local pip installation state.
     """
     subprocess.run(command_line, check=True)
     assert pip_list() == INIT_PIP_STATE

@@ -1,19 +1,23 @@
 import itertools
+import logging
 import multiprocessing as mp
 import sys
-import logging
 
 from scfw.cli import parse_command_line
 from scfw.commands import get_package_manager_command
+from scfw.config import LOG_DD
 from scfw.target import InstallTarget
 from scfw.verifier import InstallTargetVerifier
 from scfw.verifiers import get_install_target_verifiers
-from scfw.config import LOG_DD
 
 log = logging.getLogger()
 
 
-def _perform_verify_task(verifier: InstallTargetVerifier, target: InstallTarget, findings: dict[InstallTarget, list[str]]):
+def _perform_verify_task(
+    verifier: InstallTargetVerifier,
+    target: InstallTarget,
+    findings: dict[InstallTarget, list[str]]
+):
     """
     Execute a single verification task (i.e., for a single verifier-target pair)
     and collect the results.
@@ -33,7 +37,10 @@ def _perform_verify_task(verifier: InstallTargetVerifier, target: InstallTarget,
             findings[target] += [finding]
 
 
-def verify_install_targets(verifiers: list[InstallTargetVerifier], targets: list[InstallTarget]) -> dict[InstallTarget, list[str]]:
+def verify_install_targets(
+    verifiers: list[InstallTargetVerifier],
+    targets: list[InstallTarget]
+) -> dict[InstallTarget, list[str]]:
     """
     Verify a set of installation targets against a set of verifiers.
 
@@ -98,7 +105,7 @@ def run_firewall() -> int:
 
             if (findings := verify_install_targets(verifiers, targets)):
                 tags = map(lambda x: x.show(), findings)
-                ddlog.info(f"Instalation was blocked while attempting to run {command}", extra={"tags":[tags]})
+                ddlog.info(f"Installation was blocked while attempting to run {command}", extra={"tags": [tags]})
                 print_findings(findings)
                 print("\nThe installation request was blocked. No changes have been made.")
                 return 0
@@ -107,8 +114,8 @@ def run_firewall() -> int:
                 print("Exiting without installing, no issues found for installation targets.")
                 return 0
 
-        tags = map(lambda x: x.show(),targets)
-        ddlog.info(f"Running {args.command}", extra={"tags":tags})
+        tags = map(lambda x: x.show(), targets)
+        ddlog.info(f"Running {args.command}", extra={"tags": tags})
         command.run()
         return 0
 

@@ -38,7 +38,7 @@ def _cli() -> ArgumentParser:
     return parser
 
 
-def parse_command_line() -> tuple[Namespace, str]:
+def _parse_command_line(argv: list[str]) -> tuple[Namespace, str]:
     """
     Parse the supply-chain firewall's command line.
 
@@ -50,16 +50,20 @@ def parse_command_line() -> tuple[Namespace, str]:
         as a `list[str]` under the `command` attribute. If no such command was found, this
         attribute contains `[]`.
     """
-    hinge = len(sys.argv)
+    hinge = len(argv)
     for ecosystem in ECOSYSTEM:
         try:
-            hinge = min(hinge, sys.argv.index(ecosystem.value))
+            hinge = min(hinge, argv.index(ecosystem.value))
         except ValueError:
             pass
-    
+
     parser = _cli()
-    args = parser.parse_args(sys.argv[1:hinge])
-    vs = vars(args)
-    vs["command"] = sys.argv[hinge:]
+    args = parser.parse_args(argv[1:hinge])
+    args_dict = vars(args)
+    args_dict["command"] = argv[hinge:]
 
     return args, parser.format_help()
+
+
+def parse_command_line() -> tuple[Namespace, str]:
+    return _parse_command_line(sys.argv)

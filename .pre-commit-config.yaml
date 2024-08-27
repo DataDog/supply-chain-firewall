@@ -1,0 +1,16 @@
+fail_fast: true
+repos:
+- repo: local
+  hooks:
+  - id: typecheck
+    name: Typecheck the firewall code
+    language: system
+    entry: make typecheck
+  - id: lint
+    name: Lint the firewall code
+    language: system
+    entry: make lint
+  - id: test
+    name: Run the test suite
+    language: system
+    entry: make test

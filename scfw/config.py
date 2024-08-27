@@ -1,22 +1,22 @@
+import logging
 import os
 import sys
-import logging
 import socket
 
-from dotenv import load_dotenv
 from datadog_api_client import ApiClient, Configuration
 from datadog_api_client.v2.api.logs_api import LogsApi
 from datadog_api_client.v2.model.content_encoding import ContentEncoding
 from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
+from dotenv import load_dotenv
 
 
 load_dotenv()
 
-DD_API_KEY= os.getenv("DD_API_KEY",None)
-DD_ENV = os.getenv("DD_ENV",None)
-DD_SERVICE = os.getenv("DD_SERVICE",None)
-DD_VERSION = os.getenv("DD_VERSION",None)
+DD_API_KEY = os.getenv("DD_API_KEY", None)
+DD_ENV = os.getenv("DD_ENV", None)
+DD_SERVICE = os.getenv("DD_SERVICE", None)
+DD_VERSION = os.getenv("DD_VERSION", None)
 
 LOG_DD = "ddglog"
 APPNAME = "scfw"
@@ -36,7 +36,7 @@ class DDLogHandler(logging.Handler):
         tags = {f"env:{DD_ENV}"}
         extra_tags = record.__dict__.get("tags", {})
 
-        tags |= set(map(lambda e: f"target:{e}",extra_tags))
+        tags |= set(map(lambda e: f"target:{e}", extra_tags))
 
         log_entry = self.format(record)
         body = HTTPLog(
@@ -49,11 +49,12 @@ class DDLogHandler(logging.Handler):
                 ),
             ]
         )
-        
+
         configuration = Configuration()
         with ApiClient(configuration) as api_client:
             api_instance = LogsApi(api_client)
             api_instance.submit_log(content_encoding=ContentEncoding.DEFLATE, body=body)
+
 
 if DD_API_KEY:
     logger.info("Datadog logging enabled")
@@ -68,7 +69,8 @@ if DD_API_KEY:
     ddlog = logging.getLogger(LOG_DD)
     ddlog.setLevel(logging.INFO)
     ddlog_handler = DDLogHandler()
-    FORMAT = ('%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] '
-          '- %(message)s')
+    FORMAT = (
+        "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
+    )
     ddlog_handler.setFormatter(logging.Formatter(FORMAT))
     ddlog.addHandler(ddlog_handler)

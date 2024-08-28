@@ -1,7 +1,6 @@
 import concurrent.futures as cf
 import itertools
 import logging
-import sys
 
 from scfw.cli import parse_command_line
 from scfw.commands import get_package_manager_command
@@ -110,5 +109,5 @@ def run_firewall() -> int:
         return 0
 
     except Exception as e:
-        sys.stderr.write(f"Error: {e}\n")
+        log.error(e)
         return 1

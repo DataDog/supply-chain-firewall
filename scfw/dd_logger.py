@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 import socket
 
 from datadog_api_client import ApiClient, Configuration
@@ -20,12 +19,6 @@ DD_VERSION = os.getenv("DD_VERSION", None)
 
 APP_NAME = "scfw"
 DD_LOG_NAME = "ddlog"
-
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
-stderrHandler = logging.StreamHandler(stream=sys.stderr)
-stderrHandler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
-logger.addHandler(stderrHandler)
 
 
 class DDLogHandler(logging.Handler):
@@ -57,8 +50,6 @@ class DDLogHandler(logging.Handler):
 
 
 if DD_API_KEY:
-    logger.info("Datadog logging enabled")
-
     if not DD_SERVICE:
         os.environ["DD_SERVICE"] = DD_SERVICE = APP_NAME
     if not DD_ENV:

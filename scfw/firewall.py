@@ -5,12 +5,19 @@ import sys
 
 from scfw.cli import parse_command_line
 from scfw.commands import get_package_manager_command
-from scfw.config import DD_LOG_NAME
+from scfw.dd_logger import DD_LOG_NAME
 from scfw.target import InstallTarget
 from scfw.verifier import InstallTargetVerifier
 from scfw.verifiers import get_install_target_verifiers
 
+# Firewall root logger configured to write to stderr
 log = logging.getLogger()
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+log.addHandler(handler)
+
+# Datadog logger
+ddlog = logging.getLogger(DD_LOG_NAME)
 
 
 def verify_install_targets(
@@ -73,16 +80,15 @@ def run_firewall() -> int:
         An integer exit code (0 or 1).
     """
     try:
-
-        ddlog = logging.getLogger(DD_LOG_NAME)
-
         args, help = parse_command_line()
         if not args.command:
             print(help)
             return 0
 
+        log.setLevel(args.log_level)
+
         command = get_package_manager_command(args.command, executable=args.executable)
-        if targets := command.would_install():
+        if (targets := command.would_install()):
 
             verifiers = get_install_target_verifiers()
 

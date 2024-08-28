@@ -1,6 +1,6 @@
+import concurrent.futures as cf
 import itertools
 import logging
-import multiprocessing as mp
 import sys
 
 from scfw.cli import parse_command_line
@@ -11,30 +11,6 @@ from scfw.verifier import InstallTargetVerifier
 from scfw.verifiers import get_install_target_verifiers
 
 log = logging.getLogger()
-
-
-def _perform_verify_task(
-    verifier: InstallTargetVerifier,
-    target: InstallTarget,
-    findings: dict[InstallTarget, list[str]]
-):
-    """
-    Execute a single verification task (i.e., for a single verifier-target pair)
-    and collect the results.
-
-    Args:
-        verifier: The `InstallTargetVerifier` to use in the task.
-        target: The `InstallTarget` to be verified
-        findings: A `dict` for accumulating verification findings across tasks
-    """
-    if (finding := verifier.verify(target)):
-        if target not in findings:
-            findings[target] = [finding]
-        else:
-            # https://bugs.python.org/issue36119
-            # The manager does not monitor the lists for changes, so appending in place does nothing
-            # Must replace the list after updating in order for the manager to register the change
-            findings[target] += [finding]
 
 
 def verify_install_targets(
@@ -55,18 +31,25 @@ def verify_install_targets(
         were no findings for it. An empty returned `dict` indicates that no target
         had findings, i.e., that the installation can proceed.
     """
-    manager = mp.Manager()
-    findings = manager.dict()
+    findings = {}
 
+    # Verify every target against every verifier
     verify_tasks = itertools.product(verifiers, targets)
 
-    with mp.Pool() as pool:
-        pool.starmap(
-            _perform_verify_task,
-            [(verifier, target, findings) for verifier, target in verify_tasks],
-        )
+    with cf.ThreadPoolExecutor() as executor:
+        task_results = {
+            executor.submit(lambda v, t: v.verify(t), verifier, target): target
+            for verifier, target in verify_tasks
+        }
+        for future in cf.as_completed(task_results):
+            target = task_results[future]
+            if (finding := future.result()):
+                if target not in findings:
+                    findings[target] = [finding]
+                else:
+                    findings[target].append(finding)
 
-    return dict(findings)
+    return findings
 
 
 def print_findings(findings: dict[InstallTarget, list[str]]):

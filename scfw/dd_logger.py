@@ -26,10 +26,9 @@ class DDLogHandler(logging.Handler):
         super().__init__()
 
     def emit(self, record):
-        tags = {f"env:{DD_ENV}"}
-        extra_tags = record.__dict__.get("tags", {})
+        targets = record.__dict__.get("targets", {})
 
-        tags |= set(map(lambda e: f"target:{e}", extra_tags))
+        tags = {f"env:{DD_ENV}"} | set(map(lambda e: f"target:{e}", targets))
 
         log_entry = self.format(record)
         body = HTTPLog(

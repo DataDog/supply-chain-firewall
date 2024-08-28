@@ -17,7 +17,7 @@ handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
 log.addHandler(handler)
 
 # Datadog logger
-ddlog = logging.getLogger(DD_LOG_NAME)
+dd_log = logging.getLogger(DD_LOG_NAME)
 
 
 def verify_install_targets(
@@ -93,8 +93,10 @@ def run_firewall() -> int:
             verifiers = get_install_target_verifiers()
 
             if (findings := verify_install_targets(verifiers, targets)):
-                tags = map(lambda x: x.show(), findings)
-                ddlog.info(f"Installation was blocked while attempting to run {command}", extra={"tags": [tags]})
+                dd_log.info(
+                    f"Installation was blocked while attempting to run {args.command}",
+                    extra={"targets": map(lambda x: x.show(), findings)}
+                )
                 print_findings(findings)
                 print("\nThe installation request was blocked. No changes have been made.")
                 return 0
@@ -103,8 +105,7 @@ def run_firewall() -> int:
                 print("Exiting without installing, no issues found for installation targets.")
                 return 0
 
-        tags = map(lambda x: x.show(), targets)
-        ddlog.info(f"Running {args.command}", extra={"tags": tags})
+        dd_log.info(f"Running {args.command}", extra={"targets": map(lambda x: x.show(), targets)})
         command.run()
         return 0
 

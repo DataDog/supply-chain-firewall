@@ -5,7 +5,7 @@ import sys
 
 from scfw.cli import parse_command_line
 from scfw.commands import get_package_manager_command
-from scfw.config import LOG_DD
+from scfw.config import DD_LOG_NAME
 from scfw.target import InstallTarget
 from scfw.verifier import InstallTargetVerifier
 from scfw.verifiers import get_install_target_verifiers
@@ -74,7 +74,7 @@ def run_firewall() -> int:
     """
     try:
 
-        ddlog = logging.getLogger(LOG_DD)
+        ddlog = logging.getLogger(DD_LOG_NAME)
 
         args, help = parse_command_line()
         if not args.command:

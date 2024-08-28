@@ -18,8 +18,8 @@ DD_ENV = os.getenv("DD_ENV", None)
 DD_SERVICE = os.getenv("DD_SERVICE", None)
 DD_VERSION = os.getenv("DD_VERSION", None)
 
-LOG_DD = "ddglog"
-APPNAME = "scfw"
+APP_NAME = "scfw"
+DD_LOG_NAME = "ddlog"
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
@@ -60,13 +60,13 @@ if DD_API_KEY:
     logger.info("Datadog logging enabled")
 
     if not DD_SERVICE:
-        os.environ["DD_SERVICE"] = DD_SERVICE = APPNAME
+        os.environ["DD_SERVICE"] = DD_SERVICE = APP_NAME
     if not DD_ENV:
         os.environ["DD_ENV"] = DD_ENV = "dev"
     if not DD_VERSION:
         os.environ["DD_VERSION"] = DD_VERSION = "0.1.0"
 
-    ddlog = logging.getLogger(LOG_DD)
+    ddlog = logging.getLogger(DD_LOG_NAME)
     ddlog.setLevel(logging.INFO)
     ddlog_handler = DDLogHandler()
     FORMAT = (

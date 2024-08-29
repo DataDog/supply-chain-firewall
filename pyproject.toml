@@ -6,9 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "scfw"
 version = "0.1.0"
 dependencies = [
-    "requests",
+    "datadog-api-client",
     "python-dotenv",
-    "datadog-api-client"
+    "requests",
 ]
 requires-python = ">=3.10"
 authors = [

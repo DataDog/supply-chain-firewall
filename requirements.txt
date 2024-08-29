@@ -1,3 +1,3 @@
-requests
-python-dotenv
 datadog-api-client
+python-dotenv
+requests

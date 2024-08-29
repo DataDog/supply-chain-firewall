@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 import socket
 
 from datadog_api_client import ApiClient, Configuration
@@ -18,14 +17,8 @@ DD_ENV = os.getenv("DD_ENV", None)
 DD_SERVICE = os.getenv("DD_SERVICE", None)
 DD_VERSION = os.getenv("DD_VERSION", None)
 
-LOG_DD = "ddglog"
-APPNAME = "scfw"
-
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
-stderrHandler = logging.StreamHandler(stream=sys.stderr)
-stderrHandler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
-logger.addHandler(stderrHandler)
+APP_NAME = "scfw"
+DD_LOG_NAME = "ddlog"
 
 
 class DDLogHandler(logging.Handler):
@@ -33,10 +26,9 @@ class DDLogHandler(logging.Handler):
         super().__init__()
 
     def emit(self, record):
-        tags = {f"env:{DD_ENV}"}
-        extra_tags = record.__dict__.get("tags", {})
+        targets = record.__dict__.get("targets", {})
 
-        tags |= set(map(lambda e: f"target:{e}", extra_tags))
+        tags = {f"env:{DD_ENV}"} | set(map(lambda e: f"target:{e}", targets))
 
         log_entry = self.format(record)
         body = HTTPLog(
@@ -57,16 +49,14 @@ class DDLogHandler(logging.Handler):
 
 
 if DD_API_KEY:
-    logger.info("Datadog logging enabled")
-
     if not DD_SERVICE:
-        os.environ["DD_SERVICE"] = DD_SERVICE = APPNAME
+        os.environ["DD_SERVICE"] = DD_SERVICE = APP_NAME
     if not DD_ENV:
         os.environ["DD_ENV"] = DD_ENV = "dev"
     if not DD_VERSION:
         os.environ["DD_VERSION"] = DD_VERSION = "0.1.0"
 
-    ddlog = logging.getLogger(LOG_DD)
+    ddlog = logging.getLogger(DD_LOG_NAME)
     ddlog.setLevel(logging.INFO)
     ddlog_handler = DDLogHandler()
     FORMAT = (

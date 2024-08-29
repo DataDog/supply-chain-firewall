@@ -1,4 +1,4 @@
-from scfw.cli import _parse_command_line
+from scfw.cli import _parse_command_line, DEFAULT_LOG_LEVEL
 
 
 def test_cli_basic_usage_pip():
@@ -10,6 +10,7 @@ def test_cli_basic_usage_pip():
     assert args.command == argv[1:]
     assert not args.dry_run
     assert not args.executable
+    assert args.log_level == DEFAULT_LOG_LEVEL
 
 
 def test_cli_basic_usage_npm():
@@ -21,6 +22,7 @@ def test_cli_basic_usage_npm():
     assert args.command == argv[1:]
     assert not args.dry_run
     assert not args.executable
+    assert args.log_level == DEFAULT_LOG_LEVEL
 
 
 def test_cli_no_options_no_command():
@@ -32,6 +34,7 @@ def test_cli_no_options_no_command():
     assert args.command == []
     assert not args.dry_run
     assert not args.executable
+    assert args.log_level == DEFAULT_LOG_LEVEL
 
 
 def test_cli_all_options_no_command():
@@ -44,6 +47,7 @@ def test_cli_all_options_no_command():
     assert args.command == []
     assert args.dry_run
     assert args.executable == executable
+    assert args.log_level == DEFAULT_LOG_LEVEL
 
 
 def test_cli_all_options_pip():
@@ -56,6 +60,7 @@ def test_cli_all_options_pip():
     assert args.command == argv[4:]
     assert args.dry_run
     assert args.executable == executable
+    assert args.log_level == DEFAULT_LOG_LEVEL
 
 
 def test_cli_all_options_npm():
@@ -68,6 +73,7 @@ def test_cli_all_options_npm():
     assert args.command == argv[4:]
     assert args.dry_run
     assert args.executable == executable
+    assert args.log_level == DEFAULT_LOG_LEVEL
 
 
 def test_cli_package_manager_dry_run_pip():
@@ -79,6 +85,7 @@ def test_cli_package_manager_dry_run_pip():
     assert args.command == argv[1:]
     assert not args.dry_run
     assert not args.executable
+    assert args.log_level == DEFAULT_LOG_LEVEL
 
 
 def test_cli_package_manager_dry_run_npm():
@@ -90,6 +97,7 @@ def test_cli_package_manager_dry_run_npm():
     assert args.command == argv[1:]
     assert not args.dry_run
     assert not args.executable
+    assert args.log_level == DEFAULT_LOG_LEVEL
 
 
 def test_cli_pip_over_npm():

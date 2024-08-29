@@ -1,16 +1,20 @@
 import concurrent.futures as cf
 import itertools
 import logging
-import sys
+import time
 
 from scfw.cli import parse_command_line
 from scfw.commands import get_package_manager_command
-from scfw.config import LOG_DD
+from scfw.dd_logger import DD_LOG_NAME
 from scfw.target import InstallTarget
 from scfw.verifier import InstallTargetVerifier
 from scfw.verifiers import get_install_target_verifiers
 
+# Firewall root logger configured to write to stderr
 log = logging.getLogger()
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+log.addHandler(handler)
 
 
 def verify_install_targets(
@@ -38,17 +42,23 @@ def verify_install_targets(
 
     with cf.ThreadPoolExecutor() as executor:
         task_results = {
-            executor.submit(lambda v, t: v.verify(t), verifier, target): target
+            executor.submit(lambda v, t: v.verify(t), verifier, target): (verifier.name(), target)
             for verifier, target in verify_tasks
         }
         for future in cf.as_completed(task_results):
-            target = task_results[future]
+            verifier, target = task_results[future]
             if (finding := future.result()):
+                log.info(f"{verifier} had findings for target {target.show()}")
                 if target not in findings:
                     findings[target] = [finding]
                 else:
                     findings[target].append(finding)
+            else:
+                log.info(f"{verifier} had no findings for target {target.show()}")
 
+    log.info(
+        f"Verification complete: {len(findings)} of {len(targets)} installation targets had findings"
+    )
     return findings
 
 
@@ -73,35 +83,50 @@ def run_firewall() -> int:
         An integer exit code (0 or 1).
     """
     try:
-
-        ddlog = logging.getLogger(LOG_DD)
-
         args, help = parse_command_line()
         if not args.command:
             print(help)
             return 0
 
-        command = get_package_manager_command(args.command, executable=args.executable)
-        if targets := command.would_install():
+        # Set root log level and configure sub-loggers
+        log.setLevel(args.log_level)
+        dd_log = logging.getLogger(DD_LOG_NAME)
 
+        log.info(f"Starting supply-chain firewall on {time.asctime(time.localtime())}")
+        log.info(f"Command: '{' '.join(args.command)}'")
+        log.debug(f"Command line: {vars(args)}")
+
+        command = get_package_manager_command(args.command, executable=args.executable)
+        targets = command.would_install()
+        log.info(f"Command would install: [{', '.join(t.show() for t in targets)}]")
+
+        if targets:
             verifiers = get_install_target_verifiers()
+            log.info(
+                f"Using installation target verifiers: [{', '.join(v.name() for v in verifiers)}]"
+            )
 
             if (findings := verify_install_targets(verifiers, targets)):
-                tags = map(lambda x: x.show(), findings)
-                ddlog.info(f"Installation was blocked while attempting to run {command}", extra={"tags": [tags]})
+                dd_log.info(
+                    f"Installation was blocked while attempting to run '{' '.join(args.command)}'",
+                    extra={"targets": map(lambda x: x.show(), findings)}
+                )
                 print_findings(findings)
                 print("\nThe installation request was blocked. No changes have been made.")
                 return 0
 
             if args.dry_run:
+                log.info("Firewall dry-run mode enabled: no packages will be installed")
                 print("Exiting without installing, no issues found for installation targets.")
                 return 0
 
-        tags = map(lambda x: x.show(), targets)
-        ddlog.info(f"Running {args.command}", extra={"tags": tags})
+        dd_log.info(
+            f"Running '{' '.join(args.command)}'",
+            extra={"targets": map(lambda x: x.show(), targets)}
+        )
         command.run()
         return 0
 
     except Exception as e:
-        sys.stderr.write(f"Error: {e}\n")
+        log.error(e)
         return 1

@@ -1,7 +1,11 @@
 from argparse import ArgumentParser, Namespace
+import logging
 import sys
 
 from scfw.ecosystem import ECOSYSTEM
+
+LOG_LEVELS = list(map(logging.getLevelName, [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR]))
+DEFAULT_LOG_LEVEL = logging.getLevelName(logging.WARNING)
 
 
 def _cli() -> ArgumentParser:
@@ -25,6 +29,15 @@ def _cli() -> ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Skip installation step regardless of verification results"
+    )
+
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        choices=LOG_LEVELS,
+        default=DEFAULT_LOG_LEVEL,
+        metavar="LEVEL",
+        help="Desired logging level (default: %(default)s, options: %(choices)s)"
     )
 
     parser.add_argument(

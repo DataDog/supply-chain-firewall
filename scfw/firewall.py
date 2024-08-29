@@ -1,6 +1,7 @@
 import concurrent.futures as cf
 import itertools
 import logging
+import time
 
 from scfw.cli import parse_command_line
 from scfw.commands import get_package_manager_command
@@ -14,9 +15,6 @@ log = logging.getLogger()
 handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
 log.addHandler(handler)
-
-# Datadog logger
-dd_log = logging.getLogger(DD_LOG_NAME)
 
 
 def verify_install_targets(
@@ -84,16 +82,24 @@ def run_firewall() -> int:
             print(help)
             return 0
 
+        # Set root log level and configure sub-loggers
         log.setLevel(args.log_level)
+        dd_log = logging.getLogger(DD_LOG_NAME)
+
+        log.info(f"Starting supply-chain firewall on {time.asctime(time.localtime())}")
+        log.info(f"Command: '{' '.join(args.command)}'")
+        log.debug(f"Command line: {vars(args)}")
 
         command = get_package_manager_command(args.command, executable=args.executable)
-        if (targets := command.would_install()):
+        targets = command.would_install()
+        log.info(f"Command would install: {[t.show() for t in targets]}")
 
+        if targets:
             verifiers = get_install_target_verifiers()
 
             if (findings := verify_install_targets(verifiers, targets)):
                 dd_log.info(
-                    f"Installation was blocked while attempting to run {args.command}",
+                    f"Installation was blocked while attempting to run '{' '.join(args.command)}'",
                     extra={"targets": map(lambda x: x.show(), findings)}
                 )
                 print_findings(findings)
@@ -101,10 +107,14 @@ def run_firewall() -> int:
                 return 0
 
             if args.dry_run:
+                log.info("Firewall dry-run mode enabled: no packages will be installed")
                 print("Exiting without installing, no issues found for installation targets.")
                 return 0
 
-        dd_log.info(f"Running {args.command}", extra={"targets": map(lambda x: x.show(), targets)})
+        dd_log.info(
+            f"Running '{' '.join(args.command)}'",
+            extra={"targets": map(lambda x: x.show(), targets)}
+        )
         command.run()
         return 0
 

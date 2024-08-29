@@ -29,6 +29,18 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
         self.pypi_manifest = download_manifest("pypi")
         self.npm_manifest = download_manifest("npm")
 
+    def name(self) -> str:
+        """
+        Return the `DatadogMaliciousPackagesVerifier` name string.
+
+        Args:
+            self: The `DatadogMaliciousPackagesVerifier` whose name is requested.
+
+        Returns:
+            The class' constant name string.
+        """
+        return "DatadogMaliciousPackagesVerifier"
+
     def verify(self, target: InstallTarget) -> Optional[str]:
         """
         Determine whether the given installation target is malicious by consulting

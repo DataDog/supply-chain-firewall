@@ -42,17 +42,23 @@ def verify_install_targets(
 
     with cf.ThreadPoolExecutor() as executor:
         task_results = {
-            executor.submit(lambda v, t: v.verify(t), verifier, target): target
+            executor.submit(lambda v, t: v.verify(t), verifier, target): (verifier.name(), target)
             for verifier, target in verify_tasks
         }
         for future in cf.as_completed(task_results):
-            target = task_results[future]
+            verifier, target = task_results[future]
             if (finding := future.result()):
+                log.info(f"{verifier} had findings for target {target.show()}")
                 if target not in findings:
                     findings[target] = [finding]
                 else:
                     findings[target].append(finding)
+            else:
+                log.info(f"{verifier} had no findings for target {target.show()}")
 
+    log.info(
+        f"Verification complete: {len(findings)} of {len(targets)} installation targets had findings"
+    )
     return findings
 
 
@@ -92,10 +98,13 @@ def run_firewall() -> int:
 
         command = get_package_manager_command(args.command, executable=args.executable)
         targets = command.would_install()
-        log.info(f"Command would install: {[t.show() for t in targets]}")
+        log.info(f"Command would install: [{', '.join(t.show() for t in targets)}]")
 
         if targets:
             verifiers = get_install_target_verifiers()
+            log.info(
+                f"Using installation target verifiers: [{', '.join(v.name() for v in verifiers)}]"
+            )
 
             if (findings := verify_install_targets(verifiers, targets)):
                 dd_log.info(

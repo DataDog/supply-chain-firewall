@@ -13,6 +13,20 @@ class InstallTargetVerifier(metaclass=ABCMeta):
     source of data on vulnerable and malicious open source packages.
     """
     @abstractmethod
+    def name(self) -> str:
+        """
+        Return the verifier's name.
+
+        Args:
+            self: The verifier to be identified.
+
+        Returns:
+            A (constant) short, descriptive name string identifying the verifier
+            and what it does.
+        """
+        pass
+
+    @abstractmethod
     def verify(self, target: InstallTarget) -> Optional[str]:
         """
         Verify the given installation target.

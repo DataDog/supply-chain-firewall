@@ -9,6 +9,10 @@ from scfw.target import InstallTarget
 from .test_pip import INIT_PIP_STATE, TEST_TARGET, pip_list
 
 
+print(f"DEBUG: Initial pip state:\n{INIT_PIP_STATE}")
+print(f"DEBUG: Test target: {TEST_TARGET}")
+
+
 @pytest.mark.parametrize(
         "command_line,has_targets",
         [

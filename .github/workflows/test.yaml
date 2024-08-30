@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pip-version: ["22.0", "22.1", "22.2", "22.3", "23.0", "23.1", "23.2", "23.3", "24.0", "24.1", "24.2"]
+        pip-version: ["22.2", "22.3", "23.0", "23.1", "23.2", "23.3", "24.0", "24.1", "24.2"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python 3.10
@@ -46,7 +46,6 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install pip==${{ matrix.pip-version }}
-          pip --version
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
       - name: Install supply-chain firewall

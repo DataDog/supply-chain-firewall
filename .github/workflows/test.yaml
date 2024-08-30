@@ -26,5 +26,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
+      - name: Install supply-chain firewall
+        run: pip install .
       - name: Test firewall CLI
         run: pytest tests/test_cli.py

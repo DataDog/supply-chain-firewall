@@ -64,4 +64,7 @@ def test_npm_install_has_add_output():
     print(f"DEBUG: command line is {command_line}")
     p = subprocess.run(command_line, check=True, text=True, capture_output=True)
     print(f"DEBUG: stdout is {p.stdout}")
-    assert "add" in p.stdout
+    add_lines = filter(lambda l: l.startswith("add") and not l.startswith("added"), p.stdout.split('\n'))
+    assert add_lines
+    for line in add_lines:
+        assert len(line.split()) == 3

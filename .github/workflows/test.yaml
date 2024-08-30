@@ -59,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: ["18.x", "20.x", "22.x"]
+        node-version: ["12.x", "13.x", "14.x", "15.x", "16.x", "17.x", "18.x", "19.x", "20.x", "21.x", "22.x"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python 3.10
@@ -77,7 +77,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-      - name: Test firewall Node.js v${{ matrix.npm-version }} integration
+      - name: Test firewall npm integration in Node.js v${{ matrix.node-version }}
         run: |
           npm --version
           pytest tests/commands/test_npm.py tests/commands/test_npm_command.py

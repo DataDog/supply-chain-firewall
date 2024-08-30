@@ -30,3 +30,27 @@ jobs:
         run: pip install .
       - name: Test firewall CLI
         run: pytest tests/test_cli.py
+
+  pip-integration:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip --version
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      - name: Install supply-chain firewall
+        run: pip install .
+      - name: Test firewall pip integration
+        run: |
+          pytest tests/commands/test_pip.py tests/commands/test_pip_command.py

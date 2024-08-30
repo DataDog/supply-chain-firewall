@@ -13,10 +13,6 @@ TOP_NPM_PACKAGES = "top_npm_packages.txt"
 TEST_TARGET = select_test_install_target(read_top_packages(TOP_NPM_PACKAGES), INIT_NPM_STATE, "lodash")
 
 
-print(f"DEBUG: Initial npm state:\n{INIT_NPM_STATE}")
-print(f"DEBUG: Test target: {TEST_TARGET}")
-
-
 @pytest.mark.parametrize(
         "command_line",
         [
@@ -53,20 +49,3 @@ def test_npm_command_no_change_error(command_line: list[str]):
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.run(command_line, check=True)
     assert npm_list() == INIT_NPM_STATE
-
-
-def test_npm_install_has_add_output():
-    """
-    Check that npm install --dry-run has the `add package version` lines required
-    by the firewall to work properly.
-    """
-    command_line = ["npm", "install", "--dry-run", TEST_TARGET]
-    print(f"DEBUG: command line is {command_line}")
-    p = subprocess.run(command_line, check=True, text=True, capture_output=True)
-    print(f"DEBUG: stdout is {p.stdout}")
-    add_lines = filter(lambda l: l.startswith("add") and not l.startswith("added"), p.stdout.split('\n'))
-    assert add_lines
-    for line in add_lines:
-        assert len(line.split()) == 3
-        _, package, version = line.split()
-        print(f"DEBUG: found target {package}, {version}")

@@ -17,10 +17,6 @@ TEST_TARGET = select_test_install_target(read_top_packages(TOP_PIP_PACKAGES), IN
 PIP_COMMAND_PREFIX = [sys.executable, "-m", "pip"]
 
 
-print(f"DEBUG: Initial pip state:\n{INIT_PIP_STATE}")
-print(f"DEBUG: Test target: {TEST_TARGET}")
-
-
 @pytest.mark.parametrize(
         "command_line",
         [

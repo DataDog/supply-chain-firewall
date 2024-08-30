@@ -9,6 +9,8 @@ Current data sources used are:
 - Datadog Security Research's public malicious packages [dataset](https://github.com/DataDog/malicious-software-packages-dataset)
 - [OSV.dev](https://osv.dev) disclosures
 
+The supply-chain firewall is compatible with `pip >= 22.2` and, for the moment, only with `npm@10.8.2`.  We hope to add support for more `npm` versions in the near future.  Be advised that the firewall may fail to block installations of vulnerable or malicious packages if used with incompatible versions of `pip` or `npm`.
+
 ## Installation
 
 Clone the repository and run the following commands.  This will install the `scfw` command-line program into your global Python environment.

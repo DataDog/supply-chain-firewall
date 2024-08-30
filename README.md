@@ -9,7 +9,24 @@ Current data sources used are:
 - Datadog Security Research's public malicious packages [dataset](https://github.com/DataDog/malicious-software-packages-dataset)
 - [OSV.dev](https://osv.dev) disclosures
 
-The supply-chain firewall is compatible with `pip >= 22.2` and, for the moment, only with `npm@10.8.2`.  We hope to add support for more `npm` versions in the near future.  Be advised that the firewall may fail to block installations of vulnerable or malicious packages if used with incompatible versions of `pip` or `npm`.
+## Compatibility
+
+The supply-chain firewall is compatible with `pip >= 22.2` and generally compatible with recent versions of `npm >= 10.x`.
+
+In order to verify whether your `npm` is compatible, run an `npm install --dry-run` command for any package you do not already have installed and verify that the output resembles the following:
+
+```
+$ npm install --dry-run react
+add js-tokens 4.0.0
+add loose-envify 1.4.0
+add react 18.3.1
+
+added 3 packages in 127ms
+```
+
+We hope to add support for older `npm` versions in the near future.
+
+Be advised that the firewall may fail to block installations of vulnerable or malicious packages if used with incompatible versions of `pip` or `npm`.
 
 ## Installation
 

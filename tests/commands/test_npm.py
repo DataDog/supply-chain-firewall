@@ -6,10 +6,11 @@ from scfw.ecosystem import ECOSYSTEM
 
 from .utils import list_installed_packages, read_top_packages, select_test_install_target
 
+TOP_NPM_PACKAGES = "top_npm_packages.txt"
+
 npm_list = lambda : list_installed_packages(ECOSYSTEM.NPM)
 
 INIT_NPM_STATE = npm_list()
-TOP_NPM_PACKAGES = "top_npm_packages.txt"
 TEST_TARGET = select_test_install_target(read_top_packages(TOP_NPM_PACKAGES), INIT_NPM_STATE, "lodash")
 
 

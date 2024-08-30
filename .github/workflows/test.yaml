@@ -80,4 +80,4 @@ jobs:
       - name: Test firewall npm integration in Node.js v${{ matrix.node-version }}
         run: |
           npm --version
-          pytest tests/commands/test_npm.py tests/commands/test_npm_command.py
+          pytest -s tests/commands/test_npm.py tests/commands/test_npm_command.py

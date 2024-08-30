@@ -68,3 +68,5 @@ def test_npm_install_has_add_output():
     assert add_lines
     for line in add_lines:
         assert len(line.split()) == 3
+        _, package, version = line.split()
+        print(f"DEBUG: found target {package}, {version}")

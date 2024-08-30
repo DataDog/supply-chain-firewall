@@ -53,3 +53,15 @@ def test_npm_command_no_change_error(command_line: list[str]):
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.run(command_line, check=True)
     assert npm_list() == INIT_NPM_STATE
+
+
+def test_npm_install_has_add_output():
+    """
+    Check that npm install --dry-run has the `add package version` lines required
+    by the firewall to work properly.
+    """
+    command_line = ["npm", "install", "--dry-run", TEST_TARGET]
+    print(f"DEBUG: command line is {command_line}")
+    p = subprocess.run(command_line, check=True, text=True, capture_output=True)
+    print(f"DEBUG: stdout is {p.stdout}")
+    assert "add" in p.stdout

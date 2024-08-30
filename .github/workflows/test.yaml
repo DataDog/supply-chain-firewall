@@ -77,7 +77,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
       - name: Test firewall Node.js v${{ matrix.npm-version }} integration
         run: |
           npm --version

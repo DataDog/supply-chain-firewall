@@ -27,3 +27,10 @@ test-verifiers:
 coverage-report:
 	coverage combine .coverage.cli .coverage.pip .coverage.npm .coverage.verifiers
 	coverage report
+
+install:
+	pip install .
+
+install-dev:
+	pip install -r requirements-dev.txt
+	pip install .

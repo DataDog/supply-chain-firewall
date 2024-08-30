@@ -13,11 +13,19 @@ The supply-chain firewall is compatible with `pip >= 22.2` and, for the moment, 
 
 ## Installation
 
-Clone the repository and run the following commands.  This will install the `scfw` command-line program into your global Python environment.
+Clone the repository, `cd` into the downloaded directory and run `make install`.  This will install the `scfw` command-line program into your global Python environment.  This can also be done inside a `virtualenv`, if desired.
 
-```bash
-$ cd path/to/repo/directory
-$ pip install .
+```
+$ scfw
+usage: scfw [options] COMMAND
+
+A tool to prevent the installation of vulnerable or malicious pip and npm packages
+
+options:
+  -h, --help         show this help message and exit
+  --dry-run          Skip installation step regardless of verification results
+  --log-level LEVEL  Desired logging level (default: WARNING, options: DEBUG, INFO, WARNING, ERROR)
+  --executable PATH  Python or npm executable to use for running commands (default: environmentally determined)
 ```
 
 ## Usage
@@ -51,14 +59,7 @@ The installation request was blocked.  No changes have been made.
 
 ## Testing
 
-To run the test suite, first install `scfw` and the development dependencies.  It is recommended to create a fresh virtual environment for testing:
-
-```bash
-$ python -m venv venv
-$ . venv/bin/activate
-(venv) $ pip install .
-(venv) $ pip install -r requirements-dev.txt
-```
+To run the test suite, create a fresh `virtualenv`, activate it and run `make install-dev`.  This will install `scfw` and the development dependencies.
 
 You can now run the test suite by running `make test`.  To additionally view code coverage, run `make coverage`.
 

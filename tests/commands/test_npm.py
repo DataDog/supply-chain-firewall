@@ -9,7 +9,12 @@ from .utils import list_installed_packages, read_top_packages, select_test_insta
 npm_list = lambda : list_installed_packages(ECOSYSTEM.NPM)
 
 INIT_NPM_STATE = npm_list()
-TEST_TARGET = select_test_install_target(read_top_packages("top_npm_packages.txt"), INIT_NPM_STATE, "lodash")
+TOP_NPM_PACKAGES = "top_npm_packages.txt"
+TEST_TARGET = select_test_install_target(read_top_packages(TOP_NPM_PACKAGES), INIT_NPM_STATE, "lodash")
+
+
+print(f"DEBUG: Initial npm state:\n{INIT_NPM_STATE}")
+print(f"DEBUG: Test target: {TEST_TARGET}")
 
 
 @pytest.mark.parametrize(

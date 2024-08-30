@@ -53,3 +53,32 @@ jobs:
       - name: Test firewall pip v${{ matrix.pip-version }} integration
         run: |
           pytest tests/commands/test_pip.py tests/commands/test_pip_command.py
+
+  npm-integration:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["18.x", "20.x", "22.x"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      - name: Install supply-chain firewall
+        run: pip install .
+      - name: Install Node.js v${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+      - name: Test firewall Node.js v${{ matrix.npm-version }} integration
+        run: |
+          npm --version
+          pytest tests/commands/test_npm.py tests/commands/test_npm_command.py

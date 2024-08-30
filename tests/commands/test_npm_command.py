@@ -7,6 +7,10 @@ from scfw.target import InstallTarget
 from .test_npm import INIT_NPM_STATE, TEST_TARGET, npm_list
 
 
+print(f"DEBUG: Initial npm state:\n{INIT_NPM_STATE}")
+print(f"DEBUG: Test target: {TEST_TARGET}")
+
+
 @pytest.mark.parametrize(
         "command_line,has_targets",
         [

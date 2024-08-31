@@ -74,11 +74,13 @@ Installation target basementio@0.0.1-security:
 The installation request was blocked.  No changes have been made.
 ```
 
-## Testing
+## Testing and development
 
-To run the test suite, create a fresh `virtualenv`, activate it and run `make install-dev`.  This will install `scfw` and the development dependencies.
+To set up for testing and development, create a fresh `virtualenv`, activate it and run `make install-dev`.  This will install `scfw` and the development dependencies.
 
-You can now run the test suite by running `make test`.  To additionally view code coverage, run `make coverage`.
+### Testing
+
+The test suite may be executed in the development environment by running `make test`.  To additionally view code coverage, run `make coverage`.
 
 To facilitate testing "in the wild", `scfw` provides a `--dry-run` option that will verify any installation targets and exit without executing the given install command:
 
@@ -89,11 +91,15 @@ Exiting without installing, no issues found for installation targets.
 
 Of course, one can always test inside a container or VM for an added layer of protection, if desired.
 
-## Code quality
+### Code quality
 
-After setting up for local testing, the code can also be typechecked with `mypy` and linted with `flake8`.
+The supply-chain firewall code may be typechecked with `mypy` and linted with `flake8`.  Run `make typecheck` or `make lint`, respectively, in the environment where the development dependencies have been installed.
 
-Run `make checks` to run the full suite of code quality checks (including tests).  You can also only typecheck or only lint with `make typecheck` and `make lint`, respectively.
+Run `make checks` to run the full suite of code quality checks, including tests.  These are the same checks that run in the firewall repository's CI, albeit with the tests run against various `pip` and `npm` versions to ensure compatibility.
+
+### Documentation
+
+API documentation may be built via `pydoc` by running `make docs` from your development environment.  This will automatically open the documentation in your system's default browser.
 
 ## Feedback
 

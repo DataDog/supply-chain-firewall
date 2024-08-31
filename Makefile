@@ -1,4 +1,9 @@
-.PHONY: checks coverage test
+install:
+	pip install .
+
+install-dev:
+	pip install -r requirements-dev.txt
+	pip install .
 
 checks: typecheck lint test
 
@@ -28,9 +33,7 @@ coverage-report:
 	coverage combine .coverage.cli .coverage.pip .coverage.npm .coverage.verifiers
 	coverage report
 
-install:
-	pip install .
+docs:
+	pdoc --docformat google ./scfw > /dev/null &
 
-install-dev:
-	pip install -r requirements-dev.txt
-	pip install .
+.PHONY: checks coverage test

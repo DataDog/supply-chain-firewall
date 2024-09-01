@@ -35,7 +35,6 @@ class DDLogHandler(logging.Handler):
     def __init__(self):
         super().__init__()
 
-    # TODO: Add types to this signature
     def emit(self, record):
         """
         Format and send a log to Datadog.

@@ -60,7 +60,7 @@ def _parse_command_line(argv: list[str]) -> tuple[Namespace, str]:
     Parse the supply-chain firewall's command line from a given argument vector.
 
     Args:
-        argv (list[str]): The argument vector to be parsed.
+        argv: The argument vector to be parsed.
 
     Returns:
         A `tuple` of a `Namespace` object containing the results of parsing the given

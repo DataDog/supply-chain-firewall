@@ -1,11 +1,11 @@
 # Supply-chain firewall
 
-[![Test](https://github.com/DataDog/supply-chain-firewall/actions/workflows/test.yaml/badge.svg)]
-[![Code quality](https://github.com/DataDog/supply-chain-firewall/actions/workflows/code_quality.yaml/badge.svg)]
+![Test](https://github.com/DataDog/supply-chain-firewall/actions/workflows/test.yaml/badge.svg)
+![Code quality](https://github.com/DataDog/supply-chain-firewall/actions/workflows/code_quality.yaml/badge.svg)
 
 This supply-chain firewall is a command-line tool for preventing the installation of vulnerable or malicious PyPI and npm packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
 
-![scfw demo usage](images/demo.png)
+![scfw demo usage](assets/images/demo.png)
 
 The firewall collects all targets that would be installed by a given `pip` or `npm` command and checks them against reputable sources of data on open source malware and vulnerabilities.  The installation is blocked when any target has been flagged by any data source.
 

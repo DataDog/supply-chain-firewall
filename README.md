@@ -74,6 +74,8 @@ alias npm="scfw npm"
 
 The supply-chain firewall can optionally send logs of blocked and successful installations to Datadog.
 
+![scfw datadog log](images/datadog_log.png)
+
 To opt in, set the environment variable `DD_API_KEY` to your Datadog API key, either directly in your shell environment or in a `.env` file in the current working directory.
 
 ## Testing and development

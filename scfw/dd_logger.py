@@ -16,16 +16,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DD_API_KEY = os.getenv("DD_API_KEY", None)
-DD_ENV = os.getenv("DD_ENV", None)
-DD_SERVICE = os.getenv("DD_SERVICE", None)
-DD_VERSION = os.getenv("DD_VERSION", None)
+_DD_API_KEY = os.getenv("DD_API_KEY", None)
+_DD_ENV = os.getenv("DD_ENV", None)
+_DD_SERVICE = os.getenv("DD_SERVICE", None)
+_DD_VERSION = os.getenv("DD_VERSION", None)
 
-DD_APP_NAME = "scfw"
+_DD_APP_NAME = "scfw"
 DD_LOG_NAME = "ddlog"
 
 
-class DDLogHandler(logging.Handler):
+class _DDLogHandler(logging.Handler):
     """
     A log handler for adding tags and forwarding firewall logs of blocked and
     permitted package installation requests to Datadog.
@@ -44,7 +44,7 @@ class DDLogHandler(logging.Handler):
         """
         targets = record.__dict__.get("targets", {})
 
-        tags = {f"env:{DD_ENV}"} | set(map(lambda e: f"target:{e}", targets))
+        tags = {f"env:{_DD_ENV}"} | set(map(lambda e: f"target:{e}", targets))
 
         log_entry = self.format(record)
         body = HTTPLog(
@@ -53,7 +53,7 @@ class DDLogHandler(logging.Handler):
                     ddtags=",".join(tags),
                     hostname=socket.gethostname(),
                     message=log_entry,
-                    service=DD_SERVICE,
+                    service=_DD_SERVICE,
                 ),
             ]
         )
@@ -64,13 +64,13 @@ class DDLogHandler(logging.Handler):
             api_instance.submit_log(content_encoding=ContentEncoding.DEFLATE, body=body)
 
 
-if DD_API_KEY:
-    if not DD_SERVICE:
-        os.environ["DD_SERVICE"] = DD_SERVICE = DD_APP_NAME
-    if not DD_ENV:
-        os.environ["DD_ENV"] = DD_ENV = "dev"
-    if not DD_VERSION:
-        os.environ["DD_VERSION"] = DD_VERSION = "0.1.0"
+if _DD_API_KEY:
+    if not _DD_SERVICE:
+        os.environ["DD_SERVICE"] = _DD_SERVICE = _DD_APP_NAME
+    if not _DD_ENV:
+        os.environ["DD_ENV"] = _DD_ENV = "dev"
+    if not _DD_VERSION:
+        os.environ["DD_VERSION"] = _DD_VERSION = "0.1.0"
 
     ddlog = logging.getLogger(DD_LOG_NAME)
     ddlog.setLevel(logging.INFO)

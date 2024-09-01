@@ -8,8 +8,8 @@ import sys
 
 from scfw.ecosystem import ECOSYSTEM
 
-LOG_LEVELS = list(map(logging.getLevelName, [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR]))
-DEFAULT_LOG_LEVEL = logging.getLevelName(logging.WARNING)
+_LOG_LEVELS = list(map(logging.getLevelName, [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR]))
+_DEFAULT_LOG_LEVEL = logging.getLevelName(logging.WARNING)
 
 
 def _cli() -> ArgumentParser:
@@ -38,8 +38,8 @@ def _cli() -> ArgumentParser:
     parser.add_argument(
         "--log-level",
         type=str,
-        choices=LOG_LEVELS,
-        default=DEFAULT_LOG_LEVEL,
+        choices=_LOG_LEVELS,
+        default=_DEFAULT_LOG_LEVEL,
         metavar="LEVEL",
         help="Desired logging level (default: %(default)s, options: %(choices)s)"
     )
@@ -90,10 +90,14 @@ def parse_command_line() -> tuple[Namespace, str]:
     Parse the supply-chain firewall's command line.
 
     Returns:
-        A `tuple` of a `Namespace` object containing the results of parsing the firewall
-        command line and a `str` help message for the caller's use in early exits.
+        A `tuple` of a `Namespace` object containing:
+          1. The results of successfully parsing the firewall's command line and
+          2. A `str` help message for the caller's use in early exits.
 
         The returned `Namespace` contains the package manager command provided to the
         firewall as a (possibly empty) `list[str]` under the `command` attribute.
+
+        Parsing errors cause the program to print a usage message and exit early
+        with exit code 2.  This function only returns if parsing was successful.
     """
     return _parse_command_line(sys.argv)

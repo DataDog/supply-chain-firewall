@@ -22,10 +22,10 @@ class PipCommand(PackageManagerCommand):
         Initialize a new `PipCommand`.
 
         Args:
-            command: The `pip` command line as provided to the supply-chain firewall.
+            command: A `pip` command line.
             executable:
                 Optional path to the executable to run the command.  Determined by the
-                environment where the firewall is running if not given.
+                environment if not given.
 
         Raises:
             AssertionError: The given `command` is not a `pip` command line.
@@ -52,7 +52,8 @@ class PipCommand(PackageManagerCommand):
         Determine the list of Python packages a `pip` command would install if it were run.
 
         Returns:
-            The list of Python packages the `pip` command would install if it were run.
+            A `list[InstallTarget]` representing the packages the `pip` command would
+            install if it were run.
 
         Raises:
             AssertionError: The `pip` install report did not have the required format.

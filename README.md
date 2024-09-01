@@ -103,7 +103,7 @@ Run `make checks` to run the full suite of code quality checks, including tests.
 
 ### Documentation
 
-API documentation may be built via `pydoc` by running `make docs` from your development environment.  This will automatically open the documentation in your system's default browser.
+API documentation may be built via `pdoc` by running `make docs` from your development environment.  This will automatically open the documentation in your system's default browser.
 
 ## Feedback
 

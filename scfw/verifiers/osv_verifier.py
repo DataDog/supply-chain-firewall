@@ -51,7 +51,8 @@ class OsvVerifier(InstallTargetVerifier):
                 "ecosystem": _OSV_ECOSYSTEMS[target.ecosystem]
             }
         }
-        request = requests.post(_OSV_DEV_QUERY_URL, json=query)
+        # The OSV.dev API is sometimes quite slow, hence the generous timeout
+        request = requests.post(_OSV_DEV_QUERY_URL, json=query, timeout=10)
         request.raise_for_status()
 
         if (vulns := request.json().get("vulns")):

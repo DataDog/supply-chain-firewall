@@ -27,7 +27,7 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
         """
         def download_manifest(ecosystem: str) -> dict[str, list[str]]:
             manifest_url = f"{_DD_DATASET_SAMPLES_URL}/{ecosystem}/manifest.json"
-            request = requests.get(manifest_url)
+            request = requests.get(manifest_url, timeout=5)
             request.raise_for_status()
             return request.json()
 

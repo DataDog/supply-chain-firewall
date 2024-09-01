@@ -74,7 +74,7 @@ if _DD_API_KEY:
 
     ddlog = logging.getLogger(DD_LOG_NAME)
     ddlog.setLevel(logging.INFO)
-    ddlog_handler = DDLogHandler()
+    ddlog_handler = _DDLogHandler()
     FORMAT = (
         "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
     )

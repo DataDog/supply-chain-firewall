@@ -1,3 +1,7 @@
+"""
+Defines a subclass of `PackageManagerCommand` for `npm` commands.
+"""
+
 import subprocess
 from typing import Optional
 
@@ -43,6 +47,9 @@ class NpmCommand(PackageManagerCommand):
 
         Returns:
             The list of packages the npm command would install if it were run.
+
+        Raises:
+            AssertionError: The `npm` dry-run output does not have the expected format.
         """
         def is_add_line(line: str) -> bool:
             return line.startswith("add") and not line.startswith("added")

@@ -1,3 +1,7 @@
+"""
+Provides a base class for installation target verifiers.
+"""
+
 from abc import (ABCMeta, abstractmethod)
 from typing import Optional
 
@@ -17,12 +21,8 @@ class InstallTargetVerifier(metaclass=ABCMeta):
         """
         Return the verifier's name.
 
-        Args:
-            self: The verifier to be identified.
-
         Returns:
-            A (constant) short, descriptive name string identifying the verifier
-            and what it does.
+            A constant, short, descriptive name `str` identifying the verifier.
         """
         pass
 
@@ -32,7 +32,6 @@ class InstallTargetVerifier(metaclass=ABCMeta):
         Verify the given installation target.
 
         Args:
-            self: The `InstallTargetVerifier` to be used for verification.
             target: The installation target to verify.
 
         Returns:

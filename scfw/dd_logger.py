@@ -1,3 +1,7 @@
+"""
+Configures a logger for sending firewall logs to Datadog.
+"""
+
 import logging
 import os
 import socket
@@ -17,15 +21,28 @@ DD_ENV = os.getenv("DD_ENV", None)
 DD_SERVICE = os.getenv("DD_SERVICE", None)
 DD_VERSION = os.getenv("DD_VERSION", None)
 
-APP_NAME = "scfw"
+DD_APP_NAME = "scfw"
 DD_LOG_NAME = "ddlog"
 
 
 class DDLogHandler(logging.Handler):
+    """
+    A log handler for adding tags and forwarding firewall logs of blocked and
+    permitted package installation requests to Datadog.
+
+    In addition to USM tags, install targets are tagged with the `target` tag and included.
+    """
     def __init__(self):
         super().__init__()
 
+    # TODO: Add types to this signature
     def emit(self, record):
+        """
+        Format and send a log to Datadog.
+
+        Args:
+            record: The log record to be forwarded.
+        """
         targets = record.__dict__.get("targets", {})
 
         tags = {f"env:{DD_ENV}"} | set(map(lambda e: f"target:{e}", targets))
@@ -50,7 +67,7 @@ class DDLogHandler(logging.Handler):
 
 if DD_API_KEY:
     if not DD_SERVICE:
-        os.environ["DD_SERVICE"] = DD_SERVICE = APP_NAME
+        os.environ["DD_SERVICE"] = DD_SERVICE = DD_APP_NAME
     if not DD_ENV:
         os.environ["DD_ENV"] = DD_ENV = "dev"
     if not DD_VERSION:

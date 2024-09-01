@@ -1,3 +1,7 @@
+"""
+Defines the supply-chain firewall's command-line interface and performs argument parsing.
+"""
+
 from argparse import ArgumentParser, Namespace
 import logging
 import sys
@@ -10,7 +14,7 @@ DEFAULT_LOG_LEVEL = logging.getLevelName(logging.WARNING)
 
 def _cli() -> ArgumentParser:
     """
-    Defines the command-line interface for the supply-chain firewall itself.
+    Defines the command-line interface for the supply-chain firewall.
 
     Returns:
         An `argparse.ArgumentParser` that encodes the supply-chain firewall's command line.
@@ -53,15 +57,18 @@ def _cli() -> ArgumentParser:
 
 def _parse_command_line(argv: list[str]) -> tuple[Namespace, str]:
     """
-    Parse the supply-chain firewall's command line.
+    Parse the supply-chain firewall's command line from a given argument vector.
+
+    Args:
+        argv (list[str]): The argument vector to be parsed.
 
     Returns:
-        A `tuple` of a `Namespace` object containing the parsed firewall command line and
-        a `str` help message for the caller's use in early exits
+        A `tuple` of a `Namespace` object containing the results of parsing the given
+        argument vector and a `str` help message for the caller's use in early exits.
 
-        The returned `Namespace` contains the package manager command provided to the firewall
-        as a `list[str]` under the `command` attribute. If no such command was found, this
-        attribute contains `[]`.
+        The returned `Namespace` contains the package manager command present in
+        the given argument vector as a (possibly empty) `list[str]` under the `command`
+        attribute.
     """
     hinge = len(argv)
     for ecosystem in ECOSYSTEM:
@@ -79,4 +86,14 @@ def _parse_command_line(argv: list[str]) -> tuple[Namespace, str]:
 
 
 def parse_command_line() -> tuple[Namespace, str]:
+    """
+    Parse the supply-chain firewall's command line.
+
+    Returns:
+        A `tuple` of a `Namespace` object containing the results of parsing the firewall
+        command line and a `str` help message for the caller's use in early exits.
+
+        The returned `Namespace` contains the package manager command provided to the
+        firewall as a (possibly empty) `list[str]` under the `command` attribute.
+    """
     return _parse_command_line(sys.argv)

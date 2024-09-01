@@ -1,3 +1,8 @@
+"""
+Provides an interface for obtaining `PackageManagerCommand` instances from given
+command lines for supported package managers.
+"""
+
 from typing import Optional
 
 from scfw.command import PackageManagerCommand
@@ -16,6 +21,9 @@ def get_package_manager_command(command: list[str], executable: Optional[str] = 
 
     Returns:
         A `PackageManagerCommand` initialized from the given args in the desired ecosystem.
+
+    Raises:
+        ValueError: A command line for an unsupported package manager was provided.
     """
     assert command, "Missing package manager command"
     match command[0]:
@@ -24,4 +32,4 @@ def get_package_manager_command(command: list[str], executable: Optional[str] = 
         case ECOSYSTEM.NPM.value:
             return NpmCommand(command, executable)
         case other:
-            raise Exception(f"Unsupported package manager '{other}'")
+            raise ValueError(f"Unsupported package manager '{other}'")

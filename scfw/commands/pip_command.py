@@ -1,3 +1,7 @@
+"""
+Defines a subclass of `PackageManagerCommand` for `pip` commands.
+"""
+
 import json
 import os
 import subprocess
@@ -11,17 +15,20 @@ from scfw.target import InstallTarget
 
 class PipCommand(PackageManagerCommand):
     """
-    A representation of pip commands via the `PackageManagerCommand` interface.
+    A representation of `pip` commands via the `PackageManagerCommand` interface.
     """
     def __init__(self, command: list[str], executable: Optional[str] = None):
         """
         Initialize a new `PipCommand`.
 
         Args:
-            self: The `PipCommand` to be initialized.
-            command: The pip command line as provided to the supply-chain firewall.
-            `executable`: An optional path to the Python executable to use to run the
-            pip command.  Determined by the environment if not provided.
+            command: The `pip` command line as provided to the supply-chain firewall.
+            executable:
+                Optional path to the executable to run the command.  Determined by the
+                environment where the firewall is running if not given.
+
+        Raises:
+            AssertionError: The given `command` is not a `pip` command line.
         """
         def get_executable() -> str:
             if (venv := os.environ.get("VIRTUAL_ENV")):
@@ -36,22 +43,19 @@ class PipCommand(PackageManagerCommand):
 
     def run(self):
         """
-        Run a pip command.
-
-        Args:
-            self: The `PipCommand` to run.
+        Run a `pip` command.
         """
         subprocess.run([self._executable, "-m"] + self._command)
 
     def would_install(self) -> list[InstallTarget]:
         """
-        Determine the list of Python packages a pip command would install if it were run.
-
-        Args:
-            self: The `PipCommand` to inspect.
+        Determine the list of Python packages a `pip` command would install if it were run.
 
         Returns:
-            The list of Python packages the pip command would install if it were run.
+            The list of Python packages the `pip` command would install if it were run.
+
+        Raises:
+            AssertionError: The `pip` install report did not have the required format.
         """
         def report_to_install_targets(install_report: dict) -> InstallTarget:
             assert (metadata := install_report.get("metadata")), "Missing metadata for pip install target"

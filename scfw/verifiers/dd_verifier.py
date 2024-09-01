@@ -1,3 +1,8 @@
+"""
+Defines an installation target verifier that uses Datadog Security Research's
+malicious software packages dataset.
+"""
+
 from typing import Optional
 
 import requests
@@ -11,14 +16,14 @@ DD_DATASET_SAMPLES_URL = "https://raw.githubusercontent.com/DataDog/malicious-so
 
 class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
     """
-    An `InstallTargetVerifier` for Datadog's public malicious packages dataset.
+    An `InstallTargetVerifier` for Datadog Security Research's malicious packages dataset.
     """
     def __init__(self):
         """
         Initialize a new `DatadogMaliciousPackagesVerifier`
 
-        Args:
-            self: The verifier to be initialized.
+        Raises:
+            requests.HTTPError: An error occurred while fetching a manifest file.
         """
         def download_manifest(ecosystem: str) -> dict[str, list[str]]:
             manifest_url = f"{DD_DATASET_SAMPLES_URL}/{ecosystem}/manifest.json"
@@ -33,11 +38,8 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
         """
         Return the `DatadogMaliciousPackagesVerifier` name string.
 
-        Args:
-            self: The `DatadogMaliciousPackagesVerifier` whose name is requested.
-
         Returns:
-            The class' constant name string.
+            The class' constant name string: `"DatadogMaliciousPackagesVerifier"`.
         """
         return "DatadogMaliciousPackagesVerifier"
 

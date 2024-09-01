@@ -1,6 +1,11 @@
 # Supply-chain firewall
 
+[![Test](https://github.com/DataDog/supply-chain-firewall/actions/workflows/test.yaml/badge.svg)]
+[![Code quality](https://github.com/DataDog/supply-chain-firewall/actions/workflows/code_quality.yaml/badge.svg)]
+
 This supply-chain firewall is a command-line tool for preventing the installation of vulnerable or malicious PyPI and npm packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
+
+![scfw demo usage](images/demo.png)
 
 The firewall collects all targets that would be installed by a given `pip` or `npm` command and checks them against reputable sources of data on open source malware and vulnerabilities.  The installation is blocked when any target has been flagged by any data source.
 
@@ -9,9 +14,11 @@ Current data sources used are:
 - Datadog Security Research's public malicious packages [dataset](https://github.com/DataDog/malicious-software-packages-dataset)
 - [OSV.dev](https://osv.dev) disclosures
 
-## Compatibility
+## Getting started
 
-The supply-chain firewall is compatible with `pip >= 22.2` and generally compatible with recent versions of `npm >= 10.x`.
+### Compatibility
+
+The supply-chain firewall is compatible with `pip >= 22.2` and generally compatible with recent versions of `npm` (`>= 10.x`).
 
 In order to verify whether your `npm` is compatible, run an `npm install --dry-run` command for any package you do not already have installed and verify that the output resembles the following:
 
@@ -28,12 +35,12 @@ We hope to add support for older `npm` versions in the near future.
 
 Be advised that the firewall may fail to block installations of vulnerable or malicious packages if used with incompatible versions of `pip` or `npm`.
 
-## Installation
+### Installation
 
 Clone the repository, `cd` into the downloaded directory and run `make install`.  This will install the `scfw` command-line program into your global Python environment.  This can also be done inside a `virtualenv`, if desired.
 
 ```
-$ scfw
+$ scfw -h
 usage: scfw [options] COMMAND
 
 A tool to prevent the installation of vulnerable or malicious pip and npm packages
@@ -63,16 +70,11 @@ alias pip="scfw pip"
 alias npm="scfw npm"
 ```
 
-## Sample blocked installation output
+## Datadog Logs integration
 
-```bash
-$ scfw npm install basementio
-Installation target basementio@0.0.1-security:
-  - Package basementio has been determined to be malicious by Datadog Security Research
-  - An OSV.dev disclosure for package basementio exists (OSVID: MAL-2024-7874)
+The supply-chain firewall can optionally send logs of blocked and successful installations to Datadog.
 
-The installation request was blocked.  No changes have been made.
-```
+To opt in, set the environment variable `DD_API_KEY` to your Datadog API key, either directly in your shell environment or in a `.env` file in the current working directory.
 
 ## Testing and development
 

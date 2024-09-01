@@ -1,3 +1,8 @@
+"""
+Provides the core orchestration layer for the supply-chain firewall, including
+its main routine, `run_firewall()`.
+"""
+
 import concurrent.futures as cf
 import itertools
 import logging

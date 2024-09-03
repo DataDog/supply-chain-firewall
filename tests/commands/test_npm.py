@@ -26,10 +26,10 @@ TEST_TARGET = select_test_install_target(read_top_packages(TOP_NPM_PACKAGES), IN
             ["npm", "--non-existent-option", "install", TEST_TARGET, "--dry-run"]
         ]
 )
-def test_npm_command_no_change(command_line: list[str]):
+def test_npm_no_change(command_line: list[str]):
     """
-    Backend function for testing that an npm command does not encounter any
-    errors and does not modify the local npm installation state.
+    Backend function for testing that an `npm` command does not encounter any
+    errors and does not modify the local `npm` installation state.
     """
     subprocess.run(command_line, check=True)
     assert npm_list() == INIT_NPM_STATE
@@ -42,11 +42,23 @@ def test_npm_command_no_change(command_line: list[str]):
             ["npm", "install", "--dry-run", "!!!a_nonexistent_p@ckage_name"]
         ]
 )
-def test_npm_command_no_change_error(command_line: list[str]):
+def test_npm_no_change_error(command_line: list[str]):
     """
-    Backend function for testing that an npm command raises an error and
-    does not modify the local npm installation state.
+    Backend function for testing that an `npm` command raises an error and
+    does not modify the local `npm` installation state.
     """
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.run(command_line, check=True)
     assert npm_list() == INIT_NPM_STATE
+
+
+def test_npm_loglevel_override():
+    """
+    Test that all but the last instance of `--loglevel` are ignored by `npm`.
+    """
+    command_line = [
+        "npm", "--loglevel", "silent", "install", "--dry-run", TEST_TARGET, "--loglevel", "silly"
+    ]
+    p = subprocess.run(command_line, check=True, text=True, capture_output=True)
+    assert p.stderr
+    assert "silly" in p.stderr

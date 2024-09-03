@@ -18,20 +18,9 @@ Current data sources used are:
 
 ### Compatibility
 
-The supply-chain firewall is compatible with `pip >= 22.2` and generally compatible with recent versions of `npm` (`>= 10.x`).
+The supply-chain firewall is compatible with `pip >= 22.2` and `npm >= 7.0`.  Before installing the supply-chain firewall, please upgrade to or verify that you are running a compatible version of `pip` or `npm`.
 
-In order to verify whether your `npm` is compatible, run an `npm install --dry-run` command for any package you do not already have installed and verify that the output resembles the following:
-
-```
-$ npm install --dry-run react
-add js-tokens 4.0.0
-add loose-envify 1.4.0
-add react 18.3.1
-
-added 3 packages in 127ms
-```
-
-Be advised that the firewall may fail to block installations of vulnerable or malicious packages if used with incompatible versions of `pip` or `npm`.
+Be advised that the firewall may fail to block installations of vulnerable or malicious packages if used with an incompatible version of `pip` or `npm`.
 
 ### Installation
 

@@ -1,3 +1,8 @@
+"""
+Defines an installation target verifier that uses Datadog Security Research's
+malicious software packages dataset.
+"""
+
 from typing import Optional
 
 import requests
@@ -6,38 +11,35 @@ from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 from scfw.verifier import InstallTargetVerifier
 
-DD_DATASET_SAMPLES_URL = "https://raw.githubusercontent.com/DataDog/malicious-software-packages-dataset/main/samples"
+_DD_DATASET_SAMPLES_URL = "https://raw.githubusercontent.com/DataDog/malicious-software-packages-dataset/main/samples"
 
 
 class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
     """
-    An `InstallTargetVerifier` for Datadog's public malicious packages dataset.
+    An `InstallTargetVerifier` for Datadog Security Research's malicious packages dataset.
     """
     def __init__(self):
         """
-        Initialize a new `DatadogMaliciousPackagesVerifier`
+        Initialize a new `DatadogMaliciousPackagesVerifier`.
 
-        Args:
-            self: The verifier to be initialized.
+        Raises:
+            requests.HTTPError: An error occurred while fetching a manifest file.
         """
         def download_manifest(ecosystem: str) -> dict[str, list[str]]:
-            manifest_url = f"{DD_DATASET_SAMPLES_URL}/{ecosystem}/manifest.json"
-            request = requests.get(manifest_url)
+            manifest_url = f"{_DD_DATASET_SAMPLES_URL}/{ecosystem}/manifest.json"
+            request = requests.get(manifest_url, timeout=5)
             request.raise_for_status()
             return request.json()
 
-        self.pypi_manifest = download_manifest("pypi")
-        self.npm_manifest = download_manifest("npm")
+        self._pypi_manifest = download_manifest("pypi")
+        self._npm_manifest = download_manifest("npm")
 
     def name(self) -> str:
         """
         Return the `DatadogMaliciousPackagesVerifier` name string.
 
-        Args:
-            self: The `DatadogMaliciousPackagesVerifier` whose name is requested.
-
         Returns:
-            The class' constant name string.
+            The class' constant name string: `"DatadogMaliciousPackagesVerifier"`.
         """
         return "DatadogMaliciousPackagesVerifier"
 
@@ -50,13 +52,14 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
             target: The installation target to verify.
 
         Returns:
-            An indicator of whether samples of the target are present in the dataset.
+            A `str` stating that the installation target is malicious in the case
+            that it exists in the dataset (otherwise `None`).
         """
         match target.ecosystem:
             case ECOSYSTEM.PIP:
-                manifest = self.pypi_manifest
+                manifest = self._pypi_manifest
             case ECOSYSTEM.NPM:
-                manifest = self.npm_manifest
+                manifest = self._npm_manifest
 
         # We take the more conservative approach of ignoring version numbers when
         # deciding whether the given target is malicious

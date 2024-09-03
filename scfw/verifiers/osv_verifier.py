@@ -1,3 +1,8 @@
+"""
+Defines an installation target verifier that uses OSV.dev's database of vulnerable
+and malicious open source software packages.
+"""
+
 from typing import Optional
 
 import requests
@@ -6,9 +11,9 @@ from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 from scfw.verifier import InstallTargetVerifier
 
-OSV_ECOSYSTEMS = {ECOSYSTEM.PIP: "PyPI", ECOSYSTEM.NPM: "npm"}
+_OSV_ECOSYSTEMS = {ECOSYSTEM.PIP: "PyPI", ECOSYSTEM.NPM: "npm"}
 
-OSV_DEV_QUERY_URL = "https://api.osv.dev/v1/query"
+_OSV_DEV_QUERY_URL = "https://api.osv.dev/v1/query"
 
 
 class OsvVerifier(InstallTargetVerifier):
@@ -20,11 +25,8 @@ class OsvVerifier(InstallTargetVerifier):
         """
         Return the `OsvVerifier` name string.
 
-        Args:
-            self: The `OsvVerifier` whose name is requested.
-
         Returns:
-            The class' constant name string.
+            The class' constant name string: `"OsvVerifier"`.
         """
         return "OsvVerifier"
 
@@ -37,15 +39,20 @@ class OsvVerifier(InstallTargetVerifier):
 
         Returns:
             An OSV.dev finding for the target or `None` if no findings exist.
+
+        Raises:
+            requests.HTTPError:
+                An error occurred while querying an installation target against the OSV.dev API.
         """
         query = {
             "version": target.version,
             "package": {
                 "name": target.package,
-                "ecosystem": OSV_ECOSYSTEMS[target.ecosystem]
+                "ecosystem": _OSV_ECOSYSTEMS[target.ecosystem]
             }
         }
-        request = requests.post(OSV_DEV_QUERY_URL, json=query)
+        # The OSV.dev API is sometimes quite slow, hence the generous timeout
+        request = requests.post(_OSV_DEV_QUERY_URL, json=query, timeout=10)
         request.raise_for_status()
 
         if (vulns := request.json().get("vulns")):

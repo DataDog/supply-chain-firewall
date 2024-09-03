@@ -1,6 +1,11 @@
 # Supply-chain firewall
 
+![Test](https://github.com/DataDog/supply-chain-firewall/actions/workflows/test.yaml/badge.svg)
+![Code quality](https://github.com/DataDog/supply-chain-firewall/actions/workflows/code_quality.yaml/badge.svg)
+
 This supply-chain firewall is a command-line tool for preventing the installation of vulnerable or malicious PyPI and npm packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
+
+![scfw demo usage](images/demo.png)
 
 The firewall collects all targets that would be installed by a given `pip` or `npm` command and checks them against reputable sources of data on open source malware and vulnerabilities.  The installation is blocked when any target has been flagged by any data source.
 
@@ -9,13 +14,40 @@ Current data sources used are:
 - Datadog Security Research's public malicious packages [dataset](https://github.com/DataDog/malicious-software-packages-dataset)
 - [OSV.dev](https://osv.dev) disclosures
 
-## Installation
+## Getting started
 
-Clone the repository and run the following commands.  This will install the `scfw` command-line program into your global Python environment.
+### Compatibility
 
-```bash
-$ cd path/to/repo/directory
-$ pip install .
+The supply-chain firewall is compatible with `pip >= 22.2` and generally compatible with recent versions of `npm` (`>= 10.x`).
+
+In order to verify whether your `npm` is compatible, run an `npm install --dry-run` command for any package you do not already have installed and verify that the output resembles the following:
+
+```
+$ npm install --dry-run react
+add js-tokens 4.0.0
+add loose-envify 1.4.0
+add react 18.3.1
+
+added 3 packages in 127ms
+```
+
+Be advised that the firewall may fail to block installations of vulnerable or malicious packages if used with incompatible versions of `pip` or `npm`.
+
+### Installation
+
+Clone the repository, `cd` into the downloaded directory and run `make install`.  This will install the `scfw` command-line program into your global Python environment.  This can also be done inside a `virtualenv`, if desired.
+
+```
+$ scfw -h
+usage: scfw [options] COMMAND
+
+A tool to prevent the installation of vulnerable or malicious pip and npm packages
+
+options:
+  -h, --help         show this help message and exit
+  --dry-run          Skip installation step regardless of verification results
+  --log-level LEVEL  Desired logging level (default: WARNING, options: DEBUG, INFO, WARNING, ERROR)
+  --executable PATH  Python or npm executable to use for running commands (default: environmentally determined)
 ```
 
 ## Usage
@@ -36,29 +68,21 @@ alias pip="scfw pip"
 alias npm="scfw npm"
 ```
 
-## Sample blocked installation output
+## Datadog Logs integration
 
-```bash
-$ scfw npm install basementio
-Installation target basementio@0.0.1-security:
-  - Package basementio has been determined to be malicious by Datadog Security Research
-  - An OSV.dev disclosure for package basementio exists (OSVID: MAL-2024-7874)
+The supply-chain firewall can optionally send logs of blocked and successful installations to Datadog.
 
-The installation request was blocked.  No changes have been made.
-```
+![scfw datadog log](images/datadog_log.png)
 
-## Testing
+To opt in, set the environment variable `DD_API_KEY` to your Datadog API key, either directly in your shell environment or in a `.env` file in the current working directory.
 
-To run the test suite, first install `scfw` and the development dependencies.  It is recommended to create a fresh virtual environment for testing:
+## Development
 
-```bash
-$ python -m venv venv
-$ . venv/bin/activate
-(venv) $ pip install .
-(venv) $ pip install -r requirements-dev.txt
-```
+To set up for testing and development, create a fresh `virtualenv`, activate it and run `make install-dev`.  This will install `scfw` and the development dependencies.
 
-You can now run the test suite by running `make test`.  To additionally view code coverage, run `make coverage`.
+### Testing
+
+The test suite may be executed in the development environment by running `make test`.  To additionally view code coverage, run `make coverage`.
 
 To facilitate testing "in the wild", `scfw` provides a `--dry-run` option that will verify any installation targets and exit without executing the given install command:
 
@@ -69,11 +93,15 @@ Exiting without installing, no issues found for installation targets.
 
 Of course, one can always test inside a container or VM for an added layer of protection, if desired.
 
-## Code quality
+### Code quality
 
-After setting up for local testing, the code can also be typechecked with `mypy` and linted with `flake8`.
+The supply-chain firewall code may be typechecked with `mypy` and linted with `flake8`.  Run `make typecheck` or `make lint`, respectively, in the environment where the development dependencies have been installed.
 
-Run `make checks` to run the full suite of code quality checks (including tests).  You can also only typecheck or only lint with `make typecheck` and `make lint`, respectively.
+Run `make checks` to run the full suite of code quality checks, including tests.  These are the same checks that run in the repository's CI, the only difference being that the CI jobs matrix test against a range of `pip` and `npm` versions.  There is also a pre-commit hook that runs the checks in case one wishes to run them on each commit.
+
+### Documentation
+
+API documentation may be built via `pdoc` by running `make docs` from your development environment.  This will automatically open the documentation in your system's default browser.
 
 ## Feedback
 

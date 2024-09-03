@@ -47,7 +47,7 @@ def test_pip_command_would_install_exact():
         map(
             lambda p: InstallTarget(ECOSYSTEM.PIP, p[0], p[1]),
             [
-                ("certifi", "2024.7.4"),
+                ("certifi", "2024.8.30"),
                 ("charset-normalizer", "3.3.2"),
                 ("idna", "3.8"),
                 ("requests", "2.32.3"),

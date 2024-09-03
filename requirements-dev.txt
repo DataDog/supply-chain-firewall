@@ -1,5 +1,6 @@
 coverage
 flake8
 mypy
+pdoc
 pre-commit
 pytest

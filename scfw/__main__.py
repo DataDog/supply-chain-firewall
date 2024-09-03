@@ -1,3 +1,7 @@
+"""
+Entry point for module invocation via `python -m`.
+"""
+
 import sys
 
 from scfw.firewall import run_firewall

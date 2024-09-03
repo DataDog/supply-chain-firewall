@@ -1,3 +1,7 @@
+"""
+A representation of package manager installation targets in a supported ecosystem.
+"""
+
 from dataclasses import dataclass
 
 from scfw.ecosystem import ECOSYSTEM
@@ -7,6 +11,11 @@ from scfw.ecosystem import ECOSYSTEM
 class InstallTarget:
     """
     An installation target in a particular ecosystem.
+
+    Attributes:
+        ecosystem: The ecosystem of the installation target.
+        package: The installation target's package name in its ecosystem.
+        version: The installation target's version number.
     """
     ecosystem: ECOSYSTEM
     package: str
@@ -14,14 +23,15 @@ class InstallTarget:
 
     def show(self) -> str:
         """
-        Format the `InstallTarget` package and version number as a string
-        according to the conventions of its ecosystem.
-
-        Args:
-            self: The `InstallTarget` whose data is to be formatted.
+        Format the `InstallTarget` package and version number as a string according
+        to the conventions of its ecosystem.
 
         Returns:
-            A `str` describing the `InstallTarget`'s package and version number
+            A `str` with ecosystem-specific formatting describing the `InstallTarget`
+            package and version number.
+
+            For `pip` packages, the formatting used is `"{package}-{version}"` and for `npm`
+            packages it is `"{package}@{version}"`.
         """
         match self.ecosystem:
             case ECOSYSTEM.PIP:

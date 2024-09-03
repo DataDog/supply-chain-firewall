@@ -1,3 +1,7 @@
+"""
+Defines a subclass of `PackageManagerCommand` for `npm` commands.
+"""
+
 import subprocess
 from typing import Optional
 
@@ -8,16 +12,17 @@ from scfw.target import InstallTarget
 
 class NpmCommand(PackageManagerCommand):
     """
-    A representation of npm commands via the `PackageManagerCommand` interface.
+    A representation of `npm` commands via the `PackageManagerCommand` interface.
     """
     def __init__(self, command: list[str], executable: Optional[str] = None):
         """
         Initialize a new `NpmCommand`.
 
         Args:
-            self: The `NpmCommand` to be initialized.
-            command: The npm command line as provided to the supply-chain firewall.
-            `executable`: An optional path to the npm executable to use to run the command.
+            command: An `npm` command line.
+            executable:
+                Optional path to the executable to run the command.  Determined by the
+                environment if not given.
         """
         assert command and command[0] == "npm", "Malformed npm command"
         self._command = command
@@ -27,22 +32,20 @@ class NpmCommand(PackageManagerCommand):
 
     def run(self):
         """
-        Run an npm command.
-
-        Args:
-            self: The `NpmCommand` to run.
+        Run an `npm` command.
         """
         subprocess.run(self._command)
 
     def would_install(self) -> list[InstallTarget]:
         """
-        Determine the list of packages an npm command would install if it were run.
-
-        Args:
-            self: The `NpmCommand` to inspect.
+        Determine the list of packages an `npm` command would install if it were run.
 
         Returns:
-            The list of packages the npm command would install if it were run.
+            A `list[InstallTarget]` representing the packages the `npm` command would
+            install if it were run.
+
+        Raises:
+            AssertionError: The `npm` dry-run output does not have the expected format.
         """
         def is_add_line(line: str) -> bool:
             return line.startswith("add") and not line.startswith("added")

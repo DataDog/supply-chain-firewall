@@ -1,3 +1,7 @@
+"""
+A representation of package ecosystems supported by the supply-chain firewall.
+"""
+
 from enum import Enum
 
 

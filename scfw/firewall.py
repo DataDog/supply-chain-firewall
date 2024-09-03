@@ -1,3 +1,8 @@
+"""
+Provides the core orchestration layer for the supply-chain firewall, including
+its main routine, `run_firewall()`.
+"""
+
 import concurrent.futures as cf
 import itertools
 import logging
@@ -11,10 +16,10 @@ from scfw.verifier import InstallTargetVerifier
 from scfw.verifiers import get_install_target_verifiers
 
 # Firewall root logger configured to write to stderr
-log = logging.getLogger()
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
-log.addHandler(handler)
+_log = logging.getLogger()
+_handler = logging.StreamHandler()
+_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+_log.addHandler(_handler)
 
 
 def verify_install_targets(
@@ -48,15 +53,15 @@ def verify_install_targets(
         for future in cf.as_completed(task_results):
             verifier, target = task_results[future]
             if (finding := future.result()):
-                log.info(f"{verifier} had findings for target {target.show()}")
+                _log.info(f"{verifier} had findings for target {target.show()}")
                 if target not in findings:
                     findings[target] = [finding]
                 else:
                     findings[target].append(finding)
             else:
-                log.info(f"{verifier} had no findings for target {target.show()}")
+                _log.info(f"{verifier} had no findings for target {target.show()}")
 
-    log.info(
+    _log.info(
         f"Verification complete: {len(findings)} of {len(targets)} installation targets had findings"
     )
     return findings
@@ -67,7 +72,9 @@ def print_findings(findings: dict[InstallTarget, list[str]]):
     Print the findings accrued for targets during verification.
 
     Args:
-        findings: The `dict` of findings for the verified installation targets.
+        findings:
+            The `dict` of findings for the verified installation targets returned
+            by `verify_install_targets()`.
     """
     for target, target_findings in findings.items():
         print(f"Installation target {target.show()}:")
@@ -89,20 +96,20 @@ def run_firewall() -> int:
             return 0
 
         # Set root log level and configure sub-loggers
-        log.setLevel(args.log_level)
+        _log.setLevel(args.log_level)
         dd_log = logging.getLogger(DD_LOG_NAME)
 
-        log.info(f"Starting supply-chain firewall on {time.asctime(time.localtime())}")
-        log.info(f"Command: '{' '.join(args.command)}'")
-        log.debug(f"Command line: {vars(args)}")
+        _log.info(f"Starting supply-chain firewall on {time.asctime(time.localtime())}")
+        _log.info(f"Command: '{' '.join(args.command)}'")
+        _log.debug(f"Command line: {vars(args)}")
 
         command = get_package_manager_command(args.command, executable=args.executable)
         targets = command.would_install()
-        log.info(f"Command would install: [{', '.join(t.show() for t in targets)}]")
+        _log.info(f"Command would install: [{', '.join(t.show() for t in targets)}]")
 
         if targets:
             verifiers = get_install_target_verifiers()
-            log.info(
+            _log.info(
                 f"Using installation target verifiers: [{', '.join(v.name() for v in verifiers)}]"
             )
 
@@ -116,7 +123,7 @@ def run_firewall() -> int:
                 return 0
 
             if args.dry_run:
-                log.info("Firewall dry-run mode enabled: no packages will be installed")
+                _log.info("Firewall dry-run mode enabled: no packages will be installed")
                 print("Exiting without installing, no issues found for installation targets.")
                 return 0
 
@@ -128,5 +135,5 @@ def run_firewall() -> int:
         return 0
 
     except Exception as e:
-        log.error(e)
+        _log.error(e)
         return 1

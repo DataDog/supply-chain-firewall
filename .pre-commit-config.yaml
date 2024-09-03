@@ -10,7 +10,19 @@ repos:
     name: Lint the firewall code
     language: system
     entry: make lint
-  - id: test
-    name: Run the test suite
+  - id: test-cli
+    name: Test the firewall CLI
     language: system
-    entry: make test
+    entry: make test-cli
+  - id: test-pip
+    name: Test firewall pip integration
+    language: system
+    entry: make test-pip
+  - id: test-npm
+    name: Test firewall npm integration
+    language: system
+    entry: make test-npm
+  - id: test-verifiers
+    name: Test firewall installation target verifiers
+    language: system
+    entry: make test-verifiers

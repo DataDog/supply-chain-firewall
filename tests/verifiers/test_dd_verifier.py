@@ -17,9 +17,9 @@ def test_dd_verifier_malicious(ecosystem: ECOSYSTEM):
     """
     match ecosystem:
         case ECOSYSTEM.PIP:
-            manifest = DD_VERIFIER.pypi_manifest
+            manifest = DD_VERIFIER._pypi_manifest
         case ECOSYSTEM.NPM:
-            manifest = DD_VERIFIER.npm_manifest
+            manifest = DD_VERIFIER._npm_manifest
 
     # Only the package name is checked, so use a dummy version string
     test_set = [

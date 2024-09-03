@@ -8,10 +8,12 @@ from scfw.ecosystem import ECOSYSTEM
 
 from .utils import list_installed_packages, read_top_packages, select_test_install_target
 
+TOP_PIP_PACKAGES = "top_pip_packages.txt"
+
 pip_list = lambda : list_installed_packages(ECOSYSTEM.PIP)
 
 INIT_PIP_STATE = pip_list()
-TEST_TARGET = select_test_install_target(read_top_packages("top_pip_packages.txt"), INIT_PIP_STATE, "requests")
+TEST_TARGET = select_test_install_target(read_top_packages(TOP_PIP_PACKAGES), INIT_PIP_STATE, "requests")
 
 PIP_COMMAND_PREFIX = [sys.executable, "-m", "pip"]
 

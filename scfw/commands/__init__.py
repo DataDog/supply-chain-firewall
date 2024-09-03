@@ -23,9 +23,10 @@ def get_package_manager_command(command: list[str], executable: Optional[str] = 
         A `PackageManagerCommand` initialized from the given args in the desired ecosystem.
 
     Raises:
-        ValueError: A command line for an unsupported package manager was provided.
+        ValueError: An empty or unsupported package manager command line was provided.
     """
-    assert command, "Missing package manager command"
+    if not command:
+        raise ValueError("Missing package manager command")
     match command[0]:
         case ECOSYSTEM.PIP.value:
             return PipCommand(command, executable)

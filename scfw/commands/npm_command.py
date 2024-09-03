@@ -23,8 +23,12 @@ class NpmCommand(PackageManagerCommand):
             executable:
                 Optional path to the executable to run the command.  Determined by the
                 environment if not given.
+
+        Raises:
+            ValueError: An invalid `npm` command was given.
         """
-        assert command and command[0] == "npm", "Malformed npm command"
+        if not command or command[0] != "npm":
+            raise ValueError("Malformed npm command")
         self._command = command
 
         if executable:
@@ -45,13 +49,14 @@ class NpmCommand(PackageManagerCommand):
             install if it were run.
 
         Raises:
-            AssertionError: The `npm` dry-run output does not have the expected format.
+            ValueError: The `npm` dry-run output does not have the expected format.
         """
         def is_add_line(line: str) -> bool:
             return line.startswith("add") and not line.startswith("added")
 
         def line_to_install_target(line: str) -> InstallTarget:
-            assert len(line.split()) == 3, "Failed to parse npm install target"
+            if len(line.split()) != 3:
+                raise ValueError("Failed to parse npm install target")
             _, package, version = line.split()
             return InstallTarget(ECOSYSTEM.NPM, package, version)
 

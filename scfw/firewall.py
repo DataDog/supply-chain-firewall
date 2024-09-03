@@ -8,12 +8,12 @@ import itertools
 import logging
 import time
 
-from scfw.cli import parse_command_line
-from scfw.commands import get_package_manager_command
+import scfw.cli as cli
+import scfw.commands as commands
 from scfw.dd_logger import DD_LOG_NAME
 from scfw.target import InstallTarget
 from scfw.verifier import InstallTargetVerifier
-from scfw.verifiers import get_install_target_verifiers
+import scfw.verifiers as verifs
 
 # Firewall root logger configured to write to stderr
 _log = logging.getLogger()
@@ -42,13 +42,10 @@ def verify_install_targets(
     """
     findings = {}
 
-    # Verify every target against every verifier
-    verify_tasks = itertools.product(verifiers, targets)
-
     with cf.ThreadPoolExecutor() as executor:
         task_results = {
             executor.submit(lambda v, t: v.verify(t), verifier, target): (verifier.name(), target)
-            for verifier, target in verify_tasks
+            for verifier, target in itertools.product(verifiers, targets)
         }
         for future in cf.as_completed(task_results):
             verifier, target = task_results[future]
@@ -90,12 +87,11 @@ def run_firewall() -> int:
         An integer exit code (0 or 1).
     """
     try:
-        args, help = parse_command_line()
+        args, help = cli.parse_command_line()
         if not args.command:
             print(help)
             return 0
 
-        # Set root log level and configure sub-loggers
         _log.setLevel(args.log_level)
         dd_log = logging.getLogger(DD_LOG_NAME)
 
@@ -103,12 +99,12 @@ def run_firewall() -> int:
         _log.info(f"Command: '{' '.join(args.command)}'")
         _log.debug(f"Command line: {vars(args)}")
 
-        command = get_package_manager_command(args.command, executable=args.executable)
+        command = commands.get_package_manager_command(args.command, executable=args.executable)
         targets = command.would_install()
         _log.info(f"Command would install: [{', '.join(t.show() for t in targets)}]")
 
         if targets:
-            verifiers = get_install_target_verifiers()
+            verifiers = verifs.get_install_target_verifiers()
             _log.info(
                 f"Using installation target verifiers: [{', '.join(v.name() for v in verifiers)}]"
             )

@@ -77,7 +77,9 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
       - name: Test firewall npm integration
-        run: make test-npm
+        run: |
+          npm install --dry-run --loglevel silly axios
+          make test-npm
 
   verifiers:
     runs-on: ubuntu-latest

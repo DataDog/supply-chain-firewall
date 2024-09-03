@@ -29,10 +29,10 @@ PIP_COMMAND_PREFIX = [sys.executable, "-m", "pip"]
             PIP_COMMAND_PREFIX + ["install", "--dry-run", TEST_TARGET, "--dry-run"]
         ]
 )
-def test_pip_command_no_change(command_line: list[str]):
+def test_pip_no_change(command_line: list[str]):
     """
-    Backend function for testing that a pip command does not encounter any
-    errors and does not modify the local pip installation state.
+    Backend function for testing that a `pip` command does not encounter any
+    errors and does not modify the local `pip` installation state.
     """
     subprocess.run(command_line, check=True)
     assert pip_list() == INIT_PIP_STATE
@@ -45,20 +45,20 @@ def test_pip_command_no_change(command_line: list[str]):
             PIP_COMMAND_PREFIX + ["install", "--dry-run", "!!!a_nonexistent_p@ckage_name"]
         ]
 )
-def test_pip_command_no_change_error(command_line: list[str]):
+def test_pip_no_change_error(command_line: list[str]):
     """
-    Backend function for testing that a pip command raises an error and
-    does not modify the local pip installation state.
+    Backend function for testing that a `pip` command raises an error and
+    does not modify the local `pip` installation state.
     """
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.run(command_line, check=True)
     assert pip_list() == INIT_PIP_STATE
 
 
-def test_pip_install_report_multiple():
+def test_pip_install_report_override():
     """
     Test that all but the last instance of the `--report` option in the command
-    line are ignored by pip.
+    line are ignored by `pip`.
     """
     with tempfile.NamedTemporaryFile() as tmpfile:
         command_line = (

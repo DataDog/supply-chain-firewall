@@ -9,6 +9,13 @@ from scfw.command import PackageManagerCommand
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 
+# The "placeDep" log lines describe a new dependency added to the
+# dependency tree being constructed by an installish command
+_NPM_LOG_PLACE_DEP = "placeDep"
+
+# Each added dependency is always the fifth token in its log line
+_NPM_LOG_DEP_TOKEN = 4
+
 
 class NpmCommand(PackageManagerCommand):
     """
@@ -30,9 +37,10 @@ class NpmCommand(PackageManagerCommand):
         if not command or command[0] != "npm":
             raise ValueError("Malformed npm command")
         self._command = command
+        self._executable = "npm"
 
         if executable:
-            self._command[0] = executable
+            self._command[0] = self._executable = executable
 
     def run(self):
         """
@@ -51,13 +59,16 @@ class NpmCommand(PackageManagerCommand):
         Raises:
             ValueError: The `npm` dry-run output does not have the expected format.
         """
-        def is_add_line(line: str) -> bool:
-            return line.startswith("add") and not line.startswith("added")
+        def is_place_dep_line(line: str) -> bool:
+            return _NPM_LOG_PLACE_DEP in line
 
-        def line_to_install_target(line: str) -> InstallTarget:
-            if len(line.split()) != 3:
+        def line_to_dependency(line: str) -> str:
+            return line.split()[_NPM_LOG_DEP_TOKEN]
+
+        def str_to_install_target(s: str) -> InstallTarget:
+            package, sep, version = s.rpartition('@')
+            if version == s or (sep and not package):
                 raise ValueError("Failed to parse npm install target")
-            _, package, version = line.split()
             return InstallTarget(ECOSYSTEM.NPM, package, version)
 
         # If any of the below options are present, a help message is printed or
@@ -65,11 +76,26 @@ class NpmCommand(PackageManagerCommand):
         if any(opt in self._command for opt in {"-h", "--help", "--dry-run"}):
             return []
 
-        dry_run_command = self._command + ["--dry-run"]
         try:
+            # Compute the set of dependencies added by the command
+            # This is a superset of the set of install targets
+            dry_run_command = self._command + ["--dry-run", "--loglevel", "silly"]
             dry_run = subprocess.run(dry_run_command, check=True, text=True, capture_output=True)
-            return list(map(line_to_install_target, filter(is_add_line, dry_run.stdout.split('\n'))))
+            dependencies = map(line_to_dependency, filter(is_place_dep_line, dry_run.stderr.split('\n')))
         except subprocess.CalledProcessError:
             # An error must have resulted from the given npm command
             # As nothing will be installed in this case, allow the command
             return []
+
+        try:
+            # List targets already installed in the npm environment
+            installed = subprocess.run([self._executable, "list"], check=True, text=True, capture_output=True).stdout
+        except subprocess.CalledProcessError:
+            # If this operation fails, rather than blocking, assume nothing is installed
+            # This has the effect of treating all dependencies like installation targets
+            installed = ""
+
+        # The installation targets are the dependencies that are not already installed
+        targets = filter(lambda dep: dep not in installed, dependencies)
+
+        return list(map(str_to_install_target, targets))

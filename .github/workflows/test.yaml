@@ -58,7 +58,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: ["14.x", "15.x", "16.x", "17.x", "18.x", "19.x", "20.x", "21.x", "22.x"]
+        node-version: ["15.x", "16.x", "17.x", "18.x", "19.x", "20.x", "21.x", "22.x", "23.x", "24.x"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python 3.10
@@ -77,9 +77,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
       - name: Test firewall npm integration
-        run: |
-          npm install --dry-run --loglevel silly axios
-          make test-npm
+        run: make test-npm
 
   verifiers:
     runs-on: ubuntu-latest

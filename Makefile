@@ -36,4 +36,4 @@ coverage-report:
 docs:
 	pdoc --docformat google ./scfw > /dev/null &
 
-.PHONY: checks coverage test
+.PHONY: checks coverage install install-dev test

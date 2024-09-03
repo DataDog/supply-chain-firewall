@@ -31,8 +31,6 @@ add react 18.3.1
 added 3 packages in 127ms
 ```
 
-We hope to add support for older `npm` versions in the near future.
-
 Be advised that the firewall may fail to block installations of vulnerable or malicious packages if used with incompatible versions of `pip` or `npm`.
 
 ### Installation
@@ -78,7 +76,7 @@ The supply-chain firewall can optionally send logs of blocked and successful ins
 
 To opt in, set the environment variable `DD_API_KEY` to your Datadog API key, either directly in your shell environment or in a `.env` file in the current working directory.
 
-## Testing and development
+## Development
 
 To set up for testing and development, create a fresh `virtualenv`, activate it and run `make install-dev`.  This will install `scfw` and the development dependencies.
 
@@ -99,7 +97,7 @@ Of course, one can always test inside a container or VM for an added layer of pr
 
 The supply-chain firewall code may be typechecked with `mypy` and linted with `flake8`.  Run `make typecheck` or `make lint`, respectively, in the environment where the development dependencies have been installed.
 
-Run `make checks` to run the full suite of code quality checks, including tests.  These are the same checks that run in the firewall repository's CI, albeit with the tests run against various `pip` and `npm` versions to ensure compatibility.
+Run `make checks` to run the full suite of code quality checks, including tests.  These are the same checks that run in the repository's CI, the only difference being that the CI jobs matrix test against a range of `pip` and `npm` versions.  There is also a pre-commit hook that runs the checks in case one wishes to run them on each commit.
 
 ### Documentation
 

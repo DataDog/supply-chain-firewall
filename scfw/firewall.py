@@ -118,16 +118,14 @@ def run_firewall() -> int:
                 print("\nThe installation request was blocked. No changes have been made.")
                 return 0
 
-            if args.dry_run:
-                _log.info("Firewall dry-run mode enabled: no packages will be installed")
-                print("Exiting without installing, no issues found for installation targets.")
-                return 0
-
-        dd_log.info(
-            f"Running '{' '.join(args.command)}'",
-            extra={"targets": map(lambda x: x.show(), targets)}
-        )
-        command.run()
+        if args.dry_run:
+            _log.info("Firewall dry-run mode enabled: command will not be run")
+            print("Dry-run: no issues found, exiting without running command.")
+        else:
+            dd_log.info(
+                f"Running '{' '.join(args.command)}'", extra={"targets": map(lambda x: x.show(), targets)}
+            )
+            command.run()
         return 0
 
     except Exception as e:

@@ -43,7 +43,7 @@ options:
 
 To use the supply-chain firewall, just prepend `scfw` to the `pip install` or `npm install` command you want to run.
 
-```bash
+```
 $ scfw npm install react
 $ scfw pip install -r requirements.txt
 ```
@@ -73,11 +73,11 @@ To set up for testing and development, create a fresh `virtualenv`, activate it 
 
 The test suite may be executed in the development environment by running `make test`.  To additionally view code coverage, run `make coverage`.
 
-To facilitate testing "in the wild", `scfw` provides a `--dry-run` option that will verify any installation targets and exit without executing the given install command:
+To facilitate testing "in the wild", `scfw` provides a `--dry-run` option that will verify any installation targets and exit without executing the given package manager command:
 
-```bash
+```
 $ scfw --dry-run npm install axios
-Exiting without installing, no issues found for installation targets.
+Dry-run: no issues found, exiting without running command.
 ```
 
 Of course, one can always test inside a container or VM for an added layer of protection, if desired.

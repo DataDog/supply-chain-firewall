@@ -28,7 +28,7 @@ class PipCommand(PackageManagerCommand):
                 environment if not given.
 
         Raises:
-            AssertionError: The given `command` is not a `pip` command line.
+            ValueError: An invalid `pip` command line was given.
         """
         def get_executable() -> str:
             if (venv := os.environ.get("VIRTUAL_ENV")):
@@ -36,7 +36,8 @@ class PipCommand(PackageManagerCommand):
             else:
                 return sys.executable
 
-        assert command and command[0] == "pip", "Malformed pip command"
+        if not command or command[0] != "pip":
+            raise ValueError("Malformed pip command")
         self._command = command
 
         self._executable = executable if executable else get_executable()
@@ -56,12 +57,15 @@ class PipCommand(PackageManagerCommand):
             install if it were run.
 
         Raises:
-            AssertionError: The `pip` install report did not have the required format.
+            ValueError: The `pip` install report did not have the required format.
         """
         def report_to_install_targets(install_report: dict) -> InstallTarget:
-            assert (metadata := install_report.get("metadata")), "Missing metadata for pip install target"
-            assert (package := metadata.get("name")), "Missing name for pip install target"
-            assert (version := metadata.get("version")), "Missing version for pip install target"
+            if not (metadata := install_report.get("metadata")):
+                raise ValueError("Missing metadata for pip install target")
+            if not (package := metadata.get("name")):
+                raise ValueError("Missing name for pip install target")
+            if not (version := metadata.get("version")):
+                raise ValueError("Missing version for pip install target")
             return InstallTarget(ECOSYSTEM.PIP, package, version)
 
         # pip only installs or upgrades packages via the `pip install` subcommand

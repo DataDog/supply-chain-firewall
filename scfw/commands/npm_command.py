@@ -84,7 +84,7 @@ class NpmCommand(PackageManagerCommand):
             # This is a superset of the set of install targets
             dry_run_command = self._command + ["--dry-run", "--loglevel", "silly"]
             dry_run = subprocess.run(dry_run_command, check=True, text=True, capture_output=True)
-            dependencies = map(line_to_dependency, filter(is_place_dep_line, dry_run.stderr.split('\n')))
+            dependencies = map(line_to_dependency, filter(is_place_dep_line, dry_run.stderr.strip().split('\n')))
         except subprocess.CalledProcessError:
             # An error must have resulted from the given npm command
             # As nothing will be installed in this case, allow the command

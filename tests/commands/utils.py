@@ -22,12 +22,12 @@ def list_installed_packages(ecosystem: ECOSYSTEM) -> str:
     """
     match ecosystem:
         case ECOSYSTEM.PIP:
-            command = [sys.executable, "-m", "pip", "list"]
+            command = [sys.executable, "-m", "pip", "list", "--format", "freeze"]
         case ECOSYSTEM.NPM:
-            command = ["npm", "list"]
+            command = ["npm", "list", "--all", "--parseable"]
 
     p = subprocess.run(command, check=True, text=True, capture_output=True)
-    return p.stdout
+    return p.stdout.lower()
 
 
 def select_test_install_target(top_packages: set[str], installed_packages: str, default: str) -> str:

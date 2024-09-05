@@ -93,7 +93,8 @@ class NpmCommand(PackageManagerCommand):
 
         try:
             # List targets already installed in the npm environment
-            installed = subprocess.run([self._executable, "list"], check=True, text=True, capture_output=True).stdout
+            list_command = [self._executable, "list", "--all"]
+            installed = subprocess.run(list_command, check=True, text=True, capture_output=True).stdout
         except subprocess.CalledProcessError:
             # If this operation fails, rather than blocking, assume nothing is installed
             # This has the effect of treating all dependencies like installation targets

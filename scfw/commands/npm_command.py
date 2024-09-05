@@ -88,7 +88,7 @@ class NpmCommand(PackageManagerCommand):
         except subprocess.CalledProcessError:
             # An error must have resulted from the given npm command
             # As nothing will be installed in this case, allow the command
-            _log.info("The npm command produced an error while collecting installation targets")
+            _log.info("The npm command encountered an error while collecting installation targets")
             return []
 
         try:

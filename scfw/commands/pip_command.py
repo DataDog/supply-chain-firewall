@@ -9,9 +9,13 @@ import subprocess
 import sys
 from typing import Optional
 
-from scfw.command import PackageManagerCommand
+from packaging.version import InvalidVersion, Version, parse as version_parse
+
+from scfw.command import PackageManagerCommand, UnsupportedVersionError
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
+
+MIN_PIP_VERSION = "22.2"
 
 _log = logging.getLogger(__name__)
 
@@ -39,11 +43,25 @@ class PipCommand(PackageManagerCommand):
             else:
                 return sys.executable
 
+        def get_pip_version(executable: str) -> Version:
+            pip_version_command = [executable, "-m", "pip", "--version"]
+            pip_version = subprocess.run(pip_version_command, check=True, text=True, capture_output=True)
+            try:
+                # All supported versions adhere to this format
+                version_str = pip_version.stdout.split()[1]
+                return version_parse(version_str)
+            except IndexError as e:
+                raise UnsupportedVersionError("Unsupported pip version") from e
+            except InvalidVersion as e:
+                raise UnsupportedVersionError("Unsupported pip version") from e
+
         if not command or command[0] != "pip":
             raise ValueError("Malformed pip command")
         self._command = command
 
         self._executable = executable if executable else get_executable()
+        if get_pip_version(self._executable) < version_parse(MIN_PIP_VERSION):
+            raise UnsupportedVersionError("Unsupported pip version")
 
     def run(self):
         """

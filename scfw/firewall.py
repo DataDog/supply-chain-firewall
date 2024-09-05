@@ -9,6 +9,7 @@ import logging
 import time
 
 import scfw.cli as cli
+from scfw.command import UnsupportedVersionError
 import scfw.commands as commands
 from scfw.dd_logger import DD_LOG_NAME
 from scfw.target import InstallTarget
@@ -126,6 +127,10 @@ def run_firewall() -> int:
                 f"Running '{' '.join(args.command)}'", extra={"targets": map(lambda x: x.show(), targets)}
             )
             command.run()
+        return 0
+
+    except UnsupportedVersionError as e:
+        _log.error(e)
         return 0
 
     except Exception as e:

@@ -6,9 +6,13 @@ import logging
 import subprocess
 from typing import Optional
 
-from scfw.command import PackageManagerCommand
+from packaging.version import InvalidVersion, Version, parse as version_parse
+
+from scfw.command import PackageManagerCommand, UnsupportedVersionError
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
+
+MIN_NPM_VERSION = "7.0.0"
 
 # The "placeDep" log lines describe a new dependency added to the
 # dependency tree being constructed by an installish command
@@ -37,6 +41,14 @@ class NpmCommand(PackageManagerCommand):
         Raises:
             ValueError: An invalid `npm` command was given.
         """
+        def get_npm_version(executable) -> Version:
+            try:
+                npm_version_command = [executable, "--version"]
+                version_str = subprocess.run(npm_version_command, check=True, text=True, capture_ouput=True)
+                return version_parse(version_str.stdout.strip())
+            except InvalidVersion as e:
+                raise UnsupportedVersionError("Unsupported npm version") from e
+
         if not command or command[0] != "npm":
             raise ValueError("Malformed npm command")
         self._command = command
@@ -44,6 +56,8 @@ class NpmCommand(PackageManagerCommand):
 
         if executable:
             self._command[0] = self._executable = executable
+        if get_npm_version(self._executable) < version_parse(MIN_NPM_VERSION):
+            raise UnsupportedVersionError("Unsupported npm version")
 
     def run(self):
         """

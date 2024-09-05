@@ -11,7 +11,9 @@ TOP_NPM_PACKAGES = "top_npm_packages.txt"
 npm_list = lambda : list_installed_packages(ECOSYSTEM.NPM)
 
 INIT_NPM_STATE = npm_list()
-TEST_TARGET = select_test_install_target(read_top_packages(TOP_NPM_PACKAGES), INIT_NPM_STATE, "lodash")
+TEST_TARGET = select_test_install_target(read_top_packages(TOP_NPM_PACKAGES), INIT_NPM_STATE)
+if not TEST_TARGET:
+    raise Exception("Unable to select target npm package for testing")
 
 
 @pytest.mark.parametrize(

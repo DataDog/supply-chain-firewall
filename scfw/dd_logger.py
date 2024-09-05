@@ -65,6 +65,9 @@ class _DDLogHandler(logging.Handler):
 
 
 if _DD_API_KEY:
+    log = logging.getLogger(__name__)
+    log.info("Datadog API key detected: Datadog log forwarding enabled")
+
     if not _DD_SERVICE:
         os.environ["DD_SERVICE"] = _DD_SERVICE = _DD_APP_NAME
     if not _DD_ENV:

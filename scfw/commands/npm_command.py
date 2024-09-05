@@ -2,6 +2,7 @@
 Defines a subclass of `PackageManagerCommand` for `npm` commands.
 """
 
+import logging
 import subprocess
 from typing import Optional
 
@@ -15,6 +16,8 @@ _NPM_LOG_PLACE_DEP = "placeDep"
 
 # Each added dependency is always the fifth token in its log line
 _NPM_LOG_DEP_TOKEN = 4
+
+_log = logging.getLogger(__name__)
 
 
 class NpmCommand(PackageManagerCommand):
@@ -85,6 +88,7 @@ class NpmCommand(PackageManagerCommand):
         except subprocess.CalledProcessError:
             # An error must have resulted from the given npm command
             # As nothing will be installed in this case, allow the command
+            _log.info("The npm command produced an error while performing dry-run")
             return []
 
         try:
@@ -93,6 +97,9 @@ class NpmCommand(PackageManagerCommand):
         except subprocess.CalledProcessError:
             # If this operation fails, rather than blocking, assume nothing is installed
             # This has the effect of treating all dependencies like installation targets
+            _log.warning(
+                "Failed to list installed npm packages: treating all dependencies as installation targets"
+            )
             installed = ""
 
         # The installation targets are the dependencies that are not already installed

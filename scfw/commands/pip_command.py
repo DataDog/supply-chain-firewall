@@ -3,6 +3,7 @@ Defines a subclass of `PackageManagerCommand` for `pip` commands.
 """
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -11,6 +12,8 @@ from typing import Optional
 from scfw.command import PackageManagerCommand
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
+
+_log = logging.getLogger(__name__)
 
 
 class PipCommand(PackageManagerCommand):
@@ -85,4 +88,5 @@ class PipCommand(PackageManagerCommand):
         except subprocess.CalledProcessError:
             # An error must have resulted from the given pip command
             # As nothing will be installed in this case, allow the command
+            _log.info("The pip command produced an error while performing dry-run")
             return []

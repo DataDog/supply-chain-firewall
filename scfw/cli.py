@@ -8,7 +8,12 @@ import sys
 
 from scfw.ecosystem import ECOSYSTEM
 
-_LOG_LEVELS = list(map(logging.getLevelName, [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR]))
+_LOG_LEVELS = list(
+    map(
+        logging.getLevelName,
+        [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR]
+    )
+)
 _DEFAULT_LOG_LEVEL = logging.getLevelName(logging.WARNING)
 
 
@@ -32,7 +37,7 @@ def _cli() -> ArgumentParser:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Skip installation step regardless of verification results"
+        help="Verify any installation targets but do not run the package manager command"
     )
 
     parser.add_argument(

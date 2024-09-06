@@ -46,7 +46,7 @@ class NpmCommand(PackageManagerCommand):
         def get_npm_version(executable) -> Version:
             try:
                 npm_version_command = [executable, "--version"]
-                version_str = subprocess.run(npm_version_command, check=True, text=True, capture_ouput=True)
+                version_str = subprocess.run(npm_version_command, check=True, text=True, capture_output=True)
                 return version_parse(version_str.stdout.strip())
             except InvalidVersion as e:
                 raise UnsupportedVersionError(f"npm before v{MIN_NPM_VERSION} is not supported")

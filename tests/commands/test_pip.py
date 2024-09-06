@@ -16,7 +16,7 @@ pip_list = lambda : list_installed_packages(ECOSYSTEM.PIP)
 INIT_PIP_STATE = pip_list()
 TEST_TARGET = select_test_install_target(read_top_packages(TOP_PIP_PACKAGES), INIT_PIP_STATE)
 if not TEST_TARGET:
-    raise Exception("Unable to select target pip package for testing")
+    raise ValueError("Unable to select target pip package for testing")
 
 PIP_COMMAND_PREFIX = [sys.executable, "-m", "pip"]
 

@@ -15,9 +15,11 @@ from scfw.command import PackageManagerCommand, UnsupportedVersionError
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 
+_log = logging.getLogger(__name__)
+
 MIN_PIP_VERSION = "22.2"
 
-_log = logging.getLogger(__name__)
+_UNSUPPORTED_PIP_VERSION = f"pip before v{MIN_PIP_VERSION} is not supported"
 
 
 class PipCommand(PackageManagerCommand):
@@ -46,16 +48,16 @@ class PipCommand(PackageManagerCommand):
                 return sys.executable
 
         def get_pip_version(executable: str) -> Version:
-            pip_version_command = [executable, "-m", "pip", "--version"]
-            pip_version = subprocess.run(pip_version_command, check=True, text=True, capture_output=True)
             try:
                 # All supported versions adhere to this format
+                pip_version_command = [executable, "-m", "pip", "--version"]
+                pip_version = subprocess.run(pip_version_command, check=True, text=True, capture_output=True)
                 version_str = pip_version.stdout.split()[1]
                 return version_parse(version_str)
-            except IndexError as e:
-                raise UnsupportedVersionError(f"pip before v{MIN_PIP_VERSION} is not supported")
-            except InvalidVersion as e:
-                raise UnsupportedVersionError(f"pip before v{MIN_PIP_VERSION} is not supported")
+            except IndexError:
+                raise UnsupportedVersionError(_UNSUPPORTED_PIP_VERSION)
+            except InvalidVersion:
+                raise UnsupportedVersionError(_UNSUPPORTED_PIP_VERSION)
 
         if not command or command[0] != "pip":
             raise ValueError("Malformed pip command")
@@ -63,7 +65,7 @@ class PipCommand(PackageManagerCommand):
 
         self._executable = executable if executable else get_executable()
         if get_pip_version(self._executable) < version_parse(MIN_PIP_VERSION):
-            raise UnsupportedVersionError(f"pip before v{MIN_PIP_VERSION} is not supported")
+            raise UnsupportedVersionError(_UNSUPPORTED_PIP_VERSION)
 
     def run(self):
         """

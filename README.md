@@ -3,7 +3,7 @@
 ![Test](https://github.com/DataDog/supply-chain-firewall/actions/workflows/test.yaml/badge.svg)
 ![Code quality](https://github.com/DataDog/supply-chain-firewall/actions/workflows/code_quality.yaml/badge.svg)
 
-This supply-chain firewall is a command-line tool for preventing the installation of vulnerable or malicious PyPI and npm packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
+The supply-chain firewall is a command-line tool for preventing the installation of vulnerable or malicious PyPI and npm packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
 
 ![scfw demo usage](images/demo.png)
 
@@ -14,17 +14,13 @@ Current data sources used are:
 - Datadog Security Research's public malicious packages [dataset](https://github.com/DataDog/malicious-software-packages-dataset)
 - [OSV.dev](https://osv.dev) disclosures
 
+The principal goal of the supply-chain firewall is to block 100% of installations of vulnerable or malicious packages within the purview of its data sources.
+
 ## Getting started
-
-### Compatibility
-
-The supply-chain firewall is compatible with `pip >= 22.2` and `npm >= 7.0`.  Before installing the supply-chain firewall, please upgrade to or verify that you are running a compatible version of `pip` or `npm`.
-
-Be advised that the firewall may fail to block installations of vulnerable or malicious packages if used with an incompatible version of `pip` or `npm`.
 
 ### Installation
 
-Clone the repository, `cd` into the downloaded directory and run `make install`.  This will install the `scfw` command-line program into your global Python environment.  This can also be done inside a `virtualenv`, if desired.
+Clone the repository, `cd` into the downloaded directory and run `make install`.  This will install the `scfw` command-line program into your global Python environment.  If desired, this can be done inside a `virtualenv`.
 
 ```
 $ scfw -h
@@ -34,10 +30,14 @@ A tool to prevent the installation of vulnerable or malicious pip and npm packag
 
 options:
   -h, --help         show this help message and exit
-  --dry-run          Skip installation step regardless of verification results
+  --dry-run          Verify any installation targets but do not run the package manager command
   --log-level LEVEL  Desired logging level (default: WARNING, options: DEBUG, INFO, WARNING, ERROR)
   --executable PATH  Python or npm executable to use for running commands (default: environmentally determined)
 ```
+
+### Compatibility
+
+The supply-chain firewall is compatible with `pip >= 22.2` and `npm >= 7.0`.  In keeping with its goal of blocking 100% of vulnerable or malicious package installations, the firewall will refuse to run with an incompatible version of `pip` or `npm`.  Please upgrade to or verify that you are running a compatible version of `pip` or `npm` before using this tool.
 
 ## Usage
 

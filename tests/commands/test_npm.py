@@ -1,4 +1,4 @@
-import os
+import packaging.version as version
 import pytest
 import subprocess
 
@@ -14,6 +14,14 @@ INIT_NPM_STATE = npm_list()
 TEST_TARGET = select_test_install_target(read_top_packages(TOP_NPM_PACKAGES), INIT_NPM_STATE)
 if not TEST_TARGET:
     raise Exception("Unable to select target npm package for testing")
+
+
+def test_npm_version_output():
+    """
+    Test that `npm --version` has the required format.
+    """
+    version_str = subprocess.run(["npm", "--version"], check=True, text=True, capture_output=True)
+    version.parse(version_str.stdout.strip())
 
 
 @pytest.mark.parametrize(

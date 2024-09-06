@@ -40,6 +40,8 @@ class NpmCommand(PackageManagerCommand):
 
         Raises:
             ValueError: An invalid `npm` command was given.
+            UnsupportedVersionError:
+                An unsupported version of `npm` was used to initialize an `NpmCommand`.
         """
         def get_npm_version(executable) -> Version:
             try:
@@ -47,7 +49,7 @@ class NpmCommand(PackageManagerCommand):
                 version_str = subprocess.run(npm_version_command, check=True, text=True, capture_ouput=True)
                 return version_parse(version_str.stdout.strip())
             except InvalidVersion as e:
-                raise UnsupportedVersionError("Unsupported npm version") from e
+                raise UnsupportedVersionError(f"npm before v{MIN_NPM_VERSION} is not supported")
 
         if not command or command[0] != "npm":
             raise ValueError("Malformed npm command")
@@ -57,7 +59,7 @@ class NpmCommand(PackageManagerCommand):
         if executable:
             self._command[0] = self._executable = executable
         if get_npm_version(self._executable) < version_parse(MIN_NPM_VERSION):
-            raise UnsupportedVersionError("Unsupported npm version")
+            raise UnsupportedVersionError(f"npm before v{MIN_NPM_VERSION} is not supported")
 
     def run(self):
         """

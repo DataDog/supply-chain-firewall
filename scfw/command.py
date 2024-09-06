@@ -23,11 +23,10 @@ class PackageManagerCommand(metaclass=ABCMeta):
                 Optional path to the executable to run the command.  Determined by the environment
                 where the firewall is running if not given.
 
-        Raises
+        Raises:
             UnsupportedVersionError:
-                Subclasses should raise this error when an attempt is made to use an unsupported
-                version of the package manager to execute commands, in particular the commands
-                that must be run in order to implement the `would_install()` method.
+                Subclasses should raise this error when an attempt is made to initialize an
+                instance with an unsupported version of the underlying package manager.
         """
         pass
 
@@ -53,11 +52,17 @@ class PackageManagerCommand(metaclass=ABCMeta):
 
 class UnsupportedVersionError(Exception):
     """
-    An error that occurs when an attempt is made to use an unsupported version of a package
-    manager with a `PackageManagerCommand`.
+    An error that occurs when an attempt is made to initialize a `PackageManagerCommand`
+    with an unsupported version of the underlying package manager.
 
-    Subclasses of `PackageManagerCommand` should raise `UnsupportedVersionError` when this
-    occurs.  In this case, the firewall will log the error message and exit gracefully
-    instead of crashing.
+    When this occurs, subclasses of `PackageManagerCommand` should raise
+    `UnsupportedVersionError` in their `__init__()` methods.  It should not be possible
+    to initialize a `PackageManagerCommand` with an unsupported version.  The error
+    should contain a message to the user with instructions for how to upgrade their
+    package manager to a supported version.
+
+    When `UnsupportedVersionError` is raised, the firewall logs an error message stating
+    that an unsupported version error occurred, logs the error message from the
+    `PackageManagerCommand`, and exits gracefully.
     """
     pass

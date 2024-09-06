@@ -36,6 +36,8 @@ class PipCommand(PackageManagerCommand):
 
         Raises:
             ValueError: An invalid `pip` command line was given.
+            UnsupportedVersionError:
+                An unsupported version of `pip` was used to initialize a `PipCommand`.
         """
         def get_executable() -> str:
             if (venv := os.environ.get("VIRTUAL_ENV")):
@@ -51,9 +53,9 @@ class PipCommand(PackageManagerCommand):
                 version_str = pip_version.stdout.split()[1]
                 return version_parse(version_str)
             except IndexError as e:
-                raise UnsupportedVersionError("Unsupported pip version") from e
+                raise UnsupportedVersionError(f"pip before v{MIN_PIP_VERSION} is not supported")
             except InvalidVersion as e:
-                raise UnsupportedVersionError("Unsupported pip version") from e
+                raise UnsupportedVersionError(f"pip before v{MIN_PIP_VERSION} is not supported")
 
         if not command or command[0] != "pip":
             raise ValueError("Malformed pip command")
@@ -61,7 +63,7 @@ class PipCommand(PackageManagerCommand):
 
         self._executable = executable if executable else get_executable()
         if get_pip_version(self._executable) < version_parse(MIN_PIP_VERSION):
-            raise UnsupportedVersionError("Unsupported pip version")
+            raise UnsupportedVersionError(f"pip before v{MIN_PIP_VERSION} is not supported")
 
     def run(self):
         """

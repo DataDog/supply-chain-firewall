@@ -17,7 +17,7 @@ from scfw.target import InstallTarget
 
 _log = logging.getLogger(__name__)
 
-MIN_PIP_VERSION = "22.2"
+MIN_PIP_VERSION = version_parse("22.2")
 
 _UNSUPPORTED_PIP_VERSION = f"pip before v{MIN_PIP_VERSION} is not supported"
 
@@ -64,7 +64,7 @@ class PipCommand(PackageManagerCommand):
         self._command = command
 
         self._executable = executable if executable else get_executable()
-        if get_pip_version(self._executable) < version_parse(MIN_PIP_VERSION):
+        if get_pip_version(self._executable) < MIN_PIP_VERSION:
             raise UnsupportedVersionError(_UNSUPPORTED_PIP_VERSION)
 
     def run(self):

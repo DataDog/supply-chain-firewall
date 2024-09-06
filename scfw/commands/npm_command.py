@@ -14,7 +14,7 @@ from scfw.target import InstallTarget
 
 _log = logging.getLogger(__name__)
 
-MIN_NPM_VERSION = "7.0.0"
+MIN_NPM_VERSION = version_parse("7.0.0")
 
 _UNSUPPORTED_NPM_VERSION = f"npm before v{MIN_NPM_VERSION} is not supported"
 
@@ -61,7 +61,7 @@ class NpmCommand(PackageManagerCommand):
 
         if executable:
             self._command[0] = self._executable = executable
-        if get_npm_version(self._executable) < version_parse(MIN_NPM_VERSION):
+        if get_npm_version(self._executable) < MIN_NPM_VERSION:
             raise UnsupportedVersionError(_UNSUPPORTED_NPM_VERSION)
 
     def run(self):

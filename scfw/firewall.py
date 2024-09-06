@@ -130,7 +130,7 @@ def run_firewall() -> int:
         return 0
 
     except UnsupportedVersionError as e:
-        _log.error(f"Unsupported package manager version: {e}")
+        _log.error(f"Incompatible package manager version: {e}")
         return 0
 
     except Exception as e:

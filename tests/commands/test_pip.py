@@ -1,4 +1,5 @@
 import json
+import packaging.version as version
 import pytest
 import subprocess
 import sys
@@ -13,9 +14,20 @@ TOP_PIP_PACKAGES = "top_pip_packages.txt"
 pip_list = lambda : list_installed_packages(ECOSYSTEM.PIP)
 
 INIT_PIP_STATE = pip_list()
-TEST_TARGET = select_test_install_target(read_top_packages(TOP_PIP_PACKAGES), INIT_PIP_STATE, "requests")
+TEST_TARGET = select_test_install_target(read_top_packages(TOP_PIP_PACKAGES), INIT_PIP_STATE)
+if not TEST_TARGET:
+    raise ValueError("Unable to select target pip package for testing")
 
 PIP_COMMAND_PREFIX = [sys.executable, "-m", "pip"]
+
+
+def test_pip_version_output():
+    """
+    Test that `pip --version` has the required format.
+    """
+    pip_version = subprocess.run(PIP_COMMAND_PREFIX + ["--version"], check=True, text=True, capture_output=True)
+    version_str = pip_version.stdout.split()[1]
+    version.parse(version_str)
 
 
 @pytest.mark.parametrize(

@@ -2,12 +2,21 @@
 Defines a subclass of `PackageManagerCommand` for `npm` commands.
 """
 
+import logging
 import subprocess
 from typing import Optional
 
-from scfw.command import PackageManagerCommand
+from packaging.version import InvalidVersion, Version, parse as version_parse
+
+from scfw.command import PackageManagerCommand, UnsupportedVersionError
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
+
+_log = logging.getLogger(__name__)
+
+MIN_NPM_VERSION = version_parse("7.0.0")
+
+_UNSUPPORTED_NPM_VERSION = f"npm before v{MIN_NPM_VERSION} is not supported"
 
 # The "placeDep" log lines describe a new dependency added to the
 # dependency tree being constructed by an installish command
@@ -33,7 +42,18 @@ class NpmCommand(PackageManagerCommand):
 
         Raises:
             ValueError: An invalid `npm` command was given.
+            UnsupportedVersionError:
+                An unsupported version of `npm` was used to initialize an `NpmCommand`.
         """
+        def get_npm_version(executable) -> Version:
+            try:
+                # All supported versions adhere to this format
+                npm_version_command = [executable, "--version"]
+                version_str = subprocess.run(npm_version_command, check=True, text=True, capture_output=True)
+                return version_parse(version_str.stdout.strip())
+            except InvalidVersion:
+                raise UnsupportedVersionError(_UNSUPPORTED_NPM_VERSION)
+
         if not command or command[0] != "npm":
             raise ValueError("Malformed npm command")
         self._command = command
@@ -41,6 +61,8 @@ class NpmCommand(PackageManagerCommand):
 
         if executable:
             self._command[0] = self._executable = executable
+        if get_npm_version(self._executable) < MIN_NPM_VERSION:
+            raise UnsupportedVersionError(_UNSUPPORTED_NPM_VERSION)
 
     def run(self):
         """
@@ -81,18 +103,23 @@ class NpmCommand(PackageManagerCommand):
             # This is a superset of the set of install targets
             dry_run_command = self._command + ["--dry-run", "--loglevel", "silly"]
             dry_run = subprocess.run(dry_run_command, check=True, text=True, capture_output=True)
-            dependencies = map(line_to_dependency, filter(is_place_dep_line, dry_run.stderr.split('\n')))
+            dependencies = map(line_to_dependency, filter(is_place_dep_line, dry_run.stderr.strip().split('\n')))
         except subprocess.CalledProcessError:
             # An error must have resulted from the given npm command
             # As nothing will be installed in this case, allow the command
+            _log.info("The npm command encountered an error while collecting installation targets")
             return []
 
         try:
             # List targets already installed in the npm environment
-            installed = subprocess.run([self._executable, "list"], check=True, text=True, capture_output=True).stdout
+            list_command = [self._executable, "list", "--all"]
+            installed = subprocess.run(list_command, check=True, text=True, capture_output=True).stdout
         except subprocess.CalledProcessError:
             # If this operation fails, rather than blocking, assume nothing is installed
             # This has the effect of treating all dependencies like installation targets
+            _log.warning(
+                "Failed to list installed npm packages: treating all dependencies as installation targets"
+            )
             installed = ""
 
         # The installation targets are the dependencies that are not already installed

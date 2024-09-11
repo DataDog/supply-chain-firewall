@@ -1,4 +1,4 @@
-import os
+import packaging.version as version
 import pytest
 import subprocess
 
@@ -11,7 +11,17 @@ TOP_NPM_PACKAGES = "top_npm_packages.txt"
 npm_list = lambda : list_installed_packages(ECOSYSTEM.NPM)
 
 INIT_NPM_STATE = npm_list()
-TEST_TARGET = select_test_install_target(read_top_packages(TOP_NPM_PACKAGES), INIT_NPM_STATE, "lodash")
+TEST_TARGET = select_test_install_target(read_top_packages(TOP_NPM_PACKAGES), INIT_NPM_STATE)
+if not TEST_TARGET:
+    raise ValueError("Unable to select target npm package for testing")
+
+
+def test_npm_version_output():
+    """
+    Test that `npm --version` has the required format.
+    """
+    version_str = subprocess.run(["npm", "--version"], check=True, text=True, capture_output=True)
+    version.parse(version_str.stdout.strip())
 
 
 @pytest.mark.parametrize(

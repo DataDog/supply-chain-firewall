@@ -3,14 +3,23 @@ Defines a subclass of `PackageManagerCommand` for `pip` commands.
 """
 
 import json
+import logging
 import os
 import subprocess
 import sys
 from typing import Optional
 
-from scfw.command import PackageManagerCommand
+from packaging.version import InvalidVersion, Version, parse as version_parse
+
+from scfw.command import PackageManagerCommand, UnsupportedVersionError
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
+
+_log = logging.getLogger(__name__)
+
+MIN_PIP_VERSION = version_parse("22.2")
+
+_UNSUPPORTED_PIP_VERSION = f"pip before v{MIN_PIP_VERSION} is not supported"
 
 
 class PipCommand(PackageManagerCommand):
@@ -29,6 +38,8 @@ class PipCommand(PackageManagerCommand):
 
         Raises:
             ValueError: An invalid `pip` command line was given.
+            UnsupportedVersionError:
+                An unsupported version of `pip` was used to initialize a `PipCommand`.
         """
         def get_executable() -> str:
             if (venv := os.environ.get("VIRTUAL_ENV")):
@@ -36,11 +47,25 @@ class PipCommand(PackageManagerCommand):
             else:
                 return sys.executable
 
+        def get_pip_version(executable: str) -> Version:
+            try:
+                # All supported versions adhere to this format
+                pip_version_command = [executable, "-m", "pip", "--version"]
+                pip_version = subprocess.run(pip_version_command, check=True, text=True, capture_output=True)
+                version_str = pip_version.stdout.split()[1]
+                return version_parse(version_str)
+            except IndexError:
+                raise UnsupportedVersionError(_UNSUPPORTED_PIP_VERSION)
+            except InvalidVersion:
+                raise UnsupportedVersionError(_UNSUPPORTED_PIP_VERSION)
+
         if not command or command[0] != "pip":
             raise ValueError("Malformed pip command")
         self._command = command
 
         self._executable = executable if executable else get_executable()
+        if get_pip_version(self._executable) < MIN_PIP_VERSION:
+            raise UnsupportedVersionError(_UNSUPPORTED_PIP_VERSION)
 
     def run(self):
         """
@@ -85,4 +110,5 @@ class PipCommand(PackageManagerCommand):
         except subprocess.CalledProcessError:
             # An error must have resulted from the given pip command
             # As nothing will be installed in this case, allow the command
+            _log.info("The pip command encountered an error while collecting installation targets")
             return []

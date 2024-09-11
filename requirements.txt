@@ -1,3 +1,4 @@
 datadog-api-client
+packaging
 python-dotenv
 requests

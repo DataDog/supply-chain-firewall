@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+from typing import Optional
 
 from scfw.ecosystem import ECOSYSTEM
 
@@ -22,18 +23,18 @@ def list_installed_packages(ecosystem: ECOSYSTEM) -> str:
     """
     match ecosystem:
         case ECOSYSTEM.PIP:
-            command = [sys.executable, "-m", "pip", "list"]
+            command = [sys.executable, "-m", "pip", "list", "--format", "freeze"]
         case ECOSYSTEM.NPM:
-            command = ["npm", "list"]
+            command = ["npm", "list", "--all"]
 
     p = subprocess.run(command, check=True, text=True, capture_output=True)
-    return p.stdout
+    return p.stdout.lower()
 
 
-def select_test_install_target(top_packages: set[str], installed_packages: str, default: str) -> str:
+def select_test_install_target(top_packages: set[str], installed_packages: str) -> Optional[str]:
     """
     Select a test target from `top_packages` that is not in the given installed
-    packages output.  If there are no such packages, return `default`.
+    packages output.  If there is no such package, return `None`.
 
     This allows us to be certain when testing that nothing was installed in a
     dry-run.
@@ -42,6 +43,6 @@ def select_test_install_target(top_packages: set[str], installed_packages: str, 
         while (choice := top_packages.pop()) in installed_packages:
             pass
     except KeyError:
-        choice = default
+        choice = None
 
     return choice

@@ -51,7 +51,7 @@ def test_pip_command_would_install_exact():
                 ("charset-normalizer", "3.3.2"),
                 ("idna", "3.8"),
                 ("requests", "2.32.3"),
-                ("urllib3", "2.2.2")
+                ("urllib3", "2.2.3")
             ]
         )
     )

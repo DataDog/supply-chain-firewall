@@ -57,9 +57,12 @@ class OsvVerifier(InstallTargetVerifier):
         request = requests.post(_OSV_DEV_QUERY_URL, json=query, timeout=10)
         request.raise_for_status()
 
-        if (vulns := request.json().get("vulns")):
-            osv_ids = filter(lambda id: id is not None, map(lambda vuln: vuln.get("id"), vulns))
-            message = f"An OSV.dev disclosure exists for package {target.show()}"
-            return message + ''.join(map(lambda id: f"\n  * {_OSV_DEV_URL_PREFIX}/{id}", osv_ids))
-        else:
+        if not (vulns := request.json().get("vulns")):
             return None
+
+        osv_ids = filter(lambda id: id is not None, map(lambda vuln: vuln.get("id"), vulns))
+
+        return (
+            f"An OSV.dev disclosure exists for package {target.show()}"
+            + ''.join(map(lambda id: f"\n  * {_OSV_DEV_URL_PREFIX}/{id}", osv_ids))
+        )

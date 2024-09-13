@@ -74,14 +74,17 @@ def print_findings(findings: dict[InstallTarget, list[str]]):
             The `dict` of findings for the verified installation targets returned
             by `verify_install_targets()`.
     """
+    def print_finding(finding: str):
+        for linenum, line in enumerate(finding.split('\n')):
+            if linenum == 0:
+                print(f"  - {line}")
+            else:
+                print(f"    {line}")
+
     for target, target_findings in findings.items():
         print(f"Installation target {target.show()}:")
         for finding in target_findings:
-            for linenum, line in enumerate(finding.split('\n')):
-                if linenum == 0:
-                    print(f"  - {line}")
-                else:
-                    print(f"    {line}")
+            print_finding(finding)
 
 
 def run_firewall() -> int:

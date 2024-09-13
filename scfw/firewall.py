@@ -77,7 +77,11 @@ def print_findings(findings: dict[InstallTarget, list[str]]):
     for target, target_findings in findings.items():
         print(f"Installation target {target.show()}:")
         for finding in target_findings:
-            print(f"  - {finding}")
+            for linenum, line in enumerate(finding.split('\n')):
+                if linenum == 0:
+                    print(f"  - {line}")
+                else:
+                    print(f"    {line}")
 
 
 def run_firewall() -> int:

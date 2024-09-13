@@ -65,7 +65,7 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
         # deciding whether the given target is malicious
         if target.package in manifest:
             return (
-                f"Package {target.package} has been determined to be malicious by Datadog Security Research"
+                f"Datadog Security Research has determined that package {target.package} is malicious"
             )
         else:
             return None

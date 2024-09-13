@@ -15,6 +15,8 @@ _OSV_ECOSYSTEMS = {ECOSYSTEM.PIP: "PyPI", ECOSYSTEM.NPM: "npm"}
 
 _OSV_DEV_QUERY_URL = "https://api.osv.dev/v1/query"
 
+_OSV_DEV_URL_PREFIX = "https://osv.dev/vulnerability"
+
 
 class OsvVerifier(InstallTargetVerifier):
     """
@@ -55,13 +57,12 @@ class OsvVerifier(InstallTargetVerifier):
         request = requests.post(_OSV_DEV_QUERY_URL, json=query, timeout=10)
         request.raise_for_status()
 
-        if (vulns := request.json().get("vulns")):
-            osv_id = None
-            for vuln in vulns:
-                if (osv_id := vuln.get("id")):
-                    break
-            return (
-                f"An OSV.dev disclosure for package {target.package} exists (OSVID: {osv_id if osv_id else 'Unknown'})"
-            )
-        else:
+        if not (vulns := request.json().get("vulns")):
             return None
+
+        osv_ids = filter(lambda id: id is not None, map(lambda vuln: vuln.get("id"), vulns))
+
+        return (
+            f"An OSV.dev disclosure exists for package {target.show()}"
+            + ''.join(map(lambda id: f"\n  * {_OSV_DEV_URL_PREFIX}/{id}", osv_ids))
+        )

@@ -49,12 +49,13 @@ def run_firewall() -> int:
                 f"Using installation target verifiers: [{', '.join(v.name() for v in verifiers)}]"
             )
 
-            if (findings := verify.verify_install_targets(verifiers, targets)):
+            report = verify.verify_install_targets(verifiers, targets)
+            if report.has_findings():
                 dd_log.info(
                     f"Installation was blocked while attempting to run '{' '.join(args.command)}'",
-                    extra={"targets": map(lambda x: x.show(), findings)}
+                    extra={"targets": map(lambda x: x.show(), report.targets())}
                 )
-                verify.print_findings(findings)
+                print(report.show())
                 print("\nThe installation request was blocked. No changes have been made.")
                 return 0
 

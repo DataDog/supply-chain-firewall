@@ -1,9 +1,9 @@
 import pytest
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.firewall import verify_install_targets
 from scfw.target import InstallTarget
 from scfw.verifiers.dd_verifier import DatadogMaliciousPackagesVerifier
+from scfw.verify import verify_install_targets
 
 # Create a single Datadog malicious packages verifier to use for testing
 DD_VERIFIER = DatadogMaliciousPackagesVerifier()
@@ -25,7 +25,6 @@ def test_dd_verifier_malicious(ecosystem: ECOSYSTEM):
     test_set = [
         InstallTarget(ecosystem, package, "dummy version") for package in manifest
     ]
-    findings = verify_install_targets([DD_VERIFIER], test_set)
+    report = verify_install_targets([DD_VERIFIER], test_set)
     for target in test_set:
-        assert target in findings
-        assert findings[target]
+        assert report.get_findings(target)

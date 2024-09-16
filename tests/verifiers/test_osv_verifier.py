@@ -1,9 +1,9 @@
 import pytest
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.firewall import verify_install_targets
 from scfw.target import InstallTarget
 from scfw.verifiers.osv_verifier import OsvVerifier
+from scfw.verify import verify_install_targets
 
 # Package name and version pairs from 100 randomly selected PyPI OSV.dev disclosures
 # In constructing this list, we excluded the `tensorflow` package from consideration
@@ -225,7 +225,6 @@ def test_osv_verifier_malicious(ecosystem: ECOSYSTEM):
             test_set = NPM_TEST_SET
 
     test_targets = list(map(lambda t: InstallTarget(ecosystem, t[0], t[1]), test_set))
-    findings = verify_install_targets([OsvVerifier()], test_targets)
+    report = verify_install_targets([OsvVerifier()], test_targets)
     for target in test_targets:
-        assert target in findings
-        assert findings[target]
+        assert report.get_findings(target)

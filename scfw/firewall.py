@@ -1,10 +1,7 @@
 """
-Provides the core orchestration layer for the supply-chain firewall, including
-its main routine, `run_firewall()`.
+Provides the supply-chain firewall's main routine.
 """
 
-import concurrent.futures as cf
-import itertools
 import logging
 import time
 
@@ -12,79 +9,14 @@ import scfw.cli as cli
 from scfw.command import UnsupportedVersionError
 import scfw.commands as commands
 from scfw.dd_logger import DD_LOG_NAME
-from scfw.target import InstallTarget
-from scfw.verifier import InstallTargetVerifier
 import scfw.verifiers as verifs
+import scfw.verify as verify
 
 # Firewall root logger configured to write to stderr
 _log = logging.getLogger()
 _handler = logging.StreamHandler()
 _handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
 _log.addHandler(_handler)
-
-
-def verify_install_targets(
-    verifiers: list[InstallTargetVerifier],
-    targets: list[InstallTarget]
-) -> dict[InstallTarget, list[str]]:
-    """
-    Verify a set of installation targets against a set of verifiers.
-
-    Args:
-        verifiers: The set of verifiers to use against the installation targets.
-        targers: A list of installation targets to be verified.
-
-    Returns:
-        A `dict` associating installation targets with its verification findings.
-
-        If a given target is not present as a key in the returned `dict`, there
-        were no findings for it. An empty returned `dict` indicates that no target
-        had findings, i.e., that the installation can proceed.
-    """
-    findings = {}
-
-    with cf.ThreadPoolExecutor() as executor:
-        task_results = {
-            executor.submit(lambda v, t: v.verify(t), verifier, target): (verifier.name(), target)
-            for verifier, target in itertools.product(verifiers, targets)
-        }
-        for future in cf.as_completed(task_results):
-            verifier, target = task_results[future]
-            if (finding := future.result()):
-                _log.info(f"{verifier} had findings for target {target.show()}")
-                if target not in findings:
-                    findings[target] = [finding]
-                else:
-                    findings[target].append(finding)
-            else:
-                _log.info(f"{verifier} had no findings for target {target.show()}")
-
-    _log.info(
-        f"Verification complete: {len(findings)} of {len(targets)} installation targets had findings"
-    )
-    return findings
-
-
-def print_findings(findings: dict[InstallTarget, list[str]]):
-    """
-    Print the findings accrued for targets during verification.
-
-    Args:
-        findings:
-            The `dict` of findings for the verified installation targets returned
-            by `verify_install_targets()`.
-    """
-    def print_finding(finding: str):
-        for linenum, line in enumerate(finding.split('\n')):
-            if linenum == 0:
-                print(f"  - {line}")
-            else:
-                print(f"    {line}")
-
-    for target, target_findings in findings.items():
-        print(f"Installation target {target.show()}:")
-        for finding in target_findings:
-            print_finding(finding)
 
 
 def run_firewall() -> int:
@@ -117,12 +49,12 @@ def run_firewall() -> int:
                 f"Using installation target verifiers: [{', '.join(v.name() for v in verifiers)}]"
             )
 
-            if (findings := verify_install_targets(verifiers, targets)):
+            if (findings := verify.verify_install_targets(verifiers, targets)):
                 dd_log.info(
                     f"Installation was blocked while attempting to run '{' '.join(args.command)}'",
                     extra={"targets": map(lambda x: x.show(), findings)}
                 )
-                print_findings(findings)
+                verify.print_findings(findings)
                 print("\nThe installation request was blocked. No changes have been made.")
                 return 0
 

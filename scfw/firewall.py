@@ -50,10 +50,11 @@ def run_firewall() -> int:
             )
 
             report = verify.verify_install_targets(verifiers, targets)
+
             if report.has_findings():
                 dd_log.info(
                     f"Installation was blocked while attempting to run '{' '.join(args.command)}'",
-                    extra={"targets": map(lambda x: x.show(), report.targets())}
+                    extra={"targets": map(lambda x: x.show(), report.install_targets())}
                 )
                 print(report.show())
                 print("\nThe installation request was blocked. No changes have been made.")

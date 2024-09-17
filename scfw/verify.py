@@ -28,7 +28,7 @@ class VerificationReport:
     def __contains__(self, target: InstallTarget) -> bool:
         return target in self._report
 
-    def targets(self) -> Iterator[InstallTarget]:
+    def install_targets(self) -> Iterator[InstallTarget]:
         """
         Return an iterator over the reported installation targets.
 
@@ -44,7 +44,7 @@ class VerificationReport:
         Returns:
             A `bool` indicating whether any `InstallTarget` mentioned in the report has findings.
         """
-        return any(findings != [] for _, findings in self._report.items())
+        return any(findings for _, findings in self._report.items())
 
     def get_findings(self, target: InstallTarget) -> Optional[list[str]]:
         """
@@ -136,6 +136,6 @@ def verify_install_targets(
                 _log.info(f"{verifier} had no findings for target {target.show()}")
 
     _log.info(
-        f"Verification complete: {sum(1 for _ in report.targets())} of {len(targets)} targets had findings"
+        f"Verification complete: {sum(1 for _ in report.install_targets())} of {len(targets)} targets had findings"
     )
     return report

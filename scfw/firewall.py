@@ -5,8 +5,6 @@ Provides the supply-chain firewall's main routine.
 import logging
 import time
 
-import inquirer  # type: ignore
-
 import scfw.cli as cli
 from scfw.command import UnsupportedVersionError
 import scfw.commands as commands
@@ -69,12 +67,8 @@ def run_firewall() -> int:
                     extra={"targets": map(lambda x: x.show(), warning_report.install_targets())}
                 )
                 print(warning_report.show())
-
-                confirmation = inquirer.prompt(
-                    [inquirer.Confirm("proceed", message="Proceed with installation?", default=False)]
-                )
-                if not confirmation.get("proceed"):
-                    print("\nThe installation request was cancelled. No changes have been made.")
+                if _abort_on_warning():
+                    print("The installation request was aborted. No changes have been made.")
                     return 0
 
         if args.dry_run:
@@ -94,3 +88,16 @@ def run_firewall() -> int:
     except Exception as e:
         _log.error(e)
         return 1
+
+
+def _abort_on_warning() -> bool:
+    """
+    Prompt the user for confirmation of whether or not to proceed with the
+    installation request in the case that there were `WARNING` findings.
+    """
+    try:
+        while (confirm := input("Proceed with installation? (y/N): ")) not in {'y', 'N', ''}:
+            pass
+        return confirm != 'y'
+    except Exception:
+        return True

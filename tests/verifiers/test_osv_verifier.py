@@ -2,6 +2,7 @@ import pytest
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
+from scfw.verifier import FindingSeverity
 from scfw.verifiers.osv_verifier import OsvVerifier
 from scfw.verify import verify_install_targets
 
@@ -225,6 +226,13 @@ def test_osv_verifier_malicious(ecosystem: ECOSYSTEM):
             test_set = NPM_TEST_SET
 
     test_targets = list(map(lambda t: InstallTarget(ecosystem, t[0], t[1]), test_set))
-    report = verify_install_targets([OsvVerifier()], test_targets)
+
+    reports = verify_install_targets([OsvVerifier()], test_targets)
+    critical_report = reports.get(FindingSeverity.CRITICAL)
+    warning_report = reports.get(FindingSeverity.WARNING)
+
     for target in test_targets:
-        assert report.get_findings(target)
+        assert (
+            (critical_report and critical_report.get_findings(target))
+            or (warning_report and warning_report.get_findings(target))
+        )

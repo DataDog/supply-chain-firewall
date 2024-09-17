@@ -9,7 +9,7 @@ import logging
 from typing import Iterator, Optional
 
 from scfw.target import InstallTarget
-from scfw.verifier import InstallTargetVerifier
+from scfw.verifier import FindingSeverity, InstallTargetVerifier
 
 _log = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ class VerificationReport:
 def verify_install_targets(
     verifiers: list[InstallTargetVerifier],
     targets: list[InstallTarget]
-) -> VerificationReport:
+) -> dict[FindingSeverity, VerificationReport]:
     """
     Verify a set of installation targets against a set of verifiers.
 
@@ -113,14 +113,26 @@ def verify_install_targets(
         targers: A list of installation targets to be verified.
 
     Returns:
-        A `VerificationReport` containing the findings that resulted from verifying `targets`
-        against `verifiers`.
+        A `dict[FindingSeverity, VerificationReport]` representing the severity-ranked
+        results of verification across all installation targets and verifiers.
 
-        The returned report is such that only the installation targets that had at least one
-        finding are present.  There were no findings for any member of `targets` not mentioned
-        in the report.
+        The returned `dict` is such that a given `FindingSeverity` key is present iff
+        its `VerificationReport` value has findings for some installation target.
     """
-    report = VerificationReport()
+    def record_findings(
+        reports: dict[FindingSeverity, VerificationReport],
+        target: InstallTarget,
+        result: dict[FindingSeverity, list[str]]
+    ):
+        for severity, findings in result.items():
+            if not findings:
+                continue
+            if severity not in reports:
+                reports[severity] = VerificationReport()
+            for finding in findings:
+                reports[severity].add_finding(target, finding)
+
+    reports: dict[FindingSeverity, VerificationReport] = {}
 
     with cf.ThreadPoolExecutor() as executor:
         task_results = {
@@ -129,13 +141,9 @@ def verify_install_targets(
         }
         for future in cf.as_completed(task_results):
             verifier, target = task_results[future]
-            if (finding := future.result()):
-                _log.info(f"{verifier} had findings for target {target.show()}")
-                report.add_finding(target, finding)
-            else:
-                _log.info(f"{verifier} had no findings for target {target.show()}")
+            _log.info(f"Verifier {verifier} finished verifying target {target.show()}")
+            if (result := future.result()):
+                record_findings(reports, target, result)
 
-    _log.info(
-        f"Verification complete: {sum(1 for _ in report.install_targets())} of {len(targets)} targets had findings"
-    )
-    return report
+    _log.info("Verification of installation targets complete")
+    return reports

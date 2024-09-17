@@ -3,9 +3,25 @@ Provides a base class for installation target verifiers.
 """
 
 from abc import (ABCMeta, abstractmethod)
-from typing import Optional
+from enum import Enum
 
 from scfw.target import InstallTarget
+
+
+class FindingSeverity(Enum):
+    """
+    A hierarchy of severity levels for installation target verifier findings.
+
+    Installation target verifiers attach severity levels to their findings in
+    order to direct the supply-chain firewall to take the correct action with
+    respect to blocking or warning on an installation request.
+
+    A `CRITICAL` finding causes the supply-chain firewall to block. A `WARNING`
+    finding prompts the firewall to seek confirmation from the user before
+    proceeding with the installation request.
+    """
+    CRITICAL = "CRITICAL"
+    WARNING = "WARNING"
 
 
 class InstallTargetVerifier(metaclass=ABCMeta):
@@ -27,7 +43,7 @@ class InstallTargetVerifier(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def verify(self, target: InstallTarget) -> Optional[str]:
+    def verify(self, target: InstallTarget) -> dict[FindingSeverity, list[str]]:
         """
         Verify the given installation target.
 
@@ -35,9 +51,11 @@ class InstallTargetVerifier(metaclass=ABCMeta):
             target: The installation target to verify.
 
         Returns:
-            In the case that the target is considered vulnerable or malicious
-            by the backing data source, a `str` should be returned stating
-            this and (as much as possible) describing why.  Otherwise, `None`
-            should be returned.
+            A `dict[FindingSeverity, list[str]]` containing all findings for
+            `target` provided by the backing data source, separated by severity.
+
+            Each `str` should be a short, concise summary of a single finding and
+            would ideally provide a link or handle to more information about that
+            finding for the benefit of the user.
         """
         pass

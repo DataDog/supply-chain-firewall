@@ -9,6 +9,7 @@ import scfw.cli as cli
 from scfw.command import UnsupportedVersionError
 import scfw.commands as commands
 from scfw.dd_logger import DD_LOG_NAME
+from scfw.verifier import FindingSeverity
 import scfw.verifiers as verifs
 import scfw.verify as verify
 
@@ -49,14 +50,23 @@ def run_firewall() -> int:
                 f"Using installation target verifiers: [{', '.join(v.name() for v in verifiers)}]"
             )
 
-            report = verify.verify_install_targets(verifiers, targets)
+            reports = verify.verify_install_targets(verifiers, targets)
 
-            if report.has_findings():
+            if (critical_report := reports.get(FindingSeverity.CRITICAL)):
                 dd_log.info(
                     f"Installation was blocked while attempting to run '{' '.join(args.command)}'",
-                    extra={"targets": map(lambda x: x.show(), report.install_targets())}
+                    extra={"targets": map(lambda x: x.show(), critical_report.install_targets())}
                 )
-                print(report.show())
+                print(critical_report.show())
+                print("\nThe installation request was blocked. No changes have been made.")
+                return 0
+
+            if (warning_report := reports.get(FindingSeverity.WARNING)):
+                dd_log.info(
+                    f"Installation was blocked while attempting to run '{' '.join(args.command)}'",
+                    extra={"targets": map(lambda x: x.show(), warning_report.install_targets())}
+                )
+                print(warning_report.show())
                 print("\nThe installation request was blocked. No changes have been made.")
                 return 0
 

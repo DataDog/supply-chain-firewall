@@ -2,6 +2,7 @@ import pytest
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
+from scfw.verifier import FindingSeverity
 from scfw.verifiers.dd_verifier import DatadogMaliciousPackagesVerifier
 from scfw.verify import verify_install_targets
 
@@ -25,6 +26,10 @@ def test_dd_verifier_malicious(ecosystem: ECOSYSTEM):
     test_set = [
         InstallTarget(ecosystem, package, "dummy version") for package in manifest
     ]
-    report = verify_install_targets([DD_VERIFIER], test_set)
+
+    reports = verify_install_targets([DD_VERIFIER], test_set)
+    assert reports.get(FindingSeverity.CRITICAL)
+    assert not reports.get(FindingSeverity.WARNING)
+
     for target in test_set:
-        assert report.get_findings(target)
+        assert reports[FindingSeverity.CRITICAL].get_findings(target)

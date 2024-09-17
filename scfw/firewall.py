@@ -101,3 +101,5 @@ def _abort_on_warning() -> bool:
         return confirm != 'y'
     except Exception:
         return True
+    except KeyboardInterrupt:
+        return True

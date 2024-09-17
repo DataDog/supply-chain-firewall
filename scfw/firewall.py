@@ -5,6 +5,8 @@ Provides the supply-chain firewall's main routine.
 import logging
 import time
 
+import inquirer  # type: ignore
+
 import scfw.cli as cli
 from scfw.command import UnsupportedVersionError
 import scfw.commands as commands
@@ -63,16 +65,21 @@ def run_firewall() -> int:
 
             if (warning_report := reports.get(FindingSeverity.WARNING)):
                 dd_log.info(
-                    f"Installation was blocked while attempting to run '{' '.join(args.command)}'",
+                    f"Seeking user confirmation while attempting to run '{' '.join(args.command)}'",
                     extra={"targets": map(lambda x: x.show(), warning_report.install_targets())}
                 )
                 print(warning_report.show())
-                print("\nThe installation request was blocked. No changes have been made.")
-                return 0
+
+                confirmation = inquirer.prompt(
+                    [inquirer.Confirm("proceed", message="Proceed with installation?", default=False)]
+                )
+                if not confirmation.get("proceed"):
+                    print("\nThe installation request was cancelled. No changes have been made.")
+                    return 0
 
         if args.dry_run:
             _log.info("Firewall dry-run mode enabled: command will not be run")
-            print("Dry-run: no issues found, exiting without running command.")
+            print("Dry-run: exiting without running command.")
         else:
             dd_log.info(
                 f"Running '{' '.join(args.command)}'", extra={"targets": map(lambda x: x.show(), targets)}

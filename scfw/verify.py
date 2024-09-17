@@ -37,15 +37,6 @@ class VerificationReport:
         """
         yield from self._report
 
-    def has_findings(self) -> bool:
-        """
-        Determine whether any installation target mentioned in the report has findings.
-
-        Returns:
-            A `bool` indicating whether any `InstallTarget` mentioned in the report has findings.
-        """
-        return any(findings for _, findings in self._report.items())
-
     def get_findings(self, target: InstallTarget) -> Optional[list[str]]:
         """
         Return the findings, if any, for a given installation target.

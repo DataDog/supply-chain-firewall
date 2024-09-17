@@ -72,10 +72,7 @@ class VerificationReport:
             A `str` containing the formatted verification report.
         """
         def format_line(linenum: int, line: str) -> str:
-            if linenum == 0:
-                return f"  - {line}"
-            else:
-                return f"    {line}"
+            return (f"  - {line}" if linenum == 0 else f"    {line}")
 
         def print_finding(finding: str) -> str:
             return '\n'.join(

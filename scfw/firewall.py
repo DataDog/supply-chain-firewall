@@ -99,7 +99,7 @@ def _abort_on_warning() -> bool:
         while (confirm := input("Proceed with installation? (y/N): ")) not in {'y', 'N', ''}:
             pass
         return confirm != 'y'
-    except Exception:
-        return True
     except KeyboardInterrupt:
+        return True
+    except Exception:
         return True

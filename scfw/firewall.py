@@ -42,7 +42,7 @@ def run_firewall() -> int:
 
         command = commands.get_package_manager_command(args.command, executable=args.executable)
         targets = command.would_install()
-        _log.info(f"Command would install: [{', '.join(t.show() for t in targets)}]")
+        _log.info(f"Command would install: [{', '.join(map(str, targets))}]")
 
         if targets:
             verifiers = verifs.get_install_target_verifiers()
@@ -55,18 +55,18 @@ def run_firewall() -> int:
             if (critical_report := reports.get(FindingSeverity.CRITICAL)):
                 dd_log.info(
                     f"Installation was blocked while attempting to run '{' '.join(args.command)}'",
-                    extra={"targets": map(lambda x: x.show(), critical_report.install_targets())}
+                    extra={"targets": map(str, critical_report.install_targets())}
                 )
-                print(critical_report.show())
+                print(critical_report)
                 print("\nThe installation request was blocked. No changes have been made.")
                 return 0
 
             if (warning_report := reports.get(FindingSeverity.WARNING)):
                 dd_log.info(
                     f"Seeking user confirmation while attempting to run '{' '.join(args.command)}'",
-                    extra={"targets": map(lambda x: x.show(), warning_report.install_targets())}
+                    extra={"targets": map(str, warning_report.install_targets())}
                 )
-                print(warning_report.show())
+                print(warning_report)
                 if _abort_on_warning():
                     print("The installation request was aborted. No changes have been made.")
                     return 0
@@ -76,7 +76,7 @@ def run_firewall() -> int:
             print("Dry-run: exiting without running command.")
         else:
             dd_log.info(
-                f"Running '{' '.join(args.command)}'", extra={"targets": map(lambda x: x.show(), targets)}
+                f"Running '{' '.join(args.command)}'", extra={"targets": map(str, targets)}
             )
             command.run()
         return 0

@@ -28,6 +28,31 @@ class VerificationReport:
     def __contains__(self, target: InstallTarget) -> bool:
         return target in self._report
 
+    def __str__(self) -> str:
+        """
+-        Return a human-readable version of the verification report suitable for printing
+-        and displaying to the user.
+-
+-        Returns:
+-            A `str` containing the formatted verification report.
+-        """
+        def show_line(linenum: int, line: str) -> str:
+            return (f"  - {line}" if linenum == 0 else f"    {line}")
+
+        def show_finding(finding: str) -> str:
+            return '\n'.join(
+                show_line(linenum, line) for linenum, line in enumerate(finding.split('\n'))
+            )
+
+        def show_findings(target: InstallTarget, findings: list[str]) -> str:
+            return (
+                f"Installation target {target}:\n" + '\n'.join(map(show_finding, findings))
+            )
+
+        return '\n'.join(
+            show_findings(target, findings) for target, findings in self._report.items()
+        )
+
     def install_targets(self) -> Iterator[InstallTarget]:
         """
         Return an iterator over the reported installation targets.
@@ -36,6 +61,16 @@ class VerificationReport:
             A generator object that iterates over the reported `InstallTarget`s.
         """
         yield from self._report
+
+    def findings(self) -> Iterator[tuple[InstallTarget, list[str]]]:
+        """
+        Return an iterator over the pairs of installation targets and findings
+        contained in the report.
+
+        Returns:
+            A generator object that iterates over the reports contents.
+        """
+        yield from self._report.items()
 
     def get_findings(self, target: InstallTarget) -> Optional[list[str]]:
         """
@@ -62,31 +97,6 @@ class VerificationReport:
             self._report[target] = [finding]
         else:
             self._report[target].append(finding)
-
-    def show(self) -> str:
-        """
-        Return a human-readable version of the verification report suitable for printing
-        and displaying to the user.
-
-        Returns:
-            A `str` containing the formatted verification report.
-        """
-        def format_line(linenum: int, line: str) -> str:
-            return (f"  - {line}" if linenum == 0 else f"    {line}")
-
-        def print_finding(finding: str) -> str:
-            return '\n'.join(
-                format_line(linenum, line) for linenum, line in enumerate(finding.split('\n'))
-            )
-
-        def print_findings(target: InstallTarget, findings: list[str]) -> str:
-            return (
-                f"Installation target {target.show()}:\n" + '\n'.join(map(print_finding, findings))
-            )
-
-        return '\n'.join(
-            print_findings(target, findings) for target, findings in self._report.items()
-        )
 
 
 def verify_install_targets(
@@ -119,13 +129,13 @@ def verify_install_targets(
         for future in cf.as_completed(task_results):
             verifier, target = task_results[future]
             if (findings := future.result()):
-                _log.info(f"Verifier {verifier} had findings for target {target.show()}")
+                _log.info(f"Verifier {verifier} had findings for target {target}")
                 for severity, finding in findings:
                     if severity not in reports:
                         reports[severity] = VerificationReport()
                     reports[severity].add_finding(target, finding)
             else:
-                _log.info(f"Verifier {verifier} had no findings for target {target.show()}")
+                _log.info(f"Verifier {verifier} had no findings for target {target}")
 
     _log.info("Verification of installation targets complete")
     return reports

@@ -21,7 +21,7 @@ class InstallTarget:
     package: str
     version: str
 
-    def show(self) -> str:
+    def __str__(self) -> str:
         """
         Format the `InstallTarget` package and version number as a string according
         to the conventions of its ecosystem.

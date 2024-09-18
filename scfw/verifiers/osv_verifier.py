@@ -51,13 +51,13 @@ class OsvVerifier(InstallTargetVerifier):
         """
         def mal_finding(id: str) -> str:
             return (
-                f"An OSV.dev malicious package disclosure exists for package {target.show()}:\n"
+                f"An OSV.dev malicious package disclosure exists for package {target}:\n"
                 f"  * {_OSV_DEV_URL_PREFIX}/{id}"
             )
 
         def non_mal_finding(id: str) -> str:
             return (
-                f"An OSV.dev disclosure exists for package {target.show()}:\n"
+                f"An OSV.dev disclosure exists for package {target}:\n"
                 f"  * {_OSV_DEV_URL_PREFIX}/{id}"
             )
 

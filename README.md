@@ -7,14 +7,14 @@ The supply-chain firewall is a command-line tool for preventing the installation
 
 ![scfw demo usage](images/demo.png)
 
-The firewall collects all targets that would be installed by a given `pip` or `npm` command and checks them against reputable sources of data on open source malware and vulnerabilities.  The installation is blocked when any target has been flagged by any data source.
+The firewall collects all targets that would be installed by a given `pip` or `npm` command and checks them against reputable sources of data on open source malware and vulnerabilities.  The command is automatically blocked when any data source finds that any target is malicious.  In cases where a data source reports other findings for a target, the findings are presented to the user along with a prompt confirming intent to proceed with the installation.
 
 Current data sources used are:
 
 - Datadog Security Research's public malicious packages [dataset](https://github.com/DataDog/malicious-software-packages-dataset)
 - [OSV.dev](https://osv.dev) disclosures
 
-The principal goal of the supply-chain firewall is to block 100% of installations of vulnerable or malicious packages within the purview of its data sources.
+The principal goal of the supply-chain firewall is to block 100% of installations of known-malicious packages within the purview of its data sources.
 
 ## Getting started
 
@@ -37,7 +37,7 @@ options:
 
 ### Compatibility
 
-The supply-chain firewall is compatible with `pip >= 22.2` and `npm >= 7.0`.  In keeping with its goal of blocking 100% of vulnerable or malicious package installations, the firewall will refuse to run with an incompatible version of `pip` or `npm`.  Please upgrade to or verify that you are running a compatible version of `pip` or `npm` before using this tool.
+The supply-chain firewall is compatible with `pip >= 22.2` and `npm >= 7.0`.  In keeping with its goal of blocking 100% of known-malicious package installations, the firewall will refuse to run with an incompatible version of `pip` or `npm`.  Please upgrade to or verify that you are running a compatible version of `pip` or `npm` before using this tool.
 
 ## Usage
 

@@ -1,10 +1,7 @@
 """
-Provides the core orchestration layer for the supply-chain firewall, including
-its main routine, `run_firewall()`.
+Provides the supply-chain firewall's main routine.
 """
 
-import concurrent.futures as cf
-import itertools
 import logging
 import time
 
@@ -12,79 +9,15 @@ import scfw.cli as cli
 from scfw.command import UnsupportedVersionError
 import scfw.commands as commands
 from scfw.dd_logger import DD_LOG_NAME
-from scfw.target import InstallTarget
-from scfw.verifier import InstallTargetVerifier
+from scfw.verifier import FindingSeverity
 import scfw.verifiers as verifs
+import scfw.verify as verify
 
 # Firewall root logger configured to write to stderr
 _log = logging.getLogger()
 _handler = logging.StreamHandler()
 _handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
 _log.addHandler(_handler)
-
-
-def verify_install_targets(
-    verifiers: list[InstallTargetVerifier],
-    targets: list[InstallTarget]
-) -> dict[InstallTarget, list[str]]:
-    """
-    Verify a set of installation targets against a set of verifiers.
-
-    Args:
-        verifiers: The set of verifiers to use against the installation targets.
-        targers: A list of installation targets to be verified.
-
-    Returns:
-        A `dict` associating installation targets with its verification findings.
-
-        If a given target is not present as a key in the returned `dict`, there
-        were no findings for it. An empty returned `dict` indicates that no target
-        had findings, i.e., that the installation can proceed.
-    """
-    findings = {}
-
-    with cf.ThreadPoolExecutor() as executor:
-        task_results = {
-            executor.submit(lambda v, t: v.verify(t), verifier, target): (verifier.name(), target)
-            for verifier, target in itertools.product(verifiers, targets)
-        }
-        for future in cf.as_completed(task_results):
-            verifier, target = task_results[future]
-            if (finding := future.result()):
-                _log.info(f"{verifier} had findings for target {target.show()}")
-                if target not in findings:
-                    findings[target] = [finding]
-                else:
-                    findings[target].append(finding)
-            else:
-                _log.info(f"{verifier} had no findings for target {target.show()}")
-
-    _log.info(
-        f"Verification complete: {len(findings)} of {len(targets)} installation targets had findings"
-    )
-    return findings
-
-
-def print_findings(findings: dict[InstallTarget, list[str]]):
-    """
-    Print the findings accrued for targets during verification.
-
-    Args:
-        findings:
-            The `dict` of findings for the verified installation targets returned
-            by `verify_install_targets()`.
-    """
-    def print_finding(finding: str):
-        for linenum, line in enumerate(finding.split('\n')):
-            if linenum == 0:
-                print(f"  - {line}")
-            else:
-                print(f"    {line}")
-
-    for target, target_findings in findings.items():
-        print(f"Installation target {target.show()}:")
-        for finding in target_findings:
-            print_finding(finding)
 
 
 def run_firewall() -> int:
@@ -109,7 +42,7 @@ def run_firewall() -> int:
 
         command = commands.get_package_manager_command(args.command, executable=args.executable)
         targets = command.would_install()
-        _log.info(f"Command would install: [{', '.join(t.show() for t in targets)}]")
+        _log.info(f"Command would install: [{', '.join(map(str, targets))}]")
 
         if targets:
             verifiers = verifs.get_install_target_verifiers()
@@ -117,21 +50,33 @@ def run_firewall() -> int:
                 f"Using installation target verifiers: [{', '.join(v.name() for v in verifiers)}]"
             )
 
-            if (findings := verify_install_targets(verifiers, targets)):
+            reports = verify.verify_install_targets(verifiers, targets)
+
+            if (critical_report := reports.get(FindingSeverity.CRITICAL)):
                 dd_log.info(
                     f"Installation was blocked while attempting to run '{' '.join(args.command)}'",
-                    extra={"targets": map(lambda x: x.show(), findings)}
+                    extra={"targets": map(str, critical_report.install_targets())}
                 )
-                print_findings(findings)
+                print(critical_report)
                 print("\nThe installation request was blocked. No changes have been made.")
                 return 0
 
+            if (warning_report := reports.get(FindingSeverity.WARNING)):
+                dd_log.info(
+                    f"Seeking user confirmation while attempting to run '{' '.join(args.command)}'",
+                    extra={"targets": map(str, warning_report.install_targets())}
+                )
+                print(warning_report)
+                if _abort_on_warning():
+                    print("The installation request was aborted. No changes have been made.")
+                    return 0
+
         if args.dry_run:
             _log.info("Firewall dry-run mode enabled: command will not be run")
-            print("Dry-run: no issues found, exiting without running command.")
+            print("Dry-run: exiting without running command.")
         else:
             dd_log.info(
-                f"Running '{' '.join(args.command)}'", extra={"targets": map(lambda x: x.show(), targets)}
+                f"Running '{' '.join(args.command)}'", extra={"targets": map(str, targets)}
             )
             command.run()
         return 0
@@ -143,3 +88,18 @@ def run_firewall() -> int:
     except Exception as e:
         _log.error(e)
         return 1
+
+
+def _abort_on_warning() -> bool:
+    """
+    Prompt the user for confirmation of whether or not to proceed with the
+    installation request in the case that there were `WARNING` findings.
+    """
+    try:
+        while (confirm := input("Proceed with installation? (y/N): ")) not in {'y', 'N', ''}:
+            pass
+        return confirm != 'y'
+    except KeyboardInterrupt:
+        return True
+    except Exception:
+        return True

@@ -3,13 +3,11 @@ Defines an installation target verifier that uses Datadog Security Research's
 malicious software packages dataset.
 """
 
-from typing import Optional
-
 import requests
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
-from scfw.verifier import InstallTargetVerifier
+from scfw.verifier import FindingSeverity, InstallTargetVerifier
 
 _DD_DATASET_SAMPLES_URL = "https://raw.githubusercontent.com/DataDog/malicious-software-packages-dataset/main/samples"
 
@@ -43,7 +41,7 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
         """
         return "DatadogMaliciousPackagesVerifier"
 
-    def verify(self, target: InstallTarget) -> Optional[str]:
+    def verify(self, target: InstallTarget) -> list[tuple[FindingSeverity, str]]:
         """
         Determine whether the given installation target is malicious by consulting
         the dataset's manifests.
@@ -52,8 +50,9 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
             target: The installation target to verify.
 
         Returns:
-            A `str` stating that the installation target is malicious in the case
-            that it exists in the dataset (otherwise `None`).
+            A list containing any findings for the given installation target, obtained
+            by checking for its presence in the dataset's manifests.  Only a single
+            `CRITICAL` finding to this effect is present in this case.
         """
         match target.ecosystem:
             case ECOSYSTEM.PIP:
@@ -64,8 +63,11 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
         # We take the more conservative approach of ignoring version numbers when
         # deciding whether the given target is malicious
         if target.package in manifest:
-            return (
-                f"Datadog Security Research has determined that package {target.package} is malicious"
-            )
+            return [
+                (
+                    FindingSeverity.CRITICAL,
+                    f"Datadog Security Research has determined that package {target.package} is malicious"
+                )
+            ]
         else:
-            return None
+            return []

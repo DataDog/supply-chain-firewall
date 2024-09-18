@@ -30,7 +30,7 @@ class OsvVerifier(InstallTargetVerifier):
         """
         return "OsvVerifier"
 
-    def verify(self, target: InstallTarget) -> dict[FindingSeverity, list[str]]:
+    def verify(self, target: InstallTarget) -> list[tuple[FindingSeverity, str]]:
         """
         Query an given installation target against the OSV.dev database.
 
@@ -38,12 +38,12 @@ class OsvVerifier(InstallTargetVerifier):
             target: The installation target to query.
 
         Returns:
-            A `dict[FindingSeverity, list[str]]` containing any findings for the
-            given installation target, obtained by querying for it against OSV.dev.
+            A list containing any findings for the given installation target, obtained
+            by querying for it against OSV.dev.
 
-            Any `MAL` OSV.dev disclosures are treated as `CRITICAL` findings, all
-            others are treated as `WARNING`.  *It is very important to note that
-            most but **not all** OSV.dev malicious package disclosures have `MAL` IDs.*
+            OSV.dev disclosures with `MAL` IDs are treated as `CRITICAL` findings and all
+            others are treated as `WARNING`.  *It is very important to note that most but
+            **not all** OSV.dev malicious package disclosures have `MAL` IDs.*
 
         Raises:
             requests.HTTPError:
@@ -73,16 +73,13 @@ class OsvVerifier(InstallTargetVerifier):
         request.raise_for_status()
 
         if not (vulns := request.json().get("vulns")):
-            return {}
+            return []
 
         osv_ids = set(filter(lambda id: id is not None, map(lambda vuln: vuln.get("id"), vulns)))
         mal_ids = set(filter(lambda id: id.startswith("MAL"), osv_ids))
         non_mal_ids = osv_ids - mal_ids
 
-        findings = {}
-        if mal_ids:
-            findings[FindingSeverity.CRITICAL] = [mal_finding(id) for id in mal_ids]
-        if non_mal_ids:
-            findings[FindingSeverity.WARNING] = [non_mal_finding(id) for id in non_mal_ids]
-
-        return findings
+        return (
+            [(FindingSeverity.CRITICAL, mal_finding(id)) for id in mal_ids]
+            + [(FindingSeverity.WARNING, non_mal_finding(id)) for id in non_mal_ids]
+        )

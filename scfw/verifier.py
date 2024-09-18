@@ -43,7 +43,7 @@ class InstallTargetVerifier(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def verify(self, target: InstallTarget) -> dict[FindingSeverity, list[str]]:
+    def verify(self, target: InstallTarget) -> list[tuple[FindingSeverity, str]]:
         """
         Verify the given installation target.
 
@@ -51,11 +51,12 @@ class InstallTargetVerifier(metaclass=ABCMeta):
             target: The installation target to verify.
 
         Returns:
-            A `dict[FindingSeverity, list[str]]` containing all findings for
-            `target` provided by the backing data source, separated by severity.
+            A `list[tuple[FindingSeverity, str]]` of all findings for the given
+            installation target reported by the backing data source, each tagged
+            with a severity level for the firewall's use.
 
-            Each `str` should be a short, concise summary of a single finding and
-            would ideally provide a link or handle to more information about that
+            Each `str` in this list should be a concise summary of a single finding
+            and would ideally provide a link or handle to more information about that
             finding for the benefit of the user.
         """
         pass

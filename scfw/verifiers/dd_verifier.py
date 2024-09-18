@@ -41,7 +41,7 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
         """
         return "DatadogMaliciousPackagesVerifier"
 
-    def verify(self, target: InstallTarget) -> dict[FindingSeverity, list[str]]:
+    def verify(self, target: InstallTarget) -> list[tuple[FindingSeverity, str]]:
         """
         Determine whether the given installation target is malicious by consulting
         the dataset's manifests.
@@ -50,10 +50,9 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
             target: The installation target to verify.
 
         Returns:
-            A `dict[FindingSeverity, list[str]]` containing any findings for the
-            given installation target, obtained by checking for its presence in the
-            dataset's manifests.  Only a single `CRITICAL` finding to this effect
-            is present in this case.
+            A list containing any findings for the given installation target, obtained
+            by checking for its presence in the dataset's manifests.  Only a single
+            `CRITICAL` finding to this effect is present in this case.
         """
         match target.ecosystem:
             case ECOSYSTEM.PIP:
@@ -64,10 +63,11 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
         # We take the more conservative approach of ignoring version numbers when
         # deciding whether the given target is malicious
         if target.package in manifest:
-            return {
-                FindingSeverity.CRITICAL: [
+            return [
+                (
+                    FindingSeverity.CRITICAL,
                     f"Datadog Security Research has determined that package {target.package} is malicious"
-                ]
-            }
+                )
+            ]
         else:
-            return {}
+            return []

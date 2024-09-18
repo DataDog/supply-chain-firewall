@@ -105,22 +105,11 @@ def verify_install_targets(
         results of verification across all installation targets and verifiers.
 
         The returned `dict` is such that a given `FindingSeverity` key is present iff
-        its `VerificationReport` value has findings for some installation target.
+        its `VerificationReport` value has a finding for some installation target.
+        Moreover, this finding was determined to be at that severity level by the
+        verifier that returned it.
     """
-    def record_findings(
-        reports: dict[FindingSeverity, VerificationReport],
-        target: InstallTarget,
-        result: dict[FindingSeverity, list[str]]
-    ):
-        for severity, findings in result.items():
-            if not findings:
-                continue
-            if severity not in reports:
-                reports[severity] = VerificationReport()
-            for finding in findings:
-                reports[severity].add_finding(target, finding)
-
-    reports: dict[FindingSeverity, VerificationReport] = {}
+    reports = {}
 
     with cf.ThreadPoolExecutor() as executor:
         task_results = {
@@ -129,9 +118,14 @@ def verify_install_targets(
         }
         for future in cf.as_completed(task_results):
             verifier, target = task_results[future]
-            _log.info(f"Verifier {verifier} finished verifying target {target.show()}")
-            if (result := future.result()):
-                record_findings(reports, target, result)
+            if (findings := future.result()):
+                _log.info(f"Verifier {verifier} had findings for target {target.show()}")
+                for severity, finding in findings:
+                    if severity not in reports:
+                        reports[severity] = VerificationReport()
+                    reports[severity].add_finding(target, finding)
+            else:
+                _log.info(f"Verifier {verifier} had no findings for target {target.show()}")
 
     _log.info("Verification of installation targets complete")
     return reports

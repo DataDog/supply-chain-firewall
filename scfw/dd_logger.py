@@ -40,6 +40,9 @@ class _DDLogHandler(logging.Handler):
         """
         usm_tags = {f"env:{os.getenv('DD_ENV')}", f"version:{os.getenv('DD_VERSION')}"}
 
+        if not (service := os.getenv("DD_SERVICE")):
+            service = record.__dict__.get("ecosystem", _DD_SERVICE_DEFAULT)
+
         targets = record.__dict__.get("targets", {})
         target_tags = set(map(lambda e: f"target:{e}", targets))
 
@@ -50,7 +53,7 @@ class _DDLogHandler(logging.Handler):
                     ddtags=",".join(usm_tags | target_tags),
                     hostname=socket.gethostname(),
                     message=self.format(record),
-                    service=os.getenv("DD_SERVICE"),
+                    service=service,
                 ),
             ]
         )
@@ -69,8 +72,6 @@ if os.getenv("DD_API_KEY"):
 
     if not os.getenv("DD_ENV"):
         os.environ["DD_ENV"] = _DD_ENV_DEFAULT
-    if not os.getenv("DD_SERVICE"):
-        os.environ["DD_SERVICE"] = _DD_SERVICE_DEFAULT
     if not os.getenv("DD_VERSION"):
         os.environ["DD_VERSION"] = _DD_VERSION_DEFAULT
 

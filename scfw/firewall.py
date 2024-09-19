@@ -66,7 +66,7 @@ def run_firewall() -> int:
                 if _abort_on_warning():
                     dd_log.info(
                         f"Command '{' '.join(args.command)}' was cancelled",
-                        extra={"ecosystem": ecosystem.value, "targets": map(str, critical_report.install_targets())}
+                        extra={"ecosystem": ecosystem.value, "targets": map(str, warning_report.install_targets())}
                     )
                     print("The installation request was aborted. No changes have been made.")
                     return 0
@@ -77,7 +77,7 @@ def run_firewall() -> int:
         else:
             dd_log.info(
                 f"Command '{' '.join(args.command)}' was allowed",
-                extra={"ecosystem": ecosystem.value, "targets": map(str, critical_report.install_targets())}
+                extra={"ecosystem": ecosystem.value, "targets": map(str, targets)}
             )
             command.run()
         return 0

@@ -50,6 +50,7 @@ class _DDLogHandler(logging.Handler):
         body = HTTPLog(
             [
                 HTTPLogItem(
+                    ddsource=_DD_APP_NAME,
                     ddtags=",".join(tags),
                     hostname=socket.gethostname(),
                     message=log_entry,

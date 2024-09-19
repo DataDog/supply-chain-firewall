@@ -11,18 +11,14 @@ from datadog_api_client.v2.api.logs_api import LogsApi
 from datadog_api_client.v2.model.content_encoding import ContentEncoding
 from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
-from dotenv import load_dotenv
+import dotenv
 
-
-load_dotenv()
-
-_DD_API_KEY = os.getenv("DD_API_KEY", None)
-_DD_ENV = os.getenv("DD_ENV", None)
-_DD_SERVICE = os.getenv("DD_SERVICE", None)
-_DD_VERSION = os.getenv("DD_VERSION", None)
-
-_DD_APP_NAME = "scfw"
 DD_LOG_NAME = "ddlog"
+
+_DD_SOURCE = "scfw"
+_DD_ENV_DEFAULT = "dev"
+_DD_SERVICE_DEFAULT = _DD_SOURCE
+_DD_VERSION_DEFAULT = "0.1.0"
 
 
 class _DDLogHandler(logging.Handler):
@@ -42,19 +38,19 @@ class _DDLogHandler(logging.Handler):
         Args:
             record: The log record to be forwarded.
         """
+        usm_tags = {f"env:{os.getenv('DD_ENV')}", f"version:{os.getenv('DD_VERSION')}"}
+
         targets = record.__dict__.get("targets", {})
+        target_tags = set(map(lambda e: f"target:{e}", targets))
 
-        tags = {f"env:{_DD_ENV}"} | set(map(lambda e: f"target:{e}", targets))
-
-        log_entry = self.format(record)
         body = HTTPLog(
             [
                 HTTPLogItem(
-                    ddsource=_DD_APP_NAME,
-                    ddtags=",".join(tags),
+                    ddsource=_DD_SOURCE,
+                    ddtags=",".join(usm_tags | target_tags),
                     hostname=socket.gethostname(),
-                    message=log_entry,
-                    service=_DD_SERVICE,
+                    message=self.format(record),
+                    service=os.getenv("DD_SERVICE"),
                 ),
             ]
         )
@@ -65,16 +61,18 @@ class _DDLogHandler(logging.Handler):
             api_instance.submit_log(content_encoding=ContentEncoding.DEFLATE, body=body)
 
 
-if _DD_API_KEY:
+dotenv.load_dotenv()
+
+if os.getenv("DD_API_KEY"):
     log = logging.getLogger(__name__)
     log.info("Datadog API key detected: Datadog log forwarding enabled")
 
-    if not _DD_SERVICE:
-        os.environ["DD_SERVICE"] = _DD_SERVICE = _DD_APP_NAME
-    if not _DD_ENV:
-        os.environ["DD_ENV"] = _DD_ENV = "dev"
-    if not _DD_VERSION:
-        os.environ["DD_VERSION"] = _DD_VERSION = "0.1.0"
+    if not os.getenv("DD_ENV"):
+        os.environ["DD_ENV"] = _DD_ENV_DEFAULT
+    if not os.getenv("DD_SERVICE"):
+        os.environ["DD_SERVICE"] = _DD_SERVICE_DEFAULT
+    if not os.getenv("DD_VERSION"):
+        os.environ["DD_VERSION"] = _DD_VERSION_DEFAULT
 
     ddlog = logging.getLogger(DD_LOG_NAME)
     ddlog.setLevel(logging.INFO)

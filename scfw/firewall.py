@@ -13,11 +13,11 @@ from scfw.verifier import FindingSeverity
 import scfw.verifiers as verifs
 import scfw.verify as verify
 
-_log = logging.getLogger(__name__)
+# Firewall root logger configured to write to stderr
+_log = logging.getLogger()
 _handler = logging.StreamHandler()
 _handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
 _log.addHandler(_handler)
-_log.setLevel(logging.WARNING)
 
 
 def run_firewall() -> int:

@@ -40,7 +40,7 @@ def run_firewall() -> int:
         _log.info(f"Command: '{' '.join(args.command)}'")
         _log.debug(f"Command line: {vars(args)}")
 
-        command = commands.get_package_manager_command(args.command, executable=args.executable)
+        ecosystem, command = commands.get_package_manager_command(args.command, executable=args.executable)
         targets = command.would_install()
         _log.info(f"Command would install: [{', '.join(map(str, targets))}]")
 
@@ -54,20 +54,20 @@ def run_firewall() -> int:
 
             if (critical_report := reports.get(FindingSeverity.CRITICAL)):
                 dd_log.info(
-                    f"Installation was blocked while attempting to run '{' '.join(args.command)}'",
-                    extra={"targets": map(str, critical_report.install_targets())}
+                    f"Command '{' '.join(args.command)}' was blocked",
+                    extra={"ecosystem": ecosystem.value, "targets": map(str, critical_report.install_targets())}
                 )
                 print(critical_report)
                 print("\nThe installation request was blocked. No changes have been made.")
                 return 0
 
             if (warning_report := reports.get(FindingSeverity.WARNING)):
-                dd_log.info(
-                    f"Seeking user confirmation while attempting to run '{' '.join(args.command)}'",
-                    extra={"targets": map(str, warning_report.install_targets())}
-                )
                 print(warning_report)
                 if _abort_on_warning():
+                    dd_log.info(
+                        f"Command '{' '.join(args.command)}' was aborted",
+                        extra={"ecosystem": ecosystem.value, "targets": map(str, warning_report.install_targets())}
+                    )
                     print("The installation request was aborted. No changes have been made.")
                     return 0
 
@@ -76,7 +76,8 @@ def run_firewall() -> int:
             print("Dry-run: exiting without running command.")
         else:
             dd_log.info(
-                f"Running '{' '.join(args.command)}'", extra={"targets": map(str, targets)}
+                f"Command '{' '.join(args.command)}' was allowed",
+                extra={"ecosystem": ecosystem.value, "targets": map(str, targets)}
             )
             command.run()
         return 0

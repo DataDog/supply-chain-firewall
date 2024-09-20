@@ -38,10 +38,14 @@ class _DDLogHandler(logging.Handler):
         Args:
             record: The log record to be forwarded.
         """
-        usm_tags = {f"env:{os.getenv('DD_ENV')}", f"version:{os.getenv('DD_VERSION')}"}
-
+        if not (env := os.getenv("DD_ENV")):
+            env = _DD_ENV_DEFAULT
         if not (service := os.getenv("DD_SERVICE")):
             service = record.__dict__.get("ecosystem", _DD_SERVICE_DEFAULT)
+        if not (version := os.getenv("DD_VERSION")):
+            version = _DD_VERSION_DEFAULT
+
+        usm_tags = {f"env:{env}", f"version:{version}"}
 
         targets = record.__dict__.get("targets", {})
         target_tags = set(map(lambda e: f"target:{e}", targets))
@@ -67,14 +71,6 @@ class _DDLogHandler(logging.Handler):
 dotenv.load_dotenv()
 
 if os.getenv("DD_API_KEY"):
-    log = logging.getLogger(__name__)
-    log.info("Datadog API key detected: Datadog log forwarding enabled")
-
-    if not os.getenv("DD_ENV"):
-        os.environ["DD_ENV"] = _DD_ENV_DEFAULT
-    if not os.getenv("DD_VERSION"):
-        os.environ["DD_VERSION"] = _DD_VERSION_DEFAULT
-
     ddlog = logging.getLogger(DD_LOG_NAME)
     ddlog.setLevel(logging.INFO)
     ddlog_handler = _DDLogHandler()

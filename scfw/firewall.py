@@ -13,11 +13,11 @@ from scfw.verifier import FindingSeverity
 import scfw.verifiers as verifs
 import scfw.verify as verify
 
-# Firewall root logger configured to write to stderr
-_log = logging.getLogger()
+_log = logging.getLogger(__name__)
 _handler = logging.StreamHandler()
 _handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
 _log.addHandler(_handler)
+_log.setLevel(logging.WARNING)
 
 
 def run_firewall() -> int:
@@ -65,7 +65,7 @@ def run_firewall() -> int:
                 print(warning_report)
                 if _abort_on_warning():
                     dd_log.info(
-                        f"Command '{' '.join(args.command)}' was cancelled",
+                        f"Command '{' '.join(args.command)}' was aborted",
                         extra={"ecosystem": ecosystem.value, "targets": map(str, warning_report.install_targets())}
                     )
                     print("The installation request was aborted. No changes have been made.")

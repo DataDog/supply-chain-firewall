@@ -8,10 +8,13 @@ import time
 import scfw.cli as cli
 from scfw.command import UnsupportedVersionError
 import scfw.commands as commands
-from scfw.dd_logger import DD_LOG_NAME
+from scfw.ecosystem import ECOSYSTEM
+from scfw.logger import FirewallAction, FirewallLogger
+import scfw.loggers as loggers
 from scfw.verifier import FindingSeverity
 import scfw.verifiers as verifs
 import scfw.verify as verify
+from scfw.target import InstallTarget
 
 # Firewall root logger configured to write to stderr
 _log = logging.getLogger()
@@ -34,7 +37,7 @@ def run_firewall() -> int:
             return 0
 
         _log.setLevel(args.log_level)
-        dd_log = logging.getLogger(DD_LOG_NAME)
+        logs = loggers.get_firewall_loggers()
 
         _log.info(f"Starting supply-chain firewall on {time.asctime(time.localtime())}")
         _log.info(f"Command: '{' '.join(args.command)}'")
@@ -53,9 +56,12 @@ def run_firewall() -> int:
             reports = verify.verify_install_targets(verifiers, targets)
 
             if (critical_report := reports.get(FindingSeverity.CRITICAL)):
-                dd_log.info(
-                    f"Command '{' '.join(args.command)}' was blocked",
-                    extra={"ecosystem": ecosystem.value, "targets": map(str, critical_report.install_targets())}
+                _log_all(
+                    logs,
+                    FirewallAction.Block,
+                    ecosystem,
+                    args.command,
+                    list(critical_report.install_targets())
                 )
                 print(critical_report)
                 print("\nThe installation request was blocked. No changes have been made.")
@@ -64,9 +70,12 @@ def run_firewall() -> int:
             if (warning_report := reports.get(FindingSeverity.WARNING)):
                 print(warning_report)
                 if _abort_on_warning():
-                    dd_log.info(
-                        f"Command '{' '.join(args.command)}' was aborted",
-                        extra={"ecosystem": ecosystem.value, "targets": map(str, warning_report.install_targets())}
+                    _log_all(
+                        logs,
+                        FirewallAction.Abort,
+                        ecosystem,
+                        args.command,
+                        list(warning_report.install_targets())
                     )
                     print("The installation request was aborted. No changes have been made.")
                     return 0
@@ -75,9 +84,12 @@ def run_firewall() -> int:
             _log.info("Firewall dry-run mode enabled: command will not be run")
             print("Dry-run: exiting without running command.")
         else:
-            dd_log.info(
-                f"Command '{' '.join(args.command)}' was allowed",
-                extra={"ecosystem": ecosystem.value, "targets": map(str, targets)}
+            _log_all(
+                logs,
+                FirewallAction.Allow,
+                ecosystem,
+                args.command,
+                targets
             )
             command.run()
         return 0
@@ -89,6 +101,20 @@ def run_firewall() -> int:
     except Exception as e:
         _log.error(e)
         return 1
+
+
+def _log_all(
+    logs: list[FirewallLogger],
+    action: FirewallAction,
+    ecosystem: ECOSYSTEM,
+    command: list[str],
+    targets: list[InstallTarget],
+):
+    """
+    Lorem ipsum dolor sic amet.
+    """
+    for log in logs:
+        log.log(action, ecosystem, command, targets)
 
 
 def _abort_on_warning() -> bool:

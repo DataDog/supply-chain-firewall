@@ -6,6 +6,10 @@ import logging
 import os
 import socket
 
+from scfw.ecosystem import ECOSYSTEM
+from scfw.logger import FirewallAction, FirewallLogger
+from scfw.target import InstallTarget
+
 from datadog_api_client import ApiClient, Configuration
 from datadog_api_client.v2.api.logs_api import LogsApi
 from datadog_api_client.v2.model.content_encoding import ContentEncoding
@@ -13,7 +17,7 @@ from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
 import dotenv
 
-DD_LOG_NAME = "ddlog"
+_DD_LOG_NAME = "ddlog"
 
 _DD_SOURCE = "scfw"
 _DD_ENV_DEFAULT = "dev"
@@ -68,14 +72,47 @@ class _DDLogHandler(logging.Handler):
             api_instance.submit_log(content_encoding=ContentEncoding.DEFLATE, body=body)
 
 
-dotenv.load_dotenv()
+class DDLogger(FirewallLogger):
+    """
+    Lorem ipsum dolor sic amet.
+    """
+    def __init__(self):
+        """
+        Lorem ipsum dolor sic amet.
+        """
+        LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
 
-if os.getenv("DD_API_KEY"):
-    ddlog = logging.getLogger(DD_LOG_NAME)
-    ddlog.setLevel(logging.INFO)
-    ddlog_handler = _DDLogHandler()
-    FORMAT = (
-        "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
-    )
-    ddlog_handler.setFormatter(logging.Formatter(FORMAT))
-    ddlog.addHandler(ddlog_handler)
+        dotenv.load_dotenv()
+        handler = _DDLogHandler() if os.getenv("DD_API_KEY") else logging.NullHandler()
+        handler.setFormatter(logging.Formatter(LOG_FORMAT))
+
+        ddlog = logging.getLogger(_DD_LOG_NAME)
+        ddlog.setLevel(logging.INFO)
+        ddlog.addHandler(handler)
+
+        self.logger = ddlog
+
+    def log(
+        self,
+        action: FirewallAction,
+        ecosystem: ECOSYSTEM,
+        command: list[str],
+        targets: list[InstallTarget]
+    ):
+        """
+        Lorem ipsum dolor sic amet.
+        """
+        command = ' '.join(command)
+
+        match action:
+            case FirewallAction.Allow:
+                message = f"Command '{command}' was allowed"
+            case FirewallAction.Block:
+                message = f"Command '{command}' was blocked"
+            case FirewallAction.Abort:
+                message = f"Command '{command}' was aborted"
+
+        self.logger.info(
+            message,
+            extra={"ecosystem": ecosystem.value, "targets": map(str, targets)}
+        )

@@ -17,60 +17,6 @@ from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
 import dotenv
 
-_DD_LOG_NAME = "ddlog"
-
-_DD_SOURCE = "scfw"
-_DD_ENV_DEFAULT = "dev"
-_DD_SERVICE_DEFAULT = _DD_SOURCE
-_DD_VERSION_DEFAULT = "0.1.0"
-
-
-class _DDLogHandler(logging.Handler):
-    """
-    A log handler for adding tags and forwarding firewall logs of blocked and
-    permitted package installation requests to Datadog.
-
-    In addition to USM tags, install targets are tagged with the `target` tag and included.
-    """
-    def __init__(self):
-        super().__init__()
-
-    def emit(self, record):
-        """
-        Format and send a log to Datadog.
-
-        Args:
-            record: The log record to be forwarded.
-        """
-        if not (env := os.getenv("DD_ENV")):
-            env = _DD_ENV_DEFAULT
-        if not (service := os.getenv("DD_SERVICE")):
-            service = record.__dict__.get("ecosystem", _DD_SERVICE_DEFAULT)
-        if not (version := os.getenv("DD_VERSION")):
-            version = _DD_VERSION_DEFAULT
-
-        usm_tags = {f"env:{env}", f"version:{version}"}
-
-        targets = record.__dict__.get("targets", {})
-        target_tags = set(map(lambda e: f"target:{e}", targets))
-
-        body = HTTPLog(
-            [
-                HTTPLogItem(
-                    ddsource=_DD_SOURCE,
-                    ddtags=",".join(usm_tags | target_tags),
-                    hostname=socket.gethostname(),
-                    message=self.format(record),
-                    service=service,
-                ),
-            ]
-        )
-
-        configuration = Configuration()
-        with ApiClient(configuration) as api_client:
-            api_instance = LogsApi(api_client)
-            api_instance.submit_log(content_encoding=ContentEncoding.DEFLATE, body=body)
-
 
 class DDLogger(FirewallLogger):
     """
@@ -80,13 +26,14 @@ class DDLogger(FirewallLogger):
         """
         Lorem ipsum dolor sic amet.
         """
-        LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
+        DD_LOG_NAME = "ddlog"
+        DD_LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
 
         dotenv.load_dotenv()
         handler = _DDLogHandler() if os.getenv("DD_API_KEY") else logging.NullHandler()
-        handler.setFormatter(logging.Formatter(LOG_FORMAT))
+        handler.setFormatter(logging.Formatter(DD_LOG_FORMAT))
 
-        ddlog = logging.getLogger(_DD_LOG_NAME)
+        ddlog = logging.getLogger(DD_LOG_NAME)
         ddlog.setLevel(logging.INFO)
         ddlog.addHandler(handler)
 
@@ -116,3 +63,54 @@ class DDLogger(FirewallLogger):
             message,
             extra={"ecosystem": ecosystem.value, "targets": map(str, targets)}
         )
+
+
+class _DDLogHandler(logging.Handler):
+    """
+    A log handler for adding tags and forwarding firewall logs of blocked and
+    permitted package installation requests to Datadog.
+
+    In addition to USM tags, install targets are tagged with the `target` tag and included.
+    """
+    DD_SOURCE = "scfw"
+    DD_ENV = "dev"
+    DD_VERSION = "0.1.0"
+
+    def __init__(self):
+        super().__init__()
+
+    def emit(self, record):
+        """
+        Format and send a log to Datadog.
+
+        Args:
+            record: The log record to be forwarded.
+        """
+        if not (env := os.getenv("DD_ENV")):
+            env = self.DD_ENV
+        if not (service := os.getenv("DD_SERVICE")):
+            service = record.__dict__.get("ecosystem", self.DD_SOURCE)
+        if not (version := os.getenv("DD_VERSION")):
+            version = self.DD_VERSION
+
+        usm_tags = {f"env:{env}", f"version:{version}"}
+
+        targets = record.__dict__.get("targets", {})
+        target_tags = set(map(lambda e: f"target:{e}", targets))
+
+        body = HTTPLog(
+            [
+                HTTPLogItem(
+                    ddsource=self.DD_SOURCE,
+                    ddtags=",".join(usm_tags | target_tags),
+                    hostname=socket.gethostname(),
+                    message=self.format(record),
+                    service=service,
+                ),
+            ]
+        )
+
+        configuration = Configuration()
+        with ApiClient(configuration) as api_client:
+            api_instance = LogsApi(api_client)
+            api_instance.submit_log(content_encoding=ContentEncoding.DEFLATE, body=body)

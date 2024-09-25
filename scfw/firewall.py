@@ -16,12 +16,6 @@ import scfw.verifiers as verifs
 import scfw.verify as verify
 from scfw.target import InstallTarget
 
-# Firewall root logger configured to write to stderr
-_log = logging.getLogger()
-_handler = logging.StreamHandler()
-_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
-_log.addHandler(_handler)
-
 
 def run_firewall() -> int:
     """
@@ -30,33 +24,35 @@ def run_firewall() -> int:
     Returns:
         An integer exit code (0 or 1).
     """
+    log = _global_logger()
+
     try:
         args, help = cli.parse_command_line()
         if not args.command:
             print(help)
             return 0
 
-        _log.setLevel(args.log_level)
+        log.setLevel(args.log_level)
         logs = loggers.get_firewall_loggers()
 
-        _log.info(f"Starting supply-chain firewall on {time.asctime(time.localtime())}")
-        _log.info(f"Command: '{' '.join(args.command)}'")
-        _log.debug(f"Command line: {vars(args)}")
+        log.info(f"Starting supply-chain firewall on {time.asctime(time.localtime())}")
+        log.info(f"Command: '{' '.join(args.command)}'")
+        log.debug(f"Command line: {vars(args)}")
 
         ecosystem, command = commands.get_package_manager_command(args.command, executable=args.executable)
         targets = command.would_install()
-        _log.info(f"Command would install: [{', '.join(map(str, targets))}]")
+        log.info(f"Command would install: [{', '.join(map(str, targets))}]")
 
         if targets:
             verifiers = verifs.get_install_target_verifiers()
-            _log.info(
+            log.info(
                 f"Using installation target verifiers: [{', '.join(v.name() for v in verifiers)}]"
             )
 
             reports = verify.verify_install_targets(verifiers, targets)
 
             if (critical_report := reports.get(FindingSeverity.CRITICAL)):
-                _log_all(
+                _log_firewall_action(
                     logs,
                     FirewallAction.Block,
                     ecosystem,
@@ -70,7 +66,7 @@ def run_firewall() -> int:
             if (warning_report := reports.get(FindingSeverity.WARNING)):
                 print(warning_report)
                 if _abort_on_warning():
-                    _log_all(
+                    _log_firewall_action(
                         logs,
                         FirewallAction.Abort,
                         ecosystem,
@@ -81,10 +77,10 @@ def run_firewall() -> int:
                     return 0
 
         if args.dry_run:
-            _log.info("Firewall dry-run mode enabled: command will not be run")
+            log.info("Firewall dry-run mode enabled: command will not be run")
             print("Dry-run: exiting without running command.")
         else:
-            _log_all(
+            _log_firewall_action(
                 logs,
                 FirewallAction.Allow,
                 ecosystem,
@@ -95,15 +91,28 @@ def run_firewall() -> int:
         return 0
 
     except UnsupportedVersionError as e:
-        _log.error(f"Incompatible package manager version: {e}")
+        log.error(f"Incompatible package manager version: {e}")
         return 0
 
     except Exception as e:
-        _log.error(e)
+        log.error(e)
         return 1
 
 
-def _log_all(
+def _global_logger() -> logging.Logger:
+    """
+    Lorem ipsum dolor sic amet.
+    """
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+
+    log = logging.getLogger()
+    log.addHandler(handler)
+
+    return log
+
+
+def _log_firewall_action(
     logs: list[FirewallLogger],
     action: FirewallAction,
     ecosystem: ECOSYSTEM,

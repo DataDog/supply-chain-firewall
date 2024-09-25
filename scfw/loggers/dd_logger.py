@@ -55,15 +55,13 @@ class DDLogger(FirewallLogger):
             command: The package manager command line provided to the firewall.
             targets: The installation targets relevant to firewall's action.
         """
-        command = ' '.join(command)
-
         match action:
             case FirewallAction.Allow:
-                message = f"Command '{command}' was allowed"
+                message = f"Command '{' '.join(command)}' was allowed"
             case FirewallAction.Block:
-                message = f"Command '{command}' was blocked"
+                message = f"Command '{' '.join(command)}' was blocked"
             case FirewallAction.Abort:
-                message = f"Command '{command}' was aborted"
+                message = f"Command '{' '.join(command)}' was aborted"
 
         self.logger.info(
             message,

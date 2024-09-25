@@ -24,7 +24,7 @@ def run_firewall() -> int:
     Returns:
         An integer exit code (0 or 1).
     """
-    log = _global_logger()
+    log = _root_logger()
 
     try:
         args, help = cli.parse_command_line()
@@ -99,7 +99,7 @@ def run_firewall() -> int:
         return 1
 
 
-def _global_logger() -> logging.Logger:
+def _root_logger() -> logging.Logger:
     """
     Configure the root logger and return a handle to it.
 

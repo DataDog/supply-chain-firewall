@@ -101,7 +101,10 @@ def run_firewall() -> int:
 
 def _global_logger() -> logging.Logger:
     """
-    Lorem ipsum dolor sic amet.
+    Configure the root logger and return a handle to it.
+
+    Returns:
+        A handle to the configured root logger.
     """
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
@@ -120,8 +123,16 @@ def _log_firewall_action(
     targets: list[InstallTarget],
 ):
     """
-    Lorem ipsum dolor sic amet.
+    Log a firewall action across a given set of client loggers.
+
+    Args:
+        action: The action taken by the firewall.
+        ecosystem: The ecosystem of the inspected package manager command.
+        command: The package manager command line provided to the firewall.
+        targets:
+            The installation targets relevant to firewall's action.
     """
+    # One would like to use `map` for this, but it is lazily evaluated
     for log in logs:
         log.log(action, ecosystem, command, targets)
 
@@ -130,6 +141,10 @@ def _abort_on_warning() -> bool:
     """
     Prompt the user for confirmation of whether or not to proceed with the
     installation request in the case that there were `WARNING` findings.
+
+    Returns:
+        A `bool` indicating whether the user decided to proceed with the
+        command after warning.
     """
     try:
         while (confirm := input("Proceed with installation? (y/N): ")) not in {'y', 'N', ''}:

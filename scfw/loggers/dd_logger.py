@@ -20,11 +20,11 @@ import dotenv
 
 class DDLogger(FirewallLogger):
     """
-    Lorem ipsum dolor sic amet.
+    An implementation of `FirewallLogger` for sending logs to Datadog.
     """
     def __init__(self):
         """
-        Lorem ipsum dolor sic amet.
+        Initialize a new `DDLogger`.
         """
         DD_LOG_NAME = "ddlog"
         DD_LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
@@ -47,7 +47,13 @@ class DDLogger(FirewallLogger):
         targets: list[InstallTarget]
     ):
         """
-        Lorem ipsum dolor sic amet.
+        Receive and log data about a completed firewall run.
+
+        Args:
+            action: The action taken by the firewall.
+            ecosystem: The ecosystem of the inspected package manager command.
+            command: The package manager command line provided to the firewall.
+            targets: The installation targets relevant to firewall's action.
         """
         command = ' '.join(command)
 

@@ -68,18 +68,23 @@ class OsvVerifier(InstallTargetVerifier):
                 "ecosystem": _OSV_ECOSYSTEMS[target.ecosystem]
             }
         }
-        # The OSV.dev API is sometimes quite slow, hence the generous timeout
-        request = requests.post(_OSV_DEV_QUERY_URL, json=query, timeout=10)
-        request.raise_for_status()
 
-        if not (vulns := request.json().get("vulns")):
-            return []
+        try:
+            # The OSV.dev API is sometimes quite slow, hence the generous timeout
+            request = requests.post(_OSV_DEV_QUERY_URL, json=query, timeout=10)
+            request.raise_for_status()
 
-        osv_ids = set(filter(lambda id: id is not None, map(lambda vuln: vuln.get("id"), vulns)))
-        mal_ids = set(filter(lambda id: id.startswith("MAL"), osv_ids))
-        non_mal_ids = osv_ids - mal_ids
+            if not (vulns := request.json().get("vulns")):
+                return []
 
-        return (
-            [(FindingSeverity.CRITICAL, mal_finding(id)) for id in mal_ids]
-            + [(FindingSeverity.WARNING, non_mal_finding(id)) for id in non_mal_ids]
-        )
+            osv_ids = set(filter(lambda id: id is not None, map(lambda vuln: vuln.get("id"), vulns)))
+            mal_ids = set(filter(lambda id: id.startswith("MAL"), osv_ids))
+            non_mal_ids = osv_ids - mal_ids
+
+            return (
+                [(FindingSeverity.CRITICAL, mal_finding(id)) for id in mal_ids]
+                + [(FindingSeverity.WARNING, non_mal_finding(id)) for id in non_mal_ids]
+            )
+
+        except requests.exceptions.RequestException as e:
+            return [(FindingSeverity.WARNING, f"Target verification failed: {e}")]

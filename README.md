@@ -20,9 +20,15 @@ The principal goal of the supply-chain firewall is to block 100% of installation
 
 ### Installation
 
-Clone the repository, `cd` into the downloaded directory and run `make install`.  This will install the `scfw` command-line program into your global Python environment.  If desired, this can be done inside a `virtualenv`.
+Clone the repository and run `make install`.  This will install the `scfw` command-line program into your global Python environment.  If desired, this can be done inside a `virtualenv`.
 
+```bash
+git clone https://github.com/DataDog/supply-chain-firewall.git
+cd supply-chain-firewall
+make install
 ```
+
+```bash
 $ scfw -h
 usage: scfw [options] COMMAND
 

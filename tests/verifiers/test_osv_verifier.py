@@ -236,15 +236,15 @@ def test_osv_verifier_malicious(ecosystem: ECOSYSTEM):
 
     for target, has_critical, has_warning in test_set:
         if has_critical:
-            assert (critical_report and critical_report.get_findings(target))
+            assert (critical_report and critical_report.get(target))
         else:
             assert (
-                not (critical_report and critical_report.get_findings(target))
+                not (critical_report and critical_report.get(target))
             )
 
         if has_warning:
-            assert (warning_report and warning_report.get_findings(target))
+            assert (warning_report and warning_report.get(target))
         else:
             assert (
-                not (warning_report and warning_report.get_findings(target))
+                not (warning_report and warning_report.get(target))
             )

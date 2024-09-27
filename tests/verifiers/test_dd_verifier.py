@@ -28,8 +28,8 @@ def test_dd_verifier_malicious(ecosystem: ECOSYSTEM):
     ]
 
     reports = verify_install_targets([DD_VERIFIER], test_set)
-    assert reports.get(FindingSeverity.CRITICAL)
+    assert (critical_report := reports.get(FindingSeverity.CRITICAL))
     assert not reports.get(FindingSeverity.WARNING)
 
     for target in test_set:
-        assert reports[FindingSeverity.CRITICAL].get_findings(target)
+        assert critical_report.get(target)

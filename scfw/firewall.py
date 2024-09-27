@@ -57,21 +57,21 @@ def run_firewall() -> int:
                     FirewallAction.Block,
                     ecosystem,
                     args.command,
-                    list(critical_report.install_targets())
+                    list(critical_report)
                 )
-                print(critical_report)
+                print(verify.show_verification_report(critical_report))
                 print("\nThe installation request was blocked. No changes have been made.")
                 return 0
 
             if (warning_report := reports.get(FindingSeverity.WARNING)):
-                print(warning_report)
+                print(verify.show_verification_report(warning_report))
                 if _abort_on_warning():
                     _log_firewall_action(
                         logs,
                         FirewallAction.Abort,
                         ecosystem,
                         args.command,
-                        list(warning_report.install_targets())
+                        list(warning_report)
                     )
                     print("The installation request was aborted. No changes have been made.")
                     return 0

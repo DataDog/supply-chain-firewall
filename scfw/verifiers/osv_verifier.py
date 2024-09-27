@@ -3,18 +3,20 @@ Defines an installation target verifier that uses OSV.dev's database of vulnerab
 and malicious open source software packages.
 """
 
+import logging
+
 import requests
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 from scfw.verifier import FindingSeverity, InstallTargetVerifier
 
+_log = logging.getLogger(__name__)
+
 _OSV_ECOSYSTEMS = {ECOSYSTEM.PIP: "PyPI", ECOSYSTEM.NPM: "npm"}
 
 _OSV_DEV_QUERY_URL = "https://api.osv.dev/v1/query"
-
 _OSV_DEV_VULN_URL_PREFIX = "https://osv.dev/vulnerability"
-
 _OSV_DEV_LIST_URL_PREFIX = "https://osv.dev/list"
 
 
@@ -96,4 +98,5 @@ class OsvVerifier(InstallTargetVerifier):
             )
 
         except requests.exceptions.RequestException as e:
+            _log.warning(f"Failed to query OSV.dev API: returning WARNING finding for target {target}")
             return [(FindingSeverity.WARNING, error_message(str(e)))]

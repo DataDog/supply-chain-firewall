@@ -13,7 +13,9 @@ _OSV_ECOSYSTEMS = {ECOSYSTEM.PIP: "PyPI", ECOSYSTEM.NPM: "npm"}
 
 _OSV_DEV_QUERY_URL = "https://api.osv.dev/v1/query"
 
-_OSV_DEV_URL_PREFIX = "https://osv.dev/vulnerability"
+_OSV_DEV_VULN_URL_PREFIX = "https://osv.dev/vulnerability"
+
+_OSV_DEV_LIST_URL_PREFIX = "https://osv.dev/list"
 
 
 class OsvVerifier(InstallTargetVerifier):
@@ -52,13 +54,20 @@ class OsvVerifier(InstallTargetVerifier):
         def mal_finding(id: str) -> str:
             return (
                 f"An OSV.dev malicious package disclosure exists for package {target}:\n"
-                f"  * {_OSV_DEV_URL_PREFIX}/{id}"
+                f"  * {_OSV_DEV_VULN_URL_PREFIX}/{id}"
             )
 
         def non_mal_finding(id: str) -> str:
             return (
                 f"An OSV.dev disclosure exists for package {target}:\n"
-                f"  * {_OSV_DEV_URL_PREFIX}/{id}"
+                f"  * {_OSV_DEV_VULN_URL_PREFIX}/{id}"
+            )
+
+        def error_message(e: str) -> str:
+            url = f"{_OSV_DEV_LIST_URL_PREFIX}?q={target.package}&ecosystem={_OSV_ECOSYSTEMS[target.ecosystem]}"
+            return (
+                f"Target verification failed: {e}.\n"
+                f"Consider checking {url} for advisories before proceeding."
             )
 
         query = {
@@ -87,4 +96,4 @@ class OsvVerifier(InstallTargetVerifier):
             )
 
         except requests.exceptions.RequestException as e:
-            return [(FindingSeverity.WARNING, f"Target verification failed: {e}")]
+            return [(FindingSeverity.WARNING, error_message(str(e)))]

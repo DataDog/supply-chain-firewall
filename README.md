@@ -28,6 +28,7 @@ cd supply-chain-firewall
 make install
 ```
 
+To check whether the installation succeeded, run the following command.  You should see the help message output below.
 ```bash
 $ scfw -h
 usage: scfw [options] COMMAND

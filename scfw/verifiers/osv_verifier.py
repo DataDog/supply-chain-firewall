@@ -68,8 +68,10 @@ class OsvVerifier(InstallTargetVerifier):
         def error_message(e: str) -> str:
             url = f"{_OSV_DEV_LIST_URL_PREFIX}?q={target.package}&ecosystem={_OSV_ECOSYSTEMS[target.ecosystem]}"
             return (
-                f"Target verification failed: {e}.\n"
-                f"Consider checking {url} for advisories before proceeding."
+                f"Failed to verify target against OSV.dev: {e if e else 'An unspecified error occurred'}.\n"
+                f"Before proceeding, please check for OSV.dev advisories related to this target.\n"
+                f"DO NOT PROCEED if it has an advisory with a MAL ID: it is very likely malicious.\n"
+                f"  * {url}"
             )
 
         query = {

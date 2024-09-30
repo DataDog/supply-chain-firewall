@@ -79,7 +79,7 @@ jobs:
       - name: Test firewall npm integration
         run: make test-npm
 
-  npm-integration-10.x:
+  npm-integration-10x:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

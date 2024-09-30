@@ -53,12 +53,8 @@ jobs:
       - name: Test firewall pip integration
         run: make test-pip
 
-  npm-integration:
+  npm-integration-10.x:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: ["15.x", "16.x", "17.x", "18.x", "19.x", "20.x", "21.x", "22.x"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python 3.10
@@ -72,12 +68,17 @@ jobs:
           pip install -r requirements-dev.txt
       - name: Install supply-chain firewall
         run: pip install .
-      - name: Install Node.js v${{ matrix.node-version }}
+      - name: Install Node.js v22.0.0
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: "22.0.0"
       - name: Test firewall npm integration
-        run: make test-npm
+        run: |
+          for version in 10.0 10.1 10.2 10.3 10.4 10.5 10.6 10.7 10.8; do
+            npm install -g npm@$version
+            npm -v
+            make test-npm
+          done
 
   verifiers:
     runs-on: ubuntu-latest

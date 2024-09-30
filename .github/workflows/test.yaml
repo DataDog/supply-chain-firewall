@@ -76,11 +76,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "15.0.0"
-      - name: Test firewall npm integration
+      - name: Test firewall npm v7.x integration
         run: |
+          # Need to install this separately, known issue with npm v7.x
           npm install -g agentkeepalive
           npm install -g npm@${{ matrix.npm-version }}
-          echo "npm version:" $(npm -v)
           make test-npm
 
   npm-integration-8x:
@@ -106,10 +106,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "16.0.0"
-      - name: Test firewall npm integration
+      - name: Test firewall npm v8.x integration
         run: |
           npm install -g npm@${{ matrix.npm-version }}
-          echo "npm version:" $(npm -v)
           make test-npm
 
   npm-integration-9x:
@@ -135,10 +134,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "19.0.0"
-      - name: Test firewall npm integration
+      - name: Test firewall npm v9.x integration
         run: |
           npm install -g npm@${{ matrix.npm-version }}
-          echo "npm version:" $(npm -v)
           make test-npm
 
   npm-integration-10x:
@@ -164,10 +162,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22.0.0"
-      - name: Test firewall npm integration
+      - name: Test firewall npm v10.x integration
         run: |
           npm install -g npm@${{ matrix.npm-version }}
-          echo "npm version:" $(npm -v)
           make test-npm
 
   verifiers:

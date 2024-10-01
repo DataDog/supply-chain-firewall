@@ -200,7 +200,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
       - name: Test firewall npm v${{ matrix.npm-version }} integration
         run: |
-          if [ ${{ matrix.node-version }} = "15.0.0" ]; then
+          if [ "${{ matrix.node-version }}" = "15.0.0" ]; then
             # Known issue on npm v7.x: need to first install this manually
             npm install -g agentkeepalive
           fi

@@ -54,6 +54,7 @@ jobs:
         run: make test-pip
 
   npm-integration:
+    name: npm-integration (${{ matrix.npm-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -64,6 +65,122 @@ jobs:
             npm-version: "7.1"
           - node-version: "15.0.0"
             npm-version: "7.2"
+          - node-version: "15.0.0"
+            npm-version: "7.3"
+          - node-version: "15.0.0"
+            npm-version: "7.4"
+          - node-version: "15.0.0"
+            npm-version: "7.5"
+          - node-version: "15.0.0"
+            npm-version: "7.6"
+          - node-version: "15.0.0"
+            npm-version: "7.7"
+          - node-version: "15.0.0"
+            npm-version: "7.8"
+          - node-version: "15.0.0"
+            npm-version: "7.9"
+          - node-version: "15.0.0"
+            npm-version: "7.10"
+          - node-version: "15.0.0"
+            npm-version: "7.11"
+          - node-version: "15.0.0"
+            npm-version: "7.12"
+          - node-version: "15.0.0"
+            npm-version: "7.13"
+          - node-version: "15.0.0"
+            npm-version: "7.14"
+          - node-version: "15.0.0"
+            npm-version: "7.15"
+          - node-version: "15.0.0"
+            npm-version: "7.16"
+          - node-version: "15.0.0"
+            npm-version: "7.17"
+          - node-version: "15.0.0"
+            npm-version: "7.18"
+          - node-version: "15.0.0"
+            npm-version: "7.19"
+          - node-version: "15.0.0"
+            npm-version: "7.20"
+          - node-version: "15.0.0"
+            npm-version: "7.21"
+          - node-version: "15.0.0"
+            npm-version: "7.22"
+          - node-version: "15.0.0"
+            npm-version: "7.23"
+          - node-version: "15.0.0"
+            npm-version: "7.24"
+          - node-version: "16.0.0"
+            npm-version: "8.0"
+          - node-version: "16.0.0"
+            npm-version: "8.1"
+          - node-version: "16.0.0"
+            npm-version: "8.2"
+          - node-version: "16.0.0"
+            npm-version: "8.3"
+          - node-version: "16.0.0"
+            npm-version: "8.4"
+          - node-version: "16.0.0"
+            npm-version: "8.5"
+          - node-version: "16.0.0"
+            npm-version: "8.6"
+          - node-version: "16.0.0"
+            npm-version: "8.7"
+          - node-version: "16.0.0"
+            npm-version: "8.8"
+          - node-version: "16.0.0"
+            npm-version: "8.9"
+          - node-version: "16.0.0"
+            npm-version: "8.10"
+          - node-version: "16.0.0"
+            npm-version: "8.11"
+          - node-version: "16.0.0"
+            npm-version: "8.12"
+          - node-version: "16.0.0"
+            npm-version: "8.13"
+          - node-version: "16.0.0"
+            npm-version: "8.14"
+          - node-version: "16.0.0"
+            npm-version: "8.15"
+          - node-version: "16.0.0"
+            npm-version: "8.16"
+          - node-version: "19.0.0"
+            npm-version: "9.0"
+          - node-version: "19.0.0"
+            npm-version: "9.1"
+          - node-version: "19.0.0"
+            npm-version: "9.2"
+          - node-version: "19.0.0"
+            npm-version: "9.3"
+          - node-version: "19.0.0"
+            npm-version: "9.4"
+          - node-version: "19.0.0"
+            npm-version: "9.5"
+          - node-version: "19.0.0"
+            npm-version: "9.6"
+          - node-version: "19.0.0"
+            npm-version: "9.7"
+          - node-version: "19.0.0"
+            npm-version: "9.8"
+          - node-version: "19.0.0"
+            npm-version: "9.9"
+          - node-version: "22.0.0"
+            npm-version: "10.0"
+          - node-version: "22.0.0"
+            npm-version: "10.1"
+          - node-version: "22.0.0"
+            npm-version: "10.2"
+          - node-version: "22.0.0"
+            npm-version: "10.3"
+          - node-version: "22.0.0"
+            npm-version: "10.4"
+          - node-version: "22.0.0"
+            npm-version: "10.5"
+          - node-version: "22.0.0"
+            npm-version: "10.6"
+          - node-version: "22.0.0"
+            npm-version: "10.7"
+          - node-version: "22.0.0"
+            npm-version: "10.8"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python 3.10
@@ -84,123 +201,9 @@ jobs:
       - name: Test firewall npm v${{ matrix.npm-version }} integration
         run: |
           if [ ${{ matrix.node-version }} = "15.0.0" ]; then
-            # Known issue for npm v7.x
+            # Known issue on npm v7.x: need to first install this manually
             npm install -g agentkeepalive
           fi
-          npm install -g npm@${{ matrix.npm-version }}
-          make test-npm
-
-  npm-integration-7x:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        npm-version: ["7.0", "7.1", "7.2", "7.3", "7.4", "7.5", "7.6", "7.7", "7.8", "7.9", "7.10", "7.11", "7.12", "7.13", "7.14", "7.15", "7.16", "7.17", "7.18", "7.19", "7.20", "7.21", "7.22", "7.23", "7.24"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
-      - name: Install supply-chain firewall
-        run: pip install .
-      - name: Install Node.js v15.0.0
-        uses: actions/setup-node@v4
-        with:
-          node-version: "15.0.0"
-      - name: Test firewall npm v7.x integration
-        run: |
-          # Need to install this separately, known issue with npm v7.x
-          npm install -g agentkeepalive
-          npm install -g npm@${{ matrix.npm-version }}
-          make test-npm
-
-  npm-integration-8x:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        npm-version: ["8.0", "8.1", "8.2", "8.3", "8.4", "8.5", "8.6", "8.7", "8.8", "8.9", "8.10", "8.11", "8.12", "8.13", "8.14", "8.15", "8.16"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
-      - name: Install supply-chain firewall
-        run: pip install .
-      - name: Install Node.js v16.0.0
-        uses: actions/setup-node@v4
-        with:
-          node-version: "16.0.0"
-      - name: Test firewall npm v8.x integration
-        run: |
-          npm install -g npm@${{ matrix.npm-version }}
-          make test-npm
-
-  npm-integration-9x:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        npm-version: ["9.0", "9.1", "9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8", "9.9"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
-      - name: Install supply-chain firewall
-        run: pip install .
-      - name: Install Node.js v19.0.0
-        uses: actions/setup-node@v4
-        with:
-          node-version: "19.0.0"
-      - name: Test firewall npm v9.x integration
-        run: |
-          npm install -g npm@${{ matrix.npm-version }}
-          make test-npm
-
-  npm-integration-10x:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        npm-version: ["10.0", "10.1", "10.2", "10.3", "10.4", "10.5", "10.6", "10.7", "10.8"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
-      - name: Install supply-chain firewall
-        run: pip install .
-      - name: Install Node.js v22.0.0
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22.0.0"
-      - name: Test firewall npm v10.x integration
-        run: |
           npm install -g npm@${{ matrix.npm-version }}
           make test-npm
 

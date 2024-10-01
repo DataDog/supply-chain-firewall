@@ -53,6 +53,43 @@ jobs:
       - name: Test firewall pip integration
         run: make test-pip
 
+  npm-integration:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - node-version: "15.0.0"
+            npm-version: "7.0"
+          - node-version: "15.0.0"
+            npm-version: "7.1"
+          - node-version: "15.0.0"
+            npm-version: "7.2"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      - name: Install supply-chain firewall
+        run: pip install .
+      - name: Install Node.js v${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Test firewall npm v${{ matrix.npm-version }} integration
+        run: |
+          if [ ${{ matrix.node-version }} = "15.0.0" ]; then
+            # Known issue for npm v7.x
+            npm install -g agentkeepalive
+          fi
+          npm install -g npm@${{ matrix.npm-version }}
+          make test-npm
+
   npm-integration-7x:
     runs-on: ubuntu-latest
     strategy:

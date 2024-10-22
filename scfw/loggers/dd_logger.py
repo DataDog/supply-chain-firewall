@@ -118,3 +118,13 @@ class _DDLogHandler(logging.Handler):
         with ApiClient(configuration) as api_client:
             api_instance = LogsApi(api_client)
             api_instance.submit_log(content_encoding=ContentEncoding.DEFLATE, body=body)
+
+
+def load_logger() -> FirewallLogger:
+    """
+    Export `DDLogger` for discovery by the firewall.
+
+    Returns:
+        A `DDLogger` for use in a run of the supply chain firewall.
+    """
+    return DDLogger()

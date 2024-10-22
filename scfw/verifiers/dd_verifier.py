@@ -71,3 +71,13 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
             ]
         else:
             return []
+
+
+def load_verifier() -> InstallTargetVerifier:
+    """
+    Export `DatadogMaliciousPackagesVerifier` for discovery by the firewall.
+
+    Returns:
+        A `DatadogMaliciousPackagesVerifier` for use in a run of the supply chain firewall.
+    """
+    return DatadogMaliciousPackagesVerifier()

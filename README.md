@@ -74,6 +74,8 @@ The supply-chain firewall can optionally send logs of blocked and successful ins
 
 To opt in, set the environment variable `DD_API_KEY` to your Datadog API key, either directly in your shell environment or in a `.env` file in the current working directory.
 
+Users may also implement custom loggers for use with the firewall.  Consult the API documentation for details.
+
 ## Development
 
 To set up for testing and development, create a fresh `virtualenv`, activate it and run `make install-dev`.  This will install `scfw` and the development dependencies.

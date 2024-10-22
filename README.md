@@ -42,6 +42,8 @@ options:
   --dry-run          Verify any installation targets but do not run the package manager command
   --log-level LEVEL  Desired logging level (default: WARNING, options: DEBUG, INFO, WARNING, ERROR)
   --executable PATH  Python or npm executable to use for running commands (default: environmentally determined)
+  --verifiers PATH   Directory from which installation target verifiers should be sourced (default: scfw/verifiers)
+  --loggers PATH     Directory from which loggers should be sourced (default: scfw/loggers)
 ```
 
 ### Compatibility

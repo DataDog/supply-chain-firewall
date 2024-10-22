@@ -33,7 +33,7 @@ def run_firewall() -> int:
             return 0
 
         log.setLevel(args.log_level)
-        logs = loggers.get_firewall_loggers()
+        logs = loggers.get_firewall_loggers(args.loggers)
 
         log.info(f"Starting supply-chain firewall on {time.asctime(time.localtime())}")
         log.info(f"Command: '{' '.join(args.command)}'")
@@ -44,7 +44,7 @@ def run_firewall() -> int:
         log.info(f"Command would install: [{', '.join(map(str, targets))}]")
 
         if targets:
-            verifiers = verifs.get_install_target_verifiers()
+            verifiers = verifs.get_install_target_verifiers(args.verifiers)
             log.info(
                 f"Using installation target verifiers: [{', '.join(v.name() for v in verifiers)}]"
             )

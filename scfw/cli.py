@@ -57,6 +57,22 @@ def _cli() -> ArgumentParser:
         help="Python or npm executable to use for running commands (default: environmentally determined)"
     )
 
+    parser.add_argument(
+        "--verifiers",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Directory from which installation target verifiers should be sourced (default: scfw/verifiers)"
+    )
+
+    parser.add_argument(
+        "--loggers",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Directory from which loggers should be sourced (default: scfw/loggers)"
+    )
+
     return parser
 
 

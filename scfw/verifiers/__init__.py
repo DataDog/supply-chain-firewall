@@ -17,31 +17,35 @@ def load_verifier() -> InstallTargetVerifier
 ```
 
 This `load_verifier` function should return an instance of the custom verifier
-for the firewall's use. The module may then be placed in the same directory as
-this source file for runtime import.
+for the firewall's use. The module may then be placed in the directory configured
+on the command line (in this directory otherwise) from which verifiers should be
+sourced for runtime import.
 """
 
 import importlib
 import logging
 import os
 import pkgutil
+from typing import Optional
 
 from scfw.verifier import InstallTargetVerifier
 
 _log = logging.getLogger(__name__)
 
 
-def get_install_target_verifiers() -> list[InstallTargetVerifier]:
+def get_install_target_verifiers(source: Optional[str]) -> list[InstallTargetVerifier]:
     """
     Return the currently discoverable set of installation target verifiers.
+
+    Args:
+        source: An optional directory from which to source verifiers.
 
     Returns:
         A list of the discovered installation target verifiers.
     """
     verifiers = []
 
-    # TODO(ikretz): Allow the user to configure this directory
-    for _, module, _ in pkgutil.iter_modules([os.path.dirname(__file__)]):
+    for _, module, _ in pkgutil.iter_modules([source if source else os.path.dirname(__file__)]):
         try:
             verifier = importlib.import_module(module).load_verifier()
             verifiers.append(verifier)

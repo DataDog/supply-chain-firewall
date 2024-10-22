@@ -46,8 +46,8 @@ def get_install_target_verifiers() -> list[InstallTargetVerifier]:
             verifier = importlib.import_module(module).load_verifier()
             verifiers.append(verifier)
         except ModuleNotFoundError:
-            log.warning(f"Failed to load module {module} while collecting installation target verifiers")
+            _log.warning(f"Failed to load module {module} while collecting installation target verifiers")
         except AttributeError:
-            log.warning(f"Module {module} does not export an installation target verifier")
+            _log.warning(f"Module {module} does not export an installation target verifier")
 
     return verifiers

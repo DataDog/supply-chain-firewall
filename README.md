@@ -9,10 +9,12 @@ The supply-chain firewall is a command-line tool for preventing the installation
 
 The firewall collects all targets that would be installed by a given `pip` or `npm` command and checks them against reputable sources of data on open source malware and vulnerabilities.  The command is automatically blocked when any data source finds that any target is malicious.  In cases where a data source reports other findings for a target, the findings are presented to the user along with a prompt confirming intent to proceed with the installation.
 
-Current data sources used are:
+Default data sources include:
 
 - Datadog Security Research's public malicious packages [dataset](https://github.com/DataDog/malicious-software-packages-dataset)
 - [OSV.dev](https://osv.dev) disclosures
+
+Users may also implement verifiers for alternative data sources. Consult the API documentation for details.
 
 The principal goal of the supply-chain firewall is to block 100% of installations of known-malicious packages within the purview of its data sources.
 

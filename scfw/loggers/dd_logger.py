@@ -17,56 +17,8 @@ from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
 import dotenv
 
-
-class DDLogger(FirewallLogger):
-    """
-    An implementation of `FirewallLogger` for sending logs to Datadog.
-    """
-    def __init__(self):
-        """
-        Initialize a new `DDLogger`.
-        """
-        DD_LOG_NAME = "ddlog"
-        DD_LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
-
-        dotenv.load_dotenv()
-        handler = _DDLogHandler() if os.getenv("DD_API_KEY") else logging.NullHandler()
-        handler.setFormatter(logging.Formatter(DD_LOG_FORMAT))
-
-        ddlog = logging.getLogger(DD_LOG_NAME)
-        ddlog.setLevel(logging.INFO)
-        ddlog.addHandler(handler)
-
-        self.logger = ddlog
-
-    def log(
-        self,
-        action: FirewallAction,
-        ecosystem: ECOSYSTEM,
-        command: list[str],
-        targets: list[InstallTarget]
-    ):
-        """
-        Receive and log data about a completed firewall run.
-
-        Args:
-            action: The action taken by the firewall.
-            ecosystem: The ecosystem of the inspected package manager command.
-            command: The package manager command line provided to the firewall.
-            targets: The installation targets relevant to firewall's action.
-        """
-        match action:
-            case FirewallAction.Allow:
-                message = f"Command '{' '.join(command)}' was allowed"
-            case FirewallAction.Block:
-                message = f"Command '{' '.join(command)}' was blocked"
-            case FirewallAction.Abort:
-                message = f"Command '{' '.join(command)}' was aborted"
-
-        self.logger.info(
-            message,
-            extra={"ecosystem": ecosystem.value, "targets": map(str, targets)}
-        )
+_DD_LOG_NAME = "ddlog"
+_DD_LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
 
 
 class _DDLogHandler(logging.Handler):
@@ -118,6 +70,56 @@ class _DDLogHandler(logging.Handler):
         with ApiClient(configuration) as api_client:
             api_instance = LogsApi(api_client)
             api_instance.submit_log(content_encoding=ContentEncoding.DEFLATE, body=body)
+
+
+# Configure a single logging handle for all `DDLogger` instances to share
+dotenv.load_dotenv()
+_handler = _DDLogHandler() if os.getenv("DD_API_KEY") else logging.NullHandler()
+_handler.setFormatter(logging.Formatter(_DD_LOG_FORMAT))
+
+_ddlog = logging.getLogger(_DD_LOG_NAME)
+_ddlog.setLevel(logging.INFO)
+_ddlog.addHandler(_handler)
+
+
+class DDLogger(FirewallLogger):
+    """
+    An implementation of `FirewallLogger` for sending logs to Datadog.
+    """
+    def __init__(self):
+        """
+        Initialize a new `DDLogger`.
+        """
+        self.logger = _ddlog
+
+    def log(
+        self,
+        action: FirewallAction,
+        ecosystem: ECOSYSTEM,
+        command: list[str],
+        targets: list[InstallTarget]
+    ):
+        """
+        Receive and log data about a completed firewall run.
+
+        Args:
+            action: The action taken by the firewall.
+            ecosystem: The ecosystem of the inspected package manager command.
+            command: The package manager command line provided to the firewall.
+            targets: The installation targets relevant to firewall's action.
+        """
+        match action:
+            case FirewallAction.Allow:
+                message = f"Command '{' '.join(command)}' was allowed"
+            case FirewallAction.Block:
+                message = f"Command '{' '.join(command)}' was blocked"
+            case FirewallAction.Abort:
+                message = f"Command '{' '.join(command)}' was aborted"
+
+        self.logger.info(
+            message,
+            extra={"ecosystem": ecosystem.value, "targets": map(str, targets)}
+        )
 
 
 def load_logger() -> FirewallLogger:

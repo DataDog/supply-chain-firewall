@@ -14,7 +14,7 @@ Default data sources include:
 - Datadog Security Research's public malicious packages [dataset](https://github.com/DataDog/malicious-software-packages-dataset)
 - [OSV.dev](https://osv.dev) disclosures
 
-Users may also implement verifiers for alternative data sources. A template for implementating custom verifier may be found in `examples/verifier.py`. Details may also be found in the API documentation.
+Users may also implement verifiers for alternative data sources. A template for implementating custom verifiers may be found in `examples/verifier.py`. Details may also be found in the API documentation.
 
 The principal goal of the supply-chain firewall is to block 100% of installations of known-malicious packages within the purview of its data sources.
 
@@ -74,7 +74,7 @@ The supply-chain firewall can optionally send logs of blocked and successful ins
 
 To opt in, set the environment variable `DD_API_KEY` to your Datadog API key, either directly in your shell environment or in a `.env` file in the current working directory.
 
-Users may also implement custom loggers for use with the firewall. A template for implementating custom logger may be found in `examples/logger.py`. Details may also be found in the API documentation.
+Users may also implement custom loggers for use with the firewall. A template for implementating custom loggers may be found in `examples/logger.py`. Details may also be found in the API documentation.
 
 ## Development
 

@@ -102,3 +102,13 @@ class OsvVerifier(InstallTargetVerifier):
         except requests.exceptions.RequestException as e:
             _log.warning(f"Failed to query OSV.dev API: returning WARNING finding for target {target}")
             return [(FindingSeverity.WARNING, error_message(str(e)))]
+
+
+def load_verifier() -> InstallTargetVerifier:
+    """
+    Export `OsvVerifier` for discovery by the firewall.
+
+    Returns:
+        An `OsvVerifier` for use in a run of the supply chain firewall.
+    """
+    return OsvVerifier()

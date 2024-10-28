@@ -47,16 +47,17 @@ def test_pip_command_would_install_exact():
         map(
             lambda p: InstallTarget(ECOSYSTEM.PIP, p[0], p[1]),
             [
-                ("certifi", "2024.8.30"),
-                ("charset-normalizer", "3.3.2"),
-                ("idna", "3.10"),
-                ("requests", "2.32.3"),
-                ("urllib3", "2.2.3")
+                ("botocore", "1.15.0"),
+                ("docutils", "0.15.2"),
+                ("jmespath", "0.10.0"),
+                ("python-dateutil", "2.9.0.post0"),
+                ("six", "1.16.0"),
+                ("urllib3", "1.25.11")
             ]
         )
     )
 
-    command_line = ["pip", "install", "--ignore-installed", "requests==2.32.3"]
+    command_line = ["pip", "install", "--ignore-installed", "botocore==1.15.0"]
     command = PipCommand(command_line, executable=sys.executable)
     targets = command.would_install()
     assert len(targets) == len(true_targets)

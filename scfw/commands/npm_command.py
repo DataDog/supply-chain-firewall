@@ -2,6 +2,7 @@
 Defines a subclass of `PackageManagerCommand` for `npm` commands.
 """
 
+from argparse import ArgumentError, ArgumentParser
 import logging
 import subprocess
 from typing import Optional
@@ -98,6 +99,15 @@ class NpmCommand(PackageManagerCommand):
         if any(opt in self._command for opt in {"-h", "--help", "--dry-run"}):
             return []
 
+        if (init_command := self._get_init_command()):
+            try:
+                args = _npm_init_cli().parse_args(init_command[1:])
+                # TODO(ikretz): How does this relate to already-installed packages?
+                return [_init_install_target(args.initializer)] if args.initializer else []
+            except ArgumentError:
+                _log.info("The npm init command encountered an error while parsing")
+                return []
+
         try:
             # Compute the set of dependencies added by the command
             # This is a superset of the set of install targets
@@ -126,3 +136,66 @@ class NpmCommand(PackageManagerCommand):
         targets = filter(lambda dep: dep not in installed, dependencies)
 
         return list(map(str_to_install_target, targets))
+
+    def _get_init_command(self) -> Optional[list[str]]:
+        """
+        Lorem ipsum dolor sic amet.
+        """
+        for i, token in enumerate(self._command):
+            # https://docs.npmjs.com/cli/v10/commands/npm-init
+            if token in {"create", "init", "innit"}:
+                return self._command[i:]
+            return None
+
+
+def _npm_init_cli() -> ArgumentParser:
+    """
+    Return an `ArgumentParser` for the `npm init` command line.
+
+    Returns:
+        The static parser for the `npm init` command line.
+    """
+    parser = ArgumentParser(exit_on_error=False)
+
+    # https://docs.npmjs.com/cli/v10/commands/npm-init
+    parser.add_argument("initializer", type=str, default=None, required=False)
+    parser.add_argument("--init-author-name", type=str, default=None)
+    parser.add_argument("--init-author-url", type=str, default=None)
+    parser.add_argument("--init-licence", type=str, default=None)
+    parser.add_argument("--init-module", type=str, default=None)
+    parser.add_argument("--init-version", type=str, default=None)
+    parser.add_argument("--scope", type=str, default=None)
+    parser.add_argument("-w", "--workspace", type=str, nargs='+', default=[])
+    parser.add_argument("-y", "--yes", action="store_true")
+    parser.add_argument("-f", "--force", action="store_true")
+    parser.add_argument("-ws", "--workspaces", action="store_true")
+    parser.add_argument("--no-workspaces-update", action="store_true")
+    parser.add_argument("--include-workspace-root", action="store_true")
+
+    return parser
+
+
+def _init_install_target(initializer: str) -> str:
+    """
+    Generate the installation target name for the given `npm init` initializer.
+
+    Args:
+        initializer: The `npm init` initializer string to be transformed.
+
+    Returns:
+        The installation target name corresponding to the input initializer.
+    """
+    # https://docs.npmjs.com/cli/v10/commands/npm-init
+    def target_name(initializer: str) -> str:
+        return f"create-{initializer}" if initializer else "create"
+
+    if initializer.startswith('@'):
+        components = initializer.split('/', 1)
+        if len(components) == 1:
+            prefix, _, suffix = components[0].rpartition('@')
+            if not prefix:
+                return f"{components[0]}/{target_name("")}"
+            return f"{components[0]}/{target_name("")}@{suffix}"
+        return f"{components[0]}/{target_name(components[1])}"
+
+    return target_name(initializer)

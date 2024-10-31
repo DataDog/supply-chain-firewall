@@ -167,7 +167,7 @@ def _npm_init_cli() -> ArgumentParser:
     parser = ArgumentParser(exit_on_error=False)
 
     # https://docs.npmjs.com/cli/v10/commands/npm-init
-    parser.add_argument("initializer", type=str, default=None, required=False)
+    parser.add_argument("initializer", type=str, default=None, nargs="?")
     parser.add_argument("--init-author-name", type=str, default=None)
     parser.add_argument("--init-author-url", type=str, default=None)
     parser.add_argument("--init-licence", type=str, default=None)

@@ -194,8 +194,8 @@ def _init_install_target(initializer: str) -> str:
         if len(components) == 1:
             prefix, _, suffix = components[0].rpartition('@')
             if not prefix:
-                return f"{components[0]}/{target_name("")}"
-            return f"{components[0]}/{target_name("")}@{suffix}"
+                return f"{components[0]}/{target_name('')}"
+            return f"{components[0]}/{target_name('')}@{suffix}"
         return f"{components[0]}/{target_name(components[1])}"
 
     return target_name(initializer)

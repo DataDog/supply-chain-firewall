@@ -139,13 +139,22 @@ class NpmCommand(PackageManagerCommand):
 
     def _get_init_command(self) -> Optional[list[str]]:
         """
-        Lorem ipsum dolor sic amet.
+        Determine whether the `NpmCommand` is for an `npm init` command.
+
+        Returns:
+            The command line for the `npm init` subcommand, in the case that the
+            `NpmCommand` does indeed correspond to such a command.  If not, `None`
+            is returned.
+
+            Note that the first token in the returned command line is `init` or
+            one of its aliases.
         """
         for i, token in enumerate(self._command):
             # https://docs.npmjs.com/cli/v10/commands/npm-init
             if token in {"create", "init", "innit"}:
                 return self._command[i:]
-            return None
+
+        return None
 
 
 def _npm_init_cli() -> ArgumentParser:

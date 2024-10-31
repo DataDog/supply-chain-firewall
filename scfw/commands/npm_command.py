@@ -93,7 +93,9 @@ class NpmCommand(PackageManagerCommand):
                 raise ValueError("Failed to parse npm install target")
             return InstallTarget(ECOSYSTEM.NPM, package, version)
 
-        if self._is_safe_command():
+        # If any of the below options are present, a help message is printed or
+        # a dry-run of an installish action occurs: nothing will be installed
+        if any(opt in self._command for opt in {"-h", "--help", "--dry-run"}):
             return []
 
         try:
@@ -124,18 +126,3 @@ class NpmCommand(PackageManagerCommand):
         targets = filter(lambda dep: dep not in installed, dependencies)
 
         return list(map(str_to_install_target, targets))
-
-    def _is_safe_command(self) -> bool:
-        """
-        Determine whether the `NpmCommand` is known to be safe with respect
-        to package installation.
-
-        Returns:
-            A `bool` indicating whether or not the command is safe.
-        """
-        # Guides the user through the creation of a new package.json file
-        if self._command == ["npm", "init"]:
-            return True
-        # If any of the below options are present, a help message is printed or
-        # a dry-run of an installish action occurs: nothing will be installed
-        return any(opt in self._command for opt in {"-h", "--help", "--dry-run"})

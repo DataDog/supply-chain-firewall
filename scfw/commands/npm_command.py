@@ -94,16 +94,21 @@ class NpmCommand(PackageManagerCommand):
                 raise ValueError("Failed to parse npm install target")
             return InstallTarget(ECOSYSTEM.NPM, package, version)
 
-        # If any of the below options are present, a help message is printed or
-        # a dry-run of an installish action occurs: nothing will be installed
-        if any(opt in self._command for opt in {"-h", "--help", "--dry-run"}):
+        # Help options always take precedence: nothing will be installed
+        if any(opt in self._command for opt in {"-h", "--help"}):
             return []
 
         if (init_command := self._get_init_command()):
             try:
                 args = _npm_init_cli().parse_args(init_command[1:])
-                # TODO(ikretz): How does this relate to already-installed packages?
-                return [_init_install_target(args.initializer)] if args.initializer else []
+                if not args.initializer:
+                    return []
+                # Isolate and analyze the installation portion of the init command
+                proxy_command = NpmCommand(
+                    ["npm", "install", _init_install_target(args.initializer)],
+                    executable=self._executable
+                )
+                return proxy_command.would_install()
             except ArgumentError:
                 _log.info("The npm init command encountered an error while parsing")
                 return []
@@ -148,13 +153,28 @@ class NpmCommand(PackageManagerCommand):
 
             Note that the first token in the returned command line is `init` or
             one of its aliases.
-        """
-        for i, token in enumerate(self._command):
-            # https://docs.npmjs.com/cli/v10/commands/npm-init
-            if token in {"create", "init", "innit"}:
-                return self._command[i:]
 
-        return None
+            Options intended to be passed to the command to be executed (i.e., those
+            following the `--` separator) are excluded. Thus, the returned command
+            line contains exactly what is relevant to the `npm init` command.
+        """
+        start = stop = -1
+
+        # https://docs.npmjs.com/cli/v10/commands/npm-init
+        for i, token in enumerate(self._command):
+            if start < 0 and token in {"create", "init", "innit"}:
+                start = i
+            if stop < 0 and token == "--":
+                stop = i
+                break
+
+        if start < 0:
+            return None
+
+        if stop > start:
+            return self._command[start:stop]
+
+        return self._command[start:]
 
 
 def _npm_init_cli() -> ArgumentParser:

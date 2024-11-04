@@ -95,10 +95,10 @@ class NpmCommand(PackageManagerCommand):
             return InstallTarget(ECOSYSTEM.NPM, package, version)
 
         # Help options always take precedence: nothing will be installed
-        # The presence of `--dry-run` should prevent installations from occurring
-        if any(opt in self._command for opt in {"-h", "--help", "--dry-run"}):
+        if any(opt in self._command for opt in {"-h", "--help"}):
             return []
 
+        # The `init` subcommand can install packages and does not honor `--dry-run`
         if (init_command := self._get_init_command()):
             try:
                 args = _npm_init_cli().parse_args(init_command[1:])
@@ -114,6 +114,10 @@ class NpmCommand(PackageManagerCommand):
             except ArgumentError:
                 _log.info("The npm init command encountered an error while parsing")
                 return []
+
+        # TODO(ikretz): Determine which commands honor this option
+        if "--dry-run" in self._command:
+            return []
 
         try:
             # Compute the set of dependencies added by the command
@@ -146,19 +150,17 @@ class NpmCommand(PackageManagerCommand):
 
     def _get_init_command(self) -> Optional[list[str]]:
         """
-        Determine whether the `NpmCommand` is for an `npm init` command.
+        Determine whether the `NpmCommand` is for an `init` npm subcommand.
 
         Returns:
-            The command line for the `npm init` subcommand, in the case that the
-            `NpmCommand` does indeed correspond to such a command.  If not, `None`
-            is returned.
+            The command line for the `npm init` subcommand, in this case, otherwise
+            `None`.
 
             Note that the first token in the returned command line is `init` or
-            one of its aliases.
-
-            Options intended to be passed to the command to be executed (i.e., those
-            following the `--` separator) are excluded. Thus, the returned command
-            line contains exactly what is relevant to the `npm init` command.
+            one of its aliases. Options intended to be passed to the command to be
+            executed (i.e., those following the `--` separator) are excluded. Thus,
+            the returned command line contains exactly what is relevant to the
+            `npm init` command.
         """
         start = stop = -1
 

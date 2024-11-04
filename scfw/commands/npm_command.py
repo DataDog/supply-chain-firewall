@@ -2,7 +2,6 @@
 Defines a subclass of `PackageManagerCommand` for `npm` commands.
 """
 
-from argparse import ArgumentError, ArgumentParser
 import logging
 import subprocess
 from typing import Optional
@@ -11,6 +10,7 @@ from packaging.version import InvalidVersion, Version, parse as version_parse
 
 from scfw.command import PackageManagerCommand, UnsupportedVersionError
 from scfw.ecosystem import ECOSYSTEM
+from scfw.parser import ArgumentError, ArgumentParser
 from scfw.target import InstallTarget
 
 _log = logging.getLogger(__name__)
@@ -105,8 +105,9 @@ class NpmCommand(PackageManagerCommand):
                 if not args.initializer:
                     return []
                 # Isolate and analyze the installation portion of the init command
+                # All but the first initializer tokens provided to npm are ignored
                 proxy_command = NpmCommand(
-                    ["npm", "install", _init_install_target(args.initializer)],
+                    ["npm", "install", _init_install_target(args.initializer[0])],
                     executable=self._executable
                 )
                 return proxy_command.would_install()
@@ -188,7 +189,7 @@ def _npm_init_cli() -> ArgumentParser:
     parser = ArgumentParser(exit_on_error=False)
 
     # https://docs.npmjs.com/cli/v10/commands/npm-init
-    parser.add_argument("initializer", type=str, default=None, nargs="?")
+    parser.add_argument("initializer", type=str, default=None, nargs="*")
     parser.add_argument("--init-author-name", type=str, default=None)
     parser.add_argument("--init-author-url", type=str, default=None)
     parser.add_argument("--init-licence", type=str, default=None)

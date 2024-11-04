@@ -95,7 +95,8 @@ class NpmCommand(PackageManagerCommand):
             return InstallTarget(ECOSYSTEM.NPM, package, version)
 
         # Help options always take precedence: nothing will be installed
-        if any(opt in self._command for opt in {"-h", "--help"}):
+        # The presence of `--dry-run` should prevent installations from occurring
+        if any(opt in self._command for opt in {"-h", "--help", "--dry-run"}):
             return []
 
         if (init_command := self._get_init_command()):

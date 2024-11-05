@@ -32,6 +32,7 @@ def _cli() -> ArgumentParser:
     parser = ArgumentParser(
         prog="scfw",
         usage="%(prog)s [options] COMMAND",
+        exit_on_error=False,
         description="A tool to prevent the installation of vulnerable or malicious pip and npm packages"
     )
 

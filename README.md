@@ -66,6 +66,10 @@ alias pip="scfw pip"
 alias npm="scfw npm"
 ```
 
+## Limitations
+
+Unlike `pip`, a variety of `npm` operations beyond `npm install` can end up installing new packages.  For now, only `npm install` commands are in scope for analysis with the supply chain firewall.  We are hoping to extend the firewall's purview to other "installish" `npm` commands over time.
+
 ## Datadog Logs integration
 
 The supply-chain firewall can optionally send logs of blocked and successful installations to Datadog.

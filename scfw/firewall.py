@@ -28,7 +28,7 @@ def run_firewall() -> int:
 
     try:
         args, help = cli.parse_command_line()
-        if not args.command:
+        if not args or not args.command:
             print(help)
             return 0
 

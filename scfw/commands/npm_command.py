@@ -93,20 +93,21 @@ class NpmCommand(PackageManagerCommand):
                 raise ValueError("Failed to parse npm install target")
             return InstallTarget(ECOSYSTEM.NPM, package, version)
 
-        # If any of the below options are present, a help message is printed or
-        # a dry-run of an installish action occurs: nothing will be installed
+        # For now, automatically allow all non-`install` commands
+        if not self._is_install_command():
+            return []
+
+        # The presence of these options prevent the install command from running
         if any(opt in self._command for opt in {"-h", "--help", "--dry-run"}):
             return []
 
         try:
-            # Compute the set of dependencies added by the command
-            # This is a superset of the set of install targets
+            # Compute the set of dependencies added by the install command
             dry_run_command = self._command + ["--dry-run", "--loglevel", "silly"]
             dry_run = subprocess.run(dry_run_command, check=True, text=True, capture_output=True)
             dependencies = map(line_to_dependency, filter(is_place_dep_line, dry_run.stderr.strip().split('\n')))
         except subprocess.CalledProcessError:
-            # An error must have resulted from the given npm command
-            # As nothing will be installed in this case, allow the command
+            # An erroring command does not install anything
             _log.info("The npm command encountered an error while collecting installation targets")
             return []
 
@@ -126,3 +127,23 @@ class NpmCommand(PackageManagerCommand):
         targets = filter(lambda dep: dep not in installed, dependencies)
 
         return list(map(str_to_install_target, targets))
+
+    def _is_install_command(self) -> bool:
+        """
+        Determine whether the underlying `npm` command is for an `install` subcommand.
+
+        Returns:
+            A `bool` indicating whether the `npm` command underlying the given `NpmCommand`
+            is likely for an `install` subcommand.
+
+            This function gives no false negatives but may give false positives. False
+            positives are safe in this case because they result in non-installish
+            commands being analyzed as if they were installish commands. To eliminate
+            false positives, we would need to write a full parser for npm.
+        """
+        # https://docs.npmjs.com/cli/v10/commands/npm-install
+        install_aliases = {
+            "install", "add", "i", "in", "ins", "inst", "insta", "instal", "isnt", "isnta", "isntal", "isntall"
+        }
+
+        return any(alias in self._command for alias in install_aliases)

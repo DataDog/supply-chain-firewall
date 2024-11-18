@@ -90,7 +90,16 @@ class DDLogger(FirewallLogger):
         """
         Initialize a new `DDLogger`.
         """
-        self.logger = _ddlog
+        self._logger = _ddlog
+
+        self._level = None
+        match os.getenv("SCFW_DD_LOG_LEVEL"):
+            case "Allow":
+                self._level = FirewallAction.Allow
+            case "Abort":
+                self._level = FirewallAction.Abort
+            case "Block":
+                self._level = FirewallAction.Block
 
     def log(
         self,
@@ -108,6 +117,9 @@ class DDLogger(FirewallLogger):
             command: The package manager command line provided to the firewall.
             targets: The installation targets relevant to firewall's action.
         """
+        if not self._level or action < self._level:
+            return
+
         match action:
             case FirewallAction.Allow:
                 message = f"Command '{' '.join(command)}' was allowed"
@@ -116,7 +128,7 @@ class DDLogger(FirewallLogger):
             case FirewallAction.Abort:
                 message = f"Command '{' '.join(command)}' was aborted"
 
-        self.logger.info(
+        self._logger.info(
             message,
             extra={"ecosystem": ecosystem.value, "targets": map(str, targets)}
         )

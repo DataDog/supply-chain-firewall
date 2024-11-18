@@ -16,8 +16,28 @@ class FirewallAction(Enum):
     package manager command.
     """
     Allow = 0
-    Block = 1
-    Abort = 2
+    Abort = 1
+    Block = 2
+
+    def __lt__(self, other) -> bool:
+        """
+        Compare two `FirewallAction` instances on the basis of their underlying numeric values.
+
+        Args:
+            self: The `FirewallAction` to be compared on the left-hand side
+            other: The `FirewallAction` to be compared on the right-hand side
+
+        Returns:
+            A `bool` indicating whether `<` holds between the two given `FirewallAction`.
+
+        Raises:
+            TypeError: The other argument given was not a `FirewallAction`.
+        """
+        if self.__class__ is other.__class__:
+            return self.value < other.value
+        raise TypeError(
+            f"'<' not supported between instances of '{self.__class__}' and '{other.__class__}'"
+        )
 
 
 class FirewallLogger(metaclass=ABCMeta):

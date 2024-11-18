@@ -17,7 +17,6 @@ from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
 import dotenv
 
-_DD_LOG_NAME = "ddlog"
 _DD_LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
 
 
@@ -77,7 +76,7 @@ dotenv.load_dotenv()
 _handler = _DDLogHandler() if os.getenv("DD_API_KEY") else logging.NullHandler()
 _handler.setFormatter(logging.Formatter(_DD_LOG_FORMAT))
 
-_ddlog = logging.getLogger(_DD_LOG_NAME)
+_ddlog = logging.getLogger("ddlog")
 _ddlog.setLevel(logging.INFO)
 _ddlog.addHandler(_handler)
 

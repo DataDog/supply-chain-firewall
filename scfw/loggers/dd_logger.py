@@ -91,11 +91,10 @@ class DDLogger(FirewallLogger):
         """
         self._logger = _ddlog
 
-        self._level = FirewallAction.BLOCK
         try:
             self._level = FirewallAction(os.getenv("SCFW_DD_LOG_LEVEL"))
         except ValueError:
-            pass
+            self._level = FirewallAction.BLOCK
 
     def log(
         self,

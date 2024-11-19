@@ -17,7 +17,6 @@ from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
 import dotenv
 
-_DD_LOG_NAME = "ddlog"
 _DD_LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
 
 
@@ -77,7 +76,7 @@ dotenv.load_dotenv()
 _handler = _DDLogHandler() if os.getenv("DD_API_KEY") else logging.NullHandler()
 _handler.setFormatter(logging.Formatter(_DD_LOG_FORMAT))
 
-_ddlog = logging.getLogger(_DD_LOG_NAME)
+_ddlog = logging.getLogger("ddlog")
 _ddlog.setLevel(logging.INFO)
 _ddlog.addHandler(_handler)
 
@@ -90,7 +89,12 @@ class DDLogger(FirewallLogger):
         """
         Initialize a new `DDLogger`.
         """
-        self.logger = _ddlog
+        self._logger = _ddlog
+
+        try:
+            self._level = FirewallAction(os.getenv("SCFW_DD_LOG_LEVEL"))
+        except ValueError:
+            self._level = FirewallAction.BLOCK
 
     def log(
         self,
@@ -108,15 +112,18 @@ class DDLogger(FirewallLogger):
             command: The package manager command line provided to the firewall.
             targets: The installation targets relevant to firewall's action.
         """
-        match action:
-            case FirewallAction.Allow:
-                message = f"Command '{' '.join(command)}' was allowed"
-            case FirewallAction.Block:
-                message = f"Command '{' '.join(command)}' was blocked"
-            case FirewallAction.Abort:
-                message = f"Command '{' '.join(command)}' was aborted"
+        if not self._level or action < self._level:
+            return
 
-        self.logger.info(
+        match action:
+            case FirewallAction.ALLOW:
+                message = f"Command '{' '.join(command)}' was allowed"
+            case FirewallAction.ABORT:
+                message = f"Command '{' '.join(command)}' was aborted"
+            case FirewallAction.BLOCK:
+                message = f"Command '{' '.join(command)}' was blocked"
+
+        self._logger.info(
             message,
             extra={"ecosystem": ecosystem.value, "targets": map(str, targets)}
         )

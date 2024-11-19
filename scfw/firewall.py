@@ -54,7 +54,7 @@ def run_firewall() -> int:
             if (critical_report := reports.get(FindingSeverity.CRITICAL)):
                 _log_firewall_action(
                     logs,
-                    FirewallAction.Block,
+                    FirewallAction.BLOCK,
                     ecosystem,
                     args.command,
                     list(critical_report)
@@ -68,7 +68,7 @@ def run_firewall() -> int:
                 if _abort_on_warning():
                     _log_firewall_action(
                         logs,
-                        FirewallAction.Abort,
+                        FirewallAction.ABORT,
                         ecosystem,
                         args.command,
                         list(warning_report)
@@ -82,7 +82,7 @@ def run_firewall() -> int:
         else:
             _log_firewall_action(
                 logs,
-                FirewallAction.Allow,
+                FirewallAction.ALLOW,
                 ecosystem,
                 args.command,
                 targets

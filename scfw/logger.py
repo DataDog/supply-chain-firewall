@@ -15,9 +15,9 @@ class FirewallAction(Enum):
     The various actions the firewall may take in response to inspecting a
     package manager command.
     """
-    Allow = 0
-    Abort = 1
-    Block = 2
+    ALLOW = "ALLOW"
+    ABORT = "ABORT"
+    BLOCK = "BLOCK"
 
     def __lt__(self, other) -> bool:
         """
@@ -33,11 +33,20 @@ class FirewallAction(Enum):
         Raises:
             TypeError: The other argument given was not a `FirewallAction`.
         """
-        if self.__class__ is other.__class__:
-            return self.value < other.value
-        raise TypeError(
-            f"'<' not supported between instances of '{self.__class__}' and '{other.__class__}'"
-        )
+        if self.__class__ is not other.__class__:
+            raise TypeError(
+                f"'<' not supported between instances of '{self.__class__}' and '{other.__class__}'"
+            )
+
+        match self.name, other.name:
+            case "ALLOW", "ABORT":
+                return True
+            case "ALLOW", "BLOCK":
+                return True
+            case "ABORT", "BLOCK":
+                return True
+            case _:
+                return False
 
 
 class FirewallLogger(metaclass=ABCMeta):

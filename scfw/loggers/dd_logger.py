@@ -91,14 +91,11 @@ class DDLogger(FirewallLogger):
         """
         self._logger = _ddlog
 
-        self._level = None
-        match os.getenv("SCFW_DD_LOG_LEVEL"):
-            case "Allow":
-                self._level = FirewallAction.Allow
-            case "Abort":
-                self._level = FirewallAction.Abort
-            case "Block":
-                self._level = FirewallAction.Block
+        self._level = FirewallAction.BLOCK
+        try:
+            self._level = FirewallAction(os.getenv("SCFW_DD_LOG_LEVEL"))
+        except ValueError:
+            pass
 
     def log(
         self,
@@ -120,12 +117,12 @@ class DDLogger(FirewallLogger):
             return
 
         match action:
-            case FirewallAction.Allow:
+            case FirewallAction.ALLOW:
                 message = f"Command '{' '.join(command)}' was allowed"
-            case FirewallAction.Block:
-                message = f"Command '{' '.join(command)}' was blocked"
-            case FirewallAction.Abort:
+            case FirewallAction.ABORT:
                 message = f"Command '{' '.join(command)}' was aborted"
+            case FirewallAction.BLOCK:
+                message = f"Command '{' '.join(command)}' was blocked"
 
         self._logger.info(
             message,

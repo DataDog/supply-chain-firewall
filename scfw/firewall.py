@@ -4,7 +4,6 @@ Implements the supply-chain firewall's core `run` subcommand.
 
 from argparse import Namespace
 import logging
-import time
 
 from scfw.command import UnsupportedVersionError
 import scfw.commands as commands
@@ -15,6 +14,8 @@ from scfw.verifier import FindingSeverity
 import scfw.verifiers as verifs
 import scfw.verify as verify
 from scfw.target import InstallTarget
+
+_log = logging.getLogger(__name__)
 
 
 def run_firewall(args: Namespace, help: str) -> int:
@@ -30,27 +31,21 @@ def run_firewall(args: Namespace, help: str) -> int:
     Returns:
         An integer status code, 0 or 1.
     """
-    log = _root_logger()
-
     try:
         if not args.command:
             print(help)
             return 0
+        _log.info(f"Command: '{' '.join(args.command)}'")
 
-        log.setLevel(args.log_level)
         logs = loggers.get_firewall_loggers()
-
-        log.info(f"Starting supply-chain firewall on {time.asctime(time.localtime())}")
-        log.info(f"Command: '{' '.join(args.command)}'")
-        log.debug(f"Command line: {vars(args)}")
 
         ecosystem, command = commands.get_package_manager_command(args.command, executable=args.executable)
         targets = command.would_install()
-        log.info(f"Command would install: [{', '.join(map(str, targets))}]")
+        _log.info(f"Command would install: [{', '.join(map(str, targets))}]")
 
         if targets:
             verifiers = verifs.get_install_target_verifiers()
-            log.info(
+            _log.info(
                 f"Using installation target verifiers: [{', '.join(v.name() for v in verifiers)}]"
             )
 
@@ -82,7 +77,7 @@ def run_firewall(args: Namespace, help: str) -> int:
                     return 0
 
         if args.dry_run:
-            log.info("Firewall dry-run mode enabled: command will not be run")
+            _log.info("Firewall dry-run mode enabled: command will not be run")
             print("Dry-run: exiting without running command.")
         else:
             _log_firewall_action(
@@ -96,28 +91,12 @@ def run_firewall(args: Namespace, help: str) -> int:
         return 0
 
     except UnsupportedVersionError as e:
-        log.error(f"Incompatible package manager version: {e}")
+        _log.error(f"Incompatible package manager version: {e}")
         return 0
 
     except Exception as e:
-        log.error(e)
+        _log.error(e)
         return 1
-
-
-def _root_logger() -> logging.Logger:
-    """
-    Configure the root logger and return a handle to it.
-
-    Returns:
-        A handle to the configured root logger.
-    """
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
-
-    log = logging.getLogger()
-    log.addHandler(handler)
-
-    return log
 
 
 def _log_firewall_action(

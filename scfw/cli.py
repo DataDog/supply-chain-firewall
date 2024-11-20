@@ -33,15 +33,6 @@ def _add_run_cli(parser: ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--log-level",
-        type=str,
-        choices=_LOG_LEVELS,
-        default=_DEFAULT_LOG_LEVEL,
-        metavar="LEVEL",
-        help="Desired logging level (default: %(default)s, options: %(choices)s)"
-    )
-
-    parser.add_argument(
         "--executable",
         type=str,
         default=None,
@@ -64,6 +55,15 @@ def _cli() -> ArgumentParser:
         prog="scfw",
         exit_on_error=False,
         description="A tool for preventing the installation of malicious PyPI and npm packages."
+    )
+
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        choices=_LOG_LEVELS,
+        default=_DEFAULT_LOG_LEVEL,
+        metavar="LEVEL",
+        help="Desired logging level (default: %(default)s, options: %(choices)s)"
     )
 
     subparsers = parser.add_subparsers(dest="subcommand")

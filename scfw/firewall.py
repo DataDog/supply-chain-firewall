@@ -23,8 +23,8 @@ def run_firewall(args: Namespace, help: str) -> int:
 
     Args:
         args:
-            A `Namespace` for the firewall's `run` subcommand, containing, in
-            particular, a `command` to run through the firewall.
+            A `Namespace` parsed from a `run` subcommand command line containing
+            a `command` to run through the firewall.
         help: A help message to print in the case of early returns.
 
     Returns:

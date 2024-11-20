@@ -25,4 +25,4 @@ description = "A tool for preventing the installation of malicious open-source p
 readme = "README.md"
 
 [project.scripts]
-scfw = "scfw.firewall:run_firewall"
+scfw = "scfw.main:main"

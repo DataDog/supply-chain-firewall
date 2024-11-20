@@ -19,23 +19,13 @@ _LOG_LEVELS = list(
 _DEFAULT_LOG_LEVEL = logging.getLevelName(logging.WARNING)
 
 
-def _cli() -> ArgumentParser:
+def _add_run_cli(parser: ArgumentParser) -> None:
     """
-    Defines the command-line interface for the supply-chain firewall.
+    Defines the command-line interface for the firewall's `run` subcommand.
 
-    Returns:
-        A parser for the supply-chain firewall's command line.
-
-        This parser only handles the firewall's optional arguments, not the package
-        manager command being run through the firewall.
+    Args:
+        parser: The `ArgumentParser` to which the `run` command line will be added.
     """
-    parser = ArgumentParser(
-        prog="scfw",
-        usage="%(prog)s [options] COMMAND",
-        exit_on_error=False,
-        description="A tool for preventing the installation of malicious PyPI and npm packages."
-    )
-
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -58,6 +48,33 @@ def _cli() -> ArgumentParser:
         metavar="PATH",
         help="Python or npm executable to use for running commands (default: environmentally determined)"
     )
+
+
+def _cli() -> ArgumentParser:
+    """
+    Defines the command-line interface for the supply-chain firewall.
+
+    Returns:
+        A parser for the supply-chain firewall's command line.
+
+        This parser only handles the firewall's own optional arguments and subcommands.
+        It does not parse the package manager commands being run through the firewall.
+    """
+    parser = ArgumentParser(
+        prog="scfw",
+        exit_on_error=False,
+        description="A tool for preventing the installation of malicious PyPI and npm packages."
+    )
+
+    subparsers = parser.add_subparsers(dest="subcommand")
+
+    run_parser = subparsers.add_parser(
+        "run",
+        usage="%(prog)s [options] COMMAND",
+        exit_on_error=False,
+        description="Run a package manager command through the supply-chain firewall."
+    )
+    _add_run_cli(run_parser)
 
     return parser
 

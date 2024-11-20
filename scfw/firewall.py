@@ -1,11 +1,11 @@
 """
-Provides the supply-chain firewall's main routine.
+Implements the supply-chain firewall's core `run` subcommand.
 """
 
+from argparse import Namespace
 import logging
 import time
 
-import scfw.cli as cli
 from scfw.command import UnsupportedVersionError
 import scfw.commands as commands
 from scfw.ecosystem import ECOSYSTEM
@@ -17,18 +17,23 @@ import scfw.verify as verify
 from scfw.target import InstallTarget
 
 
-def run_firewall() -> int:
+def run_firewall(args: Namespace, help: str) -> int:
     """
-    The main routine for the supply-chain firewall.
+    Run a package manager command through the supply-chain firewall.
+
+    Args:
+        args:
+            A `Namespace` for the firewall's `run` subcommand, containing, in
+            particular, a `command` to run through the firewall.
+        help: A help message to print in the case of early returns.
 
     Returns:
-        An integer exit code (0 or 1).
+        An integer status code, 0 or 1.
     """
     log = _root_logger()
 
     try:
-        args, help = cli.parse_command_line()
-        if not args or not args.command:
+        if not args.command:
             print(help)
             return 0
 

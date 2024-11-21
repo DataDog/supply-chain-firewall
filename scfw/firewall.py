@@ -32,12 +32,8 @@ def run_firewall(args: Namespace, help: str) -> int:
         An integer status code, 0 or 1.
     """
     try:
-        if not args.command:
-            print(help)
-            return 0
-        _log.info(f"Command: '{' '.join(args.command)}'")
-
         logs = loggers.get_firewall_loggers()
+        _log.info(f"Command: '{' '.join(args.command)}'")
 
         ecosystem, command = commands.get_package_manager_command(args.command, executable=args.executable)
         targets = command.would_install()

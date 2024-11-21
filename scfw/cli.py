@@ -91,9 +91,9 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
         argument vector and a `str` help message for the caller's use in early exits.
         In the case of a parsing failure, `None` is returned instead of a `Namespace`.
 
-        On success, the returned `Namespace` contains the package manager command
-        present in the given argument vector as a (possibly empty) `list[str]` under
-        the `command` attribute.
+        On success, and only for the `run` subcommand, the returned `Namespace` contains
+        the package manager command present in the given argument vector as a `list[str]`
+        under the `command` attribute.
     """
     hinge = len(argv)
     for ecosystem in ECOSYSTEM:
@@ -107,8 +107,16 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
 
     try:
         args = parser.parse_args(argv[1:hinge])
-        args_dict = vars(args)
-        args_dict["command"] = argv[hinge:]
+
+        match args.subcommand == "run", hinge == len(argv):
+            case True, False:
+                args_dict = vars(args)
+                args_dict["command"] = argv[hinge:]
+            case False, True:
+                pass
+            case _:
+                raise ArgumentError
+
         return args, help_msg
 
     except ArgumentError:

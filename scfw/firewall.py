@@ -3,6 +3,7 @@ Implements the supply-chain firewall's core `run` subcommand.
 """
 
 from argparse import Namespace
+import inquirer  # type: ignore
 import logging
 
 from scfw.command import UnsupportedVersionError
@@ -61,7 +62,7 @@ def run_firewall(args: Namespace) -> int:
 
             if (warning_report := reports.get(FindingSeverity.WARNING)):
                 print(verify.show_verification_report(warning_report))
-                if _abort_on_warning():
+                if not (inquirer.confirm("Proceed with installation?", default=False)):
                     _log_firewall_action(
                         logs,
                         FirewallAction.ABORT,
@@ -115,22 +116,3 @@ def _log_firewall_action(
     # One would like to use `map` for this, but it is lazily evaluated
     for log in logs:
         log.log(action, ecosystem, command, targets)
-
-
-def _abort_on_warning() -> bool:
-    """
-    Prompt the user for confirmation of whether or not to proceed with the
-    installation request in the case that there were `WARNING` findings.
-
-    Returns:
-        A `bool` indicating whether the user decided to proceed with the
-        command after warning.
-    """
-    try:
-        while (confirm := input("Proceed with installation? (y/N): ")) not in {'y', 'N', ''}:
-            pass
-        return confirm != 'y'
-    except KeyboardInterrupt:
-        return True
-    except Exception:
-        return True

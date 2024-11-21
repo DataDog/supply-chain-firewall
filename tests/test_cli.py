@@ -122,13 +122,13 @@ def test_cli_npm_over_pip():
     assert args.command == argv[2:]
 
 
-def test_cli_basic_usage_init():
+def test_cli_basic_usage_configure():
     """
-    Basic `init` subcommand usage.
+    Basic `configure` subcommand usage.
     """
-    argv = ["scfw", "init"]
+    argv = ["scfw", "configure"]
     args, _ = _parse_command_line(argv)
-    assert args.subcommand == "init"
+    assert args.subcommand == "configure"
     assert "command" not in args
     assert "dry_run" not in args
     assert "executable" not in args

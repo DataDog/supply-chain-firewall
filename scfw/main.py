@@ -7,6 +7,7 @@ import time
 
 import scfw.cli as cli
 import scfw.firewall as firewall
+import scfw.init as init
 
 
 def main() -> int:
@@ -28,8 +29,11 @@ def main() -> int:
     log.info(f"Starting supply-chain firewall on {time.asctime(time.localtime())}")
     log.debug(f"Command line: {vars(args)}")
 
-    if args.subcommand == "run":
-        return firewall.run_firewall(args, help)
+    match args.subcommand:
+        case "run":
+            return firewall.run_firewall(args, help)
+        case "init":
+            return init.initialize(args, help)
 
     return 0
 

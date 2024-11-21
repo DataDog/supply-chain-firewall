@@ -4,21 +4,32 @@ Implements the supply-chain firewall's `configure` subcommand.
 
 from argparse import Namespace
 import inquirer  # type: ignore
+import os
 from pathlib import Path
+
+DD_API_KEY_VAR = "DD_API_KEY"
+"""
+The environment variable under which the firewall looks for a Datadog API key.
+"""
+
+DD_LOG_LEVEL_VAR = "SCFW_DD_LOG_LEVEL"
+"""
+The environment variable under which the firewall looks for a Datadog log level setting.
+"""
 
 _BLOCK_OPENER = "# BEGIN SCFW MANAGED BLOCK"
 _BLOCK_CLOSER = "# END SCFW MANAGED BLOCK"
 
 _GREETING = (
-    "Thank you for using Datadog's supply-chain firewall, a tool for preventing\n"
-    "the installation of malicious PyPI and npm packages.\n\n"
-    "This script will walk you through setting up your environment to get the most\n"
-    "out of the supply-chain firewall. It can be rerun at any time.\n"
+    "Thank you for using scfw, Datadog's supply-chain firewall!\n\n"
+    "scfw is a tool for preventing the installation of malicious PyPI and npm packages.\n\n"
+    "This script will walk you through setting up your environment to get the most out\n"
+    "of the firewall. You can rerun this script at any time.\n"
 )
 
 _EPILOGUE = (
-    "\nThe environment was successfully configured. Make sure to update your current\n"
-    "shell environment by running:\n\n    source ~/.bashrc\n\nGood luck!"
+    "\nThe environment was successfully configured. Make sure to update your current shell\n"
+    "environment by running:\n\n    source ~/.bashrc\n\nGood luck!"
 )
 
 
@@ -32,30 +43,60 @@ def run_configure(args: Namespace) -> int:
     Returns:
         An integer status code, 0 or 1.
     """
-    questions = [
-        inquirer.Confirm(
-            name='alias_pip',
-            message="Would you like to set a shell alias to run all pip commands through the firewall?",
-            default=False
-        ),
-        inquirer.Confirm(
-            name='alias_npm',
-            message="Would you like to set a shell alias to run all npm commands through the firewall?",
-            default=False
-        )
-    ]
-
     print(_GREETING)
 
-    config = inquirer.prompt(questions)
+    config = inquirer.prompt(_get_questions())
     if (formatted := _format_config(config)):
         with open(Path.home() / ".bashrc", 'a') as f:
             f.write(formatted)
-        print(formatted)
 
     print(_EPILOGUE)
 
     return 0
+
+
+def _get_questions() -> list[inquirer.questions.Question]:
+    """
+    Return the list of configuration questions to ask the user.
+
+    Returns:
+        A `list[inquirer.Question]` of configuration questions to prompt the user
+        for answers to. The list is guaranteed to be nonempty.
+    """
+    has_dd_api_key = os.getenv(DD_API_KEY_VAR) is not None
+
+    questions = [
+        inquirer.Confirm(
+            name="alias_pip",
+            message="Would you like to set a shell alias to run all pip commands through the firewall?",
+            default=False
+        ),
+        inquirer.Confirm(
+            name="alias_npm",
+            message="Would you like to set a shell alias to run all npm commands through the firewall?",
+            default=False
+        ),
+        inquirer.Confirm(
+            name="enable_dd_logs",
+            message="Would you like to enable sending firewall logs to Datadog?",
+            default=False,
+            ignore=lambda _: has_dd_api_key
+        ),
+        inquirer.Text(
+            name="dd_api_key",
+            message="Enter a Datadog API key",
+            validate=lambda _, current: current != '',
+            ignore=lambda answers: has_dd_api_key or not answers["enable_dd_logs"]
+        ),
+        inquirer.List(
+            name="dd_log_level",
+            message="Select the desired log level for Datadog logging",
+            choices=["BLOCK", "ABORT", "ALLOW"],
+            ignore=lambda answers: not has_dd_api_key and not answers["enable_dd_logs"]
+        )
+    ]
+
+    return questions
 
 
 def _format_config(config: dict) -> str:
@@ -77,5 +118,9 @@ def _format_config(config: dict) -> str:
         formatted += '\nalias pip="scfw run pip"'
     if config["alias_npm"]:
         formatted += '\nalias npm="scfw run npm"'
+    if config["dd_api_key"]:
+        formatted += f'\nexport {DD_API_KEY_VAR}="{config["dd_api_key"]}"'
+    if config["dd_log_level"]:
+        formatted += f'\nexport {DD_LOG_LEVEL_VAR}="{config["dd_log_level"]}"'
 
     return enclose(formatted) if formatted else formatted

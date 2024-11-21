@@ -6,6 +6,7 @@ import logging
 import os
 import socket
 
+from scfw.configure import DD_API_KEY_VAR, DD_LOG_LEVEL_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.target import InstallTarget
@@ -73,7 +74,7 @@ class _DDLogHandler(logging.Handler):
 
 # Configure a single logging handle for all `DDLogger` instances to share
 dotenv.load_dotenv()
-_handler = _DDLogHandler() if os.getenv("DD_API_KEY") else logging.NullHandler()
+_handler = _DDLogHandler() if os.getenv(DD_API_KEY_VAR) else logging.NullHandler()
 _handler.setFormatter(logging.Formatter(_DD_LOG_FORMAT))
 
 _ddlog = logging.getLogger("ddlog")
@@ -91,8 +92,10 @@ class DDLogger(FirewallLogger):
         """
         self._logger = _ddlog
 
+        # TODO(ikretz): Allow for Datadog logging to be completely disabled
+        # TODO(ikretz): Move the default choice into a global constant
         try:
-            self._level = FirewallAction(os.getenv("SCFW_DD_LOG_LEVEL"))
+            self._level = FirewallAction(os.getenv(DD_LOG_LEVEL_VAR))
         except ValueError:
             self._level = FirewallAction.BLOCK
 

@@ -3,7 +3,7 @@ Implements the supply-chain firewall's `configure` subcommand.
 """
 
 from argparse import Namespace
-import inquirer
+import inquirer # type: ignore
 from pathlib import Path
 
 _BLOCK_OPENER = "# BEGIN SCFW MANAGED BLOCK"

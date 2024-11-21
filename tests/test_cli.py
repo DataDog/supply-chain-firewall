@@ -120,3 +120,16 @@ def test_cli_npm_over_pip():
     argv = ["scfw", "run", "npm", "install", "pip"]
     args, _ = _parse_command_line(argv)
     assert args.command == argv[2:]
+
+
+def test_cli_basic_usage_init():
+    """
+    Basic `init` subcommand usage.
+    """
+    argv = ["scfw", "init"]
+    args, _ = _parse_command_line(argv)
+    assert args.subcommand == "init"
+    assert "command" not in args
+    assert "dry_run" not in args
+    assert "executable" not in args
+    assert args.log_level == _DEFAULT_LOG_LEVEL

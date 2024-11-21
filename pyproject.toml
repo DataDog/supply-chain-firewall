@@ -10,6 +10,7 @@ name = "scfw"
 version = "0.1.0"
 dependencies = [
     "datadog-api-client",
+    "inquirer",
     "packaging",
     "python-dotenv",
     "requests",

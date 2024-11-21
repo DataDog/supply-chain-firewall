@@ -18,7 +18,7 @@ from scfw.target import InstallTarget
 _log = logging.getLogger(__name__)
 
 
-def run_firewall(args: Namespace, help: str) -> int:
+def run_firewall(args: Namespace) -> int:
     """
     Run a package manager command through the supply-chain firewall.
 

@@ -1,5 +1,5 @@
 """
-Implements the supply-chain firewall's `init` subcommand.
+Implements the supply-chain firewall's `configure` subcommand.
 """
 
 from argparse import Namespace
@@ -7,7 +7,7 @@ from pathlib import Path
 import time
 
 
-def initialize(args: Namespace, help: str) -> int:
+def run_configure(args: Namespace) -> int:
     """
     Configure the environment for use with the supply-chain firewall.
 

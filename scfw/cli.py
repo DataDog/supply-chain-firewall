@@ -41,12 +41,12 @@ def _add_run_cli(parser: ArgumentParser) -> None:
     )
 
 
-def _add_init_cli(parser: ArgumentParser) -> None:
+def _add_configure_cli(parser: ArgumentParser) -> None:
     """
-    Defines the command-line interface for the firewall's `init` subcommand.
+    Defines the command-line interface for the firewall's `configure` subcommand.
 
     Args:
-        parser: The `ArgumentParser` to which the `init` command line will be added.
+        parser: The `ArgumentParser` to which the `configure` command line will be added.
     """
     return
 
@@ -86,12 +86,12 @@ def _cli() -> ArgumentParser:
     )
     _add_run_cli(run_parser)
 
-    init_parser = subparsers.add_parser(
-        "init",
+    configure_parser = subparsers.add_parser(
+        "configure",
         exit_on_error=False,
         description="Configure the environment for using the supply-chain firewall."
     )
-    _add_init_cli(init_parser)
+    _add_configure_cli(configure_parser)
 
     return parser
 

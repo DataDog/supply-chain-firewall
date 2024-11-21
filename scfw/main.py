@@ -6,8 +6,8 @@ import logging
 import time
 
 import scfw.cli as cli
+import scfw.configure as configure
 import scfw.firewall as firewall
-import scfw.init as init
 
 
 def main() -> int:
@@ -31,9 +31,9 @@ def main() -> int:
 
     match args.subcommand:
         case "run":
-            return firewall.run_firewall(args, help)
-        case "init":
-            return init.initialize(args, help)
+            return firewall.run_firewall(args)
+        case "configure":
+            return configure.run_configure(args)
 
     return 0
 

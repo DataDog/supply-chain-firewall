@@ -32,7 +32,7 @@ _GREETING = (
 
 _EPILOGUE = (
     "\nThe environment was successfully configured. Make sure to update your current shell\n"
-    "environment by running:\n\n    source ~/.bashrc\n\nGood luck!"
+    "environment by running, e.g.:\n\n    source ~/.bashrc\n\nGood luck!"
 )
 
 

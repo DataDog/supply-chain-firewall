@@ -6,6 +6,7 @@ from argparse import Namespace
 import inquirer  # type: ignore
 import os
 from pathlib import Path
+import tempfile
 
 DD_API_KEY_VAR = "DD_API_KEY"
 """
@@ -19,8 +20,8 @@ The environment variable under which the firewall looks for a Datadog log level 
 
 _CONFIG_FILES = [".bashrc", ".zshrc"]
 
-_BLOCK_OPENER = "# BEGIN SCFW MANAGED BLOCK"
-_BLOCK_CLOSER = "# END SCFW MANAGED BLOCK"
+_BLOCK_START = "# BEGIN SCFW MANAGED BLOCK"
+_BLOCK_END = "# END SCFW MANAGED BLOCK"
 
 _GREETING = (
     "Thank you for using scfw, Datadog's supply-chain firewall!\n\n"
@@ -47,11 +48,10 @@ def run_configure(args: Namespace) -> int:
     """
     print(_GREETING)
 
-    config = inquirer.prompt(_get_questions())
-    if (formatted := _format_config(config)):
-        for file in _CONFIG_FILES:
-            with open(Path.home() / file, 'a') as f:
-                f.write(formatted)
+    answers = inquirer.prompt(_get_questions())
+    if (config := _format_answers(answers)):
+        for file in [Path.home() / file for file in _CONFIG_FILES]:
+            _update_config_file(file, config)
 
     print(_EPILOGUE)
 
@@ -102,28 +102,60 @@ def _get_questions() -> list[inquirer.questions.Question]:
     return questions
 
 
-def _format_config(config: dict) -> str:
+def _format_answers(answers: dict) -> str:
     """
-    Format the user-specified config into .rc file `str` content.
+    Format the user's answers into .rc file `str` configuration content.
 
     Args:
-        config: A `dict` containing the user-specified configuration options.
+        answers: A `dict` containing the user's answers to the prompted questions.
 
     Returns:
-        A `str` containing the desired config for writing into a .rc file.
+        A `str` containing the desired configuration content for writing into a .rc file.
     """
-    def enclose(formatted: str) -> str:
-        return f"\n{_BLOCK_OPENER}{formatted}\n{_BLOCK_CLOSER}\n"
+    def enclose(config: str) -> str:
+        return f"{_BLOCK_START}{config}\n{_BLOCK_END}\n"
 
-    formatted = ''
+    config = ''
 
-    if config["alias_pip"]:
-        formatted += '\nalias pip="scfw run pip"'
-    if config["alias_npm"]:
-        formatted += '\nalias npm="scfw run npm"'
-    if config["dd_api_key"]:
-        formatted += f'\nexport {DD_API_KEY_VAR}="{config["dd_api_key"]}"'
-    if config["dd_log_level"]:
-        formatted += f'\nexport {DD_LOG_LEVEL_VAR}="{config["dd_log_level"]}"'
+    if answers["alias_pip"]:
+        config += '\nalias pip="scfw run pip"'
+    if answers["alias_npm"]:
+        config += '\nalias npm="scfw run npm"'
+    if answers["dd_api_key"]:
+        config += f'\nexport {DD_API_KEY_VAR}="{answers["dd_api_key"]}"'
+    if answers["dd_log_level"]:
+        config += f'\nexport {DD_LOG_LEVEL_VAR}="{answers["dd_log_level"]}"'
 
-    return enclose(formatted) if formatted else formatted
+    return enclose(config) if config else config
+
+
+def _update_config_file(config_file: Path, config: str) -> None:
+    """
+    Update the firewall's section in the given configuration file.
+
+    Args:
+        config_file: A `Path` to the configuration file to update.
+        config: The new configuration to write.
+    """
+    updated = False
+
+    temp_fd, temp_file = tempfile.mkstemp(text=True)
+    temp_handle = os.fdopen(temp_fd, 'w')
+
+    with open(config_file, 'r') as f:
+        copy = True
+        for line in f:
+            if line.strip() == _BLOCK_START:
+                copy = False
+                temp_handle.write(config)
+                updated = True
+            if line.strip() == _BLOCK_END:
+                copy = True
+                continue
+            if copy:
+                temp_handle.write(line)
+    if not updated:
+        temp_handle.write(config)
+
+    temp_handle.close()
+    os.rename(temp_file, config_file)

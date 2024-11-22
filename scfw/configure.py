@@ -17,6 +17,8 @@ DD_LOG_LEVEL_VAR = "SCFW_DD_LOG_LEVEL"
 The environment variable under which the firewall looks for a Datadog log level setting.
 """
 
+_CONFIG_FILES = [".bashrc", ".zshrc"]
+
 _BLOCK_OPENER = "# BEGIN SCFW MANAGED BLOCK"
 _BLOCK_CLOSER = "# END SCFW MANAGED BLOCK"
 
@@ -47,8 +49,9 @@ def run_configure(args: Namespace) -> int:
 
     config = inquirer.prompt(_get_questions())
     if (formatted := _format_config(config)):
-        with open(Path.home() / ".bashrc", 'a') as f:
-            f.write(formatted)
+        for file in _CONFIG_FILES:
+            with open(Path.home() / file, 'a') as f:
+                f.write(formatted)
 
     print(_EPILOGUE)
 

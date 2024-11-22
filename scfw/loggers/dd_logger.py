@@ -20,6 +20,8 @@ import dotenv
 
 _DD_LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
 
+_DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
+
 
 class _DDLogHandler(logging.Handler):
     """
@@ -92,12 +94,10 @@ class DDLogger(FirewallLogger):
         """
         self._logger = _ddlog
 
-        # TODO(ikretz): Allow for Datadog logging to be completely disabled
-        # TODO(ikretz): Move the default choice into a global constant
         try:
             self._level = FirewallAction(os.getenv(DD_LOG_LEVEL_VAR))
         except ValueError:
-            self._level = FirewallAction.BLOCK
+            self._level = _DD_LOG_LEVEL_DEFAULT
 
     def log(
         self,

@@ -7,6 +7,7 @@ import logging
 import sys
 from typing import Optional
 
+import scfw
 from scfw.ecosystem import ECOSYSTEM
 from scfw.parser import ArgumentError, ArgumentParser
 
@@ -65,6 +66,13 @@ def _cli() -> ArgumentParser:
         prog="scfw",
         exit_on_error=False,
         description="A tool for preventing the installation of malicious PyPI and npm packages."
+    )
+
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=scfw.__version__
     )
 
     parser.add_argument(

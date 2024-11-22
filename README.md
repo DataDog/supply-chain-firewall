@@ -30,18 +30,19 @@ cd supply-chain-firewall
 make install
 ```
 
-To check whether the installation succeeded, run the following command and verify that you see the help message output below.
+To check whether the installation succeeded, run the following command and verify that you see output similar to the following.
 ```bash
-$ scfw -h
-usage: scfw [options] COMMAND
+$ scfw --version
+0.2.0
+```
 
-A tool to prevent the installation of vulnerable or malicious pip and npm packages
+### Post-installation steps
 
-options:
-  -h, --help         show this help message and exit
-  --dry-run          Verify any installation targets but do not run the package manager command
-  --log-level LEVEL  Desired logging level (default: WARNING, options: DEBUG, INFO, WARNING, ERROR)
-  --executable PATH  Python or npm executable to use for running commands (default: environmentally determined)
+To get the most out of the supply-chain firewall, it is recommended to run the `scfw configure` command after installation.  This script will walk you through configuring your environment so that all `pip` or `npm` commands are passively run through the firewall as well as enabling Datadog logging, described in more detail below.
+
+```bash
+$ scfw configure
+...
 ```
 
 ### Compatibility
@@ -50,21 +51,14 @@ The supply-chain firewall is compatible with `pip >= 22.2` and `npm >= 7.0`.  In
 
 ## Usage
 
-To use the supply-chain firewall, just prepend `scfw` to the `pip install` or `npm install` command you want to run.
+To use the supply-chain firewall, just prepend `scfw run` to the `pip install` or `npm install` command you want to run.
 
 ```
-$ scfw npm install react
-$ scfw pip install -r requirements.txt
+$ scfw run npm install react
+$ scfw run pip install -r requirements.txt
 ```
 
 For `pip install` commands, the firewall will install packages in the same environment (virtual or global) in which the command was run.
-
-If desired, the following aliases can be added to one's `.bashrc`/`.zshrc` file to passively run all `pip` and `npm` commands through the firewall.
-
-```
-alias pip="scfw pip"
-alias npm="scfw npm"
-```
 
 ## Limitations
 
@@ -72,11 +66,11 @@ Unlike `pip`, a variety of `npm` operations beyond `npm install` can end up inst
 
 ## Datadog Logs integration
 
-The supply-chain firewall can optionally send logs of blocked and successful installations to Datadog.
+The supply-chain firewall can optionally send logs of blocked and successful installations to Datadog.  All that is needed is a Datadog API key.
 
 ![scfw datadog log](images/datadog_log.png)
 
-To opt in, set the environment variable `DD_API_KEY` to your Datadog API key, either directly in your shell environment or in a `.env` file in the current working directory.  A logging level may also be selected by setting the environment variable `SCFW_DD_LOG_LEVEL` to one of `ALLOW`, `ABORT` or `BLOCK`.  The `BLOCK` level only logs blocked installations, `ABORT` logs blocked and aborted installations, and `ALLOW` logs these as well as successful installations.  The `BLOCK` level is set by default, i.e., when `SCFW_DD_LOG_LEVEL` is either not set or does not contain a valid log level.
+To opt in, run the `scfw configure` command, which will walk you through the steps of configuring your environment to enable Datadog logging.
 
 Users may also implement custom loggers for use with the firewall. A template for implementating custom loggers may be found in `examples/logger.py`. Details may also be found in the API documentation.
 
@@ -91,7 +85,7 @@ The test suite may be executed in the development environment by running `make t
 To facilitate testing "in the wild", `scfw` provides a `--dry-run` option that will verify any installation targets and exit without executing the given package manager command:
 
 ```
-$ scfw --dry-run npm install axios
+$ scfw run --dry-run npm install axios
 Dry-run: no issues found, exiting without running command.
 ```
 

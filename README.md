@@ -66,7 +66,7 @@ Unlike `pip`, a variety of `npm` operations beyond `npm install` can end up inst
 
 ## Datadog Logs integration
 
-The supply-chain firewall can optionally send logs of blocked and successful installations to Datadog.  All that is needed is a Datadog API key.
+The supply-chain firewall can optionally send logs of blocked and successful installations to Datadog.
 
 ![scfw datadog log](images/datadog_log.png)
 

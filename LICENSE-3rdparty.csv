@@ -1,0 +1,5 @@
+Component,Origin,License,Copyright
+datadog-api-client,PyPI,Apache-2.0,Datadog Inc.
+packaging,PyPI,Apache-2.0,Donald Stufft
+python-dotenv,PyPI,BSD-3-Clause,Saurabh Kumar
+requests,PyPI,Apache-2.0,Kenneth Reitz

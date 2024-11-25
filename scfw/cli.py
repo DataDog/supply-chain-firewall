@@ -133,11 +133,15 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
     try:
         args = parser.parse_args(argv[1:hinge])
 
+        # Only allow a package manager `command` argument when
+        # the user selected the `run` subcommand
         match args.subcommand == "run", hinge == len(argv):
             case True, False:
+                # `run` subcommand with `command` argument
                 args_dict = vars(args)
                 args_dict["command"] = argv[hinge:]
             case False, True:
+                # Non-`run` subcommand, no `command` argument
                 pass
             case _:
                 raise ArgumentError

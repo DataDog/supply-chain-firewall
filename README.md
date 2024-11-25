@@ -70,7 +70,9 @@ The supply-chain firewall can optionally send logs of blocked and successful ins
 
 ![scfw datadog log](images/datadog_log.png)
 
-To opt in, run the `scfw configure` command, which will walk you through the steps of configuring your environment to enable Datadog logging.
+To opt in, set the environment variable `DD_API_KEY` to your Datadog API key, either directly in your shell environment or in a `.env` file in the current working directory.  A logging level may also be selected by setting the environment variable `SCFW_DD_LOG_LEVEL` to one of `ALLOW`, `ABORT` or `BLOCK`.  The `BLOCK` level only logs blocked installations, `ABORT` logs blocked and aborted installations, and `ALLOW` logs these as well as successful installations.  The `BLOCK` level is set by default, i.e., when `SCFW_DD_LOG_LEVEL` is either not set or does not contain a valid log level.
+
+You can also use the `scfw configure` command to walk through the steps of configuring your environment for Datadog logging.
 
 Users may also implement custom loggers for use with the firewall. A template for implementating custom loggers may be found in `examples/logger.py`. Details may also be found in the API documentation.
 

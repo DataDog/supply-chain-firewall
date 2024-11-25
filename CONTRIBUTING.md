@@ -2,7 +2,7 @@
 
 We welcome community contributions to the supply chain firewall.
 
-## Setting up for development
+## :hammer_and_wrench: Setting up for development
 
 To set up for development and testing, create a fresh `virtualenv`,
 activate it and run `make install-dev`.  This will install `scfw` as
@@ -10,8 +10,8 @@ well as its development dependencices.
 
 ### Documentation
 
-API documentation may be built via `pdoc` by running `make docs` from
-in your development environment.  This will automatically open the
+API documentation may be built via `pdoc` by running `make docs` in
+your development environment.  This will automatically open the
 documentation in your system's default browser.
 
 ### Testing

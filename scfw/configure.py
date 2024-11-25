@@ -72,12 +72,12 @@ def _get_questions() -> list[inquirer.questions.Question]:
         inquirer.Confirm(
             name="alias_pip",
             message="Would you like to set a shell alias to run all pip commands through the firewall?",
-            default=False
+            default=True
         ),
         inquirer.Confirm(
             name="alias_npm",
             message="Would you like to set a shell alias to run all npm commands through the firewall?",
-            default=False
+            default=True
         ),
         inquirer.Confirm(
             name="enable_dd_logs",

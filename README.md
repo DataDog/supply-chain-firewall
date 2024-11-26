@@ -33,7 +33,7 @@ make install
 To check whether the installation succeeded, run the following command and verify that you see output similar to the following.
 ```bash
 $ scfw --version
-0.2.0
+1.0.0
 ```
 
 ### Post-installation steps

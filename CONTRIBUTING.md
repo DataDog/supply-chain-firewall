@@ -1,6 +1,4 @@
-# Contributing to Supply Chain Firewall
-
-We welcome community contributions to the supply chain firewall.
+# Contributing to Supply-Chain Firewall
 
 ## :hammer_and_wrench: Setting up for development
 

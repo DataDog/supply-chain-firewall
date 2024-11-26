@@ -80,7 +80,7 @@ The firewall can integrate with user-supplied loggers.  A template for implement
 
 ## Development
 
-We welcome community contributions to the supply-chain firewall.  Refer to the [CONTRIBUTING](./CONTRIBUTING.md) guide for instructions on building the API documentation and setting up for developing the supply-chain firewall.
+We welcome community contributions to the supply-chain firewall.  Refer to the [CONTRIBUTING](./CONTRIBUTING.md) guide for instructions on building the API documentation and setting up for development.
 
 ## Maintainers
 

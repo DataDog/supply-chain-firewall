@@ -3,9 +3,10 @@ Defines the supply-chain firewall's command-line interface and performs argument
 """
 
 from argparse import Namespace
+from enum import Enum
 import logging
 import sys
-from typing import Optional
+from typing import Callable, Optional
 
 import scfw
 from scfw.ecosystem import ECOSYSTEM
@@ -18,6 +19,16 @@ _LOG_LEVELS = list(
     )
 )
 _DEFAULT_LOG_LEVEL = logging.getLevelName(logging.WARNING)
+
+
+def _add_configure_cli(parser: ArgumentParser) -> None:
+    """
+    Defines the command-line interface for the firewall's `configure` subcommand.
+
+    Args:
+        parser: The `ArgumentParser` to which the `configure` command line will be added.
+    """
+    return
 
 
 def _add_run_cli(parser: ArgumentParser) -> None:
@@ -42,14 +53,49 @@ def _add_run_cli(parser: ArgumentParser) -> None:
     )
 
 
-def _add_configure_cli(parser: ArgumentParser) -> None:
+class Subcommand(Enum):
     """
-    Defines the command-line interface for the firewall's `configure` subcommand.
+    The set of subcommands that comprise the supply-chain firewall's command line.
+    """
+    Configure = "configure"
+    Run = "run"
 
-    Args:
-        parser: The `ArgumentParser` to which the `configure` command line will be added.
-    """
-    return
+    def _parser_spec(self) -> dict:
+        """
+        Return the `ArgumentParser` configuration for the given subcommand's parser.
+
+        Returns:
+            A `dict` of `kwargs` to pass to the `argparse.SubParsersAction.add_parser()`
+            method for configuring the subparser corresponding to the subcommand.
+        """
+        match self:
+            case Subcommand.Configure:
+                return {
+                    "exit_on_error": False,
+                    "description": "Configure the environment for using the supply-chain firewall."
+                }
+            case Subcommand.Run:
+                return {
+                    "usage": "%(prog)s [options] COMMAND",
+                    "exit_on_error": False,
+                    "description": "Run a package manager command through the supply-chain firewall."
+                }
+
+    def _cli_spec(self) -> Callable[[ArgumentParser], None]:
+        """
+        Return a function for adding the given subcommand's command-line options
+        to a given `ArgumentParser`.
+
+        Returns:
+            A `Callable[[ArgumentParser], None]` that adds the command-line options
+            for the subcommand to the `ArgumentParser` it is given, in the intended
+            case via a sequence of calls to `ArgumentParser.add_argument()`.
+        """
+        match self:
+            case Subcommand.Configure:
+                return _add_configure_cli
+            case Subcommand.Run:
+                return _add_run_cli
 
 
 def _cli() -> ArgumentParser:
@@ -86,20 +132,9 @@ def _cli() -> ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="subcommand")
 
-    run_parser = subparsers.add_parser(
-        "run",
-        usage="%(prog)s [options] COMMAND",
-        exit_on_error=False,
-        description="Run a package manager command through the supply-chain firewall."
-    )
-    _add_run_cli(run_parser)
-
-    configure_parser = subparsers.add_parser(
-        "configure",
-        exit_on_error=False,
-        description="Configure the environment for using the supply-chain firewall."
-    )
-    _add_configure_cli(configure_parser)
+    for subcommand in Subcommand:
+        subparser = subparsers.add_parser(subcommand.value, **subcommand._parser_spec())
+        subcommand._cli_spec()(subparser)
 
     return parser
 
@@ -133,6 +168,7 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
     try:
         args = parser.parse_args(argv[1:hinge])
 
+        # TODO(ikretz): Use `Subcommand` here instead of strings
         # Only allow a package manager `command` argument when
         # the user selected the `run` subcommand
         match args.subcommand == "run", hinge == len(argv):

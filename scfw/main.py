@@ -6,6 +6,7 @@ import logging
 import time
 
 import scfw.cli as cli
+from scfw.cli import Subcommand
 import scfw.configure as configure
 import scfw.firewall as firewall
 
@@ -29,11 +30,11 @@ def main() -> int:
     log.info(f"Starting supply-chain firewall on {time.asctime(time.localtime())}")
     log.debug(f"Command line: {vars(args)}")
 
-    match args.subcommand:
-        case "run":
-            return firewall.run_firewall(args)
-        case "configure":
+    match Subcommand(args.subcommand):
+        case Subcommand.Configure:
             return configure.run_configure(args)
+        case Subcommand.Run:
+            return firewall.run_firewall(args)
 
     return 0
 

@@ -1,15 +1,9 @@
-[build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-packages = ["scfw", "scfw.commands", "scfw.loggers", "scfw.verifiers"]
-
 [project]
 name = "scfw"
-version = "0.1.0"
+dynamic = ["version"]
 dependencies = [
     "datadog-api-client",
+    "inquirer",
     "packaging",
     "python-dotenv",
     "requests",
@@ -25,4 +19,14 @@ description = "A tool for preventing the installation of malicious open-source p
 readme = "README.md"
 
 [project.scripts]
-scfw = "scfw.firewall:run_firewall"
+scfw = "scfw.main:main"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["scfw", "scfw.commands", "scfw.loggers", "scfw.verifiers"]
+
+[tool.setuptools.dynamic]
+version = {attr = "scfw.__version__"}

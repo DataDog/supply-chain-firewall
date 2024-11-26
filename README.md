@@ -1,4 +1,4 @@
-# Supply-chain firewall
+# Supply-Chain Firewall
 
 ![Test](https://github.com/DataDog/supply-chain-firewall/actions/workflows/test.yaml/badge.svg)
 ![Code quality](https://github.com/DataDog/supply-chain-firewall/actions/workflows/code_quality.yaml/badge.svg)
@@ -30,45 +30,41 @@ cd supply-chain-firewall
 make install
 ```
 
-To check whether the installation succeeded, run the following command and verify that you see the help message output below.
+To check whether the installation succeeded, run the following command and verify that you see output similar to the following.
 ```bash
-$ scfw -h
-usage: scfw [options] COMMAND
+$ scfw --version
+0.2.0
+```
 
-A tool to prevent the installation of vulnerable or malicious pip and npm packages
+### Post-installation steps
 
-options:
-  -h, --help         show this help message and exit
-  --dry-run          Verify any installation targets but do not run the package manager command
-  --log-level LEVEL  Desired logging level (default: WARNING, options: DEBUG, INFO, WARNING, ERROR)
-  --executable PATH  Python or npm executable to use for running commands (default: environmentally determined)
+To get the most out of the supply-chain firewall, it is recommended to run the `scfw configure` command after installation.  This script will walk you through configuring your environment so that all `pip` or `npm` commands are passively run through the firewall as well as enabling Datadog logging, described in more detail below.
+
+```bash
+$ scfw configure
+...
 ```
 
 ### Compatibility
 
 The supply-chain firewall is compatible with `pip >= 22.2` and `npm >= 7.0`.  In keeping with its goal of blocking 100% of known-malicious package installations, the firewall will refuse to run with an incompatible version of `pip` or `npm`.  Please upgrade to or verify that you are running a compatible version of `pip` or `npm` before using this tool.
 
+Currently, the supply-chain firewall is only fully supported on macOS systems, though it should run as intended on most common Linux distributions.  It is currently not supported on Windows.
+
 ## Usage
 
-To use the supply-chain firewall, just prepend `scfw` to the `pip install` or `npm install` command you want to run.
+To use the supply-chain firewall, just prepend `scfw run` to the `pip install` or `npm install` command you want to run.
 
 ```
-$ scfw npm install react
-$ scfw pip install -r requirements.txt
+$ scfw run npm install react
+$ scfw run pip install -r requirements.txt
 ```
 
 For `pip install` commands, the firewall will install packages in the same environment (virtual or global) in which the command was run.
 
-If desired, the following aliases can be added to one's `.bashrc`/`.zshrc` file to passively run all `pip` and `npm` commands through the firewall.
-
-```
-alias pip="scfw pip"
-alias npm="scfw npm"
-```
-
 ## Limitations
 
-Unlike `pip`, a variety of `npm` operations beyond `npm install` can end up installing new packages.  For now, only `npm install` commands are in scope for analysis with the supply chain firewall.  We are hoping to extend the firewall's purview to other "installish" `npm` commands over time.
+Unlike `pip`, a variety of `npm` operations beyond `npm install` can end up installing new packages.  For now, only `npm install` commands are in scope for analysis with the supply-chain firewall.  We are hoping to extend the firewall's purview to other "installish" `npm` commands over time.
 
 ## Datadog Logs integration
 
@@ -78,35 +74,15 @@ The supply-chain firewall can optionally send logs of blocked and successful ins
 
 To opt in, set the environment variable `DD_API_KEY` to your Datadog API key, either directly in your shell environment or in a `.env` file in the current working directory.  A logging level may also be selected by setting the environment variable `SCFW_DD_LOG_LEVEL` to one of `ALLOW`, `ABORT` or `BLOCK`.  The `BLOCK` level only logs blocked installations, `ABORT` logs blocked and aborted installations, and `ALLOW` logs these as well as successful installations.  The `BLOCK` level is set by default, i.e., when `SCFW_DD_LOG_LEVEL` is either not set or does not contain a valid log level.
 
-Users may also implement custom loggers for use with the firewall. A template for implementating custom loggers may be found in `examples/logger.py`. Details may also be found in the API documentation.
+You can also use the `scfw configure` command to walk through the steps of configuring your environment for Datadog logging.
+
+The firewall can integrate with user-supplied loggers.  A template for implementating a custom logger may be found in `examples/logger.py`. Refer to the API documentation for details.
 
 ## Development
 
-To set up for testing and development, create a fresh `virtualenv`, activate it and run `make install-dev`.  This will install `scfw` and the development dependencies.
+We welcome community contributions to the supply-chain firewall.  Refer to the [CONTRIBUTING](./CONTRIBUTING.md) guide for instructions on building the API documentation and setting up for developing the supply-chain firewall.
 
-### Testing
+## Maintainers
 
-The test suite may be executed in the development environment by running `make test`.  To additionally view code coverage, run `make coverage`.
-
-To facilitate testing "in the wild", `scfw` provides a `--dry-run` option that will verify any installation targets and exit without executing the given package manager command:
-
-```
-$ scfw --dry-run npm install axios
-Dry-run: no issues found, exiting without running command.
-```
-
-Of course, one can always test inside a container or VM for an added layer of protection, if desired.
-
-### Code quality
-
-The supply-chain firewall code may be typechecked with `mypy` and linted with `flake8`.  Run `make typecheck` or `make lint`, respectively, in the environment where the development dependencies have been installed.
-
-Run `make checks` to run the full suite of code quality checks, including tests.  These are the same checks that run in the repository's CI, the only difference being that the CI jobs matrix test against a range of `pip` and `npm` versions.  There is also a pre-commit hook that runs the checks in case one wishes to run them on each commit.
-
-### Documentation
-
-API documentation may be built via `pdoc` by running `make docs` from your development environment.  This will automatically open the documentation in your system's default browser.
-
-## Feedback
-
-All constructive feedback is welcome and greatly appreciated.  Please feel free to open an issue in this repository or reach out to Ian Kretz (ian.kretz@datadoghq.com) directly via Slack or email.
+- [Ian Kretz](https://github.com/ikretz)
+- [Sebastian Obregoso](https://www.linkedin.com/in/sebastianobregoso/)

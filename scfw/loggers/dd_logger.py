@@ -6,6 +6,7 @@ import logging
 import os
 import socket
 
+from scfw.configure import DD_API_KEY_VAR, DD_LOG_LEVEL_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.target import InstallTarget
@@ -18,6 +19,8 @@ from datadog_api_client.v2.model.http_log_item import HTTPLogItem
 import dotenv
 
 _DD_LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
+
+_DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
 
 
 class _DDLogHandler(logging.Handler):
@@ -73,7 +76,7 @@ class _DDLogHandler(logging.Handler):
 
 # Configure a single logging handle for all `DDLogger` instances to share
 dotenv.load_dotenv()
-_handler = _DDLogHandler() if os.getenv("DD_API_KEY") else logging.NullHandler()
+_handler = _DDLogHandler() if os.getenv(DD_API_KEY_VAR) else logging.NullHandler()
 _handler.setFormatter(logging.Formatter(_DD_LOG_FORMAT))
 
 _ddlog = logging.getLogger("ddlog")
@@ -92,9 +95,9 @@ class DDLogger(FirewallLogger):
         self._logger = _ddlog
 
         try:
-            self._level = FirewallAction(os.getenv("SCFW_DD_LOG_LEVEL"))
+            self._level = FirewallAction(os.getenv(DD_LOG_LEVEL_VAR))
         except ValueError:
-            self._level = FirewallAction.BLOCK
+            self._level = _DD_LOG_LEVEL_DEFAULT
 
     def log(
         self,

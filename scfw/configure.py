@@ -6,6 +6,7 @@ from argparse import Namespace
 import inquirer  # type: ignore
 import os
 from pathlib import Path
+import re
 import tempfile
 
 DD_API_KEY_VAR = "DD_API_KEY"
@@ -31,7 +32,7 @@ _GREETING = (
 )
 
 _EPILOGUE = (
-    "\nThe environment was successfully configured. Make sure to update your current shell\n"
+    "The environment was successfully configured. Make sure to update your current shell\n"
     "environment by running, e.g.:\n\n    source ~/.bashrc\n\nGood luck!"
 )
 
@@ -112,9 +113,6 @@ def _format_answers(answers: dict) -> str:
     Returns:
         A `str` containing the desired configuration content for writing into a .rc file.
     """
-    def enclose(config: str) -> str:
-        return f"{_BLOCK_START}{config}\n{_BLOCK_END}\n"
-
     config = ''
 
     if answers["alias_pip"]:
@@ -126,7 +124,7 @@ def _format_answers(answers: dict) -> str:
     if answers["dd_log_level"]:
         config += f'\nexport {DD_LOG_LEVEL_VAR}="{answers["dd_log_level"]}"'
 
-    return enclose(config) if config else config
+    return config
 
 
 def _update_config_file(config_file: Path, config: str) -> None:
@@ -137,25 +135,19 @@ def _update_config_file(config_file: Path, config: str) -> None:
         config_file: A `Path` to the configuration file to update.
         config: The new configuration to write.
     """
-    updated = False
+    def enclose(config: str) -> str:
+        return f"{_BLOCK_START}{config}\n{_BLOCK_END}"
+
+    with open(config_file) as f:
+        contents = f.read()
+
+    updated = re.sub(f"{_BLOCK_START}(.*?){_BLOCK_END}", enclose(config), contents, flags=re.DOTALL)
+    if updated == contents:
+        updated = contents + '\n' + enclose(config) + '\n'
 
     temp_fd, temp_file = tempfile.mkstemp(text=True)
     temp_handle = os.fdopen(temp_fd, 'w')
-
-    with open(config_file, 'r') as f:
-        copy = True
-        for line in f:
-            if line.strip() == _BLOCK_START:
-                copy = False
-                temp_handle.write(config)
-                updated = True
-            if line.strip() == _BLOCK_END:
-                copy = True
-                continue
-            if copy:
-                temp_handle.write(line)
-    if not updated:
-        temp_handle.write(config)
-
+    temp_handle.write(updated)
     temp_handle.close()
+
     os.rename(temp_file, config_file)

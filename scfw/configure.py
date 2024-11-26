@@ -142,7 +142,7 @@ def _update_config_file(config_file: Path, config: str) -> None:
         contents = f.read()
 
     updated = re.sub(f"{_BLOCK_START}(.*?){_BLOCK_END}", enclose(config), contents, flags=re.DOTALL)
-    if updated == contents:
+    if updated == contents and config not in contents:
         updated = f"{contents}\n{enclose(config)}\n"
 
     temp_fd, temp_file = tempfile.mkstemp(text=True)

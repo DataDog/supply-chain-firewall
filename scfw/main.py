@@ -21,7 +21,7 @@ def main() -> int:
     args, help = cli.parse_command_line()
 
     if not args:
-        print(help)
+        print(help, end='')
         return 0
 
     log = _root_logger()

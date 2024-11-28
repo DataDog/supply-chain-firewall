@@ -130,7 +130,7 @@ def _cli() -> ArgumentParser:
         help="Desired logging level (default: %(default)s, options: %(choices)s)"
     )
 
-    subparsers = parser.add_subparsers(dest="subcommand")
+    subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
     for subcommand in Subcommand:
         subparser = subparsers.add_parser(subcommand.value, **subcommand._parser_spec())
@@ -167,9 +167,6 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
 
     try:
         args = parser.parse_args(argv[1:hinge])
-
-        if not args.subcommand:
-            raise ArgumentError
 
         # Only allow a package manager `command` argument when
         # the user selected the `run` subcommand

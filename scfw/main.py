@@ -28,7 +28,7 @@ def main() -> int:
 
     _configure_logging(args.log_level)
 
-    _log.info(f"Starting supply-chain firewall on {time.asctime(time.localtime())}")
+    _log.info(f"Starting Supply-Chain Firewall on {time.asctime(time.localtime())}")
     _log.debug(f"Command line: {vars(args)}")
 
     match Subcommand(args.subcommand):

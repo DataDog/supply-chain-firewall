@@ -33,11 +33,7 @@ def test_cli_no_options_no_command():
     """
     argv = ["scfw"]
     args, _ = _parse_command_line(argv)
-    assert args.subcommand == None
-    assert "command" not in args
-    assert "dry_run" not in args
-    assert "executable" not in args
-    assert args.log_level == _DEFAULT_LOG_LEVEL
+    assert args == None
 
 
 def test_cli_all_options_no_command():

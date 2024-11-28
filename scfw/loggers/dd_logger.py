@@ -6,6 +6,7 @@ import logging
 import os
 import socket
 
+import scfw
 from scfw.configure import DD_API_KEY_VAR, DD_LOG_LEVEL_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
@@ -32,7 +33,7 @@ class _DDLogHandler(logging.Handler):
     """
     DD_SOURCE = "scfw"
     DD_ENV = "dev"
-    DD_VERSION = "0.1.0"
+    DD_VERSION = scfw.__version__
 
     def __init__(self):
         super().__init__()
@@ -48,10 +49,8 @@ class _DDLogHandler(logging.Handler):
             env = self.DD_ENV
         if not (service := os.getenv("DD_SERVICE")):
             service = record.__dict__.get("ecosystem", self.DD_SOURCE)
-        if not (version := os.getenv("DD_VERSION")):
-            version = self.DD_VERSION
 
-        usm_tags = {f"env:{env}", f"version:{version}"}
+        usm_tags = {f"env:{env}", f"version:{self.DD_VERSION}"}
 
         targets = record.__dict__.get("targets", {})
         target_tags = set(map(lambda e: f"target:{e}", targets))

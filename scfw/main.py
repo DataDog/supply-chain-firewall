@@ -10,6 +10,8 @@ from scfw.cli import Subcommand
 import scfw.configure as configure
 import scfw.firewall as firewall
 
+_log = logging.getLogger(__name__)
+
 
 def main() -> int:
     """
@@ -21,14 +23,13 @@ def main() -> int:
     args, help = cli.parse_command_line()
 
     if not args:
-        print(help)
+        print(help, end='')
         return 0
 
-    log = _root_logger()
-    log.setLevel(args.log_level)
+    _configure_logging(args.log_level)
 
-    log.info(f"Starting supply-chain firewall on {time.asctime(time.localtime())}")
-    log.debug(f"Command line: {vars(args)}")
+    _log.info(f"Starting Supply-Chain Firewall on {time.asctime(time.localtime())}")
+    _log.debug(f"Command line: {vars(args)}")
 
     match Subcommand(args.subcommand):
         case Subcommand.Configure:
@@ -39,17 +40,17 @@ def main() -> int:
     return 0
 
 
-def _root_logger() -> logging.Logger:
+def _configure_logging(level: int) -> None:
     """
-    Configure the root logger and return a handle to it.
+    Configure the root logger.
 
-    Returns:
-        A handle to the configured root logger.
+    Args:
+        level: The log level selected by the user.
     """
     handler = logging.StreamHandler()
+    handler.addFilter(logging.Filter(name="scfw"))
     handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
 
     log = logging.getLogger()
     log.addHandler(handler)
-
-    return log
+    log.setLevel(level)

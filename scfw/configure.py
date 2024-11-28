@@ -50,9 +50,8 @@ def run_configure(args: Namespace) -> int:
     print(_GREETING)
 
     answers = inquirer.prompt(_get_questions())
-    if (config := _format_answers(answers)):
-        for file in [Path.home() / file for file in _CONFIG_FILES]:
-            _update_config_file(file, config)
+    for file in [Path.home() / file for file in _CONFIG_FILES]:
+        _update_config_file(file, _format_answers(answers))
 
     print(_EPILOGUE)
 
@@ -141,7 +140,11 @@ def _update_config_file(config_file: Path, config: str) -> None:
     with open(config_file) as f:
         contents = f.read()
 
-    updated = re.sub(f"{_BLOCK_START}(.*?){_BLOCK_END}", enclose(config), contents, flags=re.DOTALL)
+    pattern = f"{_BLOCK_START}(.*?){_BLOCK_END}"
+    if not config:
+        pattern = f"\n{pattern}\n"
+
+    updated = re.sub(pattern, enclose(config) if config else '', contents, flags=re.DOTALL)
     if updated == contents and config not in contents:
         updated = f"{contents}\n{enclose(config)}\n"
 

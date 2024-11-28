@@ -57,7 +57,7 @@ Currently, Supply-Chain Firewall is only fully supported on macOS systems, thoug
 
 ## Usage
 
-To use Supply-Chain Firewall, just prepend `scfw run` to the `pip install` or `npm install` command you want to run.
+To use Supply-Chain Firewall, prepend `scfw run` to the `pip install` or `npm install` command you want to run.
 
 ```
 $ scfw run npm install react
@@ -66,7 +66,7 @@ $ scfw run pip install -r requirements.txt
 
 For `pip install` commands, packages will be installed in the same environment (virtual or global) in which the command was run.
 
-## Limitations
+### Limitations
 
 Unlike `pip`, a variety of `npm` operations beyond `npm install` can end up installing new packages.  For now, only `npm install` commands are in Supply-Chain Firewall's scope.  We are hoping to extend the tool's purview to other "installish" `npm` commands over time.
 

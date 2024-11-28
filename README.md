@@ -51,7 +51,12 @@ $ scfw configure
 
 ### Compatibility
 
-Supply-Chain Firewall is compatible with `pip >= 22.2` and `npm >= 7.0`.  In keeping with its goal of blocking 100% of known-malicious package installations, `scfw` will refuse to run with an incompatible version of `pip` or `npm`.  Please upgrade to or verify that you are running a compatible version of `pip` or `npm` before using this tool.
+|  Package manager  |  Compatible versions  |
+| :---------------: | :-------------------: |
+| npm               | >= 7.0                |
+| pip               | >= 22.2               |
+
+In keeping with its goal of blocking 100% of known-malicious package installations, `scfw` will refuse to run with an incompatible version of a supported package manager.  Please upgrade to or verify that you are running a compatible version before using this tool.
 
 Currently, Supply-Chain Firewall is only fully supported on macOS systems, though it should run as intended on most common Linux distributions.  It is currently not supported on Windows.
 

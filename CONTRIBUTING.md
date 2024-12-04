@@ -3,8 +3,16 @@
 ## :hammer_and_wrench: Setting up for development
 
 To set up for development and testing, create a fresh `virtualenv`,
-activate it and run `make install-dev`.  This will install `scfw` as
-well as its development dependencices.
+activate it and run the following sequence of commands:
+
+```bash
+git clone https://github.com/DataDog/supply-chain-firewall.git
+cd supply-chain-firewall
+make install-dev
+```
+
+This will install `scfw` as well as its development dependencies into
+your development environment.
 
 ### Documentation
 

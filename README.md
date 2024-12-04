@@ -4,19 +4,19 @@
 ![Code quality](https://github.com/DataDog/supply-chain-firewall/actions/workflows/code_quality.yaml/badge.svg)
 
 <p align="center">
-  <img src="./images/logo.png" alt="Supply-Chain Firewall" width="300" />
+  <img src="https://github.com/DataDog/supply-chain-firewall/blob/main/images/logo.png?raw=true" alt="Supply-Chain Firewall" width="300" />
 </p>
 
 Supply-Chain Firewall is a command-line tool for preventing the installation of malicious PyPI and npm packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
 
-![scfw demo usage](images/demo.gif)
+![scfw demo usage](https://github.com/DataDog/supply-chain-firewall/blob/main/images/demo.gif?raw=true)
 
 Supply-Chain Firewall collects all targets that would be installed by a given `pip` or `npm` command and checks them against reputable sources of data on open-source malware and vulnerabilities.  The command is automatically blocked when any data source finds that any target is malicious.  In cases where a data source reports other findings for a target, they are presented to the user along with a prompt confirming intent to proceed with the installation.
 
 Default data sources include:
 
-- Datadog Security Research's public malicious packages [dataset](https://github.com/DataDog/malicious-software-packages-dataset)
-- [OSV.dev](https://osv.dev) disclosures
+- Datadog Security Research's public [malicious packages dataset](https://github.com/DataDog/malicious-software-packages-dataset)
+- [OSV.dev](https://osv.dev) advisories
 
 Users may also implement verifiers for alternative data sources. A template for implementating custom verifiers may be found in `examples/verifier.py`. Details may also be found in the API documentation.
 
@@ -26,15 +26,16 @@ The principal goal of Supply-Chain Firewall is to block 100% of installations of
 
 ### Installation
 
-Clone the repository and run `make install`.  This will install the `scfw` command-line program into your global Python environment.  If desired, this can be done inside a `virtualenv`.
+The simplest way to install Supply-Chain Firewall is via `pip`:
 
 ```bash
-git clone https://github.com/DataDog/supply-chain-firewall.git
-cd supply-chain-firewall
-make install
+$ pip install scfw
 ```
 
+This will install the `scfw` command-line program into your global Python environment.  If desired, this can also be done inside a `virtualenv`.
+
 To check whether the installation succeeded, run the following command and verify that you see output similar to the following.
+
 ```bash
 $ scfw --version
 1.0.1
@@ -79,7 +80,7 @@ Unlike `pip`, a variety of `npm` operations beyond `npm install` can end up inst
 
 Supply-Chain Firewall can optionally send logs of blocked and successful installations to Datadog.
 
-![scfw datadog log](images/datadog_log.png)
+![scfw datadog log](https://github.com/DataDog/supply-chain-firewall/blob/main/images/datadog_log.png?raw=true)
 
 To opt in, set the environment variable `DD_API_KEY` to your Datadog API key, either directly in your shell environment or in a `.env` file in the current working directory.  A logging level may also be selected by setting the environment variable `SCFW_DD_LOG_LEVEL` to one of `ALLOW`, `ABORT` or `BLOCK`.  The `BLOCK` level only logs blocked installations, `ABORT` logs blocked and aborted installations, and `ALLOW` logs these as well as successful installations.  The `BLOCK` level is set by default, i.e., when `SCFW_DD_LOG_LEVEL` is either not set or does not contain a valid log level.
 
@@ -89,7 +90,7 @@ Supply-Chain Firewall can integrate with user-supplied loggers.  A template for 
 
 ## Development
 
-We welcome community contributions to Supply-Chain Firewall.  Refer to the [CONTRIBUTING](./CONTRIBUTING.md) guide for instructions on building the API documentation and setting up for development.
+We welcome community contributions to Supply-Chain Firewall.  Refer to the [CONTRIBUTING](https://github.com/DataDog/supply-chain-firewall/blob/main/CONTRIBUTING.md) guide for instructions on building the API documentation and setting up for development.
 
 ## Maintainers
 

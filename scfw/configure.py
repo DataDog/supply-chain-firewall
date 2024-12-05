@@ -25,10 +25,10 @@ _BLOCK_START = "# BEGIN SCFW MANAGED BLOCK"
 _BLOCK_END = "# END SCFW MANAGED BLOCK"
 
 _GREETING = (
-    "Thank you for using scfw, Datadog's supply-chain firewall!\n\n"
+    "Thank you for using scfw, the Supply-Chain Firewall by Datadog!\n\n"
     "scfw is a tool for preventing the installation of malicious PyPI and npm packages.\n\n"
     "This script will walk you through setting up your environment to get the most out\n"
-    "of the firewall. You can rerun this script at any time.\n"
+    "of scfw. You can rerun this script at any time.\n"
 )
 
 _EPILOGUE = (

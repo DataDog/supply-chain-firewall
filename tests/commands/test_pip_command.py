@@ -51,7 +51,7 @@ def test_pip_command_would_install_exact():
                 ("docutils", "0.15.2"),
                 ("jmespath", "0.10.0"),
                 ("python-dateutil", "2.9.0.post0"),
-                ("six", "1.16.0"),
+                ("six", "1.17.0"),
                 ("urllib3", "1.25.11")
             ]
         )

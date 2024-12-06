@@ -51,7 +51,8 @@ def run_configure(args: Namespace) -> int:
 
     answers = inquirer.prompt(_get_questions())
     for file in [Path.home() / file for file in _CONFIG_FILES]:
-        _update_config_file(file, _format_answers(answers))
+        if file.exists():
+            _update_config_file(file, _format_answers(answers))
 
     print(_EPILOGUE)
 

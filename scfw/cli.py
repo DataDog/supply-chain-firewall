@@ -52,6 +52,7 @@ def _add_configure_cli(parser: ArgumentParser) -> None:
     parser.add_argument(
         "--dd-log-level",
         type=str,
+        default=None,
         choices=[action.value for action in FirewallAction],
         metavar="LEVEL",
         help="Desired logging level for Datadog log forwarding (options: %(choices)s)"

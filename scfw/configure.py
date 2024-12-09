@@ -49,14 +49,20 @@ def run_configure(args: Namespace) -> int:
     Returns:
         An integer status code, 0 or 1.
     """
-    print(_GREETING)
+    answers = vars(args)
 
-    answers = inquirer.prompt(_get_questions())
+    interactive = not any(option for _, option in answers.items())
+
+    if interactive:
+        print(_GREETING)
+        answers = inquirer.prompt(_get_questions())
+
     for file in [Path.home() / file for file in _CONFIG_FILES]:
         if file.exists():
             _update_config_file(file, _format_answers(answers))
 
-    print(_EPILOGUE)
+    if interactive:
+        print(_EPILOGUE)
 
     return 0
 

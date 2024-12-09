@@ -10,6 +10,7 @@ from typing import Callable, Optional
 
 import scfw
 from scfw.ecosystem import ECOSYSTEM
+from scfw.logger import FirewallAction
 from scfw.parser import ArgumentError, ArgumentParser
 
 _LOG_LEVELS = list(
@@ -28,7 +29,33 @@ def _add_configure_cli(parser: ArgumentParser) -> None:
     Args:
         parser: The `ArgumentParser` to which the `configure` command line will be added.
     """
-    return
+    parser.add_argument(
+        "--alias-pip",
+        action="store_true",
+        help="Add shell aliases to always run pip commands through Supply-Chain Firewall"
+    )
+
+    parser.add_argument(
+        "--alias-npm",
+        action="store_true",
+        help="Add shell aliases to always run npm commands through Supply-Chain Firewall"
+    )
+
+    parser.add_argument(
+        "--dd-api-key",
+        type=str,
+        default=None,
+        metavar="KEY",
+        help="API key to use when forwarding logs to Datadog"
+    )
+
+    parser.add_argument(
+        "--dd-log-level",
+        type=str,
+        choices=[action.value for action in FirewallAction],
+        metavar="LEVEL",
+        help="Desired logging level for Datadog log forwarding (options: %(choices)s)"
+    )
 
 
 def _add_run_cli(parser: ArgumentParser) -> None:
@@ -72,13 +99,13 @@ class Subcommand(Enum):
             case Subcommand.Configure:
                 return {
                     "exit_on_error": False,
-                    "description": "Configure the environment for using the supply-chain firewall."
+                    "description": "Configure the environment for using Supply-Chain Firewall."
                 }
             case Subcommand.Run:
                 return {
                     "usage": "%(prog)s [options] COMMAND",
                     "exit_on_error": False,
-                    "description": "Run a package manager command through the supply-chain firewall."
+                    "description": "Run a package manager command through Supply-Chain Firewall."
                 }
 
     def _cli_spec(self) -> Callable[[ArgumentParser], None]:

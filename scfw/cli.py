@@ -202,8 +202,7 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
             case Subcommand.Run, []:
                 raise ArgumentError(None, "Missing required package manager command")
             case Subcommand.Run, _:
-                args_dict = vars(args)
-                args_dict["command"] = argv[hinge:]
+                args.command = argv[hinge:]
             case _, []:
                 pass
             case _:

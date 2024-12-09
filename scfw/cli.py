@@ -2,7 +2,7 @@
 Defines the supply-chain firewall's command-line interface and performs argument parsing.
 """
 
-from argparse import Namespace
+from argparse import ArgumentError, Namespace
 from enum import Enum
 import logging
 import sys
@@ -11,7 +11,7 @@ from typing import Callable, Optional
 import scfw
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction
-from scfw.parser import ArgumentError, ArgumentParser
+from scfw.parser import ArgumentParser
 
 _LOG_LEVELS = list(
     map(
@@ -200,14 +200,14 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
         # the user selected the `run` subcommand
         match Subcommand(args.subcommand), argv[hinge:]:
             case Subcommand.Run, []:
-                raise ArgumentError
+                raise ArgumentError(None, "Missing required package manager command")
             case Subcommand.Run, _:
                 args_dict = vars(args)
                 args_dict["command"] = argv[hinge:]
             case _, []:
                 pass
             case _:
-                raise ArgumentError
+                raise ArgumentError(None, "Received unexpected package manager command")
 
         return args, help_msg
 

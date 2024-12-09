@@ -5,13 +5,6 @@ A drop-in replacement for `argparse.ArgumentParser`.
 import argparse
 
 
-class ArgumentError(Exception):
-    """
-    An exception for `ArgumentParser` to raise.
-    """
-    pass
-
-
 class ArgumentParser(argparse.ArgumentParser):
     """
     A drop-in replacement for `argparse.ArgumentParser` with a patched
@@ -26,4 +19,4 @@ class ArgumentParser(argparse.ArgumentParser):
         Args:
             message: The error message.
         """
-        raise ArgumentError(message)
+        raise argparse.ArgumentError(None, message)

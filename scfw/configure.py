@@ -9,6 +9,8 @@ from pathlib import Path
 import re
 import tempfile
 
+from scfw.logger import FirewallAction
+
 DD_API_KEY_VAR = "DD_API_KEY"
 """
 The environment variable under which the firewall looks for a Datadog API key.
@@ -95,7 +97,7 @@ def _get_questions() -> list[inquirer.questions.Question]:
         inquirer.List(
             name="dd_log_level",
             message="Select the desired log level for Datadog logging",
-            choices=["BLOCK", "ABORT", "ALLOW"],
+            choices=[action.value for action in FirewallAction],
             ignore=lambda answers: not has_dd_api_key and not answers["enable_dd_logs"]
         )
     ]

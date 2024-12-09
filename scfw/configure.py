@@ -49,13 +49,13 @@ def run_configure(args: Namespace) -> int:
     Returns:
         An integer status code, 0 or 1.
     """
-    answers = vars(args)
-
-    interactive = not any(option for _, option in answers.items())
+    interactive = not any({args.alias_pip, args.alias_npm, args.dd_api_key, args.dd_log_level})
 
     if interactive:
         print(_GREETING)
         answers = inquirer.prompt(_get_questions())
+    else:
+        answers = vars(args)
 
     for file in [Path.home() / file for file in _CONFIG_FILES]:
         if file.exists():

@@ -4,12 +4,15 @@ Implements the supply-chain firewall's `configure` subcommand.
 
 from argparse import Namespace
 import inquirer  # type: ignore
+import logging
 import os
 from pathlib import Path
 import re
 import tempfile
 
 from scfw.logger import FirewallAction
+
+_log = logging.getLogger(__name__)
 
 DD_API_KEY_VAR = "DD_API_KEY"
 """
@@ -49,22 +52,30 @@ def run_configure(args: Namespace) -> int:
     Returns:
         An integer status code, 0 or 1.
     """
-    interactive = not any({args.alias_pip, args.alias_npm, args.dd_api_key, args.dd_log_level})
+    try:
+        interactive = not any({args.alias_pip, args.alias_npm, args.dd_api_key, args.dd_log_level})
 
-    if interactive:
-        print(_GREETING)
-        answers = inquirer.prompt(_get_questions())
-    else:
-        answers = vars(args)
+        if interactive:
+            print(_GREETING)
+            answers = inquirer.prompt(_get_questions())
+        else:
+            answers = vars(args)
 
-    for file in [Path.home() / file for file in _CONFIG_FILES]:
-        if file.exists():
-            _update_config_file(file, _format_answers(answers))
+        if not answers:
+            return 0
 
-    if interactive:
-        print(_EPILOGUE)
+        for file in [Path.home() / file for file in _CONFIG_FILES]:
+            if file.exists():
+                _update_config_file(file, _format_answers(answers))
 
-    return 0
+        if interactive:
+            print(_EPILOGUE)
+
+        return 0
+
+    except Exception as e:
+        _log.error(e)
+        return 1
 
 
 def _get_questions() -> list[inquirer.questions.Question]:

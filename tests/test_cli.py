@@ -33,7 +33,25 @@ def test_cli_no_options_no_command():
     """
     argv = ["scfw"]
     args, _ = _parse_command_line(argv)
-    assert args == None
+    assert args is None
+
+
+def test_cli_all_options_no_command():
+    """
+    Invocation with all top-level options and no subcommand.
+    """
+    argv = ["scfw", "--log-level", "DEBUG"]
+    args, _ = _parse_command_line(argv)
+    assert args is None
+
+
+def test_cli_incorrect_subcommand():
+    """
+    Invocation with a nonexistent subcommand.
+    """
+    argv = ["scfw", "nonexistent"]
+    args, _ = _parse_command_line(argv)
+    assert args is None
 
 
 def test_cli_all_options_no_command():
@@ -43,7 +61,7 @@ def test_cli_all_options_no_command():
     executable = "/usr/bin/python"
     argv = ["scfw", "run", "--executable", executable, "--dry-run"]
     args, _ = _parse_command_line(argv)
-    assert args == None
+    assert args is None
 
 
 def test_cli_all_options_pip():

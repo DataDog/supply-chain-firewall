@@ -11,3 +11,12 @@ class ECOSYSTEM(Enum):
     """
     PIP = "pip"
     NPM = "npm"
+
+    def __str__(self) -> str:
+        """
+        Format an `ECOSYSTEM` for printing.
+
+        Returns:
+            A `str` representing the given `ECOSYSTEM` suitable for printing.
+        """
+        return self.value

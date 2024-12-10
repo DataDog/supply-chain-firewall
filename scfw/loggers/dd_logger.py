@@ -19,6 +19,8 @@ from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
 import dotenv
 
+_log = logging.getLogger(__name__)
+
 _DD_LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
 
 _DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
@@ -96,6 +98,7 @@ class DDLogger(FirewallLogger):
         try:
             self._level = FirewallAction(os.getenv(DD_LOG_LEVEL_VAR))
         except ValueError:
+            _log.warning(f"Undefined or invalid Datadog log level: using default level {_DD_LOG_LEVEL_DEFAULT}")
             self._level = _DD_LOG_LEVEL_DEFAULT
 
     def log(
@@ -127,7 +130,7 @@ class DDLogger(FirewallLogger):
 
         self._logger.info(
             message,
-            extra={"ecosystem": ecosystem.value, "targets": map(str, targets)}
+            extra={"ecosystem": str(ecosystem), "targets": map(str, targets)}
         )
 
 

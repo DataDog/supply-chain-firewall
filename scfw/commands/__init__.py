@@ -31,10 +31,13 @@ def get_package_manager_command(
     """
     if not command:
         raise ValueError("Missing package manager command")
-    match command[0]:
-        case ECOSYSTEM.PIP.value:
-            return ECOSYSTEM.PIP, PipCommand(command, executable)
-        case ECOSYSTEM.NPM.value:
-            return ECOSYSTEM.NPM, NpmCommand(command, executable)
-        case other:
-            raise ValueError(f"Unsupported package manager '{other}'")
+
+    try:
+        match (ecosystem := ECOSYSTEM(command[0])):
+            case ECOSYSTEM.PIP:
+                return ecosystem, PipCommand(command, executable)
+            case ECOSYSTEM.NPM:
+                return ecosystem, NpmCommand(command, executable)
+
+    except ValueError:
+        raise ValueError(f"Unsupported package manager '{command[0]}'")

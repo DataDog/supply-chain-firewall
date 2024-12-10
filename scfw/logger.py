@@ -48,6 +48,15 @@ class FirewallAction(Enum):
             case _:
                 return False
 
+    def __str__(self) -> str:
+        """
+        Format a `FirewallAction` for printing.
+
+        Returns:
+            A `str` representing the given `FirewallAction` suitable for printing.
+        """
+        return self.value
+
 
 class FirewallLogger(metaclass=ABCMeta):
     """

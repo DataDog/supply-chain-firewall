@@ -2,4 +2,4 @@
 A supply-chain "firewall" for preventing the installation of vulnerable or malicious `pip` and `npm` packages.
 """
 
-__version__ = "1.0.2"
+__version__ = "1.1.0"

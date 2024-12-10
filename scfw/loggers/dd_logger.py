@@ -98,7 +98,7 @@ class DDLogger(FirewallLogger):
         try:
             self._level = FirewallAction(os.getenv(DD_LOG_LEVEL_VAR))
         except ValueError:
-            _log.warning(f"Undefined or invalid Datadog log level: using default level {_DD_LOG_LEVEL_DEFAULT.value}")
+            _log.warning(f"Undefined or invalid Datadog log level: using default level {_DD_LOG_LEVEL_DEFAULT}")
             self._level = _DD_LOG_LEVEL_DEFAULT
 
     def log(
@@ -130,7 +130,7 @@ class DDLogger(FirewallLogger):
 
         self._logger.info(
             message,
-            extra={"ecosystem": ecosystem.value, "targets": map(str, targets)}
+            extra={"ecosystem": str(ecosystem), "targets": map(str, targets)}
         )
 
 

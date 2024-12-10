@@ -53,7 +53,7 @@ def _add_configure_cli(parser: ArgumentParser) -> None:
         "--dd-log-level",
         type=str,
         default=None,
-        choices=[action.value for action in FirewallAction],
+        choices=[str(action) for action in FirewallAction],
         metavar="LEVEL",
         help="Desired logging level for Datadog log forwarding (options: %(choices)s)"
     )
@@ -87,6 +87,15 @@ class Subcommand(Enum):
     """
     Configure = "configure"
     Run = "run"
+
+    def __str__(self) -> str:
+        """
+        Format a `Subcommand` for printing.
+
+        Returns:
+            A `str` representing the given `Subcommand` suitable for printing.
+        """
+        return self.value
 
     def _parser_spec(self) -> dict:
         """
@@ -161,7 +170,7 @@ def _cli() -> ArgumentParser:
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
     for subcommand in Subcommand:
-        subparser = subparsers.add_parser(subcommand.value, **subcommand._parser_spec())
+        subparser = subparsers.add_parser(str(subcommand), **subcommand._parser_spec())
         subcommand._cli_spec()(subparser)
 
     return parser
@@ -186,7 +195,7 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
     hinge = len(argv)
     for ecosystem in ECOSYSTEM:
         try:
-            hinge = min(hinge, argv.index(ecosystem.value))
+            hinge = min(hinge, argv.index(str(ecosystem)))
         except ValueError:
             pass
 

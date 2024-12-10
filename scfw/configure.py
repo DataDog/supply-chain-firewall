@@ -103,7 +103,7 @@ def _get_questions() -> list[inquirer.questions.Question]:
         inquirer.List(
             name="dd_log_level",
             message="Select the desired log level for Datadog logging",
-            choices=[action.value for action in FirewallAction],
+            choices=[str(action) for action in FirewallAction],
             ignore=lambda answers: not has_dd_api_key and not answers["enable_dd_logs"]
         )
     ]

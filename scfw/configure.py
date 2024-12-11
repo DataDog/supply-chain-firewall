@@ -4,10 +4,15 @@ Implements the supply-chain firewall's `configure` subcommand.
 
 from argparse import Namespace
 import inquirer  # type: ignore
+import logging
 import os
 from pathlib import Path
 import re
 import tempfile
+
+from scfw.logger import FirewallAction
+
+_log = logging.getLogger(__name__)
 
 DD_API_KEY_VAR = "DD_API_KEY"
 """
@@ -25,10 +30,10 @@ _BLOCK_START = "# BEGIN SCFW MANAGED BLOCK"
 _BLOCK_END = "# END SCFW MANAGED BLOCK"
 
 _GREETING = (
-    "Thank you for using scfw, Datadog's supply-chain firewall!\n\n"
+    "Thank you for using scfw, the Supply-Chain Firewall by Datadog!\n\n"
     "scfw is a tool for preventing the installation of malicious PyPI and npm packages.\n\n"
     "This script will walk you through setting up your environment to get the most out\n"
-    "of the firewall. You can rerun this script at any time.\n"
+    "of scfw. You can rerun this script at any time.\n"
 )
 
 _EPILOGUE = (
@@ -47,16 +52,30 @@ def run_configure(args: Namespace) -> int:
     Returns:
         An integer status code, 0 or 1.
     """
-    print(_GREETING)
+    try:
+        interactive = not any({args.alias_pip, args.alias_npm, args.dd_api_key, args.dd_log_level})
 
-    answers = inquirer.prompt(_get_questions())
-    for file in [Path.home() / file for file in _CONFIG_FILES]:
-        if file.exists():
-            _update_config_file(file, _format_answers(answers))
+        if interactive:
+            print(_GREETING)
+            answers = inquirer.prompt(_get_questions())
+        else:
+            answers = vars(args)
 
-    print(_EPILOGUE)
+        if not answers:
+            return 0
 
-    return 0
+        for file in [Path.home() / file for file in _CONFIG_FILES]:
+            if file.exists():
+                _update_config_file(file, _format_answers(answers))
+
+        if interactive:
+            print(_EPILOGUE)
+
+        return 0
+
+    except Exception as e:
+        _log.error(e)
+        return 1
 
 
 def _get_questions() -> list[inquirer.questions.Question]:
@@ -95,7 +114,7 @@ def _get_questions() -> list[inquirer.questions.Question]:
         inquirer.List(
             name="dd_log_level",
             message="Select the desired log level for Datadog logging",
-            choices=["BLOCK", "ABORT", "ALLOW"],
+            choices=[str(action) for action in FirewallAction],
             ignore=lambda answers: not has_dd_api_key and not answers["enable_dd_logs"]
         )
     ]

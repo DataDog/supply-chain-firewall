@@ -9,6 +9,7 @@ import socket
 
 import dotenv
 
+import scfw
 from scfw.configure import DD_LOG_LEVEL_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
@@ -28,6 +29,10 @@ class _DDLogFormatter(logging.Formatter):
     """
     A custom JSON formatter for firewall logs.
     """
+    DD_ENV = "dev"
+    DD_VERSION = scfw.__version__
+    DD_SERVICE = DD_SOURCE = "scfw"
+
     def format(self, record) -> str:
         """
         Format a log record as a JSON string.
@@ -35,7 +40,19 @@ class _DDLogFormatter(logging.Formatter):
         Args:
             record: The log record to be formatted.
         """
-        return json.dumps(record.__dict__)
+        log_record = {
+            "source": self.DD_SOURCE,
+            "service": self.DD_SERVICE,
+            "version": self.DD_VERSION
+        }
+
+        env = os.getenv("DD_ENV")
+        log_record["env"] = env if env else self.DD_ENV
+
+        for key in {"action", "created", "ecosystem", "msg", "targets"}:
+            log_record[key] = record.__dict__[key]
+
+        return json.dumps(log_record) + '\n'
 
 
 class _DDLogHandler(logging.Handler):
@@ -113,7 +130,7 @@ class DDAgentLogger(FirewallLogger):
 
         self._logger.info(
             message,
-            extra={"ecosystem": str(ecosystem), "targets": list(map(str, targets))}
+            extra={"action": str(action), "ecosystem": str(ecosystem), "targets": list(map(str, targets))}
         )
 
 

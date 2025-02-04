@@ -1,5 +1,5 @@
 """
-Configures a logger for sending firewall logs to Datadog.
+Configures a logger for sending firewall logs to Datadog's API over HTTP.
 """
 
 import logging

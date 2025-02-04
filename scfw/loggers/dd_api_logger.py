@@ -31,7 +31,7 @@ _DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
 class _DDLogHandler(logging.Handler):
     """
     A log handler for adding tags and forwarding firewall logs of blocked and
-    permitted package installation requests to Datadog.
+    permitted package installation requests to the Datadog API.
 
     In addition to USM tags, install targets are tagged with the `target` tag and included.
     """
@@ -77,7 +77,7 @@ class _DDLogHandler(logging.Handler):
             api_instance.submit_log(content_encoding=ContentEncoding.DEFLATE, body=body)
 
 
-# Configure a single logging handle for all `DDLogger` instances to share
+# Configure a single logging handle for all `DDAPILogger` instances to share
 dotenv.load_dotenv()
 _handler = _DDLogHandler() if os.getenv(DD_API_KEY_VAR) else logging.NullHandler()
 _handler.setFormatter(logging.Formatter(_DD_LOG_FORMAT))
@@ -87,13 +87,13 @@ _ddlog.setLevel(logging.INFO)
 _ddlog.addHandler(_handler)
 
 
-class DDLogger(FirewallLogger):
+class DDAPILogger(FirewallLogger):
     """
-    An implementation of `FirewallLogger` for sending logs to Datadog.
+    An implementation of `FirewallLogger` for sending logs to the Datadog API.
     """
     def __init__(self):
         """
-        Initialize a new `DDLogger`.
+        Initialize a new `DDAPILogger`.
         """
         self._logger = _ddlog
 
@@ -138,9 +138,9 @@ class DDLogger(FirewallLogger):
 
 def load_logger() -> FirewallLogger:
     """
-    Export `DDLogger` for discovery by the firewall.
+    Export `DDAPILogger` for discovery by the firewall.
 
     Returns:
-        A `DDLogger` for use in a run of the supply chain firewall.
+        A `DDAPILogger` for use in a run of the firewall.
     """
-    return DDLogger()
+    return DDAPILogger()

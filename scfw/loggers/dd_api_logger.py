@@ -6,18 +6,18 @@ import logging
 import os
 import socket
 
-import scfw
-from scfw.configure import DD_API_KEY_VAR, DD_LOG_LEVEL_VAR
-from scfw.ecosystem import ECOSYSTEM
-from scfw.logger import FirewallAction, FirewallLogger
-from scfw.target import InstallTarget
-
 from datadog_api_client import ApiClient, Configuration
 from datadog_api_client.v2.api.logs_api import LogsApi
 from datadog_api_client.v2.model.content_encoding import ContentEncoding
 from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
 import dotenv
+
+import scfw
+from scfw.configure import DD_API_KEY_VAR, DD_LOG_LEVEL_VAR
+from scfw.ecosystem import ECOSYSTEM
+from scfw.logger import FirewallAction, FirewallLogger
+from scfw.target import InstallTarget
 
 _log = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ dotenv.load_dotenv()
 _handler = _DDLogHandler() if os.getenv(DD_API_KEY_VAR) else logging.NullHandler()
 _handler.setFormatter(logging.Formatter(_DD_LOG_FORMAT))
 
-_ddlog = logging.getLogger(_DD_API_LOG)
+_ddlog = logging.getLogger(_DD_LOG_NAME)
 _ddlog.setLevel(logging.INFO)
 _ddlog.addHandler(_handler)
 

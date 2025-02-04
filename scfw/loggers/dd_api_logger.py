@@ -21,6 +21,8 @@ import dotenv
 
 _log = logging.getLogger(__name__)
 
+_DD_LOG_NAME = "dd_api_log"
+
 _DD_LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
 
 _DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
@@ -80,7 +82,7 @@ dotenv.load_dotenv()
 _handler = _DDLogHandler() if os.getenv(DD_API_KEY_VAR) else logging.NullHandler()
 _handler.setFormatter(logging.Formatter(_DD_LOG_FORMAT))
 
-_ddlog = logging.getLogger("ddlog")
+_ddlog = logging.getLogger(_DD_API_LOG)
 _ddlog.setLevel(logging.INFO)
 _ddlog.addHandler(_handler)
 

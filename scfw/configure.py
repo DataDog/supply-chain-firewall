@@ -36,6 +36,14 @@ log forwarding to the local Datadog Agent has been enabled.
 DD_AGENT_PORT = 10518
 """TCP port where the Datadog Agent receives logs from custom integrations"""
 
+_DD_AGENT_CONFIG_FILE = f"""
+logs:
+  - type: tcp
+    port: {DD_AGENT_PORT}
+    service: "scfw"
+    source: "scfw"
+"""
+
 _CONFIG_FILES = [".bashrc", ".zshrc"]
 
 _BLOCK_START = "# BEGIN SCFW MANAGED BLOCK"
@@ -66,7 +74,7 @@ def run_configure(args: Namespace) -> int:
     """
     try:
         interactive = not any(
-            {args.alias_pip, args.alias_npm, args.dd_api_key, args.dd_log_level, args.dd_agent_logging}
+            {args.alias_pip, args.alias_npm, args.dd_agent_logging, args.dd_api_key, args.dd_log_level}
         )
 
         if interactive:
@@ -204,28 +212,29 @@ def _configure_agent_logging():
     """
     Configure a local Datadog Agent for accepting logs from the firewall.
     """
-    config_yaml = (
-        "logs:\n"
-        "  - type: tcp\n"
-        f"    port: {DD_AGENT_PORT}\n"
-        '    service: "scfw"\n'
-        '    source: "scfw"\n'
-    )
-
-    agent_status = subprocess.run(["datadog-agent", "status", "--json"], check=True, text=True, capture_output=True)
-    agent_config_dir = json.loads(agent_status.stdout).get("config", {}).get("confd_path", "")
-
     try:
-        scfw_config_dir = Path(agent_config_dir) / "scfw.d"
-        scfw_config_dir.mkdir()
-    except FileExistsError:
-        _log.info("Found existing Datadog Agent configuration for Supply-Chain Firewall")
+        agent_status = subprocess.run(
+            ["datadog-agent", "status", "--json"], check=True, text=True, capture_output=True
+        )
+        agent_config_dir = json.loads(agent_status.stdout).get("config", {}).get("confd_path", "")
+    except subprocess.CalledProcessError:
+        raise Exception("Unable to query Datadog Agent status. Ensure the Agent is running before retrying.")
+
+    scfw_config_dir = Path(agent_config_dir) / "scfw.d"
+    scfw_config_file = scfw_config_dir / "conf.yaml"
+    if scfw_config_file.is_file():
+        _log.info("Found existing Datadog Agent configuration file for Supply-Chain Firewall")
         return
 
-    with open(scfw_config_dir / "conf.yaml", 'w') as f:
-        f.write(config_yaml)
+    if not scfw_config_dir.is_dir():
+        scfw_config_dir.mkdir()
+    with open(scfw_config_file, 'w') as f:
+        f.write(_DD_AGENT_CONFIG_FILE)
 
     # Agent must be restarted for changes to take effect
-    subprocess.run(["launchctl", "stop", "com.datadoghq.agent"], check=True)
-    time.sleep(1)
-    subprocess.run(["launchctl", "start", "com.datadoghq.agent"], check=True)
+    try:
+        subprocess.run(["launchctl", "stop", "com.datadoghq.agent"], check=True)
+        time.sleep(1)
+        subprocess.run(["launchctl", "start", "com.datadoghq.agent"], check=True)
+    except subprocess.CalledProcessError:
+        raise Exception("Unable to restart Datadog Agent. Please retry this command or restart the Agent manually.")

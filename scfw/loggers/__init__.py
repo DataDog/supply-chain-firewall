@@ -46,6 +46,6 @@ def get_firewall_loggers() -> list[FirewallLogger]:
         except ModuleNotFoundError:
             _log.warning(f"Failed to load module {module} while collecting loggers")
         except AttributeError:
-            _log.warning(f"Module {module} does not export a logger")
+            _log.info(f"Module {module} does not export a logger")
 
     return loggers

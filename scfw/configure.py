@@ -202,7 +202,7 @@ def _configure_agent_logging():
     config_yaml = (
         "logs:\n"
         "  - type: tcp\n"
-       f"    port: {DD_AGENT_PORT}\n"
+        f"    port: {DD_AGENT_PORT}\n"
         '    service: "scfw"\n'
         '    source: "scfw"\n'
     )

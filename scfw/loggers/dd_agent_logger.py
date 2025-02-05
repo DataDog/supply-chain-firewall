@@ -10,7 +10,7 @@ import socket
 import dotenv
 
 import scfw
-from scfw.configure import DD_LOG_LEVEL_VAR
+from scfw.configure import DD_AGENT_LOG_VAR, DD_AGENT_PORT, DD_LOG_LEVEL_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.target import InstallTarget
@@ -20,9 +20,6 @@ _log = logging.getLogger(__name__)
 _DD_LOG_NAME = "dd_agent_log"
 
 _DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
-
-DD_AGENT_PORT = 10518
-"""TCP port where the Datadog Agent receives logs from custom integrations"""
 
 
 class _DDLogFormatter(logging.Formatter):
@@ -77,7 +74,7 @@ class _DDLogHandler(logging.Handler):
 
 # Configure a single logging handle for all `DDAgentLogger` instances to share
 dotenv.load_dotenv()
-_handler = _DDLogHandler()
+_handler = _DDLogHandler() if os.getenv(DD_AGENT_LOG_VAR) else logging.NullHandler()
 _handler.setFormatter(_DDLogFormatter())
 
 _ddlog = logging.getLogger(_DD_LOG_NAME)

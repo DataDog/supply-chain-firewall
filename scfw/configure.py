@@ -4,11 +4,14 @@ Implements the supply-chain firewall's `configure` subcommand.
 
 from argparse import Namespace
 import inquirer  # type: ignore
+import json
 import logging
 import os
 from pathlib import Path
 import re
+import subprocess
 import tempfile
+import time
 
 from scfw.logger import FirewallAction
 
@@ -23,6 +26,15 @@ DD_LOG_LEVEL_VAR = "SCFW_DD_LOG_LEVEL"
 """
 The environment variable under which the firewall looks for a Datadog log level setting.
 """
+
+DD_AGENT_LOG_VAR = "SCFW_DD_AGENT_LOGGING"
+"""
+The environment variable the presence of which the firewall uses to determine whether
+log forwarding to the local Datadog Agent has been enabled.
+"""
+
+DD_AGENT_PORT = 10518
+"""TCP port where the Datadog Agent receives logs from custom integrations"""
 
 _CONFIG_FILES = [".bashrc", ".zshrc"]
 
@@ -53,7 +65,9 @@ def run_configure(args: Namespace) -> int:
         An integer status code, 0 or 1.
     """
     try:
-        interactive = not any({args.alias_pip, args.alias_npm, args.dd_api_key, args.dd_log_level})
+        interactive = not any(
+            {args.alias_pip, args.alias_npm, args.dd_api_key, args.dd_log_level, args.enable_agent_logging}
+        )
 
         if interactive:
             print(_GREETING)
@@ -67,6 +81,9 @@ def run_configure(args: Namespace) -> int:
         for file in [Path.home() / file for file in _CONFIG_FILES]:
             if file.exists():
                 _update_config_file(file, _format_answers(answers))
+
+        if args.enable_agent_logging:
+            _configure_agent_logging()
 
         if interactive:
             print(_EPILOGUE)
@@ -142,6 +159,8 @@ def _format_answers(answers: dict) -> str:
         config += f'\nexport {DD_API_KEY_VAR}="{answers["dd_api_key"]}"'
     if answers["dd_log_level"]:
         config += f'\nexport {DD_LOG_LEVEL_VAR}="{answers["dd_log_level"]}"'
+    if answers["enable_agent_logging"]:
+        config += f'\nexport {DD_AGENT_LOG_VAR}="Enabled"'
 
     return config
 
@@ -174,3 +193,33 @@ def _update_config_file(config_file: Path, config: str) -> None:
     temp_handle.close()
 
     os.rename(temp_file, config_file)
+
+
+def _configure_agent_logging():
+    """
+    Configure a local Datadog Agent for accepting logs from the firewall.
+    """
+    config_yaml = (
+        "logs:\n"
+        "  - type: tcp\n"
+       f"    port: {DD_AGENT_PORT}\n"
+        '    service: "scfw"\n'
+        '    source: "scfw"\n'
+    )
+
+    agent_status = subprocess.run(["datadog-agent", "status", "--json"], check=True, text=True, capture_output=True)
+    agent_config_dir = json.loads(agent_status.stdout).get("config", {}).get("confd_path", "")
+
+    try:
+        scfw_config_dir = Path(agent_config_dir) / "scfw.d"
+        scfw_config_dir.mkdir()
+    except FileExistsError:
+        pass
+
+    with open(scfw_config_dir / "conf.yaml", 'w') as f:
+        f.write(config_yaml)
+
+    # Agent must be restarted for changes to take effect
+    subprocess.run(["launchctl", "stop", "com.datadoghq.agent"], check=True)
+    time.sleep(1)
+    subprocess.run(["launchctl", "start", "com.datadoghq.agent"], check=True)

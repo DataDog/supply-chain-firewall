@@ -46,7 +46,7 @@ def _add_configure_cli(parser: ArgumentParser) -> None:
         type=str,
         default=None,
         metavar="KEY",
-        help="API key to use when forwarding logs to Datadog"
+        help="API key to use when forwarding logs via the Datadog API"
     )
 
     parser.add_argument(
@@ -56,6 +56,12 @@ def _add_configure_cli(parser: ArgumentParser) -> None:
         choices=[str(action) for action in FirewallAction],
         metavar="LEVEL",
         help="Desired logging level for Datadog log forwarding (options: %(choices)s)"
+    )
+
+    parser.add_argument(
+        "--enable-agent-logging",
+        action="store_true",
+        help="Enable log forwarding to the local Datadog Agent"
     )
 
 

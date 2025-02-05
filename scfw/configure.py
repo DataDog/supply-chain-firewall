@@ -218,7 +218,7 @@ def _configure_agent_logging():
         )
         agent_config_dir = json.loads(agent_status.stdout).get("config", {}).get("confd_path", "")
     except subprocess.CalledProcessError:
-        raise Exception("Unable to query Datadog Agent status. Ensure the Agent is running before retrying.")
+        raise RuntimeError("Unable to query Datadog Agent status. Ensure the Agent is running before retrying.")
 
     scfw_config_dir = Path(agent_config_dir) / "scfw.d"
     scfw_config_file = scfw_config_dir / "conf.yaml"
@@ -237,4 +237,6 @@ def _configure_agent_logging():
         time.sleep(1)
         subprocess.run(["launchctl", "start", "com.datadoghq.agent"], check=True)
     except subprocess.CalledProcessError:
-        raise Exception("Unable to restart Datadog Agent. Please retry this command or restart the Agent manually.")
+        raise RuntimeError(
+            "Unable to restart Datadog Agent. Please retry this command or restart the Agent manually."
+        )

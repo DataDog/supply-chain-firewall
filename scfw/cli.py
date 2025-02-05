@@ -42,6 +42,12 @@ def _add_configure_cli(parser: ArgumentParser) -> None:
     )
 
     parser.add_argument(
+        "--dd-agent-logging",
+        action="store_true",
+        help="Enable log forwarding to the local Datadog Agent"
+    )
+
+    parser.add_argument(
         "--dd-api-key",
         type=str,
         default=None,
@@ -56,12 +62,6 @@ def _add_configure_cli(parser: ArgumentParser) -> None:
         choices=[str(action) for action in FirewallAction],
         metavar="LEVEL",
         help="Desired logging level for Datadog log forwarding (options: %(choices)s)"
-    )
-
-    parser.add_argument(
-        "--enable-agent-logging",
-        action="store_true",
-        help="Enable log forwarding to the local Datadog Agent"
     )
 
 

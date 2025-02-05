@@ -66,7 +66,7 @@ def run_configure(args: Namespace) -> int:
     """
     try:
         interactive = not any(
-            {args.alias_pip, args.alias_npm, args.dd_api_key, args.dd_log_level, args.enable_agent_logging}
+            {args.alias_pip, args.alias_npm, args.dd_api_key, args.dd_log_level, args.dd_agent_logging}
         )
 
         if interactive:
@@ -78,12 +78,12 @@ def run_configure(args: Namespace) -> int:
         if not answers:
             return 0
 
+        if answers["dd_agent_logging"]:
+            _configure_agent_logging()
+
         for file in [Path.home() / file for file in _CONFIG_FILES]:
             if file.exists():
                 _update_config_file(file, _format_answers(answers))
-
-        if args.enable_agent_logging:
-            _configure_agent_logging()
 
         if interactive:
             print(_EPILOGUE)
@@ -117,7 +117,12 @@ def _get_questions() -> list[inquirer.questions.Question]:
             default=True
         ),
         inquirer.Confirm(
-            name="enable_dd_logs",
+            name="dd_agent_logging",
+            message="Would you like to enable sending firewall logs to your local Datadog Agent?",
+            default=False
+        ),
+        inquirer.Confirm(
+            name="dd_api_logging",
             message="Would you like to enable sending firewall logs to Datadog?",
             default=False,
             ignore=lambda _: has_dd_api_key
@@ -126,13 +131,13 @@ def _get_questions() -> list[inquirer.questions.Question]:
             name="dd_api_key",
             message="Enter a Datadog API key",
             validate=lambda _, current: current != '',
-            ignore=lambda answers: has_dd_api_key or not answers["enable_dd_logs"]
+            ignore=lambda answers: has_dd_api_key or not answers["dd_api_logging"]
         ),
         inquirer.List(
             name="dd_log_level",
             message="Select the desired log level for Datadog logging",
             choices=[str(action) for action in FirewallAction],
-            ignore=lambda answers: not has_dd_api_key and not answers["enable_dd_logs"]
+            ignore=lambda answers: not(answers["dd_agent_logging"] or has_dd_api_key or answers["dd_api_logging"])
         )
     ]
 
@@ -155,12 +160,12 @@ def _format_answers(answers: dict) -> str:
         config += '\nalias pip="scfw run pip"'
     if answers["alias_npm"]:
         config += '\nalias npm="scfw run npm"'
+    if answers["dd_agent_logging"]:
+        config += f'\nexport {DD_AGENT_LOG_VAR}="Enabled"'
     if answers["dd_api_key"]:
         config += f'\nexport {DD_API_KEY_VAR}="{answers["dd_api_key"]}"'
     if answers["dd_log_level"]:
         config += f'\nexport {DD_LOG_LEVEL_VAR}="{answers["dd_log_level"]}"'
-    if answers["enable_agent_logging"]:
-        config += f'\nexport {DD_AGENT_LOG_VAR}="Enabled"'
 
     return config
 
@@ -214,7 +219,8 @@ def _configure_agent_logging():
         scfw_config_dir = Path(agent_config_dir) / "scfw.d"
         scfw_config_dir.mkdir()
     except FileExistsError:
-        pass
+        _log.info("Found existing Datadog Agent configuration for Supply-Chain Firewall")
+        return
 
     with open(scfw_config_dir / "conf.yaml", 'w') as f:
         f.write(config_yaml)

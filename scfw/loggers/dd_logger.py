@@ -5,6 +5,8 @@ Provides a `FirewallLogger` class for sending logs to Datadog.
 import logging
 import os
 
+import dotenv
+
 from scfw.configure import DD_LOG_LEVEL_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
@@ -13,6 +15,9 @@ from scfw.target import InstallTarget
 _log = logging.getLogger(__name__)
 
 _DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
+
+
+dotenv.load_dotenv()
 
 
 class DDLogger(FirewallLogger):

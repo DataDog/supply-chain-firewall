@@ -7,8 +7,6 @@ import logging
 import os
 import socket
 
-import dotenv
-
 import scfw
 from scfw.configure import DD_AGENT_LOG_VAR, DD_AGENT_PORT
 from scfw.logger import FirewallLogger
@@ -70,7 +68,6 @@ class _DDLogHandler(logging.Handler):
 
 
 # Configure a single logging handle for all `DDAgentLogger` instances to share
-dotenv.load_dotenv()
 _handler = _DDLogHandler() if os.getenv(DD_AGENT_LOG_VAR) else logging.NullHandler()
 _handler.setFormatter(_DDLogFormatter())
 

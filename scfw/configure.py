@@ -169,7 +169,7 @@ def _format_answers(answers: dict) -> str:
     if answers["alias_npm"]:
         config += '\nalias npm="scfw run npm"'
     if answers["dd_agent_logging"]:
-        config += f'\nexport {DD_AGENT_LOG_VAR}="Enabled"'
+        config += f'\nexport {DD_AGENT_LOG_VAR}="True"'
     if answers["dd_api_key"]:
         config += f'\nexport {DD_API_KEY_VAR}="{answers["dd_api_key"]}"'
     if answers["dd_log_level"]:
@@ -226,10 +226,13 @@ def _configure_agent_logging():
         _log.info("Found existing Datadog Agent configuration file for Supply-Chain Firewall")
         return
 
-    if not scfw_config_dir.is_dir():
-        scfw_config_dir.mkdir()
-    with open(scfw_config_file, 'w') as f:
-        f.write(_DD_AGENT_CONFIG_FILE)
+    try:
+        if not scfw_config_dir.is_dir():
+            scfw_config_dir.mkdir()
+        with open(scfw_config_file, 'w') as f:
+            f.write(_DD_AGENT_CONFIG_FILE)
+    except PermissionError:
+        raise RuntimeError("Unable to create Datadog Agent configuration file for Supply-Chain Firewall")
 
     # Agent must be restarted for changes to take effect
     try:

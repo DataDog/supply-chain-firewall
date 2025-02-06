@@ -11,7 +11,6 @@ from datadog_api_client.v2.api.logs_api import LogsApi
 from datadog_api_client.v2.model.content_encoding import ContentEncoding
 from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
-import dotenv
 
 import scfw
 from scfw.configure import DD_API_KEY_VAR
@@ -44,10 +43,8 @@ class _DDLogHandler(logging.Handler):
         Args:
             record: The log record to be forwarded.
         """
-        if not (env := os.getenv("DD_ENV")):
-            env = self.DD_ENV
-        if not (service := os.getenv("DD_SERVICE")):
-            service = record.__dict__.get("ecosystem", self.DD_SOURCE)
+        env = os.getenv("DD_ENV", self.DD_ENV)
+        service = os.getenv("DD_SERVICE", record.__dict__.get("ecosystem", self.DD_SOURCE))
 
         usm_tags = {f"env:{env}", f"version:{self.DD_VERSION}"}
 
@@ -73,7 +70,6 @@ class _DDLogHandler(logging.Handler):
 
 
 # Configure a single logging handle for all `DDAPILogger` instances to share
-dotenv.load_dotenv()
 _handler = _DDLogHandler() if os.getenv(DD_API_KEY_VAR) else logging.NullHandler()
 _handler.setFormatter(logging.Formatter(_DD_LOG_FORMAT))
 

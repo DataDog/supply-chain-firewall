@@ -257,13 +257,14 @@ def _get_farewell(answers: dict) -> str:
         A `str` farewell message to print in interactive mode.
     """
     farewell = (
-        "The environment was successfully configured. Make sure to update your current shell\n"
-        "environment by running, e.g.:\n\n    source ~/.bashrc\n\n"
+        "The environment was successfully configured for Supply-Chain Firewall.\n\n"
+        "Post-configuration tasks:\n"
+        "* Update your current shell environment by sourcing from your .bashrc/.zshrc file."
     )
 
     if answers.get("dd_agent_logging"):
-        farewell += "The Datadog Agent must also be restarted in order for it to accept firewall logs.\n\n"
+        farewell += "\n* Restart the Datadog Agent in order for it to accept firewall logs."
 
-    farewell += "Good luck!"
+    farewell += "\n\nGood luck!"
 
     return farewell

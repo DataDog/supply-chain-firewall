@@ -11,7 +11,6 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
-import time
 
 from scfw.logger import FirewallAction
 

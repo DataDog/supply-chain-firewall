@@ -33,6 +33,8 @@ The environment variable under which the firewall looks for a port number on whi
 forward firewall logs to the local Datadog Agent.
 """
 
+_DD_AGENT_DEFAULT_LOG_PORT = "10365"
+
 _CONFIG_FILES = [".bashrc", ".zshrc"]
 
 _BLOCK_START = "# BEGIN SCFW MANAGED BLOCK"
@@ -115,19 +117,20 @@ def _get_questions() -> list[inquirer.questions.Question]:
         ),
         inquirer.Confirm(
             name="dd_agent_logging",
-            message="Would you like to enable sending firewall logs to your local Datadog Agent?",
+            message="If you have the Datadog Agent installed locally, would you like to forward firewall logs to it?",
             default=False
         ),
         inquirer.Text(
             name="dd_agent_port",
             message="Enter the local port where the Agent will receive logs",
+            default=_DD_AGENT_DEFAULT_LOG_PORT,
             ignore=lambda answers: not answers["dd_agent_logging"]
         ),
         inquirer.Confirm(
             name="dd_api_logging",
-            message="Would you like to enable sending firewall logs to Datadog?",
+            message="Would you like to enable sending firewall logs to Datadog using an API key?",
             default=False,
-            ignore=lambda _: has_dd_api_key
+            ignore=lambda answers: has_dd_api_key or answers["dd_agent_logging"]
         ),
         inquirer.Text(
             name="dd_api_key",

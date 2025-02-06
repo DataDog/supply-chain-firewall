@@ -46,11 +46,6 @@ _GREETING = (
     "of scfw. You can rerun this script at any time.\n"
 )
 
-_EPILOGUE = (
-    "The environment was successfully configured. Make sure to update your current shell\n"
-    "environment by running, e.g.:\n\n    source ~/.bashrc\n\nGood luck!"
-)
-
 
 def run_configure(args: Namespace) -> int:
     """
@@ -69,7 +64,7 @@ def run_configure(args: Namespace) -> int:
 
         if interactive:
             print(_GREETING)
-            answers = inquirer.prompt(_get_questions())
+            answers = _get_answers_interactive()
         else:
             answers = vars(args)
 
@@ -84,7 +79,7 @@ def run_configure(args: Namespace) -> int:
                 _update_config_file(file, _format_answers(answers))
 
         if interactive:
-            print(_EPILOGUE)
+            print(_get_farewell(answers))
 
         return 0
 
@@ -93,13 +88,12 @@ def run_configure(args: Namespace) -> int:
         return 1
 
 
-def _get_questions() -> list[inquirer.questions.Question]:
+def _get_answers_interactive() -> dict:
     """
-    Return the list of configuration questions to ask the user.
+    Get the user's selection of configuration options in interactive mode.
 
     Returns:
-        A `list[inquirer.Question]` of configuration questions to prompt the user
-        for answers to. The list is guaranteed to be nonempty.
+        A `dict` containing the user's selected configuration options.
     """
     has_dd_api_key = os.getenv(DD_API_KEY_VAR) is not None
 
@@ -145,7 +139,55 @@ def _get_questions() -> list[inquirer.questions.Question]:
         )
     ]
 
-    return questions
+    answers = inquirer.prompt(questions)
+
+    # Patch for inquirer's broken `default` option
+    if answers["dd_agent_logging"] and not answers["dd_agent_port"]:
+        answers["dd_agent_port"] = _DD_AGENT_DEFAULT_LOG_PORT
+
+    return answers
+
+
+def _configure_agent_logging(port: str):
+    """
+    Configure a local Datadog Agent for accepting logs from the firewall.
+
+    Args:
+        port: The local port number where the firewall logs will be sent to the Agent.
+
+    Raises:
+        ValueError: An invalid port number was provided.
+        RuntimeError: An error occurred while querying the Agent's status.
+    """
+    if not (0 < int(port) < 65536):
+        raise ValueError("Invalid port number provided for Datadog Agent logging")
+
+    config_file = (
+        "logs:\n"
+        "  - type: tcp\n"
+        f"    port: {port}\n"
+        '    service: "scfw"\n'
+        '    source: "scfw"\n'
+    )
+
+    try:
+        agent_status = subprocess.run(
+            ["datadog-agent", "status", "--json"], check=True, text=True, capture_output=True
+        )
+        agent_config_dir = json.loads(agent_status.stdout).get("config", {}).get("confd_path", "")
+    except subprocess.CalledProcessError:
+        raise RuntimeError(
+            "Unable to query Datadog Agent status: please ensure the Agent is running. "
+            "Linux users may need sudo to run this command."
+        )
+
+    scfw_config_dir = Path(agent_config_dir) / "scfw.d"
+    scfw_config_file = scfw_config_dir / "conf.yaml"
+
+    if not scfw_config_dir.is_dir():
+        scfw_config_dir.mkdir()
+    with open(scfw_config_file, 'w') as f:
+        f.write(config_file)
 
 
 def _format_answers(answers: dict) -> str:
@@ -204,43 +246,25 @@ def _update_config_file(config_file: Path, config: str) -> None:
     os.rename(temp_file, config_file)
 
 
-def _configure_agent_logging(port: str):
+def _get_farewell(answers: dict) -> str:
     """
-    Configure a local Datadog Agent for accepting logs from the firewall.
+    Generate a farewell message in interactive mode based on the configuration
+    options selected by the user.
 
     Args:
-        port: The local port number where the firewall logs will be sent to the Agent.
+        answers: The dictionary of user-selected configuration options.
 
-    Raises:
-        ValueError: An invalid port number was provided.
-        RuntimeError: An error occurred while querying the Agent's status.
+    Returns:
+        A `str` farewell message to print in interactive mode.
     """
-    if not (0 < int(port) < 65536):
-        raise ValueError("Invalid port number provided for Datadog Agent logging")
-
-    config_file = (
-        "logs:\n"
-        "  - type: tcp\n"
-        f"    port: {port}\n"
-        '    service: "scfw"\n'
-        '    source: "scfw"\n'
+    farewell = (
+        "The environment was successfully configured. Make sure to update your current shell\n"
+        "environment by running, e.g.:\n\n    source ~/.bashrc\n\n"
     )
 
-    try:
-        agent_status = subprocess.run(
-            ["datadog-agent", "status", "--json"], check=True, text=True, capture_output=True
-        )
-        agent_config_dir = json.loads(agent_status.stdout).get("config", {}).get("confd_path", "")
-    except subprocess.CalledProcessError:
-        raise RuntimeError(
-            "Unable to query Datadog Agent status: please ensure the Agent is running. "
-            "Linux users may need sudo to run this command."
-        )
+    if answers.get("dd_agent_logging"):
+        farewell += "The Datadog Agent must also be restarted in order for it to accept firewall logs.\n\n"
 
-    scfw_config_dir = Path(agent_config_dir) / "scfw.d"
-    scfw_config_file = scfw_config_dir / "conf.yaml"
+    farewell += "Good luck!"
 
-    if not scfw_config_dir.is_dir():
-        scfw_config_dir.mkdir()
-    with open(scfw_config_file, 'w') as f:
-        f.write(config_file)
+    return farewell

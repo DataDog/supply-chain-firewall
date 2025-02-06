@@ -211,7 +211,7 @@ def _configure_agent_logging(port: str):
 
     Raises:
         ValueError: An invalid port number was provided.
-        RuntimeError: An error occurred while querying or restarting the Agent.
+        RuntimeError: An error occurred while querying the Agent's status.
     """
     if not (0 < int(port) < 65536):
         raise ValueError("Invalid port number provided for Datadog Agent logging")
@@ -230,7 +230,10 @@ def _configure_agent_logging(port: str):
         )
         agent_config_dir = json.loads(agent_status.stdout).get("config", {}).get("confd_path", "")
     except subprocess.CalledProcessError:
-        raise RuntimeError("Unable to query Datadog Agent status. Ensure the Agent is running before retrying.")
+        raise RuntimeError(
+            "Unable to query Datadog Agent status: please ensure the Agent is running. "
+            "Linux users may need sudo to run this command."
+        )
 
     scfw_config_dir = Path(agent_config_dir) / "scfw.d"
     scfw_config_file = scfw_config_dir / "conf.yaml"
@@ -239,13 +242,3 @@ def _configure_agent_logging(port: str):
         scfw_config_dir.mkdir()
     with open(scfw_config_file, 'w') as f:
         f.write(config_file)
-
-    # Agent must be restarted for changes to take effect
-    try:
-        subprocess.run(["launchctl", "stop", "com.datadoghq.agent"], check=True)
-        time.sleep(1)
-        subprocess.run(["launchctl", "start", "com.datadoghq.agent"], check=True)
-    except subprocess.CalledProcessError:
-        raise RuntimeError(
-            "Unable to restart Datadog Agent. Please retry this command or restart the Agent manually."
-        )

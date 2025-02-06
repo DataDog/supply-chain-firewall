@@ -257,9 +257,9 @@ def _get_farewell(answers: dict) -> str:
         A `str` farewell message to print in interactive mode.
     """
     farewell = (
-        "The environment was successfully configured for Supply-Chain Firewall.\n\n"
-        "Post-configuration tasks:\n"
-        "* Update your current shell environment by sourcing from your .bashrc/.zshrc file."
+        "The environment was successfully configured for Supply-Chain Firewall."
+        "\n\nPost-configuration tasks:"
+        "\n* Update your current shell environment by sourcing from your .bashrc/.zshrc file."
     )
 
     if answers.get("dd_agent_logging"):

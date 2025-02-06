@@ -59,7 +59,7 @@ $ scfw configure
 
 In keeping with its goal of blocking 100% of known-malicious package installations, `scfw` will refuse to run with an incompatible version of a supported package manager.  Please upgrade to or verify that you are running a compatible version before using this tool.
 
-Currently, Supply-Chain Firewall is only fully supported on macOS systems, though it should run as intended on most common Linux distributions.  It is currently not supported on Windows.
+Currently, Supply-Chain Firewall is only fully supported on macOS systems, though it should run as intended on common Linux distributions.  It is currently not supported on Windows.
 
 ## Usage
 
@@ -76,15 +76,15 @@ For `pip install` commands, packages will be installed in the same environment (
 
 Unlike `pip`, a variety of `npm` operations beyond `npm install` can end up installing new packages.  For now, only `npm install` commands are in Supply-Chain Firewall's scope.  We are hoping to extend the tool's purview to other "installish" `npm` commands over time.
 
-## Datadog Logs integration
+## Datadog Log Management integration
 
 Supply-Chain Firewall can optionally send logs of blocked and successful installations to Datadog.
 
 ![scfw datadog log](https://github.com/DataDog/supply-chain-firewall/blob/main/images/datadog_log.png?raw=true)
 
-To opt in, set the environment variable `DD_API_KEY` to your Datadog API key, either directly in your shell environment or in a `.env` file in the current working directory.  A logging level may also be selected by setting the environment variable `SCFW_DD_LOG_LEVEL` to one of `ALLOW`, `ABORT` or `BLOCK`.  The `BLOCK` level only logs blocked installations, `ABORT` logs blocked and aborted installations, and `ALLOW` logs these as well as successful installations.  The `BLOCK` level is set by default, i.e., when `SCFW_DD_LOG_LEVEL` is either not set or does not contain a valid log level.
+Users can configure their environments so that Supply-Chain Firewall forwards logs either via the Datadog HTTP API (requires an API key) or to a local Datadog Agent process.  Configuration consists of setting necessary environment variables and, for Agent log forwarding, configuring the Datadog Agent to accept logs from Supply-Chain Firewall.
 
-You can also use the `scfw configure` command to walk through the steps of configuring your environment for Datadog logging.
+To opt in, use the `scfw configure` command to interactively or non-interactively configure your environment for Datadog logging.
 
 Supply-Chain Firewall can integrate with user-supplied loggers.  A template for implementating a custom logger may be found in `examples/logger.py`. Refer to the API documentation for details.
 

@@ -27,21 +27,10 @@ DD_LOG_LEVEL_VAR = "SCFW_DD_LOG_LEVEL"
 The environment variable under which the firewall looks for a Datadog log level setting.
 """
 
-DD_AGENT_LOG_VAR = "SCFW_DD_AGENT_LOGGING"
+DD_AGENT_PORT_VAR = "SCFW_DD_AGENT_LOG_PORT"
 """
-The environment variable the presence of which the firewall uses to determine whether
-log forwarding to the local Datadog Agent has been enabled.
-"""
-
-DD_AGENT_PORT = 10518
-"""TCP port where the Datadog Agent receives logs from custom integrations"""
-
-_DD_AGENT_CONFIG_FILE = f"""
-logs:
-  - type: tcp
-    port: {DD_AGENT_PORT}
-    service: "scfw"
-    source: "scfw"
+The environment variable under which the firewall looks for a port number on which to
+forward firewall logs to the local Datadog Agent.
 """
 
 _CONFIG_FILES = [".bashrc", ".zshrc"]
@@ -74,7 +63,7 @@ def run_configure(args: Namespace) -> int:
     """
     try:
         interactive = not any(
-            {args.alias_pip, args.alias_npm, args.dd_agent_logging, args.dd_api_key, args.dd_log_level}
+            {args.alias_pip, args.alias_npm, args.dd_agent_port, args.dd_api_key, args.dd_log_level}
         )
 
         if interactive:
@@ -86,8 +75,8 @@ def run_configure(args: Namespace) -> int:
         if not answers:
             return 0
 
-        if answers["dd_agent_logging"]:
-            _configure_agent_logging()
+        if (port := answers["dd_agent_port"]):
+            _configure_agent_logging(port)
 
         for file in [Path.home() / file for file in _CONFIG_FILES]:
             if file.exists():
@@ -129,6 +118,11 @@ def _get_questions() -> list[inquirer.questions.Question]:
             message="Would you like to enable sending firewall logs to your local Datadog Agent?",
             default=False
         ),
+        inquirer.Text(
+            name="dd_agent_port",
+            message="Enter the local port where the Agent will receive logs",
+            ignore=lambda answers: not answers["dd_agent_logging"]
+        ),
         inquirer.Confirm(
             name="dd_api_logging",
             message="Would you like to enable sending firewall logs to Datadog?",
@@ -168,8 +162,8 @@ def _format_answers(answers: dict) -> str:
         config += '\nalias pip="scfw run pip"'
     if answers["alias_npm"]:
         config += '\nalias npm="scfw run npm"'
-    if answers["dd_agent_logging"]:
-        config += f'\nexport {DD_AGENT_LOG_VAR}="True"'
+    if answers["dd_agent_port"]:
+        config += f'\nexport {DD_AGENT_PORT_VAR}="{answers["dd_agent_port"]}"'
     if answers["dd_api_key"]:
         config += f'\nexport {DD_API_KEY_VAR}="{answers["dd_api_key"]}"'
     if answers["dd_log_level"]:
@@ -208,10 +202,28 @@ def _update_config_file(config_file: Path, config: str) -> None:
     os.rename(temp_file, config_file)
 
 
-def _configure_agent_logging():
+def _configure_agent_logging(port: str):
     """
     Configure a local Datadog Agent for accepting logs from the firewall.
+
+    Args:
+        port: The local port number where the firewall logs will be sent to the Agent.
+
+    Raises:
+        ValueError: An invalid port number was provided.
+        RuntimeError: An error occurred while querying or restarting the Agent.
     """
+    if not (0 < int(port) < 65536):
+        raise ValueError("Invalid port number provided for Datadog Agent logging")
+
+    config_file = (
+        "logs:\n"
+        "  - type: tcp\n"
+        f"    port: {port}\n"
+        '    service: "scfw"\n'
+        '    source: "scfw"\n'
+    )
+
     try:
         agent_status = subprocess.run(
             ["datadog-agent", "status", "--json"], check=True, text=True, capture_output=True
@@ -222,17 +234,11 @@ def _configure_agent_logging():
 
     scfw_config_dir = Path(agent_config_dir) / "scfw.d"
     scfw_config_file = scfw_config_dir / "conf.yaml"
-    if scfw_config_file.is_file():
-        _log.info("Found existing Datadog Agent configuration file for Supply-Chain Firewall")
-        return
 
-    try:
-        if not scfw_config_dir.is_dir():
-            scfw_config_dir.mkdir()
-        with open(scfw_config_file, 'w') as f:
-            f.write(_DD_AGENT_CONFIG_FILE)
-    except PermissionError:
-        raise RuntimeError("Unable to create Datadog Agent configuration file for Supply-Chain Firewall")
+    if not scfw_config_dir.is_dir():
+        scfw_config_dir.mkdir()
+    with open(scfw_config_file, 'w') as f:
+        f.write(config_file)
 
     # Agent must be restarted for changes to take effect
     try:

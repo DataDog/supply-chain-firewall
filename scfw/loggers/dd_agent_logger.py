@@ -8,7 +8,7 @@ import os
 import socket
 
 import scfw
-from scfw.configure import DD_AGENT_LOG_VAR, DD_AGENT_PORT
+from scfw.configure import DD_AGENT_PORT_VAR
 from scfw.logger import FirewallLogger
 from scfw.loggers.dd_logger import DDLogger
 
@@ -51,6 +51,20 @@ class _DDLogHandler(logging.Handler):
     """
     A custom log handler for forwarding firewall logs to a local Datadog Agent.
     """
+    def __init__(self, port: str):
+        """
+        Initialize a new `_DDLogHandler`.
+
+        Args:
+            port: The local port number where the firewall logs will be sent to the Agent.
+
+        Raises:
+            ValueError: An invalid port number was provided.
+        """
+        if not (0 < int(port) < 65536):
+            raise ValueError("Invalid port number provided for Datadog Agent logging")
+        self._port = port
+
     def emit(self, record):
         """
         Format and send a log to the Datadog Agent.
@@ -61,14 +75,15 @@ class _DDLogHandler(logging.Handler):
         message = self.format(record).encode()
 
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect(("localhost", DD_AGENT_PORT))
+        s.connect(("localhost", self._port))
         if s.send(message) != len(message):
             _log.warning("Failed to log firewall action to Datadog Agent")
         s.close()
 
 
 # Configure a single logging handle for all `DDAgentLogger` instances to share
-_handler = _DDLogHandler() if os.getenv(DD_AGENT_LOG_VAR) else logging.NullHandler()
+_agent_port = os.getenv(DD_AGENT_PORT_VAR)
+_handler = _DDLogHandler(_agent_port) if _agent_port else logging.NullHandler()
 _handler.setFormatter(_DDLogFormatter())
 
 _ddlog = logging.getLogger(_DD_LOG_NAME)

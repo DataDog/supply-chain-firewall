@@ -115,8 +115,7 @@ def _get_answers_interactive() -> dict:
         ),
         inquirer.Text(
             name="dd_agent_port",
-            message="Enter the local port where the Agent will receive logs",
-            default=_DD_AGENT_DEFAULT_LOG_PORT,
+            message=f"Enter the local port where the Agent will receive logs (default: {_DD_AGENT_DEFAULT_LOG_PORT})",
             ignore=lambda answers: not answers["dd_agent_logging"]
         ),
         inquirer.Confirm(

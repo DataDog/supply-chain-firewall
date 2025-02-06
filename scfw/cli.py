@@ -42,11 +42,19 @@ def _add_configure_cli(parser: ArgumentParser) -> None:
     )
 
     parser.add_argument(
+        "--dd-agent-port",
+        type=str,
+        default=None,
+        metavar="PORT",
+        help="Configure log forwarding to the local Datadog Agent on the given port"
+    )
+
+    parser.add_argument(
         "--dd-api-key",
         type=str,
         default=None,
         metavar="KEY",
-        help="API key to use when forwarding logs to Datadog"
+        help="API key to use when forwarding logs via the Datadog API"
     )
 
     parser.add_argument(

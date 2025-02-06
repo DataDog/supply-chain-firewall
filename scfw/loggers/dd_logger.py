@@ -1,99 +1,37 @@
 """
-Configures a logger for sending firewall logs to Datadog.
+Provides a `FirewallLogger` class for sending logs to Datadog.
 """
 
 import logging
 import os
-import socket
 
-import scfw
-from scfw.configure import DD_API_KEY_VAR, DD_LOG_LEVEL_VAR
+import dotenv
+
+from scfw.configure import DD_LOG_LEVEL_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.target import InstallTarget
 
-from datadog_api_client import ApiClient, Configuration
-from datadog_api_client.v2.api.logs_api import LogsApi
-from datadog_api_client.v2.model.content_encoding import ContentEncoding
-from datadog_api_client.v2.model.http_log import HTTPLog
-from datadog_api_client.v2.model.http_log_item import HTTPLogItem
-import dotenv
-
 _log = logging.getLogger(__name__)
-
-_DD_LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
 
 _DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
 
 
-class _DDLogHandler(logging.Handler):
-    """
-    A log handler for adding tags and forwarding firewall logs of blocked and
-    permitted package installation requests to Datadog.
-
-    In addition to USM tags, install targets are tagged with the `target` tag and included.
-    """
-    DD_SOURCE = "scfw"
-    DD_ENV = "dev"
-    DD_VERSION = scfw.__version__
-
-    def __init__(self):
-        super().__init__()
-
-    def emit(self, record):
-        """
-        Format and send a log to Datadog.
-
-        Args:
-            record: The log record to be forwarded.
-        """
-        if not (env := os.getenv("DD_ENV")):
-            env = self.DD_ENV
-        if not (service := os.getenv("DD_SERVICE")):
-            service = record.__dict__.get("ecosystem", self.DD_SOURCE)
-
-        usm_tags = {f"env:{env}", f"version:{self.DD_VERSION}"}
-
-        targets = record.__dict__.get("targets", {})
-        target_tags = set(map(lambda e: f"target:{e}", targets))
-
-        body = HTTPLog(
-            [
-                HTTPLogItem(
-                    ddsource=self.DD_SOURCE,
-                    ddtags=",".join(usm_tags | target_tags),
-                    hostname=socket.gethostname(),
-                    message=self.format(record),
-                    service=service,
-                ),
-            ]
-        )
-
-        configuration = Configuration()
-        with ApiClient(configuration) as api_client:
-            api_instance = LogsApi(api_client)
-            api_instance.submit_log(content_encoding=ContentEncoding.DEFLATE, body=body)
-
-
-# Configure a single logging handle for all `DDLogger` instances to share
 dotenv.load_dotenv()
-_handler = _DDLogHandler() if os.getenv(DD_API_KEY_VAR) else logging.NullHandler()
-_handler.setFormatter(logging.Formatter(_DD_LOG_FORMAT))
-
-_ddlog = logging.getLogger("ddlog")
-_ddlog.setLevel(logging.INFO)
-_ddlog.addHandler(_handler)
 
 
 class DDLogger(FirewallLogger):
     """
     An implementation of `FirewallLogger` for sending logs to Datadog.
     """
-    def __init__(self):
+    def __init__(self, logger: logging.Logger):
         """
         Initialize a new `DDLogger`.
+
+        Args:
+            logger: A configured log handle to which logs will be written.
         """
-        self._logger = _ddlog
+        self._logger = logger
 
         try:
             self._level = FirewallAction(os.getenv(DD_LOG_LEVEL_VAR))
@@ -130,15 +68,5 @@ class DDLogger(FirewallLogger):
 
         self._logger.info(
             message,
-            extra={"ecosystem": str(ecosystem), "targets": map(str, targets)}
+            extra={"action": str(action), "ecosystem": str(ecosystem), "targets": list(map(str, targets))}
         )
-
-
-def load_logger() -> FirewallLogger:
-    """
-    Export `DDLogger` for discovery by the firewall.
-
-    Returns:
-        A `DDLogger` for use in a run of the supply chain firewall.
-    """
-    return DDLogger()

@@ -2,11 +2,13 @@
 Provides a `FirewallLogger` class for sending logs to Datadog.
 """
 
+import json
 import logging
 import os
 
 import dotenv
 
+import scfw
 from scfw.configure import DD_LOG_LEVEL_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
@@ -18,6 +20,36 @@ _DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
 
 
 dotenv.load_dotenv()
+
+
+class DDLogFormatter(logging.Formatter):
+    """
+    A custom JSON formatter for firewall logs.
+    """
+    DD_ENV = "dev"
+    DD_VERSION = scfw.__version__
+    DD_SERVICE = DD_SOURCE = "scfw"
+
+    def format(self, record) -> str:
+        """
+        Format a log record as a JSON string.
+
+        Args:
+            record: The log record to be formatted.
+        """
+        log_record = {
+            "source": self.DD_SOURCE,
+            "service": self.DD_SERVICE,
+            "version": self.DD_VERSION
+        }
+
+        env = os.getenv("DD_ENV")
+        log_record["env"] = env if env else self.DD_ENV
+
+        for key in {"action", "created", "ecosystem", "msg", "targets"}:
+            log_record[key] = record.__dict__[key]
+
+        return json.dumps(log_record) + '\n'
 
 
 class DDLogger(FirewallLogger):

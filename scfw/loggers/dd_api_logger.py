@@ -15,11 +15,9 @@ from datadog_api_client.v2.model.http_log_item import HTTPLogItem
 import scfw
 from scfw.configure import DD_API_KEY_VAR
 from scfw.logger import FirewallLogger
-from scfw.loggers.dd_logger import DDLogger
+from scfw.loggers.dd_logger import DDLogFormatter, DDLogger
 
 _DD_LOG_NAME = "dd_api_log"
-
-_DD_LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
 
 
 class _DDLogHandler(logging.Handler):
@@ -71,7 +69,7 @@ class _DDLogHandler(logging.Handler):
 
 # Configure a single logging handle for all `DDAPILogger` instances to share
 _handler = _DDLogHandler() if os.getenv(DD_API_KEY_VAR) else logging.NullHandler()
-_handler.setFormatter(logging.Formatter(_DD_LOG_FORMAT))
+_handler.setFormatter(DDLogFormatter())
 
 _ddlog = logging.getLogger(_DD_LOG_NAME)
 _ddlog.setLevel(logging.INFO)

@@ -13,7 +13,7 @@ from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
 
 import scfw
-from scfw.configure import DD_API_KEY_VAR
+from scfw.configure import DD_API_KEY_VAR, DD_ENV_DEFAULT, DD_SERVICE, DD_SOURCE
 from scfw.logger import FirewallLogger
 from scfw.loggers.dd_logger import DDLogFormatter, DDLogger
 
@@ -27,13 +27,6 @@ class _DDLogHandler(logging.Handler):
 
     In addition to USM tags, install targets are tagged with the `target` tag and included.
     """
-    DD_SOURCE = "scfw"
-    DD_ENV = "dev"
-    DD_VERSION = scfw.__version__
-
-    def __init__(self):
-        super().__init__()
-
     def emit(self, record):
         """
         Format and send a log to Datadog.
@@ -41,10 +34,10 @@ class _DDLogHandler(logging.Handler):
         Args:
             record: The log record to be forwarded.
         """
-        env = os.getenv("DD_ENV", self.DD_ENV)
-        service = os.getenv("DD_SERVICE", record.__dict__.get("ecosystem", self.DD_SOURCE))
-
-        usm_tags = {f"env:{env}", f"version:{self.DD_VERSION}"}
+        usm_tags = {
+            f"env:{os.getenv('DD_ENV', DD_ENV_DEFAULT)}",
+            f"version:{scfw.__version__}"
+        }
 
         targets = record.__dict__.get("targets", {})
         target_tags = set(map(lambda e: f"target:{e}", targets))
@@ -52,11 +45,11 @@ class _DDLogHandler(logging.Handler):
         body = HTTPLog(
             [
                 HTTPLogItem(
-                    ddsource=self.DD_SOURCE,
+                    ddsource=DD_SOURCE,
                     ddtags=",".join(usm_tags | target_tags),
                     hostname=socket.gethostname(),
                     message=self.format(record),
-                    service=service,
+                    service=DD_SERVICE,
                 ),
             ]
         )

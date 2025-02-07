@@ -16,6 +16,21 @@ from scfw.logger import FirewallAction
 
 _log = logging.getLogger(__name__)
 
+DD_SOURCE = "scfw"
+"""
+Source value for Datadog logging.
+"""
+
+DD_SERVICE = "scfw"
+"""
+Service value for Datadog logging.
+"""
+
+DD_ENV_DEFAULT = "dev"
+"""
+Default environment value for Datadog logging.
+"""
+
 DD_API_KEY_VAR = "DD_API_KEY"
 """
 The environment variable under which the firewall looks for a Datadog API key.
@@ -165,8 +180,8 @@ def _configure_agent_logging(port: str):
         "logs:\n"
         "  - type: tcp\n"
         f"    port: {port}\n"
-        '    service: "scfw"\n'
-        '    source: "scfw"\n'
+        f'    service: "{DD_SERVICE}"\n'
+        f'    source: "{DD_SOURCE}"\n'
     )
 
     try:

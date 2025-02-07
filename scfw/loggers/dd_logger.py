@@ -9,7 +9,7 @@ import os
 import dotenv
 
 import scfw
-from scfw.configure import DD_LOG_LEVEL_VAR
+from scfw.configure import DD_ENV_DEFAULT, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.target import InstallTarget
@@ -26,10 +26,6 @@ class DDLogFormatter(logging.Formatter):
     """
     A custom JSON formatter for firewall logs.
     """
-    DD_ENV = "dev"
-    DD_VERSION = scfw.__version__
-    DD_SERVICE = DD_SOURCE = "scfw"
-
     def format(self, record) -> str:
         """
         Format a log record as a JSON string.
@@ -38,13 +34,11 @@ class DDLogFormatter(logging.Formatter):
             record: The log record to be formatted.
         """
         log_record = {
-            "source": self.DD_SOURCE,
-            "service": self.DD_SERVICE,
-            "version": self.DD_VERSION
+            "source": DD_SOURCE,
+            "service": DD_SERVICE,
+            "version": scfw.__version__,
+            "env": os.getenv("DD_ENV", DD_ENV_DEFAULT),
         }
-
-        env = os.getenv("DD_ENV")
-        log_record["env"] = env if env else self.DD_ENV
 
         for key in {"action", "created", "ecosystem", "msg", "targets"}:
             log_record[key] = record.__dict__[key]
@@ -92,13 +86,13 @@ class DDLogger(FirewallLogger):
 
         match action:
             case FirewallAction.ALLOW:
-                message = f"Command '{' '.join(command)}' was allowed"
+                action_str = "allowed"
             case FirewallAction.ABORT:
-                message = f"Command '{' '.join(command)}' was aborted"
+                action_str = "aborted"
             case FirewallAction.BLOCK:
-                message = f"Command '{' '.join(command)}' was blocked"
+                action_str = "blocked"
 
         self._logger.info(
-            message,
+            f"Command '{' '.join(command)}' was " + action_str,
             extra={"action": str(action), "ecosystem": str(ecosystem), "targets": list(map(str, targets))}
         )

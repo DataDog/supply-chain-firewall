@@ -84,15 +84,7 @@ class DDLogger(FirewallLogger):
         if not self._level or action < self._level:
             return
 
-        match action:
-            case FirewallAction.ALLOW:
-                action_str = "allowed"
-            case FirewallAction.ABORT:
-                action_str = "aborted"
-            case FirewallAction.BLOCK:
-                action_str = "blocked"
-
         self._logger.info(
-            f"Command '{' '.join(command)}' was " + action_str,
+            f"Command '{' '.join(command)}' was " + str(action).lower() + "ed",
             extra={"action": str(action), "ecosystem": str(ecosystem), "targets": list(map(str, targets))}
         )

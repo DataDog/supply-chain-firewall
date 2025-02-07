@@ -85,6 +85,6 @@ class DDLogger(FirewallLogger):
             return
 
         self._logger.info(
-            f"Command '{' '.join(command)}' was " + str(action).lower() + "ed",
+            f"Command '{' '.join(command)}' was {str(action).lower()}ed",
             extra={"action": str(action), "ecosystem": str(ecosystem), "targets": list(map(str, targets))}
         )

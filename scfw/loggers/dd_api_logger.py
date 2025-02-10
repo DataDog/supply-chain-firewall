@@ -13,7 +13,7 @@ from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
 
 import scfw
-from scfw.configure import DD_API_KEY_VAR, DD_ENV_DEFAULT, DD_SERVICE, DD_SOURCE
+from scfw.configure import DD_API_KEY_VAR, DD_ENV, DD_SERVICE, DD_SOURCE
 from scfw.logger import FirewallLogger
 from scfw.loggers.dd_logger import DDLogFormatter, DDLogger
 
@@ -35,7 +35,7 @@ class _DDLogHandler(logging.Handler):
             record: The log record to be forwarded.
         """
         usm_tags = {
-            f"env:{os.getenv('DD_ENV', DD_ENV_DEFAULT)}",
+            f"env:{os.getenv('DD_ENV', DD_ENV)}",
             f"version:{scfw.__version__}"
         }
 

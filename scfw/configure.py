@@ -26,7 +26,7 @@ DD_SERVICE = "scfw"
 Service value for Datadog logging.
 """
 
-DD_ENV_DEFAULT = "dev"
+DD_ENV = "dev"
 """
 Default environment value for Datadog logging.
 """

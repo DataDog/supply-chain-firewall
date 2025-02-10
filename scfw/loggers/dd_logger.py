@@ -9,7 +9,7 @@ import os
 import dotenv
 
 import scfw
-from scfw.configure import DD_ENV_DEFAULT, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE
+from scfw.configure import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.target import InstallTarget
@@ -37,7 +37,7 @@ class DDLogFormatter(logging.Formatter):
             "source": DD_SOURCE,
             "service": DD_SERVICE,
             "version": scfw.__version__,
-            "env": os.getenv("DD_ENV", DD_ENV_DEFAULT),
+            "env": os.getenv("DD_ENV", DD_ENV),
         }
 
         for key in {"action", "created", "ecosystem", "msg", "targets"}:

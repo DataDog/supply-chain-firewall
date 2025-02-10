@@ -2,12 +2,14 @@
 Provides a `FirewallLogger` class for sending logs to Datadog.
 """
 
+import json
 import logging
 import os
 
 import dotenv
 
-from scfw.configure import DD_LOG_LEVEL_VAR
+import scfw
+from scfw.configure import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.target import InstallTarget
@@ -18,6 +20,30 @@ _DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
 
 
 dotenv.load_dotenv()
+
+
+class DDLogFormatter(logging.Formatter):
+    """
+    A custom JSON formatter for firewall logs.
+    """
+    def format(self, record) -> str:
+        """
+        Format a log record as a JSON string.
+
+        Args:
+            record: The log record to be formatted.
+        """
+        log_record = {
+            "source": DD_SOURCE,
+            "service": DD_SERVICE,
+            "version": scfw.__version__,
+            "env": os.getenv("DD_ENV", DD_ENV),
+        }
+
+        for key in {"action", "created", "ecosystem", "msg", "targets"}:
+            log_record[key] = record.__dict__[key]
+
+        return json.dumps(log_record) + '\n'
 
 
 class DDLogger(FirewallLogger):
@@ -58,15 +84,7 @@ class DDLogger(FirewallLogger):
         if not self._level or action < self._level:
             return
 
-        match action:
-            case FirewallAction.ALLOW:
-                message = f"Command '{' '.join(command)}' was allowed"
-            case FirewallAction.ABORT:
-                message = f"Command '{' '.join(command)}' was aborted"
-            case FirewallAction.BLOCK:
-                message = f"Command '{' '.join(command)}' was blocked"
-
         self._logger.info(
-            message,
+            f"Command '{' '.join(command)}' was {str(action).lower()}ed",
             extra={"action": str(action), "ecosystem": str(ecosystem), "targets": list(map(str, targets))}
         )

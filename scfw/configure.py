@@ -154,6 +154,34 @@ def update_config_files(config: dict) -> None:
             update_config_file(file, config)
 
 
+def dd_agent_scfw_config_dir() -> Path:
+    """
+    Get the filesystem path to the firewall's configuration directory for
+    Datadog Agent log forwarding.
+
+    Returns:
+        A `Path` indicating the absolute filesystem path to this directory.
+
+    Raises:
+        RuntimeError:
+            Unable to query Datadog Agent status to read the location of its
+            global configuration directory.
+    """
+    try:
+        agent_status = subprocess.run(
+            ["datadog-agent", "status", "--json"], check=True, text=True, capture_output=True
+        )
+        agent_config_dir = json.loads(agent_status.stdout).get("config", {}).get("confd_path", "")
+
+    except subprocess.CalledProcessError:
+        raise RuntimeError(
+            "Unable to query Datadog Agent status: please ensure the Agent is running. "
+            "Linux users may need sudo to run this command."
+        )
+
+    return Path(agent_config_dir) / "scfw.d"
+
+
 def _get_config_interactive() -> dict:
     """
     Get the user's selection of configuration options in interactive mode.
@@ -235,18 +263,7 @@ def _configure_agent_logging(port: str):
         f'    source: "{DD_SOURCE}"\n'
     )
 
-    try:
-        agent_status = subprocess.run(
-            ["datadog-agent", "status", "--json"], check=True, text=True, capture_output=True
-        )
-        agent_config_dir = json.loads(agent_status.stdout).get("config", {}).get("confd_path", "")
-    except subprocess.CalledProcessError:
-        raise RuntimeError(
-            "Unable to query Datadog Agent status: please ensure the Agent is running. "
-            "Linux users may need sudo to run this command."
-        )
-
-    scfw_config_dir = Path(agent_config_dir) / "scfw.d"
+    scfw_config_dir = dd_agent_scfw_config_dir()
     scfw_config_file = scfw_config_dir / "conf.yaml"
 
     if not scfw_config_dir.is_dir():

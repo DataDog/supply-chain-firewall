@@ -30,6 +30,13 @@ def _add_configure_cli(parser: ArgumentParser) -> None:
         parser: The `ArgumentParser` to which the `configure` command line will be added.
     """
     parser.add_argument(
+        "-r",
+        "--remove",
+        action="store_true",
+        help="Remove all configuration associated with Supply-Chain Firewall"
+    )
+
+    parser.add_argument(
         "--alias-pip",
         action="store_true",
         help="Add shell aliases to always run pip commands through Supply-Chain Firewall"

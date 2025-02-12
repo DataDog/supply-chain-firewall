@@ -2,6 +2,8 @@
 Implements the supply-chain firewall's `uninstall` command.
 """
 
+from argparse import Namespace
+
 
 def run_uninstall(args: Namespace) -> int:
     """

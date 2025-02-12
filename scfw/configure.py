@@ -73,28 +73,27 @@ def run_configure(args: Namespace) -> int:
         An integer status code, 0 or 1.
     """
     try:
+        # The CLI parser guarantees that all optional arguments are present
         interactive = not any(
             {args.alias_pip, args.alias_npm, args.dd_agent_port, args.dd_api_key, args.dd_log_level}
         )
 
         if interactive:
             print(_GREETING)
-            answers = _get_answers_interactive()
+            config = _get_config_interactive()
         else:
-            answers = vars(args)
+            config = vars(args)
 
-        if not answers:
+        if not config:
             return 0
 
-        if (port := answers["dd_agent_port"]):
+        if (port := config["dd_agent_port"]):
             _configure_agent_logging(port)
 
-        for file in [Path.home() / file for file in _CONFIG_FILES]:
-            if file.exists():
-                _update_config_file(file, _format_answers(answers))
+        update_config_files(config)
 
         if interactive:
-            print(_get_farewell(answers))
+            print(_get_farewell(config))
 
         return 0
 
@@ -103,7 +102,59 @@ def run_configure(args: Namespace) -> int:
         return 1
 
 
-def _get_answers_interactive() -> dict:
+def update_config_files(config: dict) -> None:
+    """
+    Update Supply-Chain Firewall's configuration in all supported files.
+
+    Args:
+        config: A `dict` of configuration options to format and write to file.
+    """
+    def enclose(config_str: str) -> str:
+        return f"{_BLOCK_START}{config_str}\n{_BLOCK_END}"
+
+    def format_config(config: dict) -> str:
+        config_str = ''
+
+        if config["alias_pip"]:
+            config_str += '\nalias pip="scfw run pip"'
+        if config["alias_npm"]:
+            config_str += '\nalias npm="scfw run npm"'
+        if config["dd_agent_port"]:
+            config_str += f'\nexport {DD_AGENT_PORT_VAR}="{config["dd_agent_port"]}"'
+        if config["dd_api_key"]:
+            config_str += f'\nexport {DD_API_KEY_VAR}="{config["dd_api_key"]}"'
+        if config["dd_log_level"]:
+            config_str += f'\nexport {DD_LOG_LEVEL_VAR}="{config["dd_log_level"]}"'
+
+        return config_str
+
+    def update_config_file(config_file: Path, config: dict) -> None:
+        config_str = format_config(config)
+
+        with open(config_file) as f:
+            contents = f.read()
+
+        pattern = f"{_BLOCK_START}(.*?){_BLOCK_END}"
+        if not config_str:
+            pattern = f"\n{pattern}\n"
+
+        updated = re.sub(pattern, enclose(config_str) if config_str else '', contents, flags=re.DOTALL)
+        if updated == contents and config_str not in contents:
+            updated = f"{contents}\n{enclose(config_str)}\n"
+
+        temp_fd, temp_file = tempfile.mkstemp(text=True)
+        temp_handle = os.fdopen(temp_fd, 'w')
+        temp_handle.write(updated)
+        temp_handle.close()
+
+        os.rename(temp_file, config_file)
+
+    for file in [Path.home() / file for file in _CONFIG_FILES]:
+        if file.exists():
+            update_config_file(file, config)
+
+
+def _get_config_interactive() -> dict:
     """
     Get the user's selection of configuration options in interactive mode.
 
@@ -131,35 +182,35 @@ def _get_answers_interactive() -> dict:
         inquirer.Text(
             name="dd_agent_port",
             message=f"Enter the local port where the Agent will receive logs (default: {_DD_AGENT_DEFAULT_LOG_PORT})",
-            ignore=lambda answers: not answers["dd_agent_logging"]
+            ignore=lambda config: not config["dd_agent_logging"]
         ),
         inquirer.Confirm(
             name="dd_api_logging",
             message="Would you like to enable sending firewall logs to Datadog using an API key?",
             default=False,
-            ignore=lambda answers: has_dd_api_key or answers["dd_agent_logging"]
+            ignore=lambda config: has_dd_api_key or config["dd_agent_logging"]
         ),
         inquirer.Text(
             name="dd_api_key",
             message="Enter a Datadog API key",
             validate=lambda _, current: current != '',
-            ignore=lambda answers: has_dd_api_key or not answers["dd_api_logging"]
+            ignore=lambda config: has_dd_api_key or not config["dd_api_logging"]
         ),
         inquirer.List(
             name="dd_log_level",
             message="Select the desired log level for Datadog logging",
             choices=[str(action) for action in FirewallAction],
-            ignore=lambda answers: not (answers["dd_agent_logging"] or has_dd_api_key or answers["dd_api_logging"])
+            ignore=lambda config: not (config["dd_agent_logging"] or has_dd_api_key or config["dd_api_logging"])
         )
     ]
 
-    answers = inquirer.prompt(questions)
+    config = inquirer.prompt(questions)
 
     # Patch for inquirer's broken `default` option
-    if answers["dd_agent_logging"] and not answers["dd_agent_port"]:
-        answers["dd_agent_port"] = _DD_AGENT_DEFAULT_LOG_PORT
+    if config["dd_agent_logging"] and not config["dd_agent_port"]:
+        config["dd_agent_port"] = _DD_AGENT_DEFAULT_LOG_PORT
 
-    return answers
+    return config
 
 
 def _configure_agent_logging(port: str):
@@ -204,69 +255,13 @@ def _configure_agent_logging(port: str):
         f.write(config_file)
 
 
-def _format_answers(answers: dict) -> str:
-    """
-    Format the user's answers into .rc file `str` configuration content.
-
-    Args:
-        answers: A `dict` containing the user's answers to the prompted questions.
-
-    Returns:
-        A `str` containing the desired configuration content for writing into a .rc file.
-    """
-    config = ''
-
-    if answers["alias_pip"]:
-        config += '\nalias pip="scfw run pip"'
-    if answers["alias_npm"]:
-        config += '\nalias npm="scfw run npm"'
-    if answers["dd_agent_port"]:
-        config += f'\nexport {DD_AGENT_PORT_VAR}="{answers["dd_agent_port"]}"'
-    if answers["dd_api_key"]:
-        config += f'\nexport {DD_API_KEY_VAR}="{answers["dd_api_key"]}"'
-    if answers["dd_log_level"]:
-        config += f'\nexport {DD_LOG_LEVEL_VAR}="{answers["dd_log_level"]}"'
-
-    return config
-
-
-def _update_config_file(config_file: Path, config: str) -> None:
-    """
-    Update the firewall's section in the given configuration file.
-
-    Args:
-        config_file: A `Path` to the configuration file to update.
-        config: The new configuration to write.
-    """
-    def enclose(config: str) -> str:
-        return f"{_BLOCK_START}{config}\n{_BLOCK_END}"
-
-    with open(config_file) as f:
-        contents = f.read()
-
-    pattern = f"{_BLOCK_START}(.*?){_BLOCK_END}"
-    if not config:
-        pattern = f"\n{pattern}\n"
-
-    updated = re.sub(pattern, enclose(config) if config else '', contents, flags=re.DOTALL)
-    if updated == contents and config not in contents:
-        updated = f"{contents}\n{enclose(config)}\n"
-
-    temp_fd, temp_file = tempfile.mkstemp(text=True)
-    temp_handle = os.fdopen(temp_fd, 'w')
-    temp_handle.write(updated)
-    temp_handle.close()
-
-    os.rename(temp_file, config_file)
-
-
-def _get_farewell(answers: dict) -> str:
+def _get_farewell(config: dict) -> str:
     """
     Generate a farewell message in interactive mode based on the configuration
     options selected by the user.
 
     Args:
-        answers: The dictionary of user-selected configuration options.
+        config: The dictionary of user-selected configuration options.
 
     Returns:
         A `str` farewell message to print in interactive mode.
@@ -277,7 +272,7 @@ def _get_farewell(answers: dict) -> str:
         "\n* Update your current shell environment by sourcing from your .bashrc/.zshrc file."
     )
 
-    if answers.get("dd_agent_logging"):
+    if config.get("dd_agent_logging"):
         farewell += "\n* Restart the Datadog Agent in order for it to accept firewall logs."
 
     farewell += "\n\nGood luck!"

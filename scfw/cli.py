@@ -89,12 +89,23 @@ def _add_run_cli(parser: ArgumentParser) -> None:
     )
 
 
+def _add_uninstall_cli(parser: ArgumentParser) -> None:
+    """
+    Defines the command-line interface for the firewall's `uninstall` subcommand.
+
+    Args:
+        parser: The `ArgumentParser` to which the `run` command line will be added.
+    """
+    return
+
+
 class Subcommand(Enum):
     """
     The set of subcommands that comprise the supply-chain firewall's command line.
     """
     Configure = "configure"
     Run = "run"
+    Uninstall = "uninstall"
 
     def __str__(self) -> str:
         """
@@ -125,6 +136,11 @@ class Subcommand(Enum):
                     "exit_on_error": False,
                     "description": "Run a package manager command through Supply-Chain Firewall."
                 }
+            case Subcommand.Uninstall:
+                return {
+                    "exit_on_error": False,
+                    "description": "Uninstall Supply-Chain Firewall and remove all related configuration"
+                }
 
     def _cli_spec(self) -> Callable[[ArgumentParser], None]:
         """
@@ -141,6 +157,8 @@ class Subcommand(Enum):
                 return _add_configure_cli
             case Subcommand.Run:
                 return _add_run_cli
+            case Subcommand.Uninstall:
+                return _add_uninstall_cli
 
 
 def _cli() -> ArgumentParser:

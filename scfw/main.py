@@ -9,6 +9,7 @@ import scfw.cli as cli
 from scfw.cli import Subcommand
 import scfw.configure as configure
 import scfw.firewall as firewall
+import scfw.uninstall as uninstall
 
 _log = logging.getLogger(__name__)
 
@@ -36,6 +37,8 @@ def main() -> int:
             return configure.run_configure(args)
         case Subcommand.Run:
             return firewall.run_firewall(args)
+        case Subcommand.Uninstall:
+            return uninstall.run_uninstall(args)
 
     return 0
 

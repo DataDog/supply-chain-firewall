@@ -67,6 +67,7 @@ Supply-Chain Firewall may be uninstalled via `pip uninstall scfw`.  Before doing
 
 ```bash
 $ scfw configure --remove
+...
 ```
 
 ## Usage

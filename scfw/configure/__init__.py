@@ -73,6 +73,7 @@ def run_configure(args: Namespace) -> int:
             )
             return 0
 
+        # The CLI parser guarantees that all of these arguments are present
         is_interactive = not any(
             {args.alias_pip, args.alias_npm, args.dd_agent_port, args.dd_api_key, args.dd_log_level}
         )
@@ -86,7 +87,7 @@ def run_configure(args: Namespace) -> int:
         if not answers:
             return 0
 
-        if (port := answers["dd_agent_port"]):
+        if (port := answers.get("dd_agent_port")):
             dd_agent.configure_agent_logging(port)
 
         env.update_config_files(answers)

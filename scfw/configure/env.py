@@ -71,15 +71,15 @@ def _format_answers(answers: dict) -> str:
     """
     config = ''
 
-    if answers["alias_pip"]:
+    if answers.get("alias_pip"):
         config += '\nalias pip="scfw run pip"'
-    if answers["alias_npm"]:
+    if answers.get("alias_npm"):
         config += '\nalias npm="scfw run npm"'
-    if answers["dd_agent_port"]:
-        config += f'\nexport {DD_AGENT_PORT_VAR}="{answers["dd_agent_port"]}"'
-    if answers["dd_api_key"]:
-        config += f'\nexport {DD_API_KEY_VAR}="{answers["dd_api_key"]}"'
-    if answers["dd_log_level"]:
-        config += f'\nexport {DD_LOG_LEVEL_VAR}="{answers["dd_log_level"]}"'
+    if (dd_agent_port := answers.get("dd_agent_port")):
+        config += f'\nexport {DD_AGENT_PORT_VAR}="{dd_agent_port}"'
+    if (dd_api_key := answers.get("dd_api_key")):
+        config += f'\nexport {DD_API_KEY_VAR}="{dd_api_key}"'
+    if (dd_log_level := answers.get("dd_log_level")):
+        config += f'\nexport {DD_LOG_LEVEL_VAR}="{dd_log_level}"'
 
     return config

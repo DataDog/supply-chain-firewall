@@ -72,7 +72,7 @@ def get_answers() -> dict:
     answers = inquirer.prompt(questions)
 
     # Patch for inquirer's broken `default` option
-    if answers["dd_agent_logging"] and not answers["dd_agent_port"]:
+    if answers.get("dd_agent_logging") and not answers.get("dd_agent_port"):
         answers["dd_agent_port"] = _DD_AGENT_DEFAULT_LOG_PORT
 
     return answers

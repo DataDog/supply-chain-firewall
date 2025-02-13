@@ -15,7 +15,7 @@ _BLOCK_START = "# BEGIN SCFW MANAGED BLOCK"
 _BLOCK_END = "# END SCFW MANAGED BLOCK"
 
 
-def update_config_files(answers: dict) -> None:
+def update_config_files(answers: dict):
     """
     Update the firewall's configuration in all supported .rc files.
 
@@ -27,7 +27,7 @@ def update_config_files(answers: dict) -> None:
             _update_config_file(file, answers)
 
 
-def _update_config_file(config_file: Path, answers: dict) -> None:
+def _update_config_file(config_file: Path, answers: dict):
     """
     Update the firewall's section in the given configuration file.
 

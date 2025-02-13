@@ -22,7 +22,7 @@ _LOG_LEVELS = list(
 _DEFAULT_LOG_LEVEL = logging.getLevelName(logging.WARNING)
 
 
-def _add_configure_cli(parser: ArgumentParser) -> None:
+def _add_configure_cli(parser: ArgumentParser):
     """
     Defines the command-line interface for the firewall's `configure` subcommand.
 
@@ -74,7 +74,7 @@ def _add_configure_cli(parser: ArgumentParser) -> None:
     )
 
 
-def _add_run_cli(parser: ArgumentParser) -> None:
+def _add_run_cli(parser: ArgumentParser):
     """
     Defines the command-line interface for the firewall's `run` subcommand.
 

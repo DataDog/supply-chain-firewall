@@ -64,6 +64,12 @@ def run_configure(args: Namespace) -> int:
                 "dd_log_level": None
             })
             remove_agent_logging()
+            print(
+                "All Supply-Chain Firewall-managed configuration has been removed from your environment."
+                "\n\nPost-removal tasks:"
+                "\n* Update your current shell environment by sourcing from your .bashrc/.zshrc file."
+                "\n* If you had previously configured Datadog Agent log forwarding, restart the Agent."
+            )
             return 0
 
         interactive = not any(

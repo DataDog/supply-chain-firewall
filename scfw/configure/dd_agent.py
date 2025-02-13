@@ -41,7 +41,7 @@ def configure_agent_logging(port: str):
         f.write(config_file)
 
 
-def remove_agent_logging() -> None:
+def remove_agent_logging():
     """
     Remove Datadog Agent configuration for Supply-Chain Firewall, if it exists.
 
@@ -56,7 +56,9 @@ def remove_agent_logging() -> None:
     try:
         shutil.rmtree(scfw_config_dir)
     except Exception:
-        raise RuntimeError("Failed to delete Datadog Agent configuration directory for Supply-Chain Firewall")
+        raise RuntimeError(
+            "Failed to delete Datadog Agent configuration directory for Supply-Chain Firewall"
+        )
 
 
 def _dd_agent_scfw_config_dir() -> Path:

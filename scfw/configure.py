@@ -9,6 +9,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
 
@@ -54,6 +55,16 @@ _CONFIG_FILES = [".bashrc", ".zshrc"]
 _BLOCK_START = "# BEGIN SCFW MANAGED BLOCK"
 _BLOCK_END = "# END SCFW MANAGED BLOCK"
 
+# Updating configuration files with these options will result in the firewall's
+# section being removed from all files
+_REMOVAL_CONFIG = {
+    "alias_pip": False,
+    "alias_npm": False,
+    "dd_agent_port": None,
+    "dd_api_key": None,
+    "dd_log_level": None
+}
+
 _GREETING = (
     "Thank you for using scfw, the Supply-Chain Firewall by Datadog!\n\n"
     "scfw is a tool for preventing the installation of malicious PyPI and npm packages.\n\n"
@@ -73,6 +84,11 @@ def run_configure(args: Namespace) -> int:
         An integer status code, 0 or 1.
     """
     try:
+        if args.remove:
+            _update_config_files(_REMOVAL_CONFIG)
+            _remove_agent_logging()
+            return 0
+
         interactive = not any(
             {args.alias_pip, args.alias_npm, args.dd_agent_port, args.dd_api_key, args.dd_log_level}
         )
@@ -89,9 +105,7 @@ def run_configure(args: Namespace) -> int:
         if (port := answers["dd_agent_port"]):
             _configure_agent_logging(port)
 
-        for file in [Path.home() / file for file in _CONFIG_FILES]:
-            if file.exists():
-                _update_config_file(file, _format_answers(answers))
+        _update_config_files(answers)
 
         if interactive:
             print(_get_farewell(answers))
@@ -162,6 +176,34 @@ def _get_answers_interactive() -> dict:
     return answers
 
 
+def _dd_agent_scfw_config_dir() -> Path:
+    """
+    Get the filesystem path to the firewall's configuration directory for
+    Datadog Agent log forwarding.
+
+    Returns:
+        A `Path` indicating the absolute filesystem path to this directory.
+
+    Raises:
+        RuntimeError:
+            Unable to query Datadog Agent status to read the location of its
+            global configuration directory.
+    """
+    try:
+        agent_status = subprocess.run(
+            ["datadog-agent", "status", "--json"], check=True, text=True, capture_output=True
+        )
+        agent_config_dir = json.loads(agent_status.stdout).get("config", {}).get("confd_path", "")
+
+    except subprocess.CalledProcessError:
+        raise RuntimeError(
+            "Unable to query Datadog Agent status: please ensure the Agent is running. "
+            "Linux users may need sudo to run this command."
+        )
+
+    return Path(agent_config_dir) / "scfw.d"
+
+
 def _configure_agent_logging(port: str):
     """
     Configure a local Datadog Agent for accepting logs from the firewall.
@@ -184,18 +226,7 @@ def _configure_agent_logging(port: str):
         f'    source: "{DD_SOURCE}"\n'
     )
 
-    try:
-        agent_status = subprocess.run(
-            ["datadog-agent", "status", "--json"], check=True, text=True, capture_output=True
-        )
-        agent_config_dir = json.loads(agent_status.stdout).get("config", {}).get("confd_path", "")
-    except subprocess.CalledProcessError:
-        raise RuntimeError(
-            "Unable to query Datadog Agent status: please ensure the Agent is running. "
-            "Linux users may need sudo to run this command."
-        )
-
-    scfw_config_dir = Path(agent_config_dir) / "scfw.d"
+    scfw_config_dir = _dd_agent_scfw_config_dir()
     scfw_config_file = scfw_config_dir / "conf.yaml"
 
     if not scfw_config_dir.is_dir():
@@ -204,60 +235,74 @@ def _configure_agent_logging(port: str):
         f.write(config_file)
 
 
-def _format_answers(answers: dict) -> str:
+def _remove_agent_logging() -> None:
     """
-    Format the user's answers into .rc file `str` configuration content.
+    Remove Datadog Agent configuration for Supply-Chain Firewall, if it exists.
+
+    Raises:
+        RuntimeError: An error occurred while attempting to remove the configuration directory.
+    """
+    scfw_config_dir = _dd_agent_scfw_config_dir()
+
+    if not scfw_config_dir.is_dir():
+        return
+
+    try:
+        shutil.rmtree(scfw_config_dir)
+    except Exception:
+        raise RuntimeError("Failed to delete Datadog Agent configuration directory for Supply-Chain Firewall")
+
+
+def _update_config_files(answers: dict) -> None:
+    """
+    Update the firewall's configuration in all supported .rc files.
 
     Args:
-        answers: A `dict` containing the user's answers to the prompted questions.
-
-    Returns:
-        A `str` containing the desired configuration content for writing into a .rc file.
-    """
-    config = ''
-
-    if answers["alias_pip"]:
-        config += '\nalias pip="scfw run pip"'
-    if answers["alias_npm"]:
-        config += '\nalias npm="scfw run npm"'
-    if answers["dd_agent_port"]:
-        config += f'\nexport {DD_AGENT_PORT_VAR}="{answers["dd_agent_port"]}"'
-    if answers["dd_api_key"]:
-        config += f'\nexport {DD_API_KEY_VAR}="{answers["dd_api_key"]}"'
-    if answers["dd_log_level"]:
-        config += f'\nexport {DD_LOG_LEVEL_VAR}="{answers["dd_log_level"]}"'
-
-    return config
-
-
-def _update_config_file(config_file: Path, config: str) -> None:
-    """
-    Update the firewall's section in the given configuration file.
-
-    Args:
-        config_file: A `Path` to the configuration file to update.
-        config: The new configuration to write.
+        answers: A `dict` configuration options to format and write to each file.
     """
     def enclose(config: str) -> str:
         return f"{_BLOCK_START}{config}\n{_BLOCK_END}"
 
-    with open(config_file) as f:
-        contents = f.read()
+    def format_answers(answers: dict) -> str:
+        config = ''
 
-    pattern = f"{_BLOCK_START}(.*?){_BLOCK_END}"
-    if not config:
-        pattern = f"\n{pattern}\n"
+        if answers["alias_pip"]:
+            config += '\nalias pip="scfw run pip"'
+        if answers["alias_npm"]:
+            config += '\nalias npm="scfw run npm"'
+        if answers["dd_agent_port"]:
+            config += f'\nexport {DD_AGENT_PORT_VAR}="{answers["dd_agent_port"]}"'
+        if answers["dd_api_key"]:
+            config += f'\nexport {DD_API_KEY_VAR}="{answers["dd_api_key"]}"'
+        if answers["dd_log_level"]:
+            config += f'\nexport {DD_LOG_LEVEL_VAR}="{answers["dd_log_level"]}"'
 
-    updated = re.sub(pattern, enclose(config) if config else '', contents, flags=re.DOTALL)
-    if updated == contents and config not in contents:
-        updated = f"{contents}\n{enclose(config)}\n"
+        return config
 
-    temp_fd, temp_file = tempfile.mkstemp(text=True)
-    temp_handle = os.fdopen(temp_fd, 'w')
-    temp_handle.write(updated)
-    temp_handle.close()
+    def update_config_file(config_file: Path, answers: dict) -> None:
+        with open(config_file) as f:
+            contents = f.read()
 
-    os.rename(temp_file, config_file)
+        config = format_answers(answers)
+
+        pattern = f"{_BLOCK_START}(.*?){_BLOCK_END}"
+        if not config:
+            pattern = f"\n{pattern}\n"
+
+        updated = re.sub(pattern, enclose(config) if config else '', contents, flags=re.DOTALL)
+        if updated == contents and config not in contents:
+            updated = f"{contents}\n{enclose(config)}\n"
+
+        temp_fd, temp_file = tempfile.mkstemp(text=True)
+        temp_handle = os.fdopen(temp_fd, 'w')
+        temp_handle.write(updated)
+        temp_handle.close()
+
+        os.rename(temp_file, config_file)
+
+    for file in [Path.home() / file for file in _CONFIG_FILES]:
+        if file.exists():
+            update_config_file(file, answers)
 
 
 def _get_farewell(answers: dict) -> str:

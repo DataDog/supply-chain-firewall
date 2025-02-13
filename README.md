@@ -61,6 +61,10 @@ In keeping with its goal of blocking 100% of known-malicious package installatio
 
 Currently, Supply-Chain Firewall is only fully supported on macOS systems, though it should run as intended on common Linux distributions.  It is currently not supported on Windows.
 
+### Uninstalling Supply-Chain Firewall
+
+Supply-Chain Firewall may be uninstalled via `pip uninstall scfw`.  Before doing so, be sure to run `scfw configure --remove` to remove any Supply-Chain Firewall-related configuration you may have previously added to your environment.
+
 ## Usage
 
 To use Supply-Chain Firewall, prepend `scfw run` to the `pip install` or `npm install` command you want to run.

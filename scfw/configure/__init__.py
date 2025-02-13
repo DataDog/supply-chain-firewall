@@ -5,9 +5,10 @@ Implements Supply-Chain Firewall's `configure` subcommand.
 from argparse import Namespace
 import logging
 
-from scfw.configure.dd_agent import configure_agent_logging, remove_agent_logging
-from scfw.configure.env import update_config_files
-from scfw.configure.interactive import GREETING, get_answers_interactive, get_farewell
+import scfw.configure.dd_agent as dd_agent
+import scfw.configure.env as env
+import scfw.configure.interactive as interactive
+from scfw.configure.interactive import GREETING
 
 _log = logging.getLogger(__name__)
 
@@ -56,14 +57,14 @@ def run_configure(args: Namespace) -> int:
     try:
         if args.remove:
             # These options result in the firewall's configuration block being removed
-            update_config_files({
+            env.update_config_files({
                 "alias_pip": False,
                 "alias_npm": False,
                 "dd_agent_port": None,
                 "dd_api_key": None,
                 "dd_log_level": None
             })
-            remove_agent_logging()
+            dd_agent.remove_agent_logging()
             print(
                 "All Supply-Chain Firewall-managed configuration has been removed from your environment."
                 "\n\nPost-removal tasks:"
@@ -72,13 +73,13 @@ def run_configure(args: Namespace) -> int:
             )
             return 0
 
-        interactive = not any(
+        is_interactive = not any(
             {args.alias_pip, args.alias_npm, args.dd_agent_port, args.dd_api_key, args.dd_log_level}
         )
 
-        if interactive:
+        if is_interactive:
             print(GREETING)
-            answers = get_answers_interactive()
+            answers = interactive.get_answers()
         else:
             answers = vars(args)
 
@@ -86,12 +87,12 @@ def run_configure(args: Namespace) -> int:
             return 0
 
         if (port := answers["dd_agent_port"]):
-            configure_agent_logging(port)
+            dd_agent.configure_agent_logging(port)
 
-        update_config_files(answers)
+        env.update_config_files(answers)
 
-        if interactive:
-            print(get_farewell(answers))
+        if is_interactive:
+            print(interactive.get_farewell(answers))
 
         return 0
 

@@ -19,7 +19,7 @@ GREETING = (
 _DD_AGENT_DEFAULT_LOG_PORT = "10365"
 
 
-def get_answers_interactive() -> dict:
+def get_answers() -> dict:
     """
     Get the user's selection of configuration options in interactive mode.
 

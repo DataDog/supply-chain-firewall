@@ -63,7 +63,11 @@ Currently, Supply-Chain Firewall is only fully supported on macOS systems, thoug
 
 ### Uninstalling Supply-Chain Firewall
 
-Supply-Chain Firewall may be uninstalled via `pip uninstall scfw`.  Before doing so, be sure to run `scfw configure --remove` to remove any Supply-Chain Firewall-managed configuration you may have previously added to your environment.
+Supply-Chain Firewall may be uninstalled via `pip uninstall scfw`.  Before doing so, be sure to run the command `scfw configure --remove` to remove any Supply-Chain Firewall-managed configuration you may have previously added to your environment.
+
+```bash
+$ scfw configure --remove
+```
 
 ## Usage
 

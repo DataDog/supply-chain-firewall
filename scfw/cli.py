@@ -33,7 +33,7 @@ def _add_configure_cli(parser: ArgumentParser):
         "-r",
         "--remove",
         action="store_true",
-        help="Remove all configuration associated with Supply-Chain Firewall"
+        help="Remove all Supply-Chain Firewall-managed configuration"
     )
 
     parser.add_argument(

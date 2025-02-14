@@ -189,9 +189,9 @@ jobs:
             npm-version: "10.8"
           - node-version: "22.0.0"
             npm-version: "10.9"
-          - node-version: "22.0.0"
+          - node-version: "22.9.0"
             npm-version: "11.0"
-          - node-version: "22.0.0"
+          - node-version: "22.9.0"
             npm-version: "11.1"
     steps:
       - uses: actions/checkout@v4

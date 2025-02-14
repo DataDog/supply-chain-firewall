@@ -6,7 +6,7 @@ import os
 
 import inquirer  # type: ignore
 
-from scfw.configure import DD_API_KEY_VAR
+from scfw.configure.constants import DD_API_KEY_VAR
 from scfw.logger import FirewallAction
 
 GREETING = (

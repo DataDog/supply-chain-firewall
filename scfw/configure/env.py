@@ -7,7 +7,7 @@ import re
 import os
 import tempfile
 
-from scfw.configure import DD_AGENT_PORT_VAR, DD_API_KEY_VAR, DD_LOG_LEVEL_VAR
+from scfw.configure.constants import DD_AGENT_PORT_VAR, DD_API_KEY_VAR, DD_LOG_LEVEL_VAR
 
 _CONFIG_FILES = [".bashrc", ".zshrc"]
 

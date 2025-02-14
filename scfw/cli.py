@@ -220,8 +220,16 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
     try:
         args = parser.parse_args(argv[1:hinge])
 
-        # Only allow a package manager `command` argument when
-        # the user selected the `run` subcommand
+        # Config removal option is mutually exclusive with the others
+        if (
+            Subcommand(args.subcommand) == Subcommand.Configure
+            and args.remove
+            and any({args.alias_pip, args.alias_npm, args.dd_agent_port, args.dd_api_key, args.dd_log_level})
+        ):
+            raise ArgumentError(None, "Cannot combine configuration and removal options")
+
+        # Only allow a package manager `command` argument when the user selected
+        # the `run` subcommand
         match Subcommand(args.subcommand), argv[hinge:]:
             case Subcommand.Run, []:
                 raise ArgumentError(None, "Missing required package manager command")

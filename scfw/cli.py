@@ -22,13 +22,20 @@ _LOG_LEVELS = list(
 _DEFAULT_LOG_LEVEL = logging.getLevelName(logging.WARNING)
 
 
-def _add_configure_cli(parser: ArgumentParser) -> None:
+def _add_configure_cli(parser: ArgumentParser):
     """
     Defines the command-line interface for the firewall's `configure` subcommand.
 
     Args:
         parser: The `ArgumentParser` to which the `configure` command line will be added.
     """
+    parser.add_argument(
+        "-r",
+        "--remove",
+        action="store_true",
+        help="Remove all Supply-Chain Firewall-managed configuration"
+    )
+
     parser.add_argument(
         "--alias-pip",
         action="store_true",
@@ -67,7 +74,7 @@ def _add_configure_cli(parser: ArgumentParser) -> None:
     )
 
 
-def _add_run_cli(parser: ArgumentParser) -> None:
+def _add_run_cli(parser: ArgumentParser):
     """
     Defines the command-line interface for the firewall's `run` subcommand.
 
@@ -213,8 +220,16 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
     try:
         args = parser.parse_args(argv[1:hinge])
 
-        # Only allow a package manager `command` argument when
-        # the user selected the `run` subcommand
+        # Config removal option is mutually exclusive with the others
+        if (
+            Subcommand(args.subcommand) == Subcommand.Configure
+            and args.remove
+            and any({args.alias_pip, args.alias_npm, args.dd_agent_port, args.dd_api_key, args.dd_log_level})
+        ):
+            raise ArgumentError(None, "Cannot combine configuration and removal options")
+
+        # Only allow a package manager `command` argument when the user selected
+        # the `run` subcommand
         match Subcommand(args.subcommand), argv[hinge:]:
             case Subcommand.Run, []:
                 raise ArgumentError(None, "Missing required package manager command")

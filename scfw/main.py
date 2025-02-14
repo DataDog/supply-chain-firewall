@@ -40,7 +40,7 @@ def main() -> int:
     return 0
 
 
-def _configure_logging(level: int) -> None:
+def _configure_logging(level: int):
     """
     Configure the root logger.
 

@@ -7,7 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
-from scfw.configure import DD_SERVICE, DD_SOURCE
+from scfw.configure.constants import DD_SERVICE, DD_SOURCE
 
 
 def configure_agent_logging(port: str):

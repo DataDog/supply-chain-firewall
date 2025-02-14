@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pip-version: ["22.2", "22.3", "23.0", "23.1", "23.2", "23.3", "24.0", "24.1", "24.2"]
+        pip-version: ["22.2", "22.3", "23.0", "23.1", "23.2", "23.3", "24.0", "24.1", "24.2", "24.3", "25.0"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python 3.10
@@ -143,6 +143,12 @@ jobs:
             npm-version: "8.15"
           - node-version: "16.0.0"
             npm-version: "8.16"
+          - node-version: "16.0.0"
+            npm-version: "8.17"
+          - node-version: "16.0.0"
+            npm-version: "8.18"
+          - node-version: "16.0.0"
+            npm-version: "8.19"
           - node-version: "19.0.0"
             npm-version: "9.0"
           - node-version: "19.0.0"
@@ -181,6 +187,12 @@ jobs:
             npm-version: "10.7"
           - node-version: "22.0.0"
             npm-version: "10.8"
+          - node-version: "22.0.0"
+            npm-version: "10.9"
+          - node-version: "22.9.0"
+            npm-version: "11.0"
+          - node-version: "22.9.0"
+            npm-version: "11.1"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python 3.10

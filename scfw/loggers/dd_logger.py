@@ -2,9 +2,11 @@
 Provides a `FirewallLogger` class for sending logs to Datadog.
 """
 
+import getpass
 import json
 import logging
 import os
+import socket
 
 import dotenv
 
@@ -38,7 +40,13 @@ class DDLogFormatter(logging.Formatter):
             "service": DD_SERVICE,
             "version": scfw.__version__,
             "env": os.getenv("DD_ENV", DD_ENV),
+            "hostname": socket.gethostname(),
         }
+
+        try:
+            log_record["username"] = getpass.getuser()
+        except Exception as e:
+            _log.warning(f"Failed to query username: {e}")
 
         for key in {"action", "created", "ecosystem", "msg", "targets"}:
             log_record[key] = record.__dict__[key]

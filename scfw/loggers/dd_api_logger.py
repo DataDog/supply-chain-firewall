@@ -4,7 +4,6 @@ Configures a logger for sending firewall logs to Datadog's API over HTTP.
 
 import logging
 import os
-import socket
 
 from datadog_api_client import ApiClient, Configuration
 from datadog_api_client.v2.api.logs_api import LogsApi
@@ -47,7 +46,6 @@ class _DDLogHandler(logging.Handler):
                 HTTPLogItem(
                     ddsource=DD_SOURCE,
                     ddtags=",".join(usm_tags | target_tags),
-                    hostname=socket.gethostname(),
                     message=self.format(record),
                     service=DD_SERVICE,
                 ),

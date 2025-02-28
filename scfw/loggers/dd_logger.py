@@ -46,7 +46,7 @@ class DDLogFormatter(logging.Formatter):
         try:
             log_record["username"] = getpass.getuser()
         except Exception as e:
-            _log.warning("Failed to query username: {e}")
+            _log.warning(f"Failed to query username: {e}")
 
         for key in {"action", "created", "ecosystem", "msg", "targets"}:
             log_record[key] = record.__dict__[key]

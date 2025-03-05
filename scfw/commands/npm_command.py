@@ -65,9 +65,8 @@ class NpmCommand(PackageManagerCommand):
         if get_npm_version(executable) < MIN_NPM_VERSION:
             raise UnsupportedVersionError(_UNSUPPORTED_NPM_VERSION)
 
-        command = command.copy()
-        command[0] = executable
-        self._command = command
+        self._command = command.copy()
+        self._command[0] = executable
 
     def executable(self) -> str:
         """

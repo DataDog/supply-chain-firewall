@@ -31,6 +31,18 @@ class PackageManagerCommand(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def executable(self) -> str:
+        """
+        Query the local filesystem path to the executable that would be used to run the
+        package manager command.
+
+        Returns:
+            The local filesystem path of the executable that would be used to run the
+            package manager command in the current environment.
+        """
+        pass
+
+    @abstractmethod
     def run(self):
         """
         Run a package manager command.

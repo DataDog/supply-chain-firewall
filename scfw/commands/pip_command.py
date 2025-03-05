@@ -4,14 +4,13 @@ Defines a subclass of `PackageManagerCommand` for `pip` commands.
 
 import json
 import logging
-import os
 import subprocess
-import sys
 from typing import Optional
 
 from packaging.version import InvalidVersion, Version, parse as version_parse
 
 from scfw.command import PackageManagerCommand, UnsupportedVersionError
+import scfw.commands.utils as utils
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 
@@ -41,12 +40,6 @@ class PipCommand(PackageManagerCommand):
             UnsupportedVersionError:
                 An unsupported version of `pip` was used to initialize a `PipCommand`.
         """
-        def get_executable() -> str:
-            if (venv := os.environ.get("VIRTUAL_ENV")):
-                return os.path.join(venv, "bin/python")
-            else:
-                return sys.executable
-
         def get_pip_version(executable: str) -> Version:
             try:
                 # All supported versions adhere to this format
@@ -61,11 +54,22 @@ class PipCommand(PackageManagerCommand):
 
         if not command or command[0] != "pip":
             raise ValueError("Malformed pip command")
-        self._command = command
 
-        self._executable = executable if executable else get_executable()
-        if get_pip_version(self._executable) < MIN_PIP_VERSION:
+        executable = executable if executable else utils.resolve_executable("python")
+        if not executable:
+            raise RuntimeError("Failed to resolve local Python executable")
+
+        if get_pip_version(executable) < MIN_PIP_VERSION:
             raise UnsupportedVersionError(_UNSUPPORTED_PIP_VERSION)
+
+        self._command = command
+        self._executable = executable
+
+    def executable(self) -> str:
+        """
+        Query the Python executable for a `pip` command.
+        """
+        return self._executable
 
     def run(self):
         """

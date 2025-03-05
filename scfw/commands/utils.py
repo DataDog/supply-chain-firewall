@@ -22,7 +22,7 @@ def resolve_executable(executable: str) -> Optional[str]:
     """
     try:
         path = subprocess.run(["which", executable], check=True, text=True, capture_output=True).stdout.strip()
-        return path if len(path) > 0 else None
+        return path if path else None
 
     except subprocess.CalledProcessError:
         raise RuntimeError(f"Failed to resolve executable '{executable}'")

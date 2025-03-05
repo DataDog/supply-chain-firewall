@@ -68,6 +68,7 @@ class FirewallLogger(metaclass=ABCMeta):
         self,
         action: FirewallAction,
         ecosystem: ECOSYSTEM,
+        executable: str,
         command: list[str],
         targets: list[InstallTarget]
     ):
@@ -77,6 +78,7 @@ class FirewallLogger(metaclass=ABCMeta):
         Args:
             action: The action taken by the firewall.
             ecosystem: The ecosystem of the inspected package manager command.
+            executable: The executable used to execute the inspected package manager command.
             command: The package manager command line provided to the firewall.
             targets:
                 The installation targets relevant to firewall's action.

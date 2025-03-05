@@ -48,7 +48,7 @@ class DDLogFormatter(logging.Formatter):
         except Exception as e:
             _log.warning(f"Failed to query username: {e}")
 
-        for key in {"action", "created", "ecosystem", "msg", "targets"}:
+        for key in {"action", "created", "ecosystem", "executable", "msg", "targets"}:
             log_record[key] = record.__dict__[key]
 
         return json.dumps(log_record) + '\n'
@@ -77,6 +77,7 @@ class DDLogger(FirewallLogger):
         self,
         action: FirewallAction,
         ecosystem: ECOSYSTEM,
+        executable: str,
         command: list[str],
         targets: list[InstallTarget]
     ):
@@ -86,6 +87,7 @@ class DDLogger(FirewallLogger):
         Args:
             action: The action taken by the firewall.
             ecosystem: The ecosystem of the inspected package manager command.
+            executable: The executable used to execute the inspected package manager command.
             command: The package manager command line provided to the firewall.
             targets: The installation targets relevant to firewall's action.
         """
@@ -94,5 +96,10 @@ class DDLogger(FirewallLogger):
 
         self._logger.info(
             f"Command '{' '.join(command)}' was {str(action).lower()}ed",
-            extra={"action": str(action), "ecosystem": str(ecosystem), "targets": list(map(str, targets))}
+            extra={
+                "action": str(action),
+                "ecosystem": str(ecosystem),
+                "executable": executable,
+                "targets": list(map(str, targets))
+            }
         )

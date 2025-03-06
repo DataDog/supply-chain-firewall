@@ -41,6 +41,14 @@ class PipCommand(PackageManagerCommand):
             UnsupportedVersionError:
                 An unsupported version of `pip` was used to initialize a `PipCommand`.
         """
+        def get_executable() -> Optional[str]:
+            # Explicitly checking whether we are in a venv circumvents issues caused
+            # by pyenv shims stomping the PATH with its own directories
+            if (venv := os.environ.get("VIRTUAL_ENV")):
+                return os.path.join(venv, "bin/python")
+            else:
+                return shutil.which("python")
+
         def get_pip_version(executable: str) -> Version:
             try:
                 # All supported versions adhere to this format
@@ -56,7 +64,7 @@ class PipCommand(PackageManagerCommand):
         if not command or command[0] != "pip":
             raise ValueError("Malformed pip command")
 
-        executable = executable if executable else shutil.which("python")
+        executable = executable if executable else get_executable()
         if not executable:
             raise RuntimeError("Failed to resolve local Python executable")
         if not os.path.isfile(executable):

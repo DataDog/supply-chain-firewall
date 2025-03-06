@@ -5,8 +5,8 @@ Defines a subclass of `PackageManagerCommand` for `pip` commands.
 import json
 import logging
 import os
+import shutil
 import subprocess
-import sys
 from typing import Optional
 
 from packaging.version import InvalidVersion, Version, parse as version_parse
@@ -41,11 +41,13 @@ class PipCommand(PackageManagerCommand):
             UnsupportedVersionError:
                 An unsupported version of `pip` was used to initialize a `PipCommand`.
         """
-        def get_executable() -> str:
+        def get_executable() -> Optional[str]:
+            # Explicitly checking whether we are in a venv circumvents issues caused
+            # by pyenv shims stomping the PATH with its own directories
             if (venv := os.environ.get("VIRTUAL_ENV")):
                 return os.path.join(venv, "bin/python")
             else:
-                return sys.executable
+                return shutil.which("python")
 
         def get_pip_version(executable: str) -> Version:
             try:
@@ -61,11 +63,24 @@ class PipCommand(PackageManagerCommand):
 
         if not command or command[0] != "pip":
             raise ValueError("Malformed pip command")
-        self._command = command
 
-        self._executable = executable if executable else get_executable()
-        if get_pip_version(self._executable) < MIN_PIP_VERSION:
+        executable = executable if executable else get_executable()
+        if not executable:
+            raise RuntimeError("Failed to resolve local Python executable")
+        if not os.path.isfile(executable):
+            raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
+
+        if get_pip_version(executable) < MIN_PIP_VERSION:
             raise UnsupportedVersionError(_UNSUPPORTED_PIP_VERSION)
+
+        self._command = command
+        self._executable = executable
+
+    def executable(self) -> str:
+        """
+        Query the Python executable for a `pip` command.
+        """
+        return self._executable
 
     def run(self):
         """

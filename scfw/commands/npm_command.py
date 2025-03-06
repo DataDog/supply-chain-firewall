@@ -3,6 +3,8 @@ Defines a subclass of `PackageManagerCommand` for `npm` commands.
 """
 
 import logging
+import os
+import shutil
 import subprocess
 from typing import Optional
 
@@ -56,13 +58,24 @@ class NpmCommand(PackageManagerCommand):
 
         if not command or command[0] != "npm":
             raise ValueError("Malformed npm command")
-        self._command = command
-        self._executable = "npm"
 
-        if executable:
-            self._command[0] = self._executable = executable
-        if get_npm_version(self._executable) < MIN_NPM_VERSION:
+        executable = executable if executable else shutil.which("npm")
+        if not executable:
+            raise RuntimeError("Failed to resolve local npm executable")
+        if not os.path.isfile(executable):
+            raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
+
+        if get_npm_version(executable) < MIN_NPM_VERSION:
             raise UnsupportedVersionError(_UNSUPPORTED_NPM_VERSION)
+
+        self._command = command.copy()
+        self._command[0] = executable
+
+    def executable(self) -> str:
+        """
+        Query the npm executable for an `npm` command.
+        """
+        return self._command[0]
 
     def run(self):
         """
@@ -113,7 +126,7 @@ class NpmCommand(PackageManagerCommand):
 
         try:
             # List targets already installed in the npm environment
-            list_command = [self._executable, "list", "--all"]
+            list_command = [self.executable(), "list", "--all"]
             installed = subprocess.run(list_command, check=True, text=True, capture_output=True).stdout
         except subprocess.CalledProcessError:
             # If this operation fails, rather than blocking, assume nothing is installed

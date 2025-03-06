@@ -53,6 +53,7 @@ def run_firewall(args: Namespace) -> int:
                     logs,
                     FirewallAction.BLOCK,
                     ecosystem,
+                    command.executable(),
                     args.command,
                     list(critical_report)
                 )
@@ -67,6 +68,7 @@ def run_firewall(args: Namespace) -> int:
                         logs,
                         FirewallAction.ABORT,
                         ecosystem,
+                        command.executable(),
                         args.command,
                         list(warning_report)
                     )
@@ -81,6 +83,7 @@ def run_firewall(args: Namespace) -> int:
                 logs,
                 FirewallAction.ALLOW,
                 ecosystem,
+                command.executable(),
                 args.command,
                 targets
             )
@@ -100,6 +103,7 @@ def _log_firewall_action(
     logs: list[FirewallLogger],
     action: FirewallAction,
     ecosystem: ECOSYSTEM,
+    executable: str,
     command: list[str],
     targets: list[InstallTarget],
 ):
@@ -109,10 +113,11 @@ def _log_firewall_action(
     Args:
         action: The action taken by the firewall.
         ecosystem: The ecosystem of the inspected package manager command.
+        executable: The executable used to execute the inspected package manager command.
         command: The package manager command line provided to the firewall.
         targets:
             The installation targets relevant to firewall's action.
     """
     # One would like to use `map` for this, but it is lazily evaluated
     for log in logs:
-        log.log(action, ecosystem, command, targets)
+        log.log(action, ecosystem, executable, command, targets)

@@ -1,3 +1,4 @@
+import shutil
 import sys
 
 import pytest
@@ -7,6 +8,16 @@ from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 
 from .test_pip import INIT_PIP_STATE, TEST_TARGET, pip_list
+
+
+def test_executable():
+    """
+    Test whether `PipCommand` correctly discovers the Python executable active
+    in the current environment.
+    """
+    python = shutil.which("python")
+    command = PipCommand(["pip", "--version"])
+    assert python and command.executable() == python
 
 
 @pytest.mark.parametrize(

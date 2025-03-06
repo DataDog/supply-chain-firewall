@@ -4,13 +4,14 @@ Defines a subclass of `PackageManagerCommand` for `pip` commands.
 
 import json
 import logging
+import os
+import shutil
 import subprocess
 from typing import Optional
 
 from packaging.version import InvalidVersion, Version, parse as version_parse
 
 from scfw.command import PackageManagerCommand, UnsupportedVersionError
-import scfw.commands.utils as utils
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 
@@ -55,9 +56,11 @@ class PipCommand(PackageManagerCommand):
         if not command or command[0] != "pip":
             raise ValueError("Malformed pip command")
 
-        executable = executable if executable else utils.resolve_executable("python")
+        executable = executable if executable else shutil.which("python")
         if not executable:
             raise RuntimeError("Failed to resolve local Python executable")
+        if not os.path.isfile(executable):
+            raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
 
         if get_pip_version(executable) < MIN_PIP_VERSION:
             raise UnsupportedVersionError(_UNSUPPORTED_PIP_VERSION)

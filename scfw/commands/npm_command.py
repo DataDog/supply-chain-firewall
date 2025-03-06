@@ -3,13 +3,14 @@ Defines a subclass of `PackageManagerCommand` for `npm` commands.
 """
 
 import logging
+import os
+import shutil
 import subprocess
 from typing import Optional
 
 from packaging.version import InvalidVersion, Version, parse as version_parse
 
 from scfw.command import PackageManagerCommand, UnsupportedVersionError
-import scfw.commands.utils as utils
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 
@@ -58,9 +59,11 @@ class NpmCommand(PackageManagerCommand):
         if not command or command[0] != "npm":
             raise ValueError("Malformed npm command")
 
-        executable = executable if executable else utils.resolve_executable("npm")
+        executable = executable if executable else shutil.which("npm")
         if not executable:
             raise RuntimeError("Failed to resolve local npm executable")
+        if not os.path.isfile(executable):
+            raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
 
         if get_npm_version(executable) < MIN_NPM_VERSION:
             raise UnsupportedVersionError(_UNSUPPORTED_NPM_VERSION)

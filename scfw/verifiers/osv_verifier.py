@@ -3,6 +3,7 @@ Defines an installation target verifier that uses OSV.dev's database of vulnerab
 and malicious open source software packages.
 """
 
+from dataclasses import dataclass
 import logging
 
 import requests
@@ -18,6 +19,34 @@ _OSV_ECOSYSTEMS = {ECOSYSTEM.PIP: "PyPI", ECOSYSTEM.NPM: "npm"}
 _OSV_DEV_QUERY_URL = "https://api.osv.dev/v1/query"
 _OSV_DEV_VULN_URL_PREFIX = "https://osv.dev/vulnerability"
 _OSV_DEV_LIST_URL_PREFIX = "https://osv.dev/list"
+
+
+@dataclass(eq=True, frozen=True)
+class OsvAdvisory:
+    """
+    A representation of an OSV advisory containing only the fields relevant
+    to installation target verification.
+    """
+    id: str
+
+    @classmethod
+    def from_json(cls, osv_json: dict) -> "OsvAdvisory":
+        """
+        Convert a JSON-formatted OSV advisory into an `OsvAdvisory`.
+
+        Args:
+            osv_json: The JSON-formatted OSV advisory to be converted.
+
+        Returns:
+            An `OsvAdvisory` derived from the content of the given JSON.
+
+        Raises:
+            ValueError: The advisory was malformed or missing required information.
+        """
+        if (id := osv_json.get("id")):
+            return cls(id)
+        else:
+            raise ValueError("Encountered OSV advisory with missing ID field")
 
 
 class OsvVerifier(InstallTargetVerifier):
@@ -53,16 +82,16 @@ class OsvVerifier(InstallTargetVerifier):
             requests.HTTPError:
                 An error occurred while querying an installation target against the OSV.dev API.
         """
-        def mal_finding(id: str) -> str:
+        def mal_finding(osv: OsvAdvisory) -> str:
             return (
                 f"An OSV.dev malicious package disclosure exists for package {target}:\n"
-                f"  * {_OSV_DEV_VULN_URL_PREFIX}/{id}"
+                f"  * {_OSV_DEV_VULN_URL_PREFIX}/{osv.id}"
             )
 
-        def non_mal_finding(id: str) -> str:
+        def non_mal_finding(osv: OsvAdvisory) -> str:
             return (
                 f"An OSV.dev disclosure exists for package {target}:\n"
-                f"  * {_OSV_DEV_VULN_URL_PREFIX}/{id}"
+                f"  * {_OSV_DEV_VULN_URL_PREFIX}/{osv.id}"
             )
 
         def error_message(e: str) -> str:
@@ -102,13 +131,13 @@ class OsvVerifier(InstallTargetVerifier):
             if not vulns:
                 return []
 
-            osv_ids = set(filter(lambda id: id is not None, map(lambda vuln: vuln.get("id"), vulns)))
-            mal_ids = set(filter(lambda id: id.startswith("MAL"), osv_ids))
-            non_mal_ids = osv_ids - mal_ids
+            osvs = set(map(OsvAdvisory.from_json, filter(lambda vuln: vuln.get("id"), vulns)))
+            mal_osvs = set(filter(lambda osv: osv.id.startswith("MAL"), osvs))
+            non_mal_osvs = osvs - mal_osvs
 
             return (
-                [(FindingSeverity.CRITICAL, mal_finding(id)) for id in mal_ids]
-                + [(FindingSeverity.WARNING, non_mal_finding(id)) for id in non_mal_ids]
+                [(FindingSeverity.CRITICAL, mal_finding(osv)) for osv in mal_osvs]
+                + [(FindingSeverity.WARNING, non_mal_finding(osv)) for osv in non_mal_osvs]
             )
 
         except requests.exceptions.RequestException as e:

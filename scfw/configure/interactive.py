@@ -102,6 +102,7 @@ def get_farewell(answers: dict) -> str:
 
     return farewell
 
+
 def _describe_log_level(action: FirewallAction) -> str:
     """
     Return a description of the given `action` considered as a log level.

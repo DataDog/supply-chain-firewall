@@ -64,7 +64,7 @@ def get_answers() -> dict:
         inquirer.List(
             name="dd_log_level",
             message="Select the desired log level for Datadog logging",
-            choices=[str(action) for action in FirewallAction],
+            choices=[(_describe_log_level(action), str(action)) for action in FirewallAction],
             ignore=lambda answers: not (answers["dd_agent_logging"] or has_dd_api_key or answers["dd_api_logging"])
         )
     ]
@@ -101,3 +101,21 @@ def get_farewell(answers: dict) -> str:
     farewell += "\n\nGood luck!"
 
     return farewell
+
+def _describe_log_level(action: FirewallAction) -> str:
+    """
+    Return a description of the given `action` considered as a log level.
+
+    Args:
+        action: A `FirewallAction` considered as a log level.
+
+    Returns:
+        A `str` description of which firewall actions are logged at the given level.
+    """
+    match action:
+        case FirewallAction.ALLOW:
+            return "Log allowed, aborted and blocked commands"
+        case FirewallAction.ABORT:
+            return "Log aborted and blocked commands"
+        case FirewallAction.BLOCK:
+            return "Log only blocked commands"

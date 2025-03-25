@@ -74,6 +74,8 @@ class OsvVerifier(InstallTargetVerifier):
                 f"  * {url}"
             )
 
+        vulns = []
+
         query = {
             "version": target.version,
             "package": {
@@ -83,11 +85,21 @@ class OsvVerifier(InstallTargetVerifier):
         }
 
         try:
-            # The OSV.dev API is sometimes quite slow, hence the generous timeout
-            request = requests.post(_OSV_DEV_QUERY_URL, json=query, timeout=10)
-            request.raise_for_status()
+            while True:
+                # The OSV.dev API is sometimes quite slow, hence the generous timeout
+                request = requests.post(_OSV_DEV_QUERY_URL, json=query, timeout=10)
+                request.raise_for_status()
+                response = request.json()
 
-            if not (vulns := request.json().get("vulns")):
+                if (response_vulns := response.get("vulns")):
+                    vulns.extend(response_vulns)
+
+                query["page_token"] = response.get("next_page_token")
+
+                if not query["page_token"]:
+                    break
+
+            if not vulns:
                 return []
 
             osv_ids = set(filter(lambda id: id is not None, map(lambda vuln: vuln.get("id"), vulns)))

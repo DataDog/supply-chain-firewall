@@ -115,8 +115,8 @@ def _describe_log_level(action: FirewallAction) -> str:
     """
     match action:
         case FirewallAction.ALLOW:
-            return "Log allowed, aborted and blocked commands"
+            return "Log allowed, user-cancelled, and blocked commands"
         case FirewallAction.ABORT:
-            return "Log aborted and blocked commands"
+            return "Log user-cancelled and blocked commands"
         case FirewallAction.BLOCK:
             return "Log only blocked commands"

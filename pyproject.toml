@@ -2,6 +2,7 @@
 name = "scfw"
 dynamic = ["version"]
 dependencies = [
+    "cvss",
     "datadog-api-client",
     "inquirer",
     "packaging",

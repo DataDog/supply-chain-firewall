@@ -38,15 +38,7 @@ class FirewallAction(Enum):
                 f"'<' not supported between instances of '{self.__class__}' and '{other.__class__}'"
             )
 
-        match self.name, other.name:
-            case "ALLOW", "ABORT":
-                return True
-            case "ALLOW", "BLOCK":
-                return True
-            case "ABORT", "BLOCK":
-                return True
-            case _:
-                return False
+        return (self.name, other.name) in {("ALLOW", "ABORT"), ("ALLOW", "BLOCK"), ("ABORT", "BLOCK")}
 
     def __str__(self) -> str:
         """

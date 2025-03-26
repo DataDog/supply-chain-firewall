@@ -86,7 +86,7 @@ class OsvSeverityType(Enum):
     @classmethod
     def from_string(cls, s: str) -> "OsvSeverityType":
         """
-        Convert a string into a `OsvSeverityType`.
+        Convert a string into an `OsvSeverityType`.
 
         Args:
             s: The `str` to be converted.
@@ -162,7 +162,8 @@ class OsvAdvisory:
 
     def __lt__(self, other: "OsvAdvisory") -> bool:
         """
-        Compare two `OsvAdvisory` instances on the basis of their severities.
+        Compare two `OsvAdvisory` instances on the basis of their severities such that
+        advisories with no severities are sorted lower than those with severities.
 
         Args:
             self: The `OsvAdvisory` to be compared on the left-hand side

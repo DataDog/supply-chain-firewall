@@ -112,6 +112,10 @@ class OsvVerifier(InstallTargetVerifier):
             _log.warning(f"Failed to query OSV.dev API: returning WARNING finding for target {target}")
             return [(FindingSeverity.WARNING, error_message(str(e)))]
 
+        except Exception as e:
+            _log.warning(f"Target verification failed: returning WARNING finding for target {target}")
+            return [(FindingSeverity.WARNING, error_message(str(e)))]
+
 
 def load_verifier() -> InstallTargetVerifier:
     """

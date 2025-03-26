@@ -115,8 +115,7 @@ class OsvSeverityType(Enum):
         mappings = {type.value: type for type in cls}
         if (type := mappings.get(s)):
             return type
-        else:
-            raise ValueError(f"Invalid OSV severity type '{s}'")
+        raise ValueError(f"Invalid OSV severity type '{s}'")
 
 
 @dataclass(eq=True, frozen=True)
@@ -145,8 +144,7 @@ class OsvSeverityScore:
         score = osv_json.get("score")
         if type and score:
             return cls(type=OsvSeverityType.from_string(type), score=score)
-        else:
-            raise ValueError("Encountered malformed OSV severity score")
+        raise ValueError("Encountered malformed OSV severity score")
 
     def severity(self) -> Severity:
         """
@@ -222,8 +220,7 @@ class OsvAdvisory:
                 id=id,
                 severity=max(map(lambda score: score.severity(), scores)) if scores else None
             )
-        else:
-            raise ValueError("Encountered OSV advisory with missing ID field")
+        raise ValueError("Encountered OSV advisory with missing ID field")
 
 
 class OsvVerifier(InstallTargetVerifier):

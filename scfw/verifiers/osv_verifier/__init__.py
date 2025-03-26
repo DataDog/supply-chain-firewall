@@ -54,17 +54,11 @@ class OsvVerifier(InstallTargetVerifier):
             requests.HTTPError:
                 An error occurred while querying an installation target against the OSV.dev API.
         """
-        def mal_finding(osv: OsvAdvisory) -> str:
+        def finding(osv: OsvAdvisory) -> str:
+            kind = "malicious package " if osv.id.startswith("MAL") else ""
             severity_tag = f"[{osv.severity}] " if osv.severity else ""
             return (
-                f"An OSV.dev malicious package disclosure exists for package {target}:\n"
-                f"  * {severity_tag}{_OSV_DEV_VULN_URL_PREFIX}/{osv.id}"
-            )
-
-        def non_mal_finding(osv: OsvAdvisory) -> str:
-            severity_tag = f"[{osv.severity}] " if osv.severity else ""
-            return (
-                f"An OSV.dev disclosure exists for package {target}:\n"
+                f"An OSV.dev {kind}disclosure exists for package {target}:\n"
                 f"  * {severity_tag}{_OSV_DEV_VULN_URL_PREFIX}/{osv.id}"
             )
 
@@ -110,8 +104,8 @@ class OsvVerifier(InstallTargetVerifier):
             non_mal_osvs = osvs - mal_osvs
 
             return (
-                [(FindingSeverity.CRITICAL, mal_finding(osv)) for osv in sorted(mal_osvs, reverse=True)]
-                + [(FindingSeverity.WARNING, non_mal_finding(osv)) for osv in sorted(non_mal_osvs, reverse=True)]
+                [(FindingSeverity.CRITICAL, finding(osv)) for osv in sorted(mal_osvs, reverse=True)]
+                + [(FindingSeverity.WARNING, finding(osv)) for osv in sorted(non_mal_osvs, reverse=True)]
             )
 
         except requests.exceptions.RequestException as e:

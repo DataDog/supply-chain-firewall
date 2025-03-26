@@ -27,7 +27,9 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["scfw", "scfw.commands", "scfw.configure", "scfw.loggers", "scfw.verifiers"]
+packages = [
+    "scfw", "scfw.commands", "scfw.configure", "scfw.loggers", "scfw.verifiers", "scfw.verifiers.osv_verifier"
+]
 
 [tool.setuptools.dynamic]
 version = {attr = "scfw.__version__"}

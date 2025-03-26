@@ -86,8 +86,7 @@ class Severity(Enum):
         mappings = {severity.value: severity for severity in cls}
         if (severity := mappings.get(s.lower().capitalize())):
             return severity
-        else:
-            raise ValueError(f"Invalid severity '{s}'")
+        raise ValueError(f"Invalid severity '{s}'")
 
 
 class OsvSeverityType(Enum):
@@ -218,7 +217,7 @@ class OsvAdvisory:
             ValueError: The advisory was malformed or missing required information.
         """
         if (id := osv_json.get("id")):
-            scores = map(OsvSeverityScore.from_json, osv_json.get("severity", []))
+            scores = list(map(OsvSeverityScore.from_json, osv_json.get("severity", [])))
             return cls(
                 id=id,
                 severity=max(map(lambda score: score.severity(), scores)) if scores else None

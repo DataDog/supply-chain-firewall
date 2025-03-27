@@ -160,7 +160,8 @@ class OsvAdvisory:
     id: str
     severity: Optional[Severity]
 
-    def __lt__(self, other: "OsvAdvisory") -> bool:
+    @classmethod
+    def compare_severities(cls, lhs: "OsvAdvisory", rhs: "OsvAdvisory") -> int:
         """
         Compare two `OsvAdvisory` instances on the basis of their severities such that
         advisories with no severities are sorted lower than those with severities.
@@ -170,21 +171,28 @@ class OsvAdvisory:
             other: The `OsvAdvisory` to be compared on the right-hand side
 
         Returns:
-            A `bool` indicating whether `<` holds between the two given `OsvAdvisory`.
+            An `int` indicating whether the first `OsvAdvisory` is less than, equal to
+            or greater than the second one.
 
         Raises:
-            TypeError: The other argument given was not an `OsvAdvisory`.
+            TypeError: One of the given arguments is not an `OsvAdvisory`.
         """
-        if self.__class__ is not other.__class__:
-            raise TypeError(
-                f"'<' not supported between instances of '{self.__class__}' and '{other.__class__}'"
-            )
+        if not (isinstance(lhs, cls) and isinstance(rhs, cls)):
+            raise TypeError("Received incompatible argument types while comparing OSV severities")
 
         # A match statement would be more natural here but mypy is not up to it
-        return (
-            (self.severity is None and other.severity is not None)
-            or (self.severity is not None and other.severity is not None and self.severity < other.severity)
-        )
+        if lhs.severity == rhs.severity:
+            result = 0
+        elif lhs.severity is None:
+            result = -1
+        elif rhs.severity is None:
+            result = 1
+        elif lhs.severity < rhs.severity:
+            result = -1
+        elif rhs.severity < lhs.severity:
+            result = 1
+
+        return result
 
     @classmethod
     def from_json(cls, osv_json: dict) -> "OsvAdvisory":

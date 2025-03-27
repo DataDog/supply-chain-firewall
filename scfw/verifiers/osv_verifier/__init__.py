@@ -3,6 +3,7 @@ Defines an installation target verifier that uses OSV.dev's database of vulnerab
 and malicious open source software packages.
 """
 
+import functools
 import logging
 
 import requests
@@ -103,9 +104,13 @@ class OsvVerifier(InstallTargetVerifier):
             mal_osvs = set(filter(lambda osv: osv.id.startswith("MAL"), osvs))
             non_mal_osvs = osvs - mal_osvs
 
+            osv_sort_key = functools.cmp_to_key(OsvAdvisory.compare_severities)
+            sorted_mal_osvs = sorted(mal_osvs, reverse=True, key=osv_sort_key)
+            sorted_non_mal_osvs = sorted(non_mal_osvs, reverse=True, key=osv_sort_key)
+
             return (
-                [(FindingSeverity.CRITICAL, finding(osv)) for osv in sorted(mal_osvs, reverse=True)]
-                + [(FindingSeverity.WARNING, finding(osv)) for osv in sorted(non_mal_osvs, reverse=True)]
+                [(FindingSeverity.CRITICAL, finding(osv)) for osv in sorted_mal_osvs]
+                + [(FindingSeverity.WARNING, finding(osv)) for osv in sorted_non_mal_osvs]
             )
 
         except requests.exceptions.RequestException as e:

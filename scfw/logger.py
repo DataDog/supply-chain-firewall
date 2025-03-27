@@ -5,6 +5,7 @@ completed run of the supply-chain firewall.
 
 from abc import (ABCMeta, abstractmethod)
 from enum import Enum
+from typing_extensions import Self
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
@@ -48,6 +49,25 @@ class FirewallAction(Enum):
             A `str` representing the given `FirewallAction` suitable for printing.
         """
         return self.name
+
+    @classmethod
+    def from_string(cls, s: str) -> Self:
+        """
+        Convert a string into a `FirewallAction`.
+
+        Args:
+            s: The `str` to be converted.
+
+        Returns:
+            The `FirewallAction` referred to by the given string.
+
+        Raises:
+            ValueError: The given string does not refer to a valid `FirewallAction`.
+        """
+        mappings = {f"{action}".lower(): action for action in cls}
+        if (action := mappings.get(s.lower())):
+            return action
+        raise ValueError(f"Invalid firewall action '{s}'")
 
 
 class FirewallLogger(metaclass=ABCMeta):

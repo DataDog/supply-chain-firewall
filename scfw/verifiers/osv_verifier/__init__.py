@@ -3,6 +3,7 @@ Defines an installation target verifier that uses OSV.dev's database of vulnerab
 and malicious open source software packages.
 """
 
+import functools
 import logging
 
 import requests
@@ -10,6 +11,7 @@ import requests
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 from scfw.verifier import FindingSeverity, InstallTargetVerifier
+from scfw.verifiers.osv_verifier.osv_advisory import OsvAdvisory
 
 _log = logging.getLogger(__name__)
 
@@ -53,16 +55,12 @@ class OsvVerifier(InstallTargetVerifier):
             requests.HTTPError:
                 An error occurred while querying an installation target against the OSV.dev API.
         """
-        def mal_finding(id: str) -> str:
+        def finding(osv: OsvAdvisory) -> str:
+            kind = "malicious package " if osv.id.startswith("MAL") else ""
+            severity_tag = f"[{osv.severity}] " if osv.severity else ""
             return (
-                f"An OSV.dev malicious package disclosure exists for package {target}:\n"
-                f"  * {_OSV_DEV_VULN_URL_PREFIX}/{id}"
-            )
-
-        def non_mal_finding(id: str) -> str:
-            return (
-                f"An OSV.dev disclosure exists for package {target}:\n"
-                f"  * {_OSV_DEV_VULN_URL_PREFIX}/{id}"
+                f"An OSV.dev {kind}disclosure exists for package {target}:\n"
+                f"  * {severity_tag}{_OSV_DEV_VULN_URL_PREFIX}/{osv.id}"
             )
 
         def error_message(e: str) -> str:
@@ -102,17 +100,25 @@ class OsvVerifier(InstallTargetVerifier):
             if not vulns:
                 return []
 
-            osv_ids = set(filter(lambda id: id is not None, map(lambda vuln: vuln.get("id"), vulns)))
-            mal_ids = set(filter(lambda id: id.startswith("MAL"), osv_ids))
-            non_mal_ids = osv_ids - mal_ids
+            osvs = set(map(OsvAdvisory.from_json, filter(lambda vuln: vuln.get("id"), vulns)))
+            mal_osvs = set(filter(lambda osv: osv.id.startswith("MAL"), osvs))
+            non_mal_osvs = osvs - mal_osvs
+
+            osv_sort_key = functools.cmp_to_key(OsvAdvisory.compare_severities)
+            sorted_mal_osvs = sorted(mal_osvs, reverse=True, key=osv_sort_key)
+            sorted_non_mal_osvs = sorted(non_mal_osvs, reverse=True, key=osv_sort_key)
 
             return (
-                [(FindingSeverity.CRITICAL, mal_finding(id)) for id in mal_ids]
-                + [(FindingSeverity.WARNING, non_mal_finding(id)) for id in non_mal_ids]
+                [(FindingSeverity.CRITICAL, finding(osv)) for osv in sorted_mal_osvs]
+                + [(FindingSeverity.WARNING, finding(osv)) for osv in sorted_non_mal_osvs]
             )
 
         except requests.exceptions.RequestException as e:
             _log.warning(f"Failed to query OSV.dev API: returning WARNING finding for target {target}")
+            return [(FindingSeverity.WARNING, error_message(str(e)))]
+
+        except Exception as e:
+            _log.warning(f"Target verification failed: returning WARNING finding for target {target}")
             return [(FindingSeverity.WARNING, error_message(str(e)))]
 
 

@@ -66,12 +66,13 @@ class DDLogger(FirewallLogger):
             logger: A configured log handle to which logs will be written.
         """
         self._logger = logger
+        self._level = _DD_LOG_LEVEL_DEFAULT
 
         try:
-            self._level = FirewallAction(os.getenv(DD_LOG_LEVEL_VAR))
+            if (dd_log_level := os.getenv(DD_LOG_LEVEL_VAR)) is not None:
+                self._level = FirewallAction.from_string(dd_log_level)
         except ValueError:
             _log.warning(f"Undefined or invalid Datadog log level: using default level {_DD_LOG_LEVEL_DEFAULT}")
-            self._level = _DD_LOG_LEVEL_DEFAULT
 
     def log(
         self,

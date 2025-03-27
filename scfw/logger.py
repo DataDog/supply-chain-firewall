@@ -5,6 +5,7 @@ completed run of the supply-chain firewall.
 
 from abc import (ABCMeta, abstractmethod)
 from enum import Enum
+from typing_extensions import Self
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
@@ -15,9 +16,9 @@ class FirewallAction(Enum):
     The various actions the firewall may take in response to inspecting a
     package manager command.
     """
-    ALLOW = "ALLOW"
-    ABORT = "ABORT"
-    BLOCK = "BLOCK"
+    ALLOW = 0
+    ABORT = 1
+    BLOCK = 2
 
     def __lt__(self, other) -> bool:
         """
@@ -38,15 +39,7 @@ class FirewallAction(Enum):
                 f"'<' not supported between instances of '{self.__class__}' and '{other.__class__}'"
             )
 
-        match self.name, other.name:
-            case "ALLOW", "ABORT":
-                return True
-            case "ALLOW", "BLOCK":
-                return True
-            case "ABORT", "BLOCK":
-                return True
-            case _:
-                return False
+        return self.value < other.value
 
     def __str__(self) -> str:
         """
@@ -55,7 +48,26 @@ class FirewallAction(Enum):
         Returns:
             A `str` representing the given `FirewallAction` suitable for printing.
         """
-        return self.value
+        return self.name
+
+    @classmethod
+    def from_string(cls, s: str) -> Self:
+        """
+        Convert a string into a `FirewallAction`.
+
+        Args:
+            s: The `str` to be converted.
+
+        Returns:
+            The `FirewallAction` referred to by the given string.
+
+        Raises:
+            ValueError: The given string does not refer to a valid `FirewallAction`.
+        """
+        mappings = {f"{action}".lower(): action for action in cls}
+        if (action := mappings.get(s.lower())):
+            return action
+        raise ValueError(f"Invalid firewall action '{s}'")
 
 
 class FirewallLogger(metaclass=ABCMeta):

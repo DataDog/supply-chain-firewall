@@ -13,11 +13,11 @@ class Severity(Enum):
     """
     Represents the possible severities that an OSV advisory can have.
     """
-    Non = "None"
-    Low = "Low"
-    Medium = "Medium"
-    High = "High"
-    Critical = "Critical"
+    Non = 0
+    Low = 1
+    Medium = 2
+    High = 3
+    Critical = 4
 
     def __lt__(self, other: "Severity") -> bool:
         """
@@ -38,12 +38,7 @@ class Severity(Enum):
                 f"'<' not supported between instances of '{self.__class__}' and '{other.__class__}'"
             )
 
-        return (self.name, other.name) in {
-            ("Non", "Low"), ("Non", "Medium"), ("Non", "High"), ("Non", "Critical"),
-            ("Low", "Medium"), ("Low", "High"), ("Low", "Critical"),
-            ("Medium", "High"), ("Medium", "Critical"),
-            ("High", "Critical")
-        }
+        return self.value < other.value
 
     def __str__(self) -> str:
         """
@@ -52,7 +47,7 @@ class Severity(Enum):
         Returns:
             A `str` representing the given `Severity` suitable for printing.
         """
-        return self.value
+        return "None" if self.name == "Non" else self.name
 
     @classmethod
     def from_string(cls, s: str) -> "Severity":
@@ -68,8 +63,8 @@ class Severity(Enum):
         Raises:
             ValueError: The given string does not refer to a valid `Severity`.
         """
-        mappings = {severity.value: severity for severity in cls}
-        if (severity := mappings.get(s.lower().capitalize())):
+        mappings = {f"{severity}".lower(): severity for severity in cls}
+        if (severity := mappings.get(s.lower())):
             return severity
         raise ValueError(f"Invalid severity '{s}'")
 

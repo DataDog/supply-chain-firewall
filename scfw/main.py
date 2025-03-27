@@ -49,7 +49,7 @@ def _configure_logging(level: int):
     """
     handler = logging.StreamHandler()
     handler.addFilter(logging.Filter(name="scfw"))
-    handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+    handler.setFormatter(logging.Formatter("[SCFW] %(levelname)s: %(message)s"))
 
     log = logging.getLogger()
     log.addHandler(handler)

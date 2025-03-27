@@ -5,6 +5,7 @@ Provides a representation of OSV advisories for use in `OsvVerifier`.
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
+from typing_extensions import Self
 
 from cvss import CVSS2, CVSS3, CVSS4  # type: ignore
 
@@ -19,7 +20,7 @@ class Severity(Enum):
     High = 3
     Critical = 4
 
-    def __lt__(self, other: "Severity") -> bool:
+    def __lt__(self, other: Self) -> bool:
         """
         Compare two `Severity` instances.
 
@@ -50,7 +51,7 @@ class Severity(Enum):
         return "None" if self.name == "Non" else self.name
 
     @classmethod
-    def from_string(cls, s: str) -> "Severity":
+    def from_string(cls, s: str) -> Self:
         """
         Convert a string into a `Severity`.
 
@@ -69,7 +70,7 @@ class Severity(Enum):
         raise ValueError(f"Invalid severity '{s}'")
 
 
-class OsvSeverityType(Enum):
+class OsvSeverityType(str, Enum):
     """
     The various severity score types defined in the OSV standard.
     """
@@ -77,25 +78,6 @@ class OsvSeverityType(Enum):
     CVSS_V3 = "CVSS_V3"
     CVSS_V4 = "CVSS_V4"
     Ubuntu = "Ubuntu"
-
-    @classmethod
-    def from_string(cls, s: str) -> "OsvSeverityType":
-        """
-        Convert a string into an `OsvSeverityType`.
-
-        Args:
-            s: The `str` to be converted.
-
-        Returns:
-            The `OsvSeverityType` referred to by the given string.
-
-        Raises:
-            ValueError: The given string does not refer to a valid `OsvSeverityType`.
-        """
-        mappings = {type.value: type for type in cls}
-        if (type := mappings.get(s)):
-            return type
-        raise ValueError(f"Invalid OSV severity type '{s}'")
 
 
 @dataclass(eq=True, frozen=True)
@@ -107,7 +89,7 @@ class OsvSeverityScore:
     score: str
 
     @classmethod
-    def from_json(cls, osv_json: dict) -> "OsvSeverityScore":
+    def from_json(cls, osv_json: dict) -> Self:
         """
         Convert a JSON-formatted OSV advisory into an `OsvSeverityScore`.
 
@@ -123,7 +105,7 @@ class OsvSeverityScore:
         type = osv_json.get("type")
         score = osv_json.get("score")
         if type and score:
-            return cls(type=OsvSeverityType.from_string(type), score=score)
+            return cls(type=OsvSeverityType(type), score=score)
         raise ValueError("Encountered malformed OSV severity score")
 
     def severity(self) -> Severity:
@@ -156,7 +138,7 @@ class OsvAdvisory:
     severity: Optional[Severity]
 
     @classmethod
-    def compare_severities(cls, lhs: "OsvAdvisory", rhs: "OsvAdvisory") -> int:
+    def compare_severities(cls, lhs: Self, rhs: Self) -> int:
         """
         Compare two `OsvAdvisory` instances on the basis of their severities such that
         advisories with no severities are sorted lower than those with severities.
@@ -190,7 +172,7 @@ class OsvAdvisory:
         return result
 
     @classmethod
-    def from_json(cls, osv_json: dict) -> "OsvAdvisory":
+    def from_json(cls, osv_json: dict) -> Self:
         """
         Convert a JSON-formatted OSV advisory into an `OsvAdvisory`.
 

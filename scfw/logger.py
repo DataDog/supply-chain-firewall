@@ -15,9 +15,9 @@ class FirewallAction(Enum):
     The various actions the firewall may take in response to inspecting a
     package manager command.
     """
-    ALLOW = "ALLOW"
-    ABORT = "ABORT"
-    BLOCK = "BLOCK"
+    ALLOW = 0
+    ABORT = 1
+    BLOCK = 2
 
     def __lt__(self, other) -> bool:
         """
@@ -38,7 +38,7 @@ class FirewallAction(Enum):
                 f"'<' not supported between instances of '{self.__class__}' and '{other.__class__}'"
             )
 
-        return (self.name, other.name) in {("ALLOW", "ABORT"), ("ALLOW", "BLOCK"), ("ABORT", "BLOCK")}
+        return self.value < other.value
 
     def __str__(self) -> str:
         """
@@ -47,7 +47,7 @@ class FirewallAction(Enum):
         Returns:
             A `str` representing the given `FirewallAction` suitable for printing.
         """
-        return self.value
+        return self.name
 
 
 class FirewallLogger(metaclass=ABCMeta):

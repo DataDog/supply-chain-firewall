@@ -38,7 +38,7 @@ To check whether the installation succeeded, run the following command and verif
 
 ```bash
 $ scfw --version
-1.3.2
+1.3.3
 ```
 
 ### Post-installation steps

@@ -66,6 +66,8 @@ def run_firewall(args: Namespace) -> int:
 
             if (warning_report := reports.get(FindingSeverity.WARNING)):
                 print(verify.show_verification_report(warning_report))
+                warned = True
+
                 if not (inquirer.confirm("Proceed with installation?", default=False)):
                     _log_firewall_action(
                         logs,
@@ -74,12 +76,10 @@ def run_firewall(args: Namespace) -> int:
                         args.command,
                         list(warning_report),
                         action=FirewallAction.BLOCK,
-                        warned=True
+                        warned=warned
                     )
                     print("The installation request was aborted. No changes have been made.")
                     return 0
-                else:
-                    warned = True
 
         if args.dry_run:
             _log.info("Firewall dry-run mode enabled: command will not be run")

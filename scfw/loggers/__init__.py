@@ -1,10 +1,11 @@
 """
-Exports the currently discoverable set of client loggers implementing the
+Exposes the currently discoverable set of client loggers implementing the
 firewall's logging protocol.
 
-One logger ships with the supply chain firewall by default: `DDLogger`,
-which sends logs to Datadog. Firewall users may additionally provide
-custom loggers according to their own logging needs.
+Two loggers ship with the supply chain firewall by default: `DDAgentLogger`
+and `DDAPILogger`, which send logs to Datadog via a local Datadog Agent
+or the HTTP API, respectively. Firewall users may additionally provide custom
+loggers according to their own logging needs.
 
 The firewall discovers loggers at runtime via the following simple protocol.
 The module implementing the custom logger must contain a function with the
@@ -25,27 +26,43 @@ import logging
 import os
 import pkgutil
 
-from scfw.logger import FirewallLogger
+from scfw.ecosystem import ECOSYSTEM
+from scfw.logger import FirewallAction, FirewallLogger
+from scfw.target import InstallTarget
 
 _log = logging.getLogger(__name__)
 
 
-def get_firewall_loggers() -> list[FirewallLogger]:
+class FirewallLoggers(FirewallLogger):
     """
-    Return the currently discoverable set of client loggers.
-
-    Returns:
-        A `list` of the discovered `FirewallLogger`s.
+    A `FirewallLogger` that logs to all currently discoverable `FirewallLoggers`.
     """
-    loggers = []
+    def __init__(self):
+        """
+        Initialize a new `FirewallLoggers` instance from currently discoverable loggers.
+        """
+        self._loggers = []
 
-    for _, module, _ in pkgutil.iter_modules([os.path.dirname(__file__)]):
-        try:
-            logger = importlib.import_module(f".{module}", package=__name__).load_logger()
-            loggers.append(logger)
-        except ModuleNotFoundError:
-            _log.warning(f"Failed to load module {module} while collecting loggers")
-        except AttributeError:
-            _log.info(f"Module {module} does not export a logger")
+        for _, module, _ in pkgutil.iter_modules([os.path.dirname(__file__)]):
+            try:
+                logger = importlib.import_module(f".{module}", package=__name__).load_logger()
+                self._loggers.append(logger)
+            except ModuleNotFoundError:
+                _log.warning(f"Failed to load module {module} while collecting loggers")
+            except AttributeError:
+                _log.info(f"Module {module} does not export a logger")
 
-    return loggers
+    def log(
+        self,
+        ecosystem: ECOSYSTEM,
+        executable: str,
+        command: list[str],
+        targets: list[InstallTarget],
+        action: FirewallAction,
+        warned: bool
+    ):
+        """
+        Log a completed run of the supply-chain firewall to all discovered loggers.
+        """
+        for logger in self._loggers:
+            logger.log(ecosystem, executable, command, targets, action, warned)

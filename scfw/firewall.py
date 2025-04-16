@@ -8,13 +8,11 @@ import logging
 
 from scfw.command import UnsupportedVersionError
 import scfw.commands as commands
-from scfw.ecosystem import ECOSYSTEM
-from scfw.logger import FirewallAction, FirewallLogger
-import scfw.loggers as loggers
+from scfw.logger import FirewallAction
+from scfw.loggers import FirewallLoggers
 from scfw.verifier import FindingSeverity
 import scfw.verifiers as verifs
 import scfw.verify as verify
-from scfw.target import InstallTarget
 
 _log = logging.getLogger(__name__)
 
@@ -35,7 +33,7 @@ def run_firewall(args: Namespace) -> int:
     try:
         warned = False
 
-        logs = loggers.get_firewall_loggers()
+        loggers = FirewallLoggers()
         _log.info(f"Command: '{' '.join(args.command)}'")
 
         ecosystem, command = commands.get_package_manager_command(args.command, executable=args.executable)
@@ -51,8 +49,7 @@ def run_firewall(args: Namespace) -> int:
             reports = verify.verify_install_targets(verifiers, targets)
 
             if (critical_report := reports.get(FindingSeverity.CRITICAL)):
-                _log_firewall_action(
-                    logs,
+                loggers.log(
                     ecosystem,
                     command.executable(),
                     args.command,
@@ -69,8 +66,7 @@ def run_firewall(args: Namespace) -> int:
                 warned = True
 
                 if not (inquirer.confirm("Proceed with installation?", default=False)):
-                    _log_firewall_action(
-                        logs,
+                    loggers.log(
                         ecosystem,
                         command.executable(),
                         args.command,
@@ -85,8 +81,7 @@ def run_firewall(args: Namespace) -> int:
             _log.info("Firewall dry-run mode enabled: command will not be run")
             print("Dry-run: exiting without running command.")
         else:
-            _log_firewall_action(
-                logs,
+            loggers.log(
                 ecosystem,
                 command.executable(),
                 args.command,
@@ -104,28 +99,3 @@ def run_firewall(args: Namespace) -> int:
     except Exception as e:
         _log.error(e)
         return 1
-
-
-def _log_firewall_action(
-    logs: list[FirewallLogger],
-    ecosystem: ECOSYSTEM,
-    executable: str,
-    command: list[str],
-    targets: list[InstallTarget],
-    action: FirewallAction,
-    warned: bool
-):
-    """
-    Log a firewall action across a given set of client loggers.
-
-    Args:
-        ecosystem: The ecosystem of the inspected package manager command.
-        executable: The executable used to execute the inspected package manager command.
-        command: The package manager command line provided to the firewall.
-        targets: The installation targets relevant to firewall's action.
-        action: The action taken by the firewall.
-        warned: Indicates whether the user was warned about findings and prompted for approval.
-    """
-    # One would like to use `map` for this, but it is lazily evaluated
-    for log in logs:
-        log.log(ecosystem, executable, command, targets, action, warned)

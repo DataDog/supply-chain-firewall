@@ -26,13 +26,15 @@ The principal goal of Supply-Chain Firewall is to block 100% of installations of
 
 ### Installation
 
-The simplest way to install Supply-Chain Firewall is via `pip`:
+The recommended way to install Supply-Chain Firewall is via [`pipx`](https://pipx.pypa.io/):
 
 ```bash
-$ pip install scfw
+$ pipx install scfw
 ```
 
-This will install the `scfw` command-line program into your global Python environment.  If desired, this can also be done inside a `virtualenv`.
+This will install the `scfw` command-line program into an isolated Python environment on your system and make it available in any other Python environment, including ephemeral ones created with `venv` or `virtualenv`.  `pipx` may be installed via Homebrew on macOS or via the system package manager on major Linux distributions.  Be sure to run `pipx ensurepath` after installation to properly configure your `PATH`.
+
+Supply-Chain Firewall can also be installed via `pip install scfw` directly into the active Python environment.
 
 To check whether the installation succeeded, run the following command and verify that you see output similar to the following.
 

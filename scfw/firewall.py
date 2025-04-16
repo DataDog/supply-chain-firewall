@@ -33,6 +33,8 @@ def run_firewall(args: Namespace) -> int:
         An integer status code, 0 or 1.
     """
     try:
+        warned = False
+
         logs = loggers.get_firewall_loggers()
         _log.info(f"Command: '{' '.join(args.command)}'")
 
@@ -51,11 +53,12 @@ def run_firewall(args: Namespace) -> int:
             if (critical_report := reports.get(FindingSeverity.CRITICAL)):
                 _log_firewall_action(
                     logs,
-                    FirewallAction.BLOCK,
                     ecosystem,
                     command.executable(),
                     args.command,
-                    list(critical_report)
+                    list(critical_report),
+                    action=FirewallAction.BLOCK,
+                    warned=False
                 )
                 print(verify.show_verification_report(critical_report))
                 print("\nThe installation request was blocked. No changes have been made.")
@@ -66,14 +69,17 @@ def run_firewall(args: Namespace) -> int:
                 if not (inquirer.confirm("Proceed with installation?", default=False)):
                     _log_firewall_action(
                         logs,
-                        FirewallAction.ABORT,
                         ecosystem,
                         command.executable(),
                         args.command,
-                        list(warning_report)
+                        list(warning_report),
+                        action=FirewallAction.BLOCK,
+                        warned=True
                     )
                     print("The installation request was aborted. No changes have been made.")
                     return 0
+                else:
+                    warned = True
 
         if args.dry_run:
             _log.info("Firewall dry-run mode enabled: command will not be run")
@@ -81,11 +87,12 @@ def run_firewall(args: Namespace) -> int:
         else:
             _log_firewall_action(
                 logs,
-                FirewallAction.ALLOW,
                 ecosystem,
                 command.executable(),
                 args.command,
-                targets
+                targets,
+                action=FirewallAction.ALLOW,
+                warned=warned
             )
             command.run()
         return 0
@@ -101,23 +108,24 @@ def run_firewall(args: Namespace) -> int:
 
 def _log_firewall_action(
     logs: list[FirewallLogger],
-    action: FirewallAction,
     ecosystem: ECOSYSTEM,
     executable: str,
     command: list[str],
     targets: list[InstallTarget],
+    action: FirewallAction,
+    warned: bool
 ):
     """
     Log a firewall action across a given set of client loggers.
 
     Args:
-        action: The action taken by the firewall.
         ecosystem: The ecosystem of the inspected package manager command.
         executable: The executable used to execute the inspected package manager command.
         command: The package manager command line provided to the firewall.
-        targets:
-            The installation targets relevant to firewall's action.
+        targets: The installation targets relevant to firewall's action.
+        action: The action taken by the firewall.
+        warned: Indicates whether the user was warned about findings and prompted for approval.
     """
     # One would like to use `map` for this, but it is lazily evaluated
     for log in logs:
-        log.log(action, ecosystem, executable, command, targets)
+        log.log(ecosystem, executable, command, targets, action, warned)

@@ -71,6 +71,13 @@ class NpmCommand(PackageManagerCommand):
         self._command = command.copy()
         self._command[0] = executable
 
+    @classmethod
+    def name(cls) -> str:
+        """
+        Return the token for invoking `npm` on the command line.
+        """
+        return "npm"
+
     def ecosystem(self) -> ECOSYSTEM:
         """
         Return the ecosystem of `npm` commands.

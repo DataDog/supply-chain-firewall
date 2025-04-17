@@ -31,6 +31,15 @@ class PackageManagerCommand(metaclass=ABCMeta):
         """
         pass
 
+    @classmethod
+    @abstractmethod
+    def name(cls) -> str:
+        """
+        Return the name of the package manager command, the fixed token by which it is
+        invoked on the command line.
+        """
+        pass
+
     @abstractmethod
     def ecosystem(self) -> ECOSYSTEM:
         """

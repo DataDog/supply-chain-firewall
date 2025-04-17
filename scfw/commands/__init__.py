@@ -8,7 +8,14 @@ from typing import Optional
 from scfw.command import PackageManagerCommand
 from scfw.commands.npm_command import NpmCommand
 from scfw.commands.pip_command import PipCommand
-from scfw.ecosystem import ECOSYSTEM
+
+SUPPORTED_PACKAGE_MANAGERS = {
+    NpmCommand.name(),
+    PipCommand.name(),
+}
+"""
+Contains the command line names of currently supported package managers.
+"""
 
 
 def get_package_manager_command(command: list[str], executable: Optional[str] = None) -> PackageManagerCommand:
@@ -28,12 +35,9 @@ def get_package_manager_command(command: list[str], executable: Optional[str] = 
     if not command:
         raise ValueError("Missing package manager command")
 
-    try:
-        match ECOSYSTEM(command[0]):
-            case ECOSYSTEM.PIP:
-                return PipCommand(command, executable)
-            case ECOSYSTEM.NPM:
-                return NpmCommand(command, executable)
+    if command[0] == NpmCommand.name():
+        return NpmCommand(command, executable)
+    if command[0] == PipCommand.name():
+        return PipCommand(command, executable)
 
-    except ValueError:
-        raise ValueError(f"Unsupported package manager '{command[0]}'")
+    raise ValueError(f"Unsupported package manager '{command[0]}'")

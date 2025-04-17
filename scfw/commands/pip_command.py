@@ -76,6 +76,13 @@ class PipCommand(PackageManagerCommand):
         self._command = command
         self._executable = executable
 
+    @classmethod
+    def name(cls) -> str:
+        """
+        Return the token for invoking `pip` on the command line.
+        """
+        return "pip"
+
     def ecosystem(self) -> ECOSYSTEM:
         """
         Return the package ecosystem of `pip` commands.

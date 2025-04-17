@@ -8,7 +8,6 @@ import logging
 
 import requests
 
-from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 from scfw.verifier import FindingSeverity, InstallTargetVerifier
 from scfw.verifiers.osv_verifier.osv_advisory import OsvAdvisory

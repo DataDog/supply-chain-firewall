@@ -11,10 +11,7 @@ from scfw.commands.pip_command import PipCommand
 from scfw.ecosystem import ECOSYSTEM
 
 
-def get_package_manager_command(
-    command: list[str],
-    executable: Optional[str] = None
-) -> tuple[ECOSYSTEM, PackageManagerCommand]:
+def get_package_manager_command(command: list[str], executable: Optional[str] = None) -> PackageManagerCommand:
     """
     Return a `PackageManagerCommand` for the given ecosystem and arguments.
 
@@ -23,8 +20,7 @@ def get_package_manager_command(
         executable: An optional executable to use when running the package manager command.
 
     Returns:
-        A `tuple` of the `ECOSYSTEM` corresponding to the received command line and a
-        `PackageManagerCommand` initialized from that command line.
+        A `PackageManagerCommand` initialized from the received command line.
 
     Raises:
         ValueError: An empty or unsupported package manager command line was provided.
@@ -33,11 +29,11 @@ def get_package_manager_command(
         raise ValueError("Missing package manager command")
 
     try:
-        match (ecosystem := ECOSYSTEM(command[0])):
+        match ECOSYSTEM(command[0]):
             case ECOSYSTEM.PIP:
-                return ecosystem, PipCommand(command, executable)
+                return PipCommand(command, executable)
             case ECOSYSTEM.NPM:
-                return ecosystem, NpmCommand(command, executable)
+                return NpmCommand(command, executable)
 
     except ValueError:
         raise ValueError(f"Unsupported package manager '{command[0]}'")

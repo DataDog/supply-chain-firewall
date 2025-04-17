@@ -36,7 +36,7 @@ def run_firewall(args: Namespace) -> int:
         loggers = FirewallLoggers()
         _log.info(f"Command: '{' '.join(args.command)}'")
 
-        ecosystem, command = commands.get_package_manager_command(args.command, executable=args.executable)
+        command = commands.get_package_manager_command(args.command, executable=args.executable)
         targets = command.would_install()
         _log.info(f"Command would install: [{', '.join(map(str, targets))}]")
 
@@ -50,7 +50,7 @@ def run_firewall(args: Namespace) -> int:
 
             if (critical_report := reports.get(FindingSeverity.CRITICAL)):
                 loggers.log(
-                    ecosystem,
+                    command.ecosystem(),
                     command.executable(),
                     args.command,
                     list(critical_report),
@@ -67,7 +67,7 @@ def run_firewall(args: Namespace) -> int:
 
                 if not (inquirer.confirm("Proceed with installation?", default=False)):
                     loggers.log(
-                        ecosystem,
+                        command.ecosystem(),
                         command.executable(),
                         args.command,
                         list(warning_report),
@@ -82,7 +82,7 @@ def run_firewall(args: Namespace) -> int:
             print("Dry-run: exiting without running command.")
         else:
             loggers.log(
-                ecosystem,
+                command.ecosystem(),
                 command.executable(),
                 args.command,
                 targets,

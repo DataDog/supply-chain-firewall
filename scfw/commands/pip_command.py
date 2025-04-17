@@ -76,6 +76,12 @@ class PipCommand(PackageManagerCommand):
         self._command = command
         self._executable = executable
 
+    def ecosystem(self) -> ECOSYSTEM:
+        """
+        Lorem ipsum dolor sit amet.
+        """
+        return ECOSYSTEM.PIP
+
     def executable(self) -> str:
         """
         Query the Python executable for a `pip` command.

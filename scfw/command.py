@@ -5,6 +5,7 @@ Provides a base class for representing the commands of package managers like `pi
 from abc import (ABCMeta, abstractmethod)
 from typing import Optional
 
+from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 
 
@@ -27,6 +28,13 @@ class PackageManagerCommand(metaclass=ABCMeta):
             UnsupportedVersionError:
                 Subclasses should raise this error when an attempt is made to initialize an
                 instance with an unsupported version of the underlying package manager.
+        """
+        pass
+
+    @abstractmethod
+    def ecosystem(self) -> ECOSYSTEM:
+        """
+        Lorem ipsum dolor sit amet.
         """
         pass
 

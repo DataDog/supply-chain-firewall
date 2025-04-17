@@ -71,6 +71,12 @@ class NpmCommand(PackageManagerCommand):
         self._command = command.copy()
         self._command[0] = executable
 
+    def ecosystem(self) -> ECOSYSTEM:
+        """
+        Lorem ipsum dolor sit amet.
+        """
+        return ECOSYSTEM.NPM
+
     def executable(self) -> str:
         """
         Query the npm executable for an `npm` command.

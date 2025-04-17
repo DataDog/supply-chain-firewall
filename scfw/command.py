@@ -35,8 +35,7 @@ class PackageManagerCommand(metaclass=ABCMeta):
     @abstractmethod
     def name(cls) -> str:
         """
-        Return the name of the package manager command, the fixed token by which it is
-        invoked on the command line.
+        Return the name of the package manager, the fixed token by which it is invoked.
         """
         pass
 

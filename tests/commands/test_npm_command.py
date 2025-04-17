@@ -42,7 +42,7 @@ def test_npm_command_would_install_exact():
     """
     true_targets = list(
         map(
-            lambda p: InstallTarget(ECOSYSTEM.NPM, p[0], p[1]),
+            lambda p: InstallTarget(ECOSYSTEM.Npm, p[0], p[1]),
             [
                 ("js-tokens", "4.0.0"),
                 ("loose-envify", "1.4.0"),

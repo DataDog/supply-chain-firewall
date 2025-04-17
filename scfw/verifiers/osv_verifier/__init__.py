@@ -15,8 +15,6 @@ from scfw.verifiers.osv_verifier.osv_advisory import OsvAdvisory
 
 _log = logging.getLogger(__name__)
 
-_OSV_ECOSYSTEMS = {ECOSYSTEM.PIP: "PyPI", ECOSYSTEM.NPM: "npm"}
-
 _OSV_DEV_QUERY_URL = "https://api.osv.dev/v1/query"
 _OSV_DEV_VULN_URL_PREFIX = "https://osv.dev/vulnerability"
 _OSV_DEV_LIST_URL_PREFIX = "https://osv.dev/list"
@@ -64,7 +62,7 @@ class OsvVerifier(InstallTargetVerifier):
             )
 
         def error_message(e: str) -> str:
-            url = f"{_OSV_DEV_LIST_URL_PREFIX}?q={target.package}&ecosystem={_OSV_ECOSYSTEMS[target.ecosystem]}"
+            url = f"{_OSV_DEV_LIST_URL_PREFIX}?q={target.package}&ecosystem={str(target.ecosystem)}"
             return (
                 f"Failed to verify target against OSV.dev: {e if e else 'An unspecified error occurred'}.\n"
                 f"Before proceeding, please check for OSV.dev advisories related to this target.\n"
@@ -78,7 +76,7 @@ class OsvVerifier(InstallTargetVerifier):
             "version": target.version,
             "package": {
                 "name": target.package,
-                "ecosystem": _OSV_ECOSYSTEMS[target.ecosystem]
+                "ecosystem": str(target.ecosystem)
             }
         }
 

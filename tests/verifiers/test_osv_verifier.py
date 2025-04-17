@@ -10,7 +10,7 @@ from scfw.verify import verify_install_targets
 # In constructing this list, we excluded the `tensorflow` package from consideration
 # because it has many OSV.dev disclosures, which cause the test to run very slowly
 # and sometimes fail due to read timeout errors.
-PIP_TEST_SET = [
+PYPI_TEST_SET = [
     ('instantcolor', '0.0.7', True, False),
     ('tabulation', '0.9.9', True, False),
     ('mod-wsgi', '4.1.1', False, True),
@@ -213,17 +213,17 @@ NPM_TEST_SET = [
 ]
 
 
-@pytest.mark.parametrize("ecosystem", [ECOSYSTEM.PIP, ECOSYSTEM.NPM])
+@pytest.mark.parametrize("ecosystem", [ECOSYSTEM.Npm, ECOSYSTEM.PyPI])
 def test_osv_verifier_malicious(ecosystem: ECOSYSTEM):
     """
     Run a test of the `OsvVerifier` against the list of selected packages
     corresponding to the given ecosystem.
     """
     match ecosystem:
-        case ECOSYSTEM.PIP:
-            test_set = PIP_TEST_SET
-        case ECOSYSTEM.NPM:
+        case ECOSYSTEM.Npm:
             test_set = NPM_TEST_SET
+        case ECOSYSTEM.PyPI:
+            test_set = PYPI_TEST_SET
 
     test_set = [
         (InstallTarget(ecosystem, package, version), has_critical, has_warning)

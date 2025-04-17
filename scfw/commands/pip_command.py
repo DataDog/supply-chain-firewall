@@ -87,7 +87,7 @@ class PipCommand(PackageManagerCommand):
         """
         Return the package ecosystem of `pip` commands.
         """
-        return ECOSYSTEM.PIP
+        return ECOSYSTEM.PyPI
 
     def executable(self) -> str:
         """
@@ -119,7 +119,7 @@ class PipCommand(PackageManagerCommand):
                 raise ValueError("Missing name for pip install target")
             if not (version := metadata.get("version")):
                 raise ValueError("Missing version for pip install target")
-            return InstallTarget(ECOSYSTEM.PIP, package, version)
+            return InstallTarget(ECOSYSTEM.PyPI, package, version)
 
         # pip only installs or upgrades packages via the `pip install` subcommand
         # If `install` is not present, the command is automatically safe to run

@@ -10,17 +10,17 @@ from scfw.verify import verify_install_targets
 DD_VERIFIER = DatadogMaliciousPackagesVerifier()
 
 
-@pytest.mark.parametrize("ecosystem", [ECOSYSTEM.PIP, ECOSYSTEM.NPM])
+@pytest.mark.parametrize("ecosystem", [ECOSYSTEM.Npm, ECOSYSTEM.PyPI])
 def test_dd_verifier_malicious(ecosystem: ECOSYSTEM):
     """
     Run a test of the `DatadogMaliciousPackagesVerifier` against all samples
     present for the given ecosystem.
     """
     match ecosystem:
-        case ECOSYSTEM.PIP:
-            manifest = DD_VERIFIER._pypi_manifest
-        case ECOSYSTEM.NPM:
+        case ECOSYSTEM.Npm:
             manifest = DD_VERIFIER._npm_manifest
+        case ECOSYSTEM.PyPI:
+            manifest = DD_VERIFIER._pypi_manifest
 
     # Only the package name is checked, so use a dummy version string
     test_set = [

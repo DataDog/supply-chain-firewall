@@ -78,7 +78,7 @@ class PipCommand(PackageManagerCommand):
 
     def ecosystem(self) -> ECOSYSTEM:
         """
-        Lorem ipsum dolor sit amet.
+        Return the package ecosystem of `pip` commands.
         """
         return ECOSYSTEM.PIP
 

@@ -73,7 +73,7 @@ class NpmCommand(PackageManagerCommand):
 
     def ecosystem(self) -> ECOSYSTEM:
         """
-        Lorem ipsum dolor sit amet.
+        Return the ecosystem of `npm` commands.
         """
         return ECOSYSTEM.NPM
 

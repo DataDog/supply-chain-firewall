@@ -34,7 +34,7 @@ class PackageManagerCommand(metaclass=ABCMeta):
     @abstractmethod
     def ecosystem(self) -> ECOSYSTEM:
         """
-        Lorem ipsum dolor sit amet.
+        Return the package ecosystem associated with a package manager command.
         """
         pass
 

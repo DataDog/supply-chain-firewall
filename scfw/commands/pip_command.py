@@ -103,11 +103,11 @@ class PipCommand(PackageManagerCommand):
 
     def would_install(self) -> list[InstallTarget]:
         """
-        Determine the list of Python packages a `pip` command would install if it were run.
+        Determine the package release targets a `pip` command would install if it were run.
 
         Returns:
-            A `list[InstallTarget]` representing the packages the `pip` command would
-            install if it were run.
+            A `list[InstallTarget]` representing the package release targets the `pip` command
+            would install if it were run.
 
         Raises:
             ValueError: The `pip` install report did not have the required format.

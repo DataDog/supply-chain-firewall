@@ -98,11 +98,11 @@ class NpmCommand(PackageManagerCommand):
 
     def would_install(self) -> list[InstallTarget]:
         """
-        Determine the list of packages an `npm` command would install if it were run.
+        Determine the package release targets an `npm` command would install if it were run.
 
         Returns:
-            A `list[InstallTarget]` representing the packages the `npm` command would
-            install if it were run.
+            A `list[InstallTarget]` representing the package release targets the `npm` command
+            would install if it were run.
 
         Raises:
             ValueError: The `npm` dry-run output does not have the expected format.

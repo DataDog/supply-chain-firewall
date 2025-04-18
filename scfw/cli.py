@@ -37,15 +37,21 @@ def _add_configure_cli(parser: ArgumentParser):
     )
 
     parser.add_argument(
+        "--alias-npm",
+        action="store_true",
+        help="Add shell aliases to always run npm commands through Supply-Chain Firewall"
+    )
+
+    parser.add_argument(
         "--alias-pip",
         action="store_true",
         help="Add shell aliases to always run pip commands through Supply-Chain Firewall"
     )
 
     parser.add_argument(
-        "--alias-npm",
+        "--alias-poetry",
         action="store_true",
-        help="Add shell aliases to always run npm commands through Supply-Chain Firewall"
+        help="Add shell aliases to always run Poetry commands through Supply-Chain Firewall"
     )
 
     parser.add_argument(
@@ -224,7 +230,14 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
         if (
             Subcommand(args.subcommand) == Subcommand.Configure
             and args.remove
-            and any({args.alias_pip, args.alias_npm, args.dd_agent_port, args.dd_api_key, args.dd_log_level})
+            and any({
+                args.alias_npm,
+                args.alias_pip,
+                args.alias_poetry,
+                args.dd_agent_port,
+                args.dd_api_key,
+                args.dd_log_level,
+            })
         ):
             raise ArgumentError(None, "Cannot combine configuration and removal options")
 

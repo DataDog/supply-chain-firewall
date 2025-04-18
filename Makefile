@@ -45,4 +45,8 @@ coverage-report:
 docs:
 	pdoc --docformat google ./scfw > /dev/null &
 
-.PHONY: checks coverage install install-dev test
+clean:
+	rm -rf .mypy_cache .pytest_cache .coverage*
+	find . -name '__pycache__' -print0 | xargs -0 rm -rf
+
+.PHONY: checks clean coverage install install-dev test

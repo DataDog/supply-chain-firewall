@@ -3,8 +3,8 @@ import pytest
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 from scfw.verifier import FindingSeverity
+from scfw.verifiers import FirewallVerifiers
 from scfw.verifiers.osv_verifier import OsvVerifier
-from scfw.verify import verify_install_targets
 
 # Package name and version pairs from 100 randomly selected PyPI OSV.dev disclosures
 # In constructing this list, we excluded the `tensorflow` package from consideration
@@ -230,7 +230,11 @@ def test_osv_verifier_malicious(ecosystem: ECOSYSTEM):
         for package, version, has_critical, has_warning in test_set
     ]
 
-    reports = verify_install_targets([OsvVerifier()], [test[0] for test in test_set])
+    # Create a modified `FirewallVerifiers` only containing the OSV.dev verifier
+    verifier = FirewallVerifiers()
+    verifier._verifiers = [OsvVerifier()]
+
+    reports = verifier.verify_targets([test[0] for test in test_set])
     critical_report = reports.get(FindingSeverity.CRITICAL)
     warning_report = reports.get(FindingSeverity.WARNING)
 

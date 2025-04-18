@@ -32,8 +32,9 @@ class InstallTargetVerifier(metaclass=ABCMeta):
     installation targets in all supported ecosystems against a single reputable
     source of data on vulnerable and malicious open source packages.
     """
+    @classmethod
     @abstractmethod
-    def name(self) -> str:
+    def name(cls) -> str:
         """
         Return the verifier's name.
 

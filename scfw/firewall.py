@@ -11,8 +11,7 @@ import scfw.commands as commands
 from scfw.logger import FirewallAction
 from scfw.loggers import FirewallLoggers
 from scfw.verifier import FindingSeverity
-import scfw.verifiers as verifs
-import scfw.verify as verify
+from scfw.verifiers import FirewallVerifiers
 
 _log = logging.getLogger(__name__)
 
@@ -40,28 +39,28 @@ def run_firewall(args: Namespace) -> int:
         _log.info(f"Command would install: [{', '.join(map(str, targets))}]")
 
         if targets:
-            verifiers = verifs.get_install_target_verifiers()
+            verifiers = FirewallVerifiers()
             _log.info(
-                f"Using installation target verifiers: [{', '.join(v.name() for v in verifiers)}]"
+                f"Using installation target verifiers: [{', '.join(verifiers.names())}]"
             )
 
-            reports = verify.verify_install_targets(verifiers, targets)
+            reports = verifiers.verify_targets(targets)
 
             if (critical_report := reports.get(FindingSeverity.CRITICAL)):
                 loggers.log(
                     command.ecosystem(),
                     command.executable(),
                     args.command,
-                    list(critical_report),
+                    list(critical_report.targets()),
                     action=FirewallAction.BLOCK,
                     warned=False
                 )
-                print(verify.show_verification_report(critical_report))
+                print(critical_report)
                 print("\nThe installation request was blocked. No changes have been made.")
                 return 0
 
             if (warning_report := reports.get(FindingSeverity.WARNING)):
-                print(verify.show_verification_report(warning_report))
+                print(warning_report)
                 warned = True
 
                 if not (inquirer.confirm("Proceed with installation?", default=False)):
@@ -69,7 +68,7 @@ def run_firewall(args: Namespace) -> int:
                         command.ecosystem(),
                         command.executable(),
                         args.command,
-                        list(warning_report),
+                        list(warning_report.targets()),
                         action=FirewallAction.BLOCK,
                         warned=warned
                     )

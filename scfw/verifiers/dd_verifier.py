@@ -32,7 +32,8 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
         self._pypi_manifest = download_manifest("pypi")
         self._npm_manifest = download_manifest("npm")
 
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         """
         Return the `DatadogMaliciousPackagesVerifier` name string.
 

@@ -24,7 +24,8 @@ class OsvVerifier(InstallTargetVerifier):
     An `InstallTargetVerifier` for the OSV.dev open source vulnerability and
     malicious package database.
     """
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         """
         Return the `OsvVerifier` name string.
 

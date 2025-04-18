@@ -83,7 +83,8 @@ class PipCommand(PackageManagerCommand):
         """
         return "pip"
 
-    def ecosystem(self) -> ECOSYSTEM:
+    @classmethod
+    def ecosystem(cls) -> ECOSYSTEM:
         """
         Return the package ecosystem of `pip` commands.
         """

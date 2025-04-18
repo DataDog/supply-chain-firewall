@@ -78,7 +78,8 @@ class NpmCommand(PackageManagerCommand):
         """
         return "npm"
 
-    def ecosystem(self) -> ECOSYSTEM:
+    @classmethod
+    def ecosystem(cls) -> ECOSYSTEM:
         """
         Return the ecosystem of `npm` commands.
         """

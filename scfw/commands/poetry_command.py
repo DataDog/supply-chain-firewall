@@ -37,7 +37,8 @@ class PoetryCommand(PackageManagerCommand):
         """
         return "poetry"
 
-    def ecosystem(self) -> ECOSYSTEM:
+    @classmethod
+    def ecosystem(cls) -> ECOSYSTEM:
         """
         Return the package ecosystem of `poetry` commands.
         """

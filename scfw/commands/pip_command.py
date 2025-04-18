@@ -76,6 +76,19 @@ class PipCommand(PackageManagerCommand):
         self._command = command
         self._executable = executable
 
+    @classmethod
+    def name(cls) -> str:
+        """
+        Return the token for invoking `pip` on the command line.
+        """
+        return "pip"
+
+    def ecosystem(self) -> ECOSYSTEM:
+        """
+        Return the package ecosystem of `pip` commands.
+        """
+        return ECOSYSTEM.PyPI
+
     def executable(self) -> str:
         """
         Query the Python executable for a `pip` command.
@@ -106,7 +119,7 @@ class PipCommand(PackageManagerCommand):
                 raise ValueError("Missing name for pip install target")
             if not (version := metadata.get("version")):
                 raise ValueError("Missing version for pip install target")
-            return InstallTarget(ECOSYSTEM.PIP, package, version)
+            return InstallTarget(ECOSYSTEM.PyPI, package, version)
 
         # pip only installs or upgrades packages via the `pip install` subcommand
         # If `install` is not present, the command is automatically safe to run

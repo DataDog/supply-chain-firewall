@@ -3,14 +3,14 @@ import pytest
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 from scfw.verifier import FindingSeverity
+from scfw.verifiers import FirewallVerifiers
 from scfw.verifiers.osv_verifier import OsvVerifier
-from scfw.verify import verify_install_targets
 
 # Package name and version pairs from 100 randomly selected PyPI OSV.dev disclosures
 # In constructing this list, we excluded the `tensorflow` package from consideration
 # because it has many OSV.dev disclosures, which cause the test to run very slowly
 # and sometimes fail due to read timeout errors.
-PIP_TEST_SET = [
+PYPI_TEST_SET = [
     ('instantcolor', '0.0.7', True, False),
     ('tabulation', '0.9.9', True, False),
     ('mod-wsgi', '4.1.1', False, True),
@@ -213,24 +213,28 @@ NPM_TEST_SET = [
 ]
 
 
-@pytest.mark.parametrize("ecosystem", [ECOSYSTEM.PIP, ECOSYSTEM.NPM])
+@pytest.mark.parametrize("ecosystem", [ECOSYSTEM.Npm, ECOSYSTEM.PyPI])
 def test_osv_verifier_malicious(ecosystem: ECOSYSTEM):
     """
     Run a test of the `OsvVerifier` against the list of selected packages
     corresponding to the given ecosystem.
     """
     match ecosystem:
-        case ECOSYSTEM.PIP:
-            test_set = PIP_TEST_SET
-        case ECOSYSTEM.NPM:
+        case ECOSYSTEM.Npm:
             test_set = NPM_TEST_SET
+        case ECOSYSTEM.PyPI:
+            test_set = PYPI_TEST_SET
 
     test_set = [
         (InstallTarget(ecosystem, package, version), has_critical, has_warning)
         for package, version, has_critical, has_warning in test_set
     ]
 
-    reports = verify_install_targets([OsvVerifier()], [test[0] for test in test_set])
+    # Create a modified `FirewallVerifiers` only containing the OSV.dev verifier
+    verifier = FirewallVerifiers()
+    verifier._verifiers = [OsvVerifier()]
+
+    reports = verifier.verify_targets([test[0] for test in test_set])
     critical_report = reports.get(FindingSeverity.CRITICAL)
     warning_report = reports.get(FindingSeverity.WARNING)
 

@@ -17,8 +17,7 @@ class FirewallAction(Enum):
     package manager command.
     """
     ALLOW = 0
-    ABORT = 1
-    BLOCK = 2
+    BLOCK = 1
 
     def __lt__(self, other) -> bool:
         """
@@ -78,17 +77,17 @@ class FirewallLogger(metaclass=ABCMeta):
     @abstractmethod
     def log(
         self,
-        action: FirewallAction,
         ecosystem: ECOSYSTEM,
         executable: str,
         command: list[str],
-        targets: list[InstallTarget]
+        targets: list[InstallTarget],
+        action: FirewallAction,
+        warned: bool
     ):
         """
         Pass data from a completed run of the firewall to a logger.
 
         Args:
-            action: The action taken by the firewall.
             ecosystem: The ecosystem of the inspected package manager command.
             executable: The executable used to execute the inspected package manager command.
             command: The package manager command line provided to the firewall.
@@ -99,5 +98,9 @@ class FirewallLogger(metaclass=ABCMeta):
                 targets that caused the firewall to block.  In the case of an aborting
                 action, `targets` contains the targets that prompted the firewall to
                 warn the user and seek confirmation to proceed.
+            action: The action taken by the firewall.
+            warned:
+                Indicates whether the user was warned about findings for any installation
+                targets and prompted for approval to proceed with `command`.
         """
         pass

@@ -71,6 +71,19 @@ class NpmCommand(PackageManagerCommand):
         self._command = command.copy()
         self._command[0] = executable
 
+    @classmethod
+    def name(cls) -> str:
+        """
+        Return the token for invoking `npm` on the command line.
+        """
+        return "npm"
+
+    def ecosystem(self) -> ECOSYSTEM:
+        """
+        Return the ecosystem of `npm` commands.
+        """
+        return ECOSYSTEM.Npm
+
     def executable(self) -> str:
         """
         Query the npm executable for an `npm` command.
@@ -104,7 +117,7 @@ class NpmCommand(PackageManagerCommand):
             package, sep, version = s.rpartition('@')
             if version == s or (sep and not package):
                 raise ValueError("Failed to parse npm install target")
-            return InstallTarget(ECOSYSTEM.NPM, package, version)
+            return InstallTarget(ECOSYSTEM.Npm, package, version)
 
         # For now, automatically allow all non-`install` commands
         if not self._is_install_command():

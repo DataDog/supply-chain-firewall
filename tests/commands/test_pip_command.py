@@ -56,7 +56,7 @@ def test_pip_command_would_install_exact():
     """
     true_targets = list(
         map(
-            lambda p: InstallTarget(ECOSYSTEM.PIP, p[0], p[1]),
+            lambda p: InstallTarget(ECOSYSTEM.PyPI, p[0], p[1]),
             [
                 ("botocore", "1.15.0"),
                 ("docutils", "0.15.2"),

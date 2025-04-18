@@ -48,7 +48,8 @@ class DDLogFormatter(logging.Formatter):
         except Exception as e:
             _log.warning(f"Failed to query username: {e}")
 
-        for key in {"action", "created", "ecosystem", "executable", "msg", "targets"}:
+        # The `created` and `msg` attributes are provided by `logging.LogRecord`
+        for key in {"action", "created", "ecosystem", "executable", "msg", "targets", "warned"}:
             log_record[key] = record.__dict__[key]
 
         return json.dumps(log_record) + '\n'
@@ -76,21 +77,23 @@ class DDLogger(FirewallLogger):
 
     def log(
         self,
-        action: FirewallAction,
         ecosystem: ECOSYSTEM,
         executable: str,
         command: list[str],
-        targets: list[InstallTarget]
+        targets: list[InstallTarget],
+        action: FirewallAction,
+        warned: bool
     ):
         """
         Receive and log data about a completed firewall run.
 
         Args:
-            action: The action taken by the firewall.
             ecosystem: The ecosystem of the inspected package manager command.
             executable: The executable used to execute the inspected package manager command.
             command: The package manager command line provided to the firewall.
             targets: The installation targets relevant to firewall's action.
+            action: The action taken by the firewall.
+            warned: Indicates whether the user was warned about findings and prompted for approval.
         """
         if not self._level or action < self._level:
             return
@@ -98,9 +101,10 @@ class DDLogger(FirewallLogger):
         self._logger.info(
             f"Command '{' '.join(command)}' was {str(action).lower()}ed",
             extra={
-                "action": str(action),
                 "ecosystem": str(ecosystem),
                 "executable": executable,
-                "targets": list(map(str, targets))
+                "targets": list(map(str, targets)),
+                "action": str(action),
+                "warned": warned,
             }
         )

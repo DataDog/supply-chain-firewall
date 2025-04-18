@@ -32,7 +32,8 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
         self._pypi_manifest = download_manifest("pypi")
         self._npm_manifest = download_manifest("npm")
 
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         """
         Return the `DatadogMaliciousPackagesVerifier` name string.
 
@@ -55,10 +56,10 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
             `CRITICAL` finding to this effect is present in this case.
         """
         match target.ecosystem:
-            case ECOSYSTEM.PIP:
-                manifest = self._pypi_manifest
-            case ECOSYSTEM.NPM:
+            case ECOSYSTEM.Npm:
                 manifest = self._npm_manifest
+            case ECOSYSTEM.PyPI:
+                manifest = self._pypi_manifest
 
         # We take the more conservative approach of ignoring version numbers when
         # deciding whether the given target is malicious

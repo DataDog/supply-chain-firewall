@@ -34,7 +34,7 @@ class InstallTarget:
             packages it is `"{package}@{version}"`.
         """
         match self.ecosystem:
-            case ECOSYSTEM.PIP:
-                return f"{self.package}-{self.version}"
-            case ECOSYSTEM.NPM:
+            case ECOSYSTEM.Npm:
                 return f"{self.package}@{self.version}"
+            case ECOSYSTEM.PyPI:
+                return f"{self.package}-{self.version}"

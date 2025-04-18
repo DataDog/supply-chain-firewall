@@ -9,7 +9,7 @@ import sys
 from typing import Callable, Optional
 
 import scfw
-from scfw.ecosystem import ECOSYSTEM
+from scfw.commands import SUPPORTED_PACKAGE_MANAGERS
 from scfw.logger import FirewallAction
 from scfw.parser import ArgumentParser
 
@@ -208,9 +208,9 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
         under the `command` attribute.
     """
     hinge = len(argv)
-    for ecosystem in ECOSYSTEM:
+    for name in SUPPORTED_PACKAGE_MANAGERS:
         try:
-            hinge = min(hinge, argv.index(str(ecosystem)))
+            hinge = min(hinge, argv.index(name))
         except ValueError:
             pass
 

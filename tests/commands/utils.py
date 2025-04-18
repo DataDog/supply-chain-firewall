@@ -3,8 +3,6 @@ import subprocess
 import sys
 from typing import Optional
 
-from scfw.ecosystem import ECOSYSTEM
-
 
 def read_top_packages(file: str) -> set[str]:
     """
@@ -17,15 +15,17 @@ def read_top_packages(file: str) -> set[str]:
         return set(f.read().split())
 
 
-def list_installed_packages(ecosystem: ECOSYSTEM) -> str:
+def list_installed_packages(package_manager: str) -> str:
     """
-    Get the current state of installed packages for the given ecosystem.
+    Get the current state of installed packages for the given package manager.
     """
-    match ecosystem:
-        case ECOSYSTEM.PIP:
-            command = [sys.executable, "-m", "pip", "list", "--format", "freeze"]
-        case ECOSYSTEM.NPM:
+    match package_manager:
+        case "npm":
             command = ["npm", "list", "--all"]
+        case "pip":
+            command = [sys.executable, "-m", "pip", "list", "--format", "freeze"]
+        case _:
+            raise ValueError(f"Unsupported package manager '{package_manager}'")
 
     p = subprocess.run(command, check=True, text=True, capture_output=True)
     return p.stdout.lower()

@@ -9,8 +9,8 @@ class ECOSYSTEM(Enum):
     """
     Package ecosystems supported by the supply-chain firewall.
     """
-    PIP = "pip"
-    NPM = "npm"
+    Npm = "npm"
+    PyPI = "PyPI"
 
     def __str__(self) -> str:
         """

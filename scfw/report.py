@@ -76,6 +76,6 @@ class VerificationReport:
 
     def targets(self) -> Iterable[InstallTarget]:
         """
-        Return an interator over `InstallTargets` mentioned in the report.
+        Return an iterator over `InstallTargets` mentioned in the report.
         """
         return (target for target in self._report)

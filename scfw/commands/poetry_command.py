@@ -90,9 +90,9 @@ class PoetryCommand(PackageManagerCommand):
             return any(opt in line for opt in {"Installing", "Upgrading", "Downgrading"}) and "Skipped" not in line
 
         def line_to_install_target(line: str) -> InstallTarget:
-            pattern = r"- (Installing|Upgrading|Downgrading) (.*) \((.*)\)"
-            match = re.search(pattern, line.strip())
-            return InstallTarget(ECOSYSTEM.PyPI, match.group(2), get_target_version(match.group(3)))
+            # All supported versions adhere to this format
+            match = re.search(r"- (Installing|Upgrading|Downgrading) (.*) \((.*)\)", line.strip())
+            return InstallTarget(self.ecosystem(), match.group(2), get_target_version(match.group(3)))
 
         # For now, automatically allow all non-`add` commands
         if "add" not in self._command:

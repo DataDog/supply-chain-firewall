@@ -92,10 +92,8 @@ jobs:
           python-version: "3.10"
       - name: Install Poetry
         run: |
-          export POETRY_HOME="/opt/poetry"
-          python -m venv $POETRY_HOME
-          $POETRY_HOME/bin/pip install poetry==${{ matrix.poetry-version }}
-          export PATH="$POETRY_HOME/bin:$PATH"
+          curl -sSL https://install.python-poetry.org | python3 - --version ${{ matrix.poetry-version }}
+          export PATH="$HOME/.local/bin:$PATH"
       - name: Install dependencies
         run: |
           pip install -r requirements.txt

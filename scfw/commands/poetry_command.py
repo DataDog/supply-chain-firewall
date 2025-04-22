@@ -88,7 +88,7 @@ class PoetryCommand(PackageManagerCommand):
 
         def line_to_install_target(line: str) -> Optional[InstallTarget]:
             # All supported versions adhere to this format
-            match = re.search(r"- (Installing|Updating|Downgrading) (.*) \((.*)\)", line.strip())
+            match = re.search(r"(Installing|Updating|Downgrading) (.*) \((.*)\)", line.strip())
             if match and "Skipped" not in line:
                 return InstallTarget(self.ecosystem(), match.group(2), get_target_version(match.group(3)))
             return None

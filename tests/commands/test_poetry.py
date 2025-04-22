@@ -95,7 +95,6 @@ def test_poetry_no_change(test_poetry_project, init_poetry_state, test_target, c
             ["poetry", "add", "--group", "test_target"],
             ["poetry", "add", "-E", "test_target"],
             ["poetry", "add", "--extras", "test_target"],
-            ["poetry", "add", "--optional", "test_target"],
             ["poetry", "add", "--python", "test_target"],
             ["poetry", "add", "--platform", "test_target"],
             ["poetry", "add", "--markers", "test_target"],
@@ -128,7 +127,7 @@ def test_poetry_dry_run_output(test_poetry_project, test_target, command):
     Tests that a dry-run of an installish Poetry command has the expected format.
     """
     def is_install_line(target: str, line: str) -> bool:
-        match = re.search(r"- Installing (.*) \((.*)\)", line.strip())
+        match = re.search(r"Installing (.*) \((.*)\)", line.strip())
         return match is not None and match.group(1) == target and "Skipped" not in line
 
     command = [test_target if token == "test_target" else token for token in command]

@@ -82,16 +82,19 @@ class PoetryCommand(PackageManagerCommand):
             `poetry` command would install if it were run.
         """
         def get_target_version(version_spec: str) -> str:
-            # TODO(ikretz): Support more complex version specifications
-            old_version, sep, new_version = version_spec.partition(" -> ")
-            return new_version if sep else old_version
+            _, arrow, new_version = version_spec.partition(" -> ")
+            version, _, _ = version_spec.partition(' ')
+            return new_version if arrow else version
 
         def is_dependency_line(line: str) -> bool:
-            return any(opt in line for opt in {"Installing", "Upgrading", "Downgrading"}) and "Skipped" not in line
+            return (
+                any(line.strip().startswith(f"- {action}") for action in {"Installing", "Updating", "Downgrading"})
+                and "Skipped" not in line
+            )
 
         def line_to_install_target(line: str) -> InstallTarget:
             # All supported versions adhere to this format
-            match = re.search(r"- (Installing|Upgrading|Downgrading) (.*) \((.*)\)", line.strip())
+            match = re.search(r"- (Installing|Updating|Downgrading) (.*) \((.*)\)", line.strip())
             return InstallTarget(self.ecosystem(), match.group(2), get_target_version(match.group(3)))
 
         # For now, automatically allow all non-`add` commands

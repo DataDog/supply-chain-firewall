@@ -7,12 +7,12 @@ import tempfile
 
 from .utils import list_installed_packages, read_top_packages, select_test_install_target
 
-TOP_PIP_PACKAGES = "top_pip_packages.txt"
+TOP_PYPI_PACKAGES = "top_pypi_packages.txt"
 
 pip_list = lambda : list_installed_packages("pip")
 
 INIT_PIP_STATE = pip_list()
-TEST_TARGET = select_test_install_target(read_top_packages(TOP_PIP_PACKAGES), INIT_PIP_STATE)
+TEST_TARGET = select_test_install_target(read_top_packages(TOP_PYPI_PACKAGES), INIT_PIP_STATE)
 if not TEST_TARGET:
     raise ValueError("Unable to select target pip package for testing")
 

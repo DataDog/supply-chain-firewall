@@ -78,6 +78,33 @@ jobs:
           make test-pip
           make test-pip-command
 
+  poetry-integration:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        poetry-version: ["2.0", "2.1"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install Poetry
+        run: |
+          export POETRY_HOME="/opt/poetry"
+          python -m venv $POETRY_HOME
+          $POETRY_HOME/bin/pip install poetry==${{ matrix.poetry-version }}
+          export PATH="$POETRY_HOME/bin:$PATH"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      - name: Install supply-chain firewall
+        run: pip install .
+      - name: Test firewall Poetry integration
+        run: make test-poetry
+
   npm-integration:
     name: npm-integration (${{ matrix.npm-version }})
     runs-on: ubuntu-latest

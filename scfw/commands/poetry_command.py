@@ -98,7 +98,7 @@ class PoetryCommand(PackageManagerCommand):
             return []
 
         # The presence of these options prevent the add command from running
-        if any(opt in self._command for opt in {"-h", "--help", "--dry-run"}):
+        if any(opt in self._command for opt in {"-V", "--version", "-h", "--help", "--dry-run"}):
             return []
 
         try:

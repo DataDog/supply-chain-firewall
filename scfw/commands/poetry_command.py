@@ -84,18 +84,14 @@ class PoetryCommand(PackageManagerCommand):
         def get_target_version(version_spec: str) -> str:
             _, arrow, new_version = version_spec.partition(" -> ")
             version, _, _ = version_spec.partition(' ')
-            return new_version if arrow else version
+            return get_target_version(new_version) if arrow else version
 
-        def is_dependency_line(line: str) -> bool:
-            return (
-                any(line.strip().startswith(f"- {action}") for action in {"Installing", "Updating", "Downgrading"})
-                and "Skipped" not in line
-            )
-
-        def line_to_install_target(line: str) -> InstallTarget:
+        def line_to_install_target(line: str) -> Optional[InstallTarget]:
             # All supported versions adhere to this format
             match = re.search(r"- (Installing|Updating|Downgrading) (.*) \((.*)\)", line.strip())
-            return InstallTarget(self.ecosystem(), match.group(2), get_target_version(match.group(3)))
+            if match and "Skipped" not in line:
+                return InstallTarget(self.ecosystem(), match.group(2), get_target_version(match.group(3)))
+            return None
 
         # For now, automatically allow all non-`add` commands
         if "add" not in self._command:
@@ -106,10 +102,10 @@ class PoetryCommand(PackageManagerCommand):
             return []
 
         try:
-            # Compute installation targets: new dependencies and upgrades/downgrades of existing ones
+            # Compute installation targets: new dependencies and updates/downgrades of existing ones
             dry_run_command = self._command + ["--dry-run"]
             dry_run = subprocess.run(dry_run_command, check=True, text=True, capture_output=True)
-            return list(map(line_to_install_target, filter(is_dependency_line, dry_run.stdout.split('\n'))))
+            return list(filter(None, map(line_to_install_target, dry_run.stdout.split('\n'))))
         except subprocess.CalledProcessError:
             # An erroring command does not install anything
             _log.info("The Poetry command encountered an error while collecting installation targets")

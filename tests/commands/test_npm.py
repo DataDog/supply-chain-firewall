@@ -1,17 +1,32 @@
+"""
+Tests of npm's command line behavior.
+"""
+
 import packaging.version as version
 import pytest
 import subprocess
 
-from .utils import list_installed_packages, read_top_packages, select_test_install_target
+from scfw.ecosystem import ECOSYSTEM
 
-TOP_NPM_PACKAGES = "top_npm_packages.txt"
+from .utils import read_top_packages, select_test_install_target
 
-npm_list = lambda : list_installed_packages("npm")
+
+def npm_list() -> str:
+    """
+    Get the current state of packages installed via npm.
+    """
+    return subprocess.run(["npm", "list", "--all"], check=True, text=True, capture_output=True).stdout.lower()
+
 
 INIT_NPM_STATE = npm_list()
-TEST_TARGET = select_test_install_target(read_top_packages(TOP_NPM_PACKAGES), INIT_NPM_STATE)
-if not TEST_TARGET:
-    raise ValueError("Unable to select target npm package for testing")
+"""
+Caches the npm installation state before running any tests.
+"""
+
+TEST_TARGET = select_test_install_target(read_top_packages(ECOSYSTEM.Npm), INIT_NPM_STATE)
+"""
+A fresh (not currently installed) package target to use for testing.
+"""
 
 
 def test_npm_version_output():

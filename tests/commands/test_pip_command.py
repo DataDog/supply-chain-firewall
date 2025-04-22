@@ -1,3 +1,7 @@
+"""
+Tests of `PipCommand`.
+"""
+
 import shutil
 import sys
 

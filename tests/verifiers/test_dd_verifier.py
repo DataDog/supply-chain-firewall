@@ -1,3 +1,7 @@
+"""
+Tests of `DatadogMaliciousPackagesVerifier.
+"""
+
 import pytest
 
 from scfw.ecosystem import ECOSYSTEM

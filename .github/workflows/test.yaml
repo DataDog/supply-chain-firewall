@@ -83,7 +83,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        poetry-version: ["2.0", "2.1"]
+        poetry-version: ["2.0.0", "2.1.0"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python 3.10

@@ -204,8 +204,8 @@ def test_poetry_dry_run_output_downgrade(poetry_project_target_latest, target_pr
     dependency downgrade has the expected format.
     """
     def is_downgrade_line(target: str, line: str) -> bool:
-        match = re.search(r"Downgrading (.*) \((.*)\)", line.strip())
-        return match is not None and match.group(1) == target and "Skipped" not in line
+        match = re.search(r"(Updating|Downgrading) (.*) \((.*)\)", line.strip())
+        return match is not None and match.group(2) == target and "Skipped" not in line
 
     dry_run = subprocess.run(
         ["poetry", "add", "--dry-run", f"{TARGET}=={target_previous}"],

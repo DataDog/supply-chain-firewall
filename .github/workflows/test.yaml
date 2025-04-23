@@ -101,7 +101,9 @@ jobs:
       - name: Install supply-chain firewall
         run: pip install .
       - name: Test firewall Poetry integration
-        run: make test-poetry
+        run: |
+          make test-poetry
+          make test-poetry-command
 
   npm-integration:
     name: npm-integration (${{ matrix.npm-version }})

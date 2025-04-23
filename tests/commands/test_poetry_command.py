@@ -34,10 +34,10 @@ def test_target_latest():
             ["git+https://github.com/{}/py-tree-sitter#v{}", "0.24.0"],
             ["git+https://github.com/{}/py-tree-sitter.git", None],
             ["git+https://github.com/{}/py-tree-sitter.git#v{}", "0.24.0"],
-            ["git+ssh://git@github.com/{}/py-tree-sitter", None],
-            ["git+ssh://git@github.com/{}/py-tree-sitter#v{}", "0.24.0"],
-            ["git+ssh://git@github.com/{}/py-tree-sitter.git", None],
-            ["git+ssh://git@github.com/{}/py-tree-sitter.git#v{}", "0.24.0"],
+            ["git+ssh://git@github.com:{}/py-tree-sitter", None],
+            ["git+ssh://git@github.com:{}/py-tree-sitter#v{}", "0.24.0"],
+            ["git+ssh://git@github.com:{}/py-tree-sitter.git", None],
+            ["git+ssh://git@github.com:{}/py-tree-sitter.git#v{}", "0.24.0"],
         ]
 )
 def test_poetry_command_would_install(

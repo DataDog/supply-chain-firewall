@@ -19,7 +19,7 @@ def test_target_latest():
     """
     Get the latest version of `TEST_TARGET` for use in testing.
     """
-    r = requests.get(f"https://pypi.org/pypi/{TEST_TARGET}/json")
+    r = requests.get(f"https://pypi.org/pypi/{TEST_TARGET}/json", timeout=5)
     r.raise_for_status()
     return r.json()["info"]["version"]
 

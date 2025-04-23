@@ -44,9 +44,10 @@ class PoetryCommand(PackageManagerCommand):
             try:
                 # All supported versions adhere to this format
                 poetry_version = subprocess.run([executable, "--version"], check=True, text=True, capture_output=True)
-                match = re.search(r"Poetry \((.*)\)", poetry_version.stdout.strip())
-                return version_parse(match.group(1))
-            except InvalidVersion as e:
+                if (match := re.search(r"Poetry \((.*)\)", poetry_version.stdout.strip())):
+                    return version_parse(match.group(1))
+                raise UnsupportedVersionError("Failed to parse Poetry version output")
+            except InvalidVersion:
                 raise UnsupportedVersionError("Failed to parse Poetry version number")
 
         if not command or command[0] != self.name():

@@ -3,53 +3,42 @@ Tests of `PoetryCommand`.
 """
 
 import pytest
-import requests
 
 from scfw.commands.poetry_command import PoetryCommand
 from scfw.ecosystem import ECOSYSTEM
 
-from .test_poetry import init_poetry_state, poetry_show, test_poetry_project
+from .test_poetry import TARGET, init_poetry_state, new_poetry_project, poetry_show, target_latest, target_releases
+
+TARGET_REPO = f"https://github.com/{TARGET}/py-tree-sitter"
 
 
 @pytest.fixture
-def test_target_latest():
+def target_latest_download_url(target_latest):
     """
-    Get the latest version of Tree-sitter for use in testing.
-
-    We use Tree-sitter to test installation target resolution because it has no dependencies.
+    Get the release tarball download link for the latest version of `TARGET`.
     """
-    r = requests.get(f"https://pypi.org/pypi/tree-sitter/json", timeout=5)
-    r.raise_for_status()
-    return r.json()["info"]["version"]
-
-
-@pytest.fixture
-def test_target_latest_download_url(test_target_latest):
-    """
-    Get the release tarball download link for the latest version of Tree-sitter.
-    """
-    return f"https://github.com/tree-sitter/py-tree-sitter/archive/refs/tags/v{test_target_latest}.tar.gz"
+    return f"{TARGET_REPO}/archive/refs/tags/v{target_latest}.tar.gz"
 
 
 @pytest.mark.parametrize(
         "target_spec, target_version",
         [
-            ["tree-sitter", "test_target_latest"],
-            [f"tree-sitter@latest", "test_target_latest"],
-            [f"tree-sitter==0.21.1", "0.21.1"],
-            ["git+https://github.com/tree-sitter/py-tree-sitter", "test_target_latest"],
-            ["git+https://github.com/tree-sitter/py-tree-sitter#v0.21.1", "0.21.1"],
-            ["git+https://github.com/tree-sitter/py-tree-sitter.git", "test_target_latest"],
-            ["git+https://github.com/tree-sitter/py-tree-sitter.git#v0.21.1", "0.21.1"],
-            ["test_target_latest_download_url", "test_target_latest"],
-            ["https://github.com/tree-sitter/py-tree-sitter/archive/refs/tags/v0.21.1.tar.gz", "0.21.1"],
+            [TARGET, "target_latest"],
+            [f"{TARGET}@latest", "target_latest"],
+            [f"{TARGET}==0.21.1", "0.21.1"],
+            [f"git+{TARGET_REPO}", "target_latest"],
+            [f"git+{TARGET_REPO}#v0.21.1", "0.21.1"],
+            [f"git+{TARGET_REPO}.git", "target_latest"],
+            [f"git+{TARGET_REPO}.git#v0.21.1", "0.21.1"],
+            ["target_latest_download_url", "target_latest"],
+            [f"{TARGET_REPO}/archive/refs/tags/v0.21.1.tar.gz", "0.21.1"],
         ]
 )
 def test_poetry_command_would_install(
-    test_poetry_project,
+    new_poetry_project,
     init_poetry_state,
-    test_target_latest,
-    test_target_latest_download_url,
+    target_latest,
+    target_latest_download_url,
     target_spec,
     target_version
 ):
@@ -57,12 +46,12 @@ def test_poetry_command_would_install(
     Tests that `PoetryCommand` correctly resolves installation targets for a variety
     of target specfications.
     """
-    if target_spec == "test_target_latest_download_url":
-        target_spec = test_target_latest_download_url
-    if target_version == "test_target_latest":
-        target_version = test_target_latest
+    if target_spec == "target_latest_download_url":
+        target_spec = target_latest_download_url
+    if target_version == "target_latest":
+        target_version = target_latest
 
-    command = PoetryCommand(["poetry", "add", "--directory", test_poetry_project, target_spec])
+    command = PoetryCommand(["poetry", "add", "--directory", new_poetry_project, target_spec])
     targets = command.would_install()
 
     assert (
@@ -71,4 +60,4 @@ def test_poetry_command_would_install(
         and targets[0].package == "tree-sitter"
         and targets[0].version == target_version
     )
-    assert poetry_show(test_poetry_project) == init_poetry_state
+    assert poetry_show(new_poetry_project) == init_poetry_state

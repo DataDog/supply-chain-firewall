@@ -11,7 +11,7 @@ Supply-Chain Firewall is a command-line tool for preventing the installation of 
 
 ![scfw demo usage](https://github.com/DataDog/supply-chain-firewall/blob/main/images/demo.gif?raw=true)
 
-Supply-Chain Firewall collects all targets that would be installed by a given `pip` or `npm` command and checks them against reputable sources of data on open-source malware and vulnerabilities.  The command is automatically blocked when any data source finds that any target is malicious.  In cases where a data source reports other findings for a target, they are presented to the user along with a prompt confirming intent to proceed with the installation.
+Given a command for a supported package manager, Supply-Chain Firewall collects all targets that would be installed by the command and checks them against reputable sources of data on open source malware and vulnerabilities.  The command is automatically blocked from running when any data source finds that any target is malicious.  In cases where a data source reports other findings for a target, they are presented to the user along with a prompt confirming intent to proceed with the installation.
 
 Default data sources include:
 
@@ -45,27 +45,30 @@ $ scfw --version
 
 ### Post-installation steps
 
-To get the most out of Supply-Chain Firewall, it is recommended to run the `scfw configure` command after installation.  This script will walk you through configuring your environment so that all `pip` or `npm` commands are passively run through `scfw` as well as enabling Datadog logging, described in more detail below.
+To get the most out of Supply-Chain Firewall, it is recommended to run the `scfw configure` command after installation.  This script will walk you through configuring your environment so that all commands for supported package managers are passively run through `scfw` as well as enabling Datadog logging, described in more detail below.
 
 ```bash
 $ scfw configure
 ...
 ```
 
-### Compatibility
+### Compatibility and limitations
 
-|  Package manager  |  Compatible versions  |
-| :---------------: | :-------------------: |
-| npm               | >= 7.0                |
-| pip               | >= 22.2               |
+|  Package manager  |  Compatible versions  |     Supported subcommands     |
+| :---------------: | :-------------------: | :---------------------------: |
+| npm               | >= 7.0                | `install` (including aliases) |
+| pip               | >= 22.2               | all                           |
+| poetry            | >= 1.3                | `add`                         |
 
 In keeping with its goal of blocking 100% of known-malicious package installations, `scfw` will refuse to run with an incompatible version of a supported package manager.  Please upgrade to or verify that you are running a compatible version before using this tool.
+
+Supply-Chain Firewall may only know how to instrument some of the "installish" subcommands for its supported package managers.  Supported subcommands are shown in the above table.  We hope to extend the tool's purview to all relevant subcommands for each package manager over time.  *Unsupported installish subcommands are always allowed*.
 
 Currently, Supply-Chain Firewall is only fully supported on macOS systems, though it should run as intended on common Linux distributions.  It is currently not supported on Windows.
 
 ### Uninstalling Supply-Chain Firewall
 
-Supply-Chain Firewall may be uninstalled via `pip uninstall scfw`.  Before doing so, be sure to run the command `scfw configure --remove` to remove any Supply-Chain Firewall-managed configuration you may have previously added to your environment.
+Supply-Chain Firewall may be uninstalled via `pip(x) uninstall scfw`.  Before doing so, be sure to run the command `scfw configure --remove` to remove any Supply-Chain Firewall-managed configuration you may have previously added to your environment.
 
 ```bash
 $ scfw configure --remove
@@ -74,18 +77,15 @@ $ scfw configure --remove
 
 ## Usage
 
-To use Supply-Chain Firewall, prepend `scfw run` to the `pip install` or `npm install` command you want to run.
+To use Supply-Chain Firewall, simply prepend `scfw run` to the command you want to run.
 
 ```
 $ scfw run npm install react
 $ scfw run pip install -r requirements.txt
+$ scfw run poetry add git+https://github.com/DataDog/guarddog
 ```
 
 For `pip install` commands, packages will be installed in the same environment (virtual or global) in which the command was run.
-
-### Limitations
-
-Unlike `pip`, a variety of `npm` operations beyond `npm install` can end up installing new packages.  For now, only `npm install` commands are in Supply-Chain Firewall's scope.  We are hoping to extend the tool's purview to other "installish" `npm` commands over time.
 
 ## Datadog Log Management integration
 

@@ -44,6 +44,7 @@ class NpmCommand(PackageManagerCommand):
 
         Raises:
             ValueError: An invalid `npm` command was given.
+            RuntimeError: A valid executable could not be resolved.
             UnsupportedVersionError:
                 An unsupported version of `npm` was used to initialize an `NpmCommand`.
         """

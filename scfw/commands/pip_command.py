@@ -38,6 +38,7 @@ class PipCommand(PackageManagerCommand):
 
         Raises:
             ValueError: An invalid `pip` command line was given.
+            RuntimeError: A valid executable could not be resolved.
             UnsupportedVersionError:
                 An unsupported version of `pip` was used to initialize a `PipCommand`.
         """

@@ -9,11 +9,15 @@ import shutil
 import subprocess
 from typing import Optional
 
-from scfw.command import PackageManagerCommand
+from packaging.version import InvalidVersion, Version, parse as version_parse
+
+from scfw.command import PackageManagerCommand, UnsupportedVersionError
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 
 _log = logging.getLogger(__name__)
+
+MIN_POETRY_VERSION = version_parse("1.3.0")
 
 
 class PoetryCommand(PackageManagerCommand):
@@ -33,7 +37,18 @@ class PoetryCommand(PackageManagerCommand):
         Raises:
             ValueError: An invalid `poetry` command line was given.
             RuntimeError: A valid executable could not be resolved.
+            UnsupportedVersionError:
+                An unsupported version of Poetry was used to initialize a `PoetryCommand`.
         """
+        def get_poetry_version(executable: str) -> Version:
+            try:
+                # All supported versions adhere to this format
+                poetry_version = subprocess.run([executable, "--version"], check=True, text=True, capture_output=True)
+                match = re.search(r"Poetry \((.*)\)", poetry_version.stdout.strip())
+                return version_parse(match.group(1))
+            except InvalidVersion as e:
+                raise UnsupportedVersionError("Failed to parse Poetry version number")
+
         if not command or command[0] != self.name():
             raise ValueError("Malformed Poetry command")
 
@@ -42,6 +57,9 @@ class PoetryCommand(PackageManagerCommand):
             raise RuntimeError("Failed to resolve local Poetry executable")
         if not os.path.isfile(executable):
             raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
+
+        if get_poetry_version(executable) < MIN_POETRY_VERSION:
+            raise UnsupportedVersionError(f"Poetry before v{MIN_POETRY_VERSION} is not supported")
 
         self._command = command.copy()
         self._command[0] = executable

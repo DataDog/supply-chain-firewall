@@ -1,3 +1,7 @@
+"""
+Tests of pip's command line behavior.
+"""
+
 import json
 import packaging.version as version
 import pytest
@@ -5,18 +9,30 @@ import subprocess
 import sys
 import tempfile
 
-from .utils import list_installed_packages, read_top_packages, select_test_install_target
+from scfw.ecosystem import ECOSYSTEM
 
-TOP_PIP_PACKAGES = "top_pip_packages.txt"
-
-pip_list = lambda : list_installed_packages("pip")
-
-INIT_PIP_STATE = pip_list()
-TEST_TARGET = select_test_install_target(read_top_packages(TOP_PIP_PACKAGES), INIT_PIP_STATE)
-if not TEST_TARGET:
-    raise ValueError("Unable to select target pip package for testing")
+from .utils import read_top_packages, select_test_install_target
 
 PIP_COMMAND_PREFIX = [sys.executable, "-m", "pip"]
+
+
+def pip_list() -> str:
+    """
+    Get the current state of packages installed via pip.
+    """
+    pip_list_command = PIP_COMMAND_PREFIX + ["list", "--format", "freeze"]
+    return subprocess.run(pip_list_command, check=True, text=True, capture_output=True).stdout.lower()
+
+
+INIT_PIP_STATE = pip_list()
+"""
+Caches the pip installation state before running any tests.
+"""
+
+TEST_TARGET = select_test_install_target(read_top_packages(ECOSYSTEM.PyPI), INIT_PIP_STATE)
+"""
+A fresh (not currently installed) package target to use for testing.
+"""
 
 
 def test_pip_version_output():

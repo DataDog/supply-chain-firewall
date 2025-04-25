@@ -9,7 +9,7 @@ checks: typecheck lint test
 
 coverage: test coverage-report
 
-test: test-cli test-python-executable test-pip test-pip-command test-npm test-npm-command test-verifiers
+test: test-cli test-python-executable test-pip test-pip-command test-poetry test-poetry-command test-npm test-npm-command test-verifiers
 
 typecheck:
 	mypy --install-types --non-interactive scfw
@@ -29,6 +29,12 @@ test-pip:
 test-pip-command:
 	COVERAGE_FILE=.coverage.pip.command coverage run -m pytest tests/commands/test_pip_command.py -k 'not test_executable'
 
+test-poetry:
+	COVERAGE_FILE=.coverage.poetry coverage run -m pytest tests/commands/test_poetry.py
+
+test-poetry-command:
+	COVERAGE_FILE=.coverage.poetry.command coverage run -m pytest tests/commands/test_poetry_command.py
+
 test-npm:
 	COVERAGE_FILE=.coverage.npm coverage run -m pytest tests/commands/test_npm.py
 
@@ -39,10 +45,18 @@ test-verifiers:
 	COVERAGE_FILE=.coverage.verifiers coverage run -m pytest tests/verifiers
 
 coverage-report:
-	coverage combine .coverage.cli .coverage.python.executable .coverage.pip .coverage.pip.command .coverage.npm .coverage.npm.command .coverage.verifiers
+	coverage combine .coverage.cli \
+	.coverage.python.executable .coverage.pip .coverage.pip.command \
+	.coverage.poetry .coverage.poetry.command \
+	.coverage.npm .coverage.npm.command \
+	.coverage.verifiers
 	coverage report
 
 docs:
 	pdoc --docformat google ./scfw > /dev/null &
 
-.PHONY: checks coverage install install-dev test
+clean:
+	rm -rf .mypy_cache .pytest_cache .coverage*
+	find . -name '__pycache__' -print0 | xargs -0 rm -rf
+
+.PHONY: checks clean coverage install install-dev test

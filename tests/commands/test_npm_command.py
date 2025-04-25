@@ -1,3 +1,7 @@
+"""
+Tests of `NpmCommand`.
+"""
+
 import pytest
 
 from scfw.commands.npm_command import NpmCommand

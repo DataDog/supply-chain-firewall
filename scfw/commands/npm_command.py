@@ -44,6 +44,7 @@ class NpmCommand(PackageManagerCommand):
 
         Raises:
             ValueError: An invalid `npm` command was given.
+            RuntimeError: A valid executable could not be resolved.
             UnsupportedVersionError:
                 An unsupported version of `npm` was used to initialize an `NpmCommand`.
         """
@@ -78,7 +79,8 @@ class NpmCommand(PackageManagerCommand):
         """
         return "npm"
 
-    def ecosystem(self) -> ECOSYSTEM:
+    @classmethod
+    def ecosystem(cls) -> ECOSYSTEM:
         """
         Return the ecosystem of `npm` commands.
         """
@@ -98,11 +100,11 @@ class NpmCommand(PackageManagerCommand):
 
     def would_install(self) -> list[InstallTarget]:
         """
-        Determine the list of packages an `npm` command would install if it were run.
+        Determine the package release targets an `npm` command would install if it were run.
 
         Returns:
-            A `list[InstallTarget]` representing the packages the `npm` command would
-            install if it were run.
+            A `list[InstallTarget]` representing the package release targets the `npm` command
+            would install if it were run.
 
         Raises:
             ValueError: The `npm` dry-run output does not have the expected format.

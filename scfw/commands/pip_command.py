@@ -38,6 +38,7 @@ class PipCommand(PackageManagerCommand):
 
         Raises:
             ValueError: An invalid `pip` command line was given.
+            RuntimeError: A valid executable could not be resolved.
             UnsupportedVersionError:
                 An unsupported version of `pip` was used to initialize a `PipCommand`.
         """
@@ -83,7 +84,8 @@ class PipCommand(PackageManagerCommand):
         """
         return "pip"
 
-    def ecosystem(self) -> ECOSYSTEM:
+    @classmethod
+    def ecosystem(cls) -> ECOSYSTEM:
         """
         Return the package ecosystem of `pip` commands.
         """
@@ -103,11 +105,11 @@ class PipCommand(PackageManagerCommand):
 
     def would_install(self) -> list[InstallTarget]:
         """
-        Determine the list of Python packages a `pip` command would install if it were run.
+        Determine the package release targets a `pip` command would install if it were run.
 
         Returns:
-            A `list[InstallTarget]` representing the packages the `pip` command would
-            install if it were run.
+            A `list[InstallTarget]` representing the package release targets the `pip` command
+            would install if it were run.
 
         Raises:
             ValueError: The `pip` install report did not have the required format.

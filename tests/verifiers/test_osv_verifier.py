@@ -1,3 +1,7 @@
+"""
+Tests of `OsvVerifier`.
+"""
+
 import pytest
 
 from scfw.ecosystem import ECOSYSTEM

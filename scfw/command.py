@@ -39,8 +39,9 @@ class PackageManagerCommand(metaclass=ABCMeta):
         """
         pass
 
+    @classmethod
     @abstractmethod
-    def ecosystem(self) -> ECOSYSTEM:
+    def ecosystem(cls) -> ECOSYSTEM:
         """
         Return the package ecosystem associated with a package manager command.
         """

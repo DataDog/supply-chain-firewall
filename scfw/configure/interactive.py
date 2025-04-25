@@ -30,13 +30,18 @@ def get_answers() -> dict:
 
     questions = [
         inquirer.Confirm(
+            name="alias_npm",
+            message="Would you like to set a shell alias to run all npm commands through the firewall?",
+            default=True
+        ),
+        inquirer.Confirm(
             name="alias_pip",
             message="Would you like to set a shell alias to run all pip commands through the firewall?",
             default=True
         ),
         inquirer.Confirm(
-            name="alias_npm",
-            message="Would you like to set a shell alias to run all npm commands through the firewall?",
+            name="alias_poetry",
+            message="Would you like to set a shell alias to run all Poetry commands through the firewall?",
             default=True
         ),
         inquirer.Confirm(

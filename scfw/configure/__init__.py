@@ -5,6 +5,7 @@ Implements Supply-Chain Firewall's `configure` subcommand.
 from argparse import Namespace
 import logging
 
+from scfw.commands import SUPPORTED_PACKAGE_MANAGERS
 from scfw.configure.constants import *  # noqa
 import scfw.configure.dd_agent as dd_agent
 import scfw.configure.env as env
@@ -27,14 +28,10 @@ def run_configure(args: Namespace) -> int:
     try:
         if args.remove:
             # These options result in the firewall's configuration block being removed
-            env.update_config_files({
-                "alias_npm": False,
-                "alias_pip": False,
-                "alias_poetry": False,
-                "dd_agent_port": None,
-                "dd_api_key": None,
-                "dd_log_level": None
-            })
+            env.update_config_files(
+                {"dd_agent_port": None, "dd_api_key": None, "dd_log_level": None}
+                | {f"alias_{package_manager.lower()}": False for package_manager in SUPPORTED_PACKAGE_MANAGERS}
+            )
             dd_agent.remove_agent_logging()
             print(
                 "All Supply-Chain Firewall-managed configuration has been removed from your environment."
@@ -44,15 +41,12 @@ def run_configure(args: Namespace) -> int:
             )
             return 0
 
-        # The CLI parser guarantees that all of these arguments are present
-        is_interactive = not any({
-            args.alias_npm,
-            args.alias_pip,
-            args.alias_poetry,
-            args.dd_agent_port,
-            args.dd_api_key,
-            args.dd_log_level
-        })
+        # TODO(ikretz): Factor this out and reuse it here and in cli.py
+        config_args = (
+            {"dd_agent_port", "dd_api_key", "dd_log_level"}
+            | {f"alias_{package_manager.lower()}" for package_manager in SUPPORTED_PACKAGE_MANAGERS}
+        )
+        is_interactive = not any({value for arg, value in vars(args).items() if arg in config_args})
 
         if is_interactive:
             print(GREETING)

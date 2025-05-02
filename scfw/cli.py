@@ -36,23 +36,12 @@ def _add_configure_cli(parser: ArgumentParser):
         help="Remove all Supply-Chain Firewall-managed configuration"
     )
 
-    parser.add_argument(
-        "--alias-npm",
-        action="store_true",
-        help="Add shell aliases to always run npm commands through Supply-Chain Firewall"
-    )
-
-    parser.add_argument(
-        "--alias-pip",
-        action="store_true",
-        help="Add shell aliases to always run pip commands through Supply-Chain Firewall"
-    )
-
-    parser.add_argument(
-        "--alias-poetry",
-        action="store_true",
-        help="Add shell aliases to always run Poetry commands through Supply-Chain Firewall"
-    )
+    for package_manager in SUPPORTED_PACKAGE_MANAGERS:
+        parser.add_argument(
+            f"--alias-{package_manager.lower()}",
+            action="store_true",
+            help=f"Add shell aliases to always run {package_manager} commands through Supply-Chain Firewall"
+        )
 
     parser.add_argument(
         "--dd-agent-port",
@@ -226,18 +215,15 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
     try:
         args = parser.parse_args(argv[1:hinge])
 
-        # Config removal option is mutually exclusive with the others
+        # Configuration removal option is mutually exclusive with the others
+        config_args = (
+            {"dd_agent_port", "dd_api_key", "dd_log_level"}
+            | {f"alias_{package_manager.lower()}" for package_manager in SUPPORTED_PACKAGE_MANAGERS}
+        )
         if (
             Subcommand(args.subcommand) == Subcommand.Configure
             and args.remove
-            and any({
-                args.alias_npm,
-                args.alias_pip,
-                args.alias_poetry,
-                args.dd_agent_port,
-                args.dd_api_key,
-                args.dd_log_level,
-            })
+            and any(value for arg, value in vars(args).items() if arg in config_args)
         ):
             raise ArgumentError(None, "Cannot combine configuration and removal options")
 

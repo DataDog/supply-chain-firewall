@@ -6,6 +6,7 @@ import os
 
 import inquirer  # type: ignore
 
+from scfw.commands import SUPPORTED_PACKAGE_MANAGERS
 from scfw.configure.constants import DD_API_KEY_VAR
 from scfw.logger import FirewallAction
 
@@ -30,20 +31,14 @@ def get_answers() -> dict:
 
     questions = [
         inquirer.Confirm(
-            name="alias_npm",
-            message="Would you like to set a shell alias to run all npm commands through the firewall?",
+            name=f"alias_{package_manager.lower()}",
+            message=f"Would you like to set shell aliases to run all {package_manager} commands through scfw?",
             default=True
-        ),
-        inquirer.Confirm(
-            name="alias_pip",
-            message="Would you like to set a shell alias to run all pip commands through the firewall?",
-            default=True
-        ),
-        inquirer.Confirm(
-            name="alias_poetry",
-            message="Would you like to set a shell alias to run all Poetry commands through the firewall?",
-            default=True
-        ),
+        )
+        for package_manager in SUPPORTED_PACKAGE_MANAGERS
+    ]
+
+    questions += [
         inquirer.Confirm(
             name="dd_agent_logging",
             message="If you have the Datadog Agent installed locally, would you like to forward firewall logs to it?",

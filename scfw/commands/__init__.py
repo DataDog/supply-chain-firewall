@@ -10,11 +10,11 @@ from scfw.commands.npm_command import NpmCommand
 from scfw.commands.pip_command import PipCommand
 from scfw.commands.poetry_command import PoetryCommand
 
-SUPPORTED_PACKAGE_MANAGERS = {
+SUPPORTED_PACKAGE_MANAGERS = [
     NpmCommand.name(),
     PipCommand.name(),
     PoetryCommand.name(),
-}
+]
 """
 Contains the command line names of currently supported package managers.
 """

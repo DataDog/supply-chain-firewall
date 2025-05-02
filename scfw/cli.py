@@ -10,6 +10,7 @@ from typing import Callable, Optional
 
 import scfw
 from scfw.commands import SUPPORTED_PACKAGE_MANAGERS
+import scfw.configure as configure
 from scfw.logger import FirewallAction
 from scfw.parser import ArgumentParser
 
@@ -216,14 +217,10 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
         args = parser.parse_args(argv[1:hinge])
 
         # Configuration removal option is mutually exclusive with the others
-        config_args = (
-            {"dd_agent_port", "dd_api_key", "dd_log_level"}
-            | {f"alias_{package_manager.lower()}" for package_manager in SUPPORTED_PACKAGE_MANAGERS}
-        )
         if (
             Subcommand(args.subcommand) == Subcommand.Configure
             and args.remove
-            and any(value for arg, value in vars(args).items() if arg in config_args)
+            and configure.has_config_options(args)
         ):
             raise ArgumentError(None, "Cannot combine configuration and removal options")
 

@@ -41,12 +41,7 @@ def run_configure(args: Namespace) -> int:
             )
             return 0
 
-        # TODO(ikretz): Factor this out and reuse it here and in cli.py
-        config_args = (
-            {"dd_agent_port", "dd_api_key", "dd_log_level"}
-            | {f"alias_{package_manager.lower()}" for package_manager in SUPPORTED_PACKAGE_MANAGERS}
-        )
-        is_interactive = not any({value for arg, value in vars(args).items() if arg in config_args})
+        is_interactive = not has_config_options(args)
 
         if is_interactive:
             print(GREETING)
@@ -70,3 +65,20 @@ def run_configure(args: Namespace) -> int:
     except Exception as e:
         _log.error(e)
         return 1
+
+
+def has_config_options(args: Namespace) -> bool:
+    """
+    Check whether any configuration options were given on the command line.
+
+    Args:
+        args: The `Namespace` parsed from the firewall's command line.
+
+    Returns:
+        A `bool` indicating whether `args` contains configuration options.
+    """
+    config_args = (
+        {"dd_agent_port", "dd_api_key", "dd_log_level"}
+        | {f"alias_{package_manager.lower()}" for package_manager in SUPPORTED_PACKAGE_MANAGERS}
+    )
+    return any({value for arg, value in vars(args).items() if arg in config_args})

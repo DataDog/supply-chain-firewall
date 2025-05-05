@@ -17,7 +17,7 @@ from scfw.target import InstallTarget
 
 _log = logging.getLogger(__name__)
 
-MIN_POETRY_VERSION = version_parse("1.3.0")
+MIN_POETRY_VERSION = version_parse("1.7.0")
 
 INSPECTED_SUBCOMMANDS = {"add", "install", "sync"}
 

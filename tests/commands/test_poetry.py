@@ -131,6 +131,16 @@ def test_poetry_version_output():
             ["poetry", "install", "--help"],
             ["poetry", "--dry-run", "install"],
             ["poetry", "install", "--dry-run"],
+            ["poetry", "-V", "sync"],
+            ["poetry", "sync", "-V"],
+            ["poetry", "--version", "sync"],
+            ["poetry", "sync", "--version"],
+            ["poetry", "-h", "sync"],
+            ["poetry", "sync", "-h"],
+            ["poetry", "--help", "sync"],
+            ["poetry", "sync", "--help"],
+            ["poetry", "--dry-run", "sync"],
+            ["poetry", "sync", "--dry-run"],
         ]
 )
 def test_poetry_no_change(new_poetry_project, init_poetry_state, command):
@@ -172,6 +182,18 @@ def test_poetry_no_change(new_poetry_project, init_poetry_state, command):
             ["poetry", "install", "--project"],
             ["poetry", "install", "-C"],
             ["poetry", "install", "--directory"],
+            ["poetry", "sync", "unnecessary_argument"],
+            ["poetry", "sync", "--dry-run", "unnecessary_argument"],
+            ["poetry", "sync", "--nonexistent-option"],
+            ["poetry", "sync", "--without"],
+            ["poetry", "sync", "--with"],
+            ["poetry", "sync", "--only"],
+            ["poetry", "sync", "-E"],
+            ["poetry", "sync", "--extras"],
+            ["poetry", "sync", "-P"],
+            ["poetry", "sync", "--project"],
+            ["poetry", "sync", "-C"],
+            ["poetry", "sync", "--directory"],
         ]
 )
 def test_poetry_error_no_change(new_poetry_project, init_poetry_state, command):
@@ -189,6 +211,7 @@ def test_poetry_error_no_change(new_poetry_project, init_poetry_state, command):
         [
             (["poetry", "add", "--dry-run", TARGET], TARGET, "target_latest"),
             (["poetry", "install", "--dry-run"], TEST_PROJECT_NAME, "0.1.0"),
+            (["poetry", "sync", "--dry-run"], TEST_PROJECT_NAME, "0.1.0"),
         ]
 )
 def test_poetry_dry_run_output_install(new_poetry_project, target_latest, command, target, version):

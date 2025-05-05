@@ -99,3 +99,20 @@ def test_poetry_command_would_install_install(new_poetry_project, init_poetry_st
         and targets[0].version == "0.1.0"
     )
     assert poetry_show(new_poetry_project) == init_poetry_state
+
+
+def test_poetry_command_would_install_sync(new_poetry_project, init_poetry_state):
+    """
+    Tests that `PoetryCommand.would_install()` for a `poetry sync` command
+    correctly resolves installation targets without installing anything.
+    """
+    command = PoetryCommand(["poetry", "sync", "--directory", new_poetry_project])
+    targets = command.would_install()
+
+    assert (
+        len(targets) == 1
+        and targets[0].ecosystem == ECOSYSTEM.PyPI
+        and targets[0].package == TEST_PROJECT_NAME
+        and targets[0].version == "0.1.0"
+    )
+    assert poetry_show(new_poetry_project) == init_poetry_state

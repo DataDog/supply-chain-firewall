@@ -107,13 +107,12 @@ class PoetryCommand(PackageManagerCommand):
 
         def line_to_install_target(line: str) -> Optional[InstallTarget]:
             # All supported versions adhere to this format
-            match = re.search(r"(Installing|Updating|Downgrading) (.*) \((.*)\)", line.strip())
-            if match and "Skipped" not in line:
+            pattern = r"(Installing|Updating|Downgrading) (?:the current project: )?(.*) \((.*)\)"
+            if "Skipped" not in line and (match := re.search(pattern, line.strip())):
                 return InstallTarget(self.ecosystem(), match.group(2), get_target_version(match.group(3)))
             return None
 
-        # For now, automatically allow all non-`add` commands
-        if "add" not in self._command:
+        if not any(subcommand in self._command for subcommand in {"add", "install"}):
             return []
 
         # The presence of these options prevent the add command from running

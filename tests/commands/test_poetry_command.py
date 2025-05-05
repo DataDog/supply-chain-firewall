@@ -6,6 +6,7 @@ import pytest
 
 from scfw.commands.poetry_command import PoetryCommand
 from scfw.ecosystem import ECOSYSTEM
+from scfw.target import InstallTarget
 
 from .test_poetry import (
     POETRY_V2, TARGET, TEST_PROJECT_NAME, init_poetry_state, new_poetry_project,
@@ -85,24 +86,54 @@ def test_poetry_command_would_install_add(
     assert poetry_show(poetry_project) == init_install_state
 
 
-def test_poetry_command_would_install_install(new_poetry_project, init_poetry_state):
+@pytest.mark.parametrize(
+    "poetry_project, true_targets",
+    [
+        ("new_poetry_project", [(TEST_PROJECT_NAME, "0.1.0")]),
+        ("poetry_project_target_latest", [(TEST_PROJECT_NAME, "0.1.0")]),
+    ]
+)
+def test_poetry_command_would_install_install(
+    new_poetry_project,
+    poetry_project_target_latest,
+    poetry_project,
+    true_targets
+):
     """
     Tests that `PoetryCommand.would_install()` for a `poetry install` command
     correctly resolves installation targets without installing anything.
     """
-    command = PoetryCommand(["poetry", "install", "--directory", new_poetry_project])
-    targets = command.would_install()
+    if poetry_project == "new_poetry_project":
+        poetry_project = new_poetry_project
+    elif poetry_project == "poetry_project_target_latest":
+        poetry_project = poetry_project_target_latest
 
-    assert (
-        len(targets) == 1
-        and targets[0].ecosystem == ECOSYSTEM.PyPI
-        and targets[0].package == TEST_PROJECT_NAME
-        and targets[0].version == "0.1.0"
-    )
-    assert poetry_show(new_poetry_project) == init_poetry_state
+    init_poetry_state = poetry_show(poetry_project)
+
+    true_targets = [InstallTarget(ECOSYSTEM.PyPI, package, version) for package, version in true_targets]
+
+    command = PoetryCommand(["poetry", "install", "--directory", poetry_project])
+
+    assert command.would_install() == true_targets
+    assert poetry_show(poetry_project) == init_poetry_state
 
 
-def test_poetry_command_would_install_sync(poetry_version, new_poetry_project, init_poetry_state):
+@pytest.mark.parametrize(
+    "poetry_project, true_targets",
+    [
+        ("new_poetry_project", [(TEST_PROJECT_NAME, "0.1.0")]),
+        ("poetry_project_target_latest", [(TEST_PROJECT_NAME, "0.1.0")]),
+        ("poetry_project_target_previous", [(TEST_PROJECT_NAME, "0.1.0")]),
+    ]
+)
+def test_poetry_command_would_install_sync(
+    poetry_version,
+    new_poetry_project,
+    poetry_project_target_latest,
+    poetry_project_target_previous,
+    poetry_project,
+    true_targets
+):
     """
     Tests that `PoetryCommand.would_install()` for a `poetry sync` command
     correctly resolves installation targets without installing anything.
@@ -110,13 +141,18 @@ def test_poetry_command_would_install_sync(poetry_version, new_poetry_project, i
     if poetry_version < POETRY_V2:
         return
 
-    command = PoetryCommand(["poetry", "sync", "--directory", new_poetry_project])
-    targets = command.would_install()
+    if poetry_project == "new_poetry_project":
+        poetry_project = new_poetry_project
+    elif poetry_project == "poetry_project_target_latest":
+        poetry_project = poetry_project_target_latest
+    elif poetry_project == "poetry_project_target_previous":
+        poetry_project = poetry_project_target_previous
 
-    assert (
-        len(targets) == 1
-        and targets[0].ecosystem == ECOSYSTEM.PyPI
-        and targets[0].package == TEST_PROJECT_NAME
-        and targets[0].version == "0.1.0"
-    )
-    assert poetry_show(new_poetry_project) == init_poetry_state
+    init_poetry_state = poetry_show(poetry_project)
+
+    true_targets = [InstallTarget(ECOSYSTEM.PyPI, package, version) for package, version in true_targets]
+
+    command = PoetryCommand(["poetry", "sync", "--directory", poetry_project])
+
+    assert command.would_install() == true_targets
+    assert poetry_show(poetry_project) == init_poetry_state

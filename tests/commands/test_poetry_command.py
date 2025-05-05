@@ -8,8 +8,8 @@ from scfw.commands.poetry_command import PoetryCommand
 from scfw.ecosystem import ECOSYSTEM
 
 from .test_poetry import (
-    TARGET, new_poetry_project, poetry_project_target_latest, poetry_project_target_previous,
-    poetry_show, target_latest, target_previous, target_releases
+    TARGET, TEST_PROJECT_NAME, init_poetry_state, new_poetry_project, poetry_project_target_latest,
+    poetry_project_target_previous, poetry_show, target_latest, target_previous, target_releases
 )
 
 TARGET_REPO = f"https://github.com/{TARGET}/py-tree-sitter"
@@ -36,7 +36,7 @@ TARGET_REPO = f"https://github.com/{TARGET}/py-tree-sitter"
         ("poetry_project_target_previous", "{}/archive/refs/tags/v{}.tar.gz", TARGET_REPO, "target_latest"),
     ]
 )
-def test_poetry_command_would_install(
+def test_poetry_command_would_install_add(
     new_poetry_project,
     poetry_project_target_latest,
     poetry_project_target_previous,
@@ -48,8 +48,9 @@ def test_poetry_command_would_install(
     target_version,
 ):
     """
-    Tests that `PoetryCommand.would_install()` correctly resolves installation
-    targets for a variety of target specfications without installing anything.
+    Tests that `PoetryCommand.would_install()` for a `poetry add` command
+    correctly resolves installation targets for a variety of target specfications
+    without installing anything.
     """
     if poetry_project == "new_poetry_project":
         poetry_project = new_poetry_project
@@ -81,3 +82,20 @@ def test_poetry_command_would_install(
         and targets[0].version == target_version
     )
     assert poetry_show(poetry_project) == init_install_state
+
+
+def test_poetry_command_would_install_install(new_poetry_project, init_poetry_state):
+    """
+    Tests that `PoetryCommand.would_install()` for a `poetry install` command
+    correctly resolves installation targets without installing anything.
+    """
+    command = PoetryCommand(["poetry", "install", "--directory", new_poetry_project])
+    targets = command.would_install()
+
+    assert (
+        len(targets) == 1
+        and targets[0].ecosystem == ECOSYSTEM.PyPI
+        and targets[0].package == TEST_PROJECT_NAME
+        and targets[0].version == "0.1.0"
+    )
+    assert poetry_show(new_poetry_project) == init_poetry_state

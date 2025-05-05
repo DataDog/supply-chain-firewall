@@ -58,7 +58,7 @@ $ scfw configure
 | :---------------: | :-------------------: | :---------------------------: |
 | npm               | >= 7.0                | `install` (including aliases) |
 | pip               | >= 22.2               | `install`                     |
-| poetry            | >= 1.3                | `add`                         |
+| poetry            | >= 1.7                | `add`, `install`              |
 
 In keeping with its goal of blocking 100% of known-malicious package installations, `scfw` will refuse to run with an incompatible version of a supported package manager.  Please upgrade to or verify that you are running a compatible version before using this tool.
 

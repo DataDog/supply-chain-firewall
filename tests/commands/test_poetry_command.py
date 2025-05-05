@@ -8,8 +8,9 @@ from scfw.commands.poetry_command import PoetryCommand
 from scfw.ecosystem import ECOSYSTEM
 
 from .test_poetry import (
-    TARGET, TEST_PROJECT_NAME, init_poetry_state, new_poetry_project, poetry_project_target_latest,
-    poetry_project_target_previous, poetry_show, target_latest, target_previous, target_releases
+    POETRY_V2, TARGET, TEST_PROJECT_NAME, init_poetry_state, new_poetry_project,
+    poetry_project_target_latest, poetry_project_target_previous, poetry_show,
+    poetry_version, target_latest, target_previous, target_releases
 )
 
 TARGET_REPO = f"https://github.com/{TARGET}/py-tree-sitter"
@@ -101,11 +102,14 @@ def test_poetry_command_would_install_install(new_poetry_project, init_poetry_st
     assert poetry_show(new_poetry_project) == init_poetry_state
 
 
-def test_poetry_command_would_install_sync(new_poetry_project, init_poetry_state):
+def test_poetry_command_would_install_sync(poetry_version, new_poetry_project, init_poetry_state):
     """
     Tests that `PoetryCommand.would_install()` for a `poetry sync` command
     correctly resolves installation targets without installing anything.
     """
+    if poetry_version < POETRY_V2:
+        return
+
     command = PoetryCommand(["poetry", "sync", "--directory", new_poetry_project])
     targets = command.would_install()
 

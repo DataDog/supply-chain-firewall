@@ -9,150 +9,108 @@ from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 
 from .test_poetry import (
-    POETRY_V2, TARGET, TEST_PROJECT_NAME, init_poetry_state, new_poetry_project,
-    poetry_project_target_latest, poetry_project_target_previous, poetry_show,
-    poetry_version, target_latest, target_previous, target_releases
+    POETRY_V2, TARGET, TARGET_LATEST, TARGET_PREVIOUS, TEST_PROJECT_NAME, new_poetry_project,
+    poetry_project_target_latest, poetry_project_target_previous, poetry_show, poetry_version,
 )
 
 TARGET_REPO = f"https://github.com/{TARGET}/py-tree-sitter"
 
 
-@pytest.mark.parametrize(
-    "poetry_project, target_spec, target_name, target_version",
-    [
-        ("new_poetry_project", "{}", TARGET, None),
-        ("new_poetry_project", "{}@latest", TARGET, None),
-        ("new_poetry_project", "{}=={}", TARGET, "target_latest"),
-        ("new_poetry_project", "git+{}", TARGET_REPO, None),
-        ("new_poetry_project", "git+{}#v{}", TARGET_REPO, "target_latest"),
-        ("new_poetry_project", "git+{}.git", TARGET_REPO, None),
-        ("new_poetry_project", "git+{}.git#v{}", TARGET_REPO, "target_latest"),
-        ("new_poetry_project", "{}/archive/refs/tags/v{}.tar.gz", TARGET_REPO, "target_latest"),
-        ("poetry_project_target_latest", "{}=={}", TARGET, "target_previous"),
-        ("poetry_project_target_latest", "git+{}#v{}", TARGET_REPO, "target_previous"),
-        ("poetry_project_target_latest", "git+{}.git#v{}", TARGET_REPO, "target_previous"),
-        ("poetry_project_target_latest", "{}/archive/refs/tags/v{}.tar.gz", TARGET_REPO, "target_previous"),
-        ("poetry_project_target_previous", "{}=={}", TARGET, "target_latest"),
-        ("poetry_project_target_previous", "git+{}#v{}", TARGET_REPO, "target_latest"),
-        ("poetry_project_target_previous", "git+{}.git#v{}", TARGET_REPO, "target_latest"),
-        ("poetry_project_target_previous", "{}/archive/refs/tags/v{}.tar.gz", TARGET_REPO, "target_latest"),
-    ]
-)
 def test_poetry_command_would_install_add(
     new_poetry_project,
     poetry_project_target_latest,
     poetry_project_target_previous,
-    target_latest,
-    target_previous,
-    poetry_project,
-    target_spec,
-    target_name,
-    target_version,
 ):
     """
     Tests that `PoetryCommand.would_install()` for a `poetry add` command
     correctly resolves installation targets for a variety of target specfications
     without installing anything.
     """
-    if poetry_project == "new_poetry_project":
-        poetry_project = new_poetry_project
-    elif poetry_project == "poetry_project_target_latest":
-        poetry_project = poetry_project_target_latest
-    elif poetry_project == "poetry_project_target_previous":
-        poetry_project = poetry_project_target_previous
-
-    if target_version is None:
-        target_spec = target_spec.format(target_name)
-        target_version = target_latest
-    else:
-        if target_version == "target_latest":
-            target_version = target_latest
-        elif target_version == "target_previous":
-            target_version = target_previous
-
-        target_spec = target_spec.format(target_name, target_version)
-
-    init_install_state = poetry_show(poetry_project)
-
-    command = PoetryCommand(["poetry", "add", "--directory", poetry_project, target_spec])
-    targets = command.would_install()
-
-    assert (
-        len(targets) == 1
-        and targets[0].ecosystem == ECOSYSTEM.PyPI
-        and targets[0].package == TARGET
-        and targets[0].version == target_version
-    )
-    assert poetry_show(poetry_project) == init_install_state
-
-
-@pytest.mark.parametrize(
-    "poetry_project, true_targets",
-    [
-        ("new_poetry_project", [(TEST_PROJECT_NAME, "0.1.0")]),
-        ("poetry_project_target_latest", [(TEST_PROJECT_NAME, "0.1.0")]),
+    test_cases = [
+        (new_poetry_project, "{}", TARGET, None),
+        (new_poetry_project, "{}@latest", TARGET, None),
+        (new_poetry_project, "{}=={}", TARGET, TARGET_LATEST),
+        (new_poetry_project, "git+{}", TARGET_REPO, None),
+        (new_poetry_project, "git+{}#v{}", TARGET_REPO, TARGET_LATEST),
+        (new_poetry_project, "git+{}.git", TARGET_REPO, None),
+        (new_poetry_project, "git+{}.git#v{}", TARGET_REPO, TARGET_LATEST),
+        (new_poetry_project, "{}/archive/refs/tags/v{}.tar.gz", TARGET_REPO, TARGET_LATEST),
+        (poetry_project_target_latest, "{}=={}", TARGET, TARGET_PREVIOUS),
+        (poetry_project_target_latest, "git+{}#v{}", TARGET_REPO, TARGET_PREVIOUS),
+        (poetry_project_target_latest, "git+{}.git#v{}", TARGET_REPO, TARGET_PREVIOUS),
+        (poetry_project_target_latest, "{}/archive/refs/tags/v{}.tar.gz", TARGET_REPO, TARGET_PREVIOUS),
+        (poetry_project_target_previous, "{}=={}", TARGET, TARGET_LATEST),
+        (poetry_project_target_previous, "git+{}#v{}", TARGET_REPO, TARGET_LATEST),
+        (poetry_project_target_previous, "git+{}.git#v{}", TARGET_REPO, TARGET_LATEST),
+        (poetry_project_target_previous, "{}/archive/refs/tags/v{}.tar.gz", TARGET_REPO, TARGET_LATEST),
     ]
-)
-def test_poetry_command_would_install_install(
-    new_poetry_project,
-    poetry_project_target_latest,
-    poetry_project,
-    true_targets
-):
+
+    for poetry_project, target_spec, target_name, target_version in test_cases:
+        if target_version is None:
+            target_spec = target_spec.format(target_name)
+            target_version = TARGET_LATEST
+        else:
+            target_spec = target_spec.format(target_name, target_version)
+
+        init_state = poetry_show(poetry_project)
+
+        command = PoetryCommand(["poetry", "add", "--directory", poetry_project, target_spec])
+        targets = command.would_install()
+
+        assert (
+            len(targets) == 1
+            and targets[0].ecosystem == ECOSYSTEM.PyPI
+            and targets[0].package == TARGET
+            and targets[0].version == target_version
+        )
+        assert poetry_show(poetry_project) == init_state
+
+
+def test_poetry_command_would_install_install(new_poetry_project, poetry_project_target_latest):
     """
     Tests that `PoetryCommand.would_install()` for a `poetry install` command
     correctly resolves installation targets without installing anything.
     """
-    if poetry_project == "new_poetry_project":
-        poetry_project = new_poetry_project
-    elif poetry_project == "poetry_project_target_latest":
-        poetry_project = poetry_project_target_latest
-
-    init_poetry_state = poetry_show(poetry_project)
-
-    true_targets = [InstallTarget(ECOSYSTEM.PyPI, package, version) for package, version in true_targets]
-
-    command = PoetryCommand(["poetry", "install", "--directory", poetry_project])
-
-    assert command.would_install() == true_targets
-    assert poetry_show(poetry_project) == init_poetry_state
-
-
-@pytest.mark.parametrize(
-    "poetry_project, true_targets",
-    [
-        ("new_poetry_project", [(TEST_PROJECT_NAME, "0.1.0")]),
-        ("poetry_project_target_latest", [(TEST_PROJECT_NAME, "0.1.0")]),
-        ("poetry_project_target_previous", [(TEST_PROJECT_NAME, "0.1.0")]),
+    test_cases = [
+        (new_poetry_project, [(TEST_PROJECT_NAME, "0.1.0")]),
+        (poetry_project_target_latest, [(TEST_PROJECT_NAME, "0.1.0")]),
     ]
-)
+
+    for poetry_project, true_targets in test_cases:
+        init_state = poetry_show(poetry_project)
+
+        true_targets = [InstallTarget(ECOSYSTEM.PyPI, package, version) for package, version in true_targets]
+
+        command = PoetryCommand(["poetry", "install", "--directory", poetry_project])
+
+        assert command.would_install() == true_targets
+        assert poetry_show(poetry_project) == init_state
+
+
 def test_poetry_command_would_install_sync(
-    poetry_version,
     new_poetry_project,
     poetry_project_target_latest,
     poetry_project_target_previous,
-    poetry_project,
-    true_targets
 ):
     """
     Tests that `PoetryCommand.would_install()` for a `poetry sync` command
     correctly resolves installation targets without installing anything.
     """
-    if poetry_version < POETRY_V2:
+    if poetry_version() < POETRY_V2:
         return
 
-    if poetry_project == "new_poetry_project":
-        poetry_project = new_poetry_project
-    elif poetry_project == "poetry_project_target_latest":
-        poetry_project = poetry_project_target_latest
-    elif poetry_project == "poetry_project_target_previous":
-        poetry_project = poetry_project_target_previous
+    test_cases = [
+        (new_poetry_project, [(TEST_PROJECT_NAME, "0.1.0")]),
+        (poetry_project_target_latest, [(TEST_PROJECT_NAME, "0.1.0")]),
+        (poetry_project_target_previous, [(TEST_PROJECT_NAME, "0.1.0")]),
+    ]
 
-    init_poetry_state = poetry_show(poetry_project)
+    for poetry_project, true_targets in test_cases:
+        init_state = poetry_show(poetry_project)
 
-    true_targets = [InstallTarget(ECOSYSTEM.PyPI, package, version) for package, version in true_targets]
+        true_targets = [InstallTarget(ECOSYSTEM.PyPI, package, version) for package, version in true_targets]
 
-    command = PoetryCommand(["poetry", "sync", "--directory", poetry_project])
+        command = PoetryCommand(["poetry", "sync", "--directory", poetry_project])
 
-    assert command.would_install() == true_targets
-    assert poetry_show(poetry_project) == init_poetry_state
+        assert command.would_install() == true_targets
+        assert poetry_show(poetry_project) == init_state

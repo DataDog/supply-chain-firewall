@@ -69,6 +69,36 @@ def poetry_project_target_previous():
     tempdir.cleanup()
 
 
+@pytest.fixture
+def poetry_project_target_latest_lock_previous():
+    """
+    Initialize a Poetry project where the latest version of `TARGET` has been installed but
+    the previous version of it is an as-yet uninstalled dependency of the project.
+    """
+    tempdir = TemporaryDirectory()
+    _init_poetry_project(tempdir.name, TEST_PROJECT_NAME, [(TARGET, TARGET_LATEST)])
+    subprocess.run(["poetry", "add", "--lock", f"{TARGET}=={TARGET_PREVIOUS}"], check=True, cwd=tempdir.name)
+
+    yield tempdir.name
+
+    tempdir.cleanup()
+
+
+@pytest.fixture
+def poetry_project_target_previous_lock_latest():
+    """
+    Initialize a Poetry project where the previous version of `TARGET` has been installed but
+    the latest version of it is an as-yet uninstalled dependency of the project.
+    """
+    tempdir = TemporaryDirectory()
+    _init_poetry_project(tempdir.name, TEST_PROJECT_NAME, [(TARGET, TARGET_PREVIOUS)])
+    subprocess.run(["poetry", "add", "--lock", f"{TARGET}=={TARGET_LATEST}"], check=True, cwd=tempdir.name)
+
+    yield tempdir.name
+
+    tempdir.cleanup()
+
+
 def test_poetry_version_output():
     """
     Test that `poetry --version` has the required format and parses correctly.
@@ -276,7 +306,10 @@ def test_poetry_dry_run_output_install(new_poetry_project):
         assert any(is_install_line(target, version, line) for line in dry_run.stdout.split('\n'))
 
 
-def test_poetry_dry_run_output_update(poetry_project_target_previous):
+def test_poetry_dry_run_output_update(
+    poetry_project_target_previous,
+    poetry_project_target_previous_lock_latest,
+):
     """
     Tests that a dry-run of an installish Poetry command that results in a
     dependency update has the expected format.
@@ -285,17 +318,24 @@ def test_poetry_dry_run_output_update(poetry_project_target_previous):
         match = re.search(r"Updating (.*) \((.*)\)", line.strip())
         return match is not None and match.group(1) == target and "Skipped" not in line
 
-    dry_run = subprocess.run(
-        ["poetry", "add", "--dry-run", f"{TARGET}=={TARGET_LATEST}"],
-        check=True,
-        cwd=poetry_project_target_previous,
-        text=True,
-        capture_output=True
-    )
-    assert any(is_update_line(TARGET, line) for line in dry_run.stdout.split('\n'))
+    test_cases = [
+        (poetry_project_target_previous, ["poetry", "add", "--dry-run", f"{TARGET}=={TARGET_LATEST}"], None),
+        (poetry_project_target_previous_lock_latest, ["poetry", "install", "--dry-run"], None),
+        (poetry_project_target_previous_lock_latest, ["poetry", "sync", "--dry-run"], POETRY_V2),
+    ]
+
+    for poetry_project, command, min_poetry_version in test_cases:
+        if min_poetry_version and poetry_version() < min_poetry_version:
+            continue
+
+        dry_run = subprocess.run(command, check=True, cwd=poetry_project, text=True, capture_output=True)
+        assert any(is_update_line(TARGET, line) for line in dry_run.stdout.split('\n'))
 
 
-def test_poetry_dry_run_output_downgrade(poetry_project_target_latest):
+def test_poetry_dry_run_output_downgrade(
+    poetry_project_target_latest,
+    poetry_project_target_latest_lock_previous,
+):
     """
     Tests that a dry-run of an installish Poetry command that results in a
     dependency downgrade has the expected format.
@@ -304,14 +344,18 @@ def test_poetry_dry_run_output_downgrade(poetry_project_target_latest):
         match = re.search(r"(Updating|Downgrading) (.*) \((.*)\)", line.strip())
         return match is not None and match.group(2) == target and "Skipped" not in line
 
-    dry_run = subprocess.run(
-        ["poetry", "add", "--dry-run", f"{TARGET}=={TARGET_PREVIOUS}"],
-        check=True,
-        cwd=poetry_project_target_latest,
-        text=True,
-        capture_output=True
-    )
-    assert any(is_downgrade_line(TARGET, line) for line in dry_run.stdout.split('\n'))
+    test_cases = [
+        (poetry_project_target_latest, ["poetry", "add", "--dry-run", f"{TARGET}=={TARGET_PREVIOUS}"], None),
+        (poetry_project_target_latest_lock_previous, ["poetry", "install", "--dry-run"], None),
+        (poetry_project_target_latest_lock_previous, ["poetry", "sync", "--dry-run"], POETRY_V2),
+    ]
+
+    for poetry_project, command, min_poetry_version in test_cases:
+        if min_poetry_version and poetry_version() < min_poetry_version:
+            continue
+
+        dry_run = subprocess.run(command, check=True, cwd=poetry_project, text=True, capture_output=True)
+        assert any(is_downgrade_line(TARGET, line) for line in dry_run.stdout.split('\n'))
 
 
 def poetry_show(project_dir: str) -> str:

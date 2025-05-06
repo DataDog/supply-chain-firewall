@@ -2,15 +2,15 @@
 Tests of `PoetryCommand`.
 """
 
-import pytest
-
 from scfw.commands.poetry_command import PoetryCommand
 from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 
 from .test_poetry import (
     POETRY_V2, TARGET, TARGET_LATEST, TARGET_PREVIOUS, TEST_PROJECT_NAME, new_poetry_project,
-    poetry_project_target_latest, poetry_project_target_previous, poetry_show, poetry_version,
+    poetry_project_target_latest, poetry_project_target_latest_lock_previous,
+    poetry_project_target_previous, poetry_project_target_previous_lock_latest,
+    poetry_show, poetry_version,
 )
 
 TARGET_REPO = f"https://github.com/{TARGET}/py-tree-sitter"
@@ -66,7 +66,12 @@ def test_poetry_command_would_install_add(
         assert poetry_show(poetry_project) == init_state
 
 
-def test_poetry_command_would_install_install(new_poetry_project, poetry_project_target_latest):
+def test_poetry_command_would_install_install(
+    new_poetry_project,
+    poetry_project_target_latest,
+    poetry_project_target_latest_lock_previous,
+    poetry_project_target_previous_lock_latest,
+):
     """
     Tests that `PoetryCommand.would_install()` for a `poetry install` command
     correctly resolves installation targets without installing anything.
@@ -74,6 +79,8 @@ def test_poetry_command_would_install_install(new_poetry_project, poetry_project
     test_cases = [
         (new_poetry_project, [(TEST_PROJECT_NAME, "0.1.0")]),
         (poetry_project_target_latest, [(TEST_PROJECT_NAME, "0.1.0")]),
+        (poetry_project_target_latest_lock_previous, [(TARGET, TARGET_PREVIOUS), (TEST_PROJECT_NAME, "0.1.0")]),
+        (poetry_project_target_previous_lock_latest, [(TARGET, TARGET_LATEST), (TEST_PROJECT_NAME, "0.1.0")]),
     ]
 
     for poetry_project, true_targets in test_cases:
@@ -91,6 +98,8 @@ def test_poetry_command_would_install_sync(
     new_poetry_project,
     poetry_project_target_latest,
     poetry_project_target_previous,
+    poetry_project_target_latest_lock_previous,
+    poetry_project_target_previous_lock_latest,
 ):
     """
     Tests that `PoetryCommand.would_install()` for a `poetry sync` command
@@ -103,6 +112,8 @@ def test_poetry_command_would_install_sync(
         (new_poetry_project, [(TEST_PROJECT_NAME, "0.1.0")]),
         (poetry_project_target_latest, [(TEST_PROJECT_NAME, "0.1.0")]),
         (poetry_project_target_previous, [(TEST_PROJECT_NAME, "0.1.0")]),
+        (poetry_project_target_latest_lock_previous, [(TARGET, TARGET_PREVIOUS), (TEST_PROJECT_NAME, "0.1.0")]),
+        (poetry_project_target_previous_lock_latest, [(TARGET, TARGET_LATEST), (TEST_PROJECT_NAME, "0.1.0")]),
     ]
 
     for poetry_project, true_targets in test_cases:

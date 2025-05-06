@@ -92,8 +92,11 @@ jobs:
           python-version: "3.10"
       - name: Install Poetry
         run: |
-          curl -sSL https://install.python-poetry.org | python3 - --version ${{ matrix.poetry-version }}
-          export PATH="$HOME/.local/bin:$PATH"
+          pip install poetry==${{ matrix.poetry-version }}
+          if [ "${{ matrix.poetry-version }}" = "1.7.0" ] || [ "${{ matrix.poetry-version }}" = "1.8.0" ]; then
+            # Known issue with virtualenv 20.31.x breaking these Poetry versions
+            pip install virtualenv==20.30.0
+          fi
       - name: Install dependencies
         run: |
           pip install -r requirements.txt

@@ -17,7 +17,9 @@ from scfw.target import InstallTarget
 
 _log = logging.getLogger(__name__)
 
-MIN_POETRY_VERSION = version_parse("1.3.0")
+MIN_POETRY_VERSION = version_parse("1.7.0")
+
+INSPECTED_SUBCOMMANDS = {"add", "install", "sync"}
 
 
 class PoetryCommand(PackageManagerCommand):
@@ -112,7 +114,7 @@ class PoetryCommand(PackageManagerCommand):
                 return InstallTarget(self.ecosystem(), match.group(2), get_target_version(match.group(3)))
             return None
 
-        if not any(subcommand in self._command for subcommand in {"add", "install"}):
+        if not any(subcommand in self._command for subcommand in INSPECTED_SUBCOMMANDS):
             return []
 
         # The presence of these options prevent the add command from running

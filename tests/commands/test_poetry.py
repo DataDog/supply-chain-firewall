@@ -10,6 +10,9 @@ import requests
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
+from typing import Optional
+
+POETRY_V2 = version.parse("2.0.0")
 
 TEST_PROJECT_NAME = "foo"
 
@@ -17,33 +20,14 @@ TEST_PROJECT_NAME = "foo"
 # and is not part of the standard set of system Python modules
 TARGET = "tree-sitter"
 
+# Version numbers of available Tree-sitter releases on PyPI
+TARGET_RELEASES = list(
+    requests.get(f"https://pypi.org/pypi/{TARGET}/json", timeout=5).json()["releases"]
+)
 
-@pytest.fixture
-def target_releases():
-    """
-    Caches the list version numbers of available `TARGET` releases on PyPI.
-    """
-    r = requests.get(f"https://pypi.org/pypi/{TARGET}/json", timeout=5)
-    r.raise_for_status()
-    return list(r.json()["releases"])
-
-
-@pytest.fixture
-def target_latest(target_releases):
-    """
-    Return the version number for the latest `TARGET` release.
-    """
-    # SAFETY: This is guaranteed to exist as long as Tree-sitter does
-    return target_releases[-1]
-
-
-@pytest.fixture
-def target_previous(target_releases):
-    """
-    Return the version number for the previous `TARGET` release.
-    """
-    # SAFETY: This is guaranteed to exist as long as Tree-sitter does
-    return target_releases[-2]
+# The latest and most recent previous versions of Tree-sitter
+TARGET_LATEST = TARGET_RELEASES[-1]
+TARGET_PREVIOUS = TARGET_RELEASES[-2]
 
 
 @pytest.fixture
@@ -60,12 +44,12 @@ def new_poetry_project():
 
 
 @pytest.fixture
-def poetry_project_target_latest(target_latest):
+def poetry_project_target_latest():
     """
     Initialize a Poetry project with the latest version of `TARGET` as a dependency.
     """
     tempdir = TemporaryDirectory()
-    _init_poetry_project(tempdir.name, TEST_PROJECT_NAME, [(TARGET, target_latest)])
+    _init_poetry_project(tempdir.name, TEST_PROJECT_NAME, [(TARGET, TARGET_LATEST)])
 
     yield tempdir.name
 
@@ -73,12 +57,12 @@ def poetry_project_target_latest(target_latest):
 
 
 @pytest.fixture
-def poetry_project_target_previous(target_previous):
+def poetry_project_target_previous():
     """
     Initialize a Poetry project with the previous version of `TARGET` as a dependency.
     """
     tempdir = TemporaryDirectory()
-    _init_poetry_project(tempdir.name, TEST_PROJECT_NAME, [(TARGET, target_previous)])
+    _init_poetry_project(tempdir.name, TEST_PROJECT_NAME, [(TARGET, TARGET_PREVIOUS)])
 
     yield tempdir.name
 
@@ -86,112 +70,220 @@ def poetry_project_target_previous(target_previous):
 
 
 @pytest.fixture
-def init_poetry_state(new_poetry_project):
+def poetry_project_target_latest_lock_previous():
     """
-    Caches the Poetry installation state before running any tests.
+    Initialize a Poetry project where the latest version of `TARGET` has been installed but
+    the previous version of it is an as-yet uninstalled dependency of the project.
     """
-    return poetry_show(new_poetry_project)
+    tempdir = TemporaryDirectory()
+    _init_poetry_project(tempdir.name, TEST_PROJECT_NAME, [(TARGET, TARGET_LATEST)])
+    subprocess.run(["poetry", "add", "--lock", f"{TARGET}=={TARGET_PREVIOUS}"], check=True, cwd=tempdir.name)
+
+    yield tempdir.name
+
+    tempdir.cleanup()
+
+
+@pytest.fixture
+def poetry_project_target_previous_lock_latest():
+    """
+    Initialize a Poetry project where the previous version of `TARGET` has been installed but
+    the latest version of it is an as-yet uninstalled dependency of the project.
+    """
+    tempdir = TemporaryDirectory()
+    _init_poetry_project(tempdir.name, TEST_PROJECT_NAME, [(TARGET, TARGET_PREVIOUS)])
+    subprocess.run(["poetry", "add", "--lock", f"{TARGET}=={TARGET_LATEST}"], check=True, cwd=tempdir.name)
+
+    yield tempdir.name
+
+    tempdir.cleanup()
 
 
 def test_poetry_version_output():
     """
-    Test that `poetry --version` has the required format.
+    Test that `poetry --version` has the required format and parses correctly.
     """
-    poetry_version = subprocess.run(["poetry", "--version"], check=True, text=True, capture_output=True)
-    match = re.search(r"Poetry \(version (.*)\)", poetry_version.stdout)
-    assert match is not None
-    version.parse(match.group(1))
+    assert poetry_version() is not None
 
 
-@pytest.mark.parametrize(
-        "command",
-        [
-            ["poetry", "-V", "add", TARGET],
-            ["poetry", "add", "-V", TARGET],
-            ["poetry", "add", TARGET, "-V"],
-            ["poetry", "--version", "add", TARGET],
-            ["poetry", "add", "--version", TARGET],
-            ["poetry", "add", TARGET, "--version"],
-            ["poetry", "-h", "add", TARGET],
-            ["poetry", "add", "-h", TARGET],
-            ["poetry", "add", TARGET, "-h"],
-            ["poetry", "--help", "add", TARGET],
-            ["poetry", "add", "--help", TARGET],
-            ["poetry", "add", TARGET, "--help"],
-            ["poetry", "--dry-run", "add", TARGET],
-            ["poetry", "add", "--dry-run", TARGET],
-            ["poetry", "add", TARGET, "--dry-run"],
-            ["poetry", "-V", "install"],
-            ["poetry", "install", "-V"],
-            ["poetry", "--version", "install"],
-            ["poetry", "install", "--version"],
-            ["poetry", "-h", "install"],
-            ["poetry", "install", "-h"],
-            ["poetry", "--help", "install"],
-            ["poetry", "install", "--help"],
-            ["poetry", "--dry-run", "install"],
-            ["poetry", "install", "--dry-run"],
-        ]
-)
-def test_poetry_no_change(new_poetry_project, init_poetry_state, command):
+def test_poetry_add_no_change(new_poetry_project):
     """
-    Tests that a Poetry command does not encounter any errors and does not
-    modify the local installation state.
+    Test that certain `poetry add` commands relied on by Supply-Chain Firewall not
+    to error or modify the local installation state indeed have these properties.
     """
-    subprocess.run(command, check=True, cwd=new_poetry_project)
-    assert poetry_show(new_poetry_project) == init_poetry_state
+    test_cases = [
+        ["poetry", "-V", "add", TARGET],
+        ["poetry", "add", "-V", TARGET],
+        ["poetry", "add", TARGET, "-V"],
+        ["poetry", "--version", "add", TARGET],
+        ["poetry", "add", "--version", TARGET],
+        ["poetry", "add", TARGET, "--version"],
+        ["poetry", "-h", "add", TARGET],
+        ["poetry", "add", "-h", TARGET],
+        ["poetry", "add", TARGET, "-h"],
+        ["poetry", "--help", "add", TARGET],
+        ["poetry", "add", "--help", TARGET],
+        ["poetry", "add", TARGET, "--help"],
+        ["poetry", "--dry-run", "add", TARGET],
+        ["poetry", "add", "--dry-run", TARGET],
+        ["poetry", "add", TARGET, "--dry-run"],
+    ]
+
+    init_state = poetry_show(new_poetry_project)
+
+    assert all(_test_poetry_no_change(new_poetry_project, init_state, command) for command in test_cases)
 
 
-@pytest.mark.parametrize(
-        "command",
-        [
-            ["poetry", "add", "!a_nonexistent_p@ckage_name"],
-            ["poetry", "add", "--dry-run", "!a_nonexistent_p@ckage_name"],
-            ["poetry", "add", "--nonexistent-option", TARGET],
-            ["poetry", "add", "-G", TARGET],
-            ["poetry", "add", "--group", TARGET],
-            ["poetry", "add", "-E", TARGET],
-            ["poetry", "add", "--extras", TARGET],
-            ["poetry", "add", "--python", TARGET],
-            ["poetry", "add", "--platform", TARGET],
-            ["poetry", "add", "--markers", TARGET],
-            ["poetry", "add", "--source", TARGET],
-            ["poetry", "add", "-P", TARGET],
-            ["poetry", "add", "--project", TARGET],
-            ["poetry", "add", "-C", TARGET],
-            ["poetry", "add", "--directory", TARGET],
-            ["poetry", "install", "unnecessary_argument"],
-            ["poetry", "install", "--dry-run", "unnecessary_argument"],
-            ["poetry", "install", "--nonexistent-option"],
-            ["poetry", "install", "--without"],
-            ["poetry", "install", "--with"],
-            ["poetry", "install", "--only"],
-            ["poetry", "install", "-E"],
-            ["poetry", "install", "--extras"],
-            ["poetry", "install", "-P"],
-            ["poetry", "install", "--project"],
-            ["poetry", "install", "-C"],
-            ["poetry", "install", "--directory"],
-        ]
-)
-def test_poetry_error_no_change(new_poetry_project, init_poetry_state, command):
+def test_poetry_install_no_change(new_poetry_project):
     """
-    Tests that a Poetry command that encounters an error does not modify
-    the local installation state.
+    Test that certain `poetry install` commands relied on by Supply-Chain Firewall
+    not to error or modify the local installation state indeed have these properties.
+    """
+    test_cases = [
+        ["poetry", "-V", "install"],
+        ["poetry", "install", "-V"],
+        ["poetry", "--version", "install"],
+        ["poetry", "install", "--version"],
+        ["poetry", "-h", "install"],
+        ["poetry", "install", "-h"],
+        ["poetry", "--help", "install"],
+        ["poetry", "install", "--help"],
+        ["poetry", "--dry-run", "install"],
+        ["poetry", "install", "--dry-run"],
+    ]
+
+    init_state = poetry_show(new_poetry_project)
+
+    assert all(_test_poetry_no_change(new_poetry_project, init_state, command) for command in test_cases)
+
+
+def test_poetry_sync_no_change(new_poetry_project):
+    """
+    Test that certain `poetry sync` commands relied on by Supply-Chain Firewall
+    not to error or modify the local installation state indeed have these properties.
+    """
+    if poetry_version() < POETRY_V2:
+        return
+
+    test_cases = [
+        ["poetry", "-V", "sync"],
+        ["poetry", "sync", "-V"],
+        ["poetry", "--version", "sync"],
+        ["poetry", "sync", "--version"],
+        ["poetry", "-h", "sync"],
+        ["poetry", "sync", "-h"],
+        ["poetry", "--help", "sync"],
+        ["poetry", "sync", "--help"],
+        ["poetry", "--dry-run", "sync"],
+        ["poetry", "sync", "--dry-run"],
+    ]
+
+    init_state = poetry_show(new_poetry_project)
+
+    assert all(_test_poetry_no_change(new_poetry_project, init_state, command) for command in test_cases)
+
+
+def _test_poetry_no_change(project, init_state, command) -> bool:
+    """
+    Tests that a given Poetry command does not encounter any errors and does not
+    modify the local installation state when run in the context of a given project.
+    """
+    subprocess.run(command, check=True, cwd=project)
+    return poetry_show(project) == init_state
+
+
+def test_poetry_add_error_no_change(new_poetry_project):
+    """
+    Tests that certain `poetry add` commands encounter an error and do not modify
+    the local installation state when run in the context of a given project.
+    """
+    test_cases = [
+        ["poetry", "add", "!a_nonexistent_p@ckage_name"],
+        ["poetry", "add", "--dry-run", "!a_nonexistent_p@ckage_name"],
+        ["poetry", "add", "--nonexistent-option", TARGET],
+        ["poetry", "add", "-G", TARGET],
+        ["poetry", "add", "--group", TARGET],
+        ["poetry", "add", "-E", TARGET],
+        ["poetry", "add", "--extras", TARGET],
+        ["poetry", "add", "--python", TARGET],
+        ["poetry", "add", "--platform", TARGET],
+        ["poetry", "add", "--markers", TARGET],
+        ["poetry", "add", "--source", TARGET],
+        ["poetry", "add", "-P", TARGET],
+        ["poetry", "add", "--project", TARGET],
+        ["poetry", "add", "-C", TARGET],
+        ["poetry", "add", "--directory", TARGET],
+    ]
+
+    init_state = poetry_show(new_poetry_project)
+
+    assert all(_test_poetry_error_no_change(new_poetry_project, init_state, command) for command in test_cases)
+
+
+def test_poetry_install_error_no_change(new_poetry_project):
+    """
+    Tests that certain `poetry install` commands encounter an error and do not
+    modify the local installation state when run in the context of a given project.
+    """
+    test_cases = [
+        ["poetry", "install", "unnecessary_argument"],
+        ["poetry", "install", "--dry-run", "unnecessary_argument"],
+        ["poetry", "install", "--nonexistent-option"],
+        ["poetry", "install", "--without"],
+        ["poetry", "install", "--with"],
+        ["poetry", "install", "--only"],
+        ["poetry", "install", "-E"],
+        ["poetry", "install", "--extras"],
+        ["poetry", "install", "-P"],
+        ["poetry", "install", "--project"],
+        ["poetry", "install", "-C"],
+        ["poetry", "install", "--directory"],
+    ]
+
+    init_state = poetry_show(new_poetry_project)
+
+    assert all(_test_poetry_error_no_change(new_poetry_project, init_state, command) for command in test_cases)
+
+
+def test_poetry_sync_error_no_change(new_poetry_project):
+    """
+    Tests that certain `poetry sync` commands encounter an error and do not
+    modify the local installation state when run in the context of a given project.
+    """
+    if poetry_version() < POETRY_V2:
+        return
+
+    test_cases = [
+        ["poetry", "sync", "unnecessary_argument"],
+        ["poetry", "sync", "--dry-run", "unnecessary_argument"],
+        ["poetry", "sync", "--nonexistent-option"],
+        ["poetry", "sync", "--without"],
+        ["poetry", "sync", "--with"],
+        ["poetry", "sync", "--only"],
+        ["poetry", "sync", "-E"],
+        ["poetry", "sync", "--extras"],
+        ["poetry", "sync", "-P"],
+        ["poetry", "sync", "--project"],
+        ["poetry", "sync", "-C"],
+        ["poetry", "sync", "--directory"],
+    ]
+
+    init_state = poetry_show(new_poetry_project)
+
+    assert all(_test_poetry_error_no_change(new_poetry_project, init_state, command) for command in test_cases)
+
+
+def _test_poetry_error_no_change(project, init_state, command) -> bool:
+    """
+    Tests that a given Poetry command does encounter an error and does not modify
+    the local installation state when run in the context of a given project.
     """
     with pytest.raises(subprocess.CalledProcessError):
-        subprocess.run(command, check=True, cwd=new_poetry_project)
-    assert poetry_show(new_poetry_project) == init_poetry_state
+        subprocess.run(command, check=True, cwd=project)
+    return poetry_show(project) == init_state
 
 
-@pytest.mark.parametrize(
-        "command, target, version",
-        [
-            (["poetry", "add", "--dry-run", TARGET], TARGET, "target_latest"),
-            (["poetry", "install", "--dry-run"], TEST_PROJECT_NAME, "0.1.0"),
-        ]
-)
-def test_poetry_dry_run_output_install(new_poetry_project, target_latest, command, target, version):
+def test_poetry_dry_run_output_install(new_poetry_project):
     """
     Tests that a dry-run of an installish Poetry command that results in a
     dependency installation has the expected format.
@@ -200,13 +292,24 @@ def test_poetry_dry_run_output_install(new_poetry_project, target_latest, comman
         match = re.search(r"Installing (?:the current project: )?(.*) \((.*)\)", line.strip())
         return match is not None and match.group(1) == target and match.group(2) == version and "Skipped" not in line
 
-    version = target_latest if version == "target_latest" else version
+    test_cases = [
+        (["poetry", "add", "--dry-run", TARGET], TARGET, TARGET_LATEST, None),
+        (["poetry", "install", "--dry-run"], TEST_PROJECT_NAME, "0.1.0", None),
+        (["poetry", "sync", "--dry-run"], TEST_PROJECT_NAME, "0.1.0", POETRY_V2),
+    ]
 
-    dry_run = subprocess.run(command, check=True, cwd=new_poetry_project, text=True, capture_output=True)
-    assert any(is_install_line(target, version, line) for line in dry_run.stdout.split('\n'))
+    for command, target, version, min_poetry_version in test_cases:
+        if min_poetry_version and poetry_version() < min_poetry_version:
+            continue
+
+        dry_run = subprocess.run(command, check=True, cwd=new_poetry_project, text=True, capture_output=True)
+        assert any(is_install_line(target, version, line) for line in dry_run.stdout.split('\n'))
 
 
-def test_poetry_dry_run_output_update(poetry_project_target_previous, target_latest):
+def test_poetry_dry_run_output_update(
+    poetry_project_target_previous,
+    poetry_project_target_previous_lock_latest,
+):
     """
     Tests that a dry-run of an installish Poetry command that results in a
     dependency update has the expected format.
@@ -215,17 +318,24 @@ def test_poetry_dry_run_output_update(poetry_project_target_previous, target_lat
         match = re.search(r"Updating (.*) \((.*)\)", line.strip())
         return match is not None and match.group(1) == target and "Skipped" not in line
 
-    dry_run = subprocess.run(
-        ["poetry", "add", "--dry-run", f"{TARGET}=={target_latest}"],
-        check=True,
-        cwd=poetry_project_target_previous,
-        text=True,
-        capture_output=True
-    )
-    assert any(is_update_line(TARGET, line) for line in dry_run.stdout.split('\n'))
+    test_cases = [
+        (poetry_project_target_previous, ["poetry", "add", "--dry-run", f"{TARGET}=={TARGET_LATEST}"], None),
+        (poetry_project_target_previous_lock_latest, ["poetry", "install", "--dry-run"], None),
+        (poetry_project_target_previous_lock_latest, ["poetry", "sync", "--dry-run"], POETRY_V2),
+    ]
+
+    for poetry_project, command, min_poetry_version in test_cases:
+        if min_poetry_version and poetry_version() < min_poetry_version:
+            continue
+
+        dry_run = subprocess.run(command, check=True, cwd=poetry_project, text=True, capture_output=True)
+        assert any(is_update_line(TARGET, line) for line in dry_run.stdout.split('\n'))
 
 
-def test_poetry_dry_run_output_downgrade(poetry_project_target_latest, target_previous):
+def test_poetry_dry_run_output_downgrade(
+    poetry_project_target_latest,
+    poetry_project_target_latest_lock_previous,
+):
     """
     Tests that a dry-run of an installish Poetry command that results in a
     dependency downgrade has the expected format.
@@ -234,14 +344,18 @@ def test_poetry_dry_run_output_downgrade(poetry_project_target_latest, target_pr
         match = re.search(r"(Updating|Downgrading) (.*) \((.*)\)", line.strip())
         return match is not None and match.group(2) == target and "Skipped" not in line
 
-    dry_run = subprocess.run(
-        ["poetry", "add", "--dry-run", f"{TARGET}=={target_previous}"],
-        check=True,
-        cwd=poetry_project_target_latest,
-        text=True,
-        capture_output=True
-    )
-    assert any(is_downgrade_line(TARGET, line) for line in dry_run.stdout.split('\n'))
+    test_cases = [
+        (poetry_project_target_latest, ["poetry", "add", "--dry-run", f"{TARGET}=={TARGET_PREVIOUS}"], None),
+        (poetry_project_target_latest_lock_previous, ["poetry", "install", "--dry-run"], None),
+        (poetry_project_target_latest_lock_previous, ["poetry", "sync", "--dry-run"], POETRY_V2),
+    ]
+
+    for poetry_project, command, min_poetry_version in test_cases:
+        if min_poetry_version and poetry_version() < min_poetry_version:
+            continue
+
+        dry_run = subprocess.run(command, check=True, cwd=poetry_project, text=True, capture_output=True)
+        assert any(is_downgrade_line(TARGET, line) for line in dry_run.stdout.split('\n'))
 
 
 def poetry_show(project_dir: str) -> str:
@@ -250,6 +364,19 @@ def poetry_show(project_dir: str) -> str:
     """
     poetry_show = subprocess.run(["poetry", "show"], check=True, cwd=project_dir, text=True, capture_output=True)
     return poetry_show.stdout.lower()
+
+
+def poetry_version() -> Optional[version.Version]:
+    """
+    Get the version number of the active Poetry executable if it has the required
+    format, otherwise return `None`.
+    """
+    try:
+        poetry_version = subprocess.run(["poetry", "--version"], check=True, text=True, capture_output=True)
+        match = re.search(r"Poetry \(version (.*)\)", poetry_version.stdout)
+        return version.parse(match.group(1)) if match else None
+    except Exception:
+        return None
 
 
 def _init_poetry_project(directory, name, dependencies = None):

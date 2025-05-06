@@ -56,7 +56,7 @@ docs:
 	pdoc --docformat google ./scfw > /dev/null &
 
 clean:
-	rm -rf .mypy_cache .pytest_cache .coverage*
+	rm -rf .mypy_cache .pytest_cache .coverage* build scfw.egg-info
 	find . -name '__pycache__' -print0 | xargs -0 rm -rf
 
 .PHONY: checks clean coverage install install-dev test

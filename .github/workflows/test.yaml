@@ -92,7 +92,7 @@ jobs:
           python-version: "3.10"
       - name: Install Poetry
         run: |
-          export POETRY_HOME="$HOME/.poetry"
+          export POETRY_HOME="$HOME/pypoetry"
           mkdir $POETRY_HOME
           curl -sSL https://install.python-poetry.org | python3 - --version ${{ matrix.poetry-version }}
           if [ "${{ matrix.poetry-version }}" = "1.7.0" ] || [ "${{ matrix.poetry-version }}" = "1.8.0" ]; then

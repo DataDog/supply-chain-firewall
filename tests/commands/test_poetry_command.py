@@ -7,7 +7,8 @@ from scfw.ecosystem import ECOSYSTEM
 from scfw.target import InstallTarget
 
 from .test_poetry import (
-    POETRY_V2, TARGET, TARGET_LATEST, TARGET_PREVIOUS, TEST_PROJECT_NAME, new_poetry_project,
+    POETRY_V2, TARGET, TARGET_LATEST, TARGET_PREVIOUS, TEST_PROJECT_NAME,
+    new_poetry_project, poetry_project_lock_latest,
     poetry_project_target_latest, poetry_project_target_latest_lock_previous,
     poetry_project_target_previous, poetry_project_target_previous_lock_latest,
     poetry_show, poetry_version,
@@ -83,15 +84,10 @@ def test_poetry_command_would_install_install(
         (poetry_project_target_previous_lock_latest, [(TARGET, TARGET_LATEST), (TEST_PROJECT_NAME, "0.1.0")]),
     ]
 
-    for poetry_project, true_targets in test_cases:
-        init_state = poetry_show(poetry_project)
-
-        true_targets = [InstallTarget(ECOSYSTEM.PyPI, package, version) for package, version in true_targets]
-
-        command = PoetryCommand(["poetry", "install", "--directory", poetry_project])
-
-        assert command.would_install() == true_targets
-        assert poetry_show(poetry_project) == init_state
+    assert all(
+        _test_poetry_command_would_install(["poetry", "install", "--directory", project], project, targets)
+        for project, targets in test_cases
+    )
 
 
 def test_poetry_command_would_install_sync(
@@ -116,12 +112,40 @@ def test_poetry_command_would_install_sync(
         (poetry_project_target_previous_lock_latest, [(TARGET, TARGET_LATEST), (TEST_PROJECT_NAME, "0.1.0")]),
     ]
 
-    for poetry_project, true_targets in test_cases:
-        init_state = poetry_show(poetry_project)
+    assert all(
+        _test_poetry_command_would_install(["poetry", "sync", "--directory", project], project, targets)
+        for project, targets in test_cases
+    )
 
-        true_targets = [InstallTarget(ECOSYSTEM.PyPI, package, version) for package, version in true_targets]
 
-        command = PoetryCommand(["poetry", "sync", "--directory", poetry_project])
+def test_poetry_command_would_install_update(
+    poetry_project_lock_latest,
+    poetry_project_target_latest_lock_previous,
+    poetry_project_target_previous_lock_latest,
+):
+    """
+    Tests that `PoetryCommand.would_install()` for a `poetry update` command
+    correctly resolves installation targets without installing anything.
+    """
+    test_cases = [
+        (poetry_project_lock_latest, [(TARGET, TARGET_LATEST)]),
+        (poetry_project_target_latest_lock_previous, [(TARGET, TARGET_PREVIOUS)]),
+        (poetry_project_target_previous_lock_latest, [(TARGET, TARGET_LATEST)]),
+    ]
 
-        assert command.would_install() == true_targets
-        assert poetry_show(poetry_project) == init_state
+    assert all(
+        _test_poetry_command_would_install(["poetry", "update", "--directory", project], project, targets)
+        for project, targets in test_cases
+    )
+
+
+def _test_poetry_command_would_install(command, project, targets) -> bool:
+    """
+    Tests that a `PoetryCommand` initialized from `command` when run in `project`
+    correctly resolves installation targets without installing anything.
+    """
+    init_state = poetry_show(project)
+
+    targets = [InstallTarget(ECOSYSTEM.PyPI, package, version) for package, version in targets]
+
+    return PoetryCommand(command).would_install() == targets and poetry_show(project) == init_state

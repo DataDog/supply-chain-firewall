@@ -19,7 +19,7 @@ _log = logging.getLogger(__name__)
 
 MIN_POETRY_VERSION = version_parse("1.7.0")
 
-INSPECTED_SUBCOMMANDS = {"add", "install", "sync"}
+INSPECTED_SUBCOMMANDS = {"add", "install", "sync", "update"}
 
 
 class PoetryCommand(PackageManagerCommand):

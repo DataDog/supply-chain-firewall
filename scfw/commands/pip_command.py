@@ -13,7 +13,7 @@ from packaging.version import InvalidVersion, Version, parse as version_parse
 
 from scfw.command import PackageManagerCommand, UnsupportedVersionError
 from scfw.ecosystem import ECOSYSTEM
-from scfw.target import InstallTarget
+from scfw.package import Package
 
 _log = logging.getLogger(__name__)
 
@@ -103,25 +103,25 @@ class PipCommand(PackageManagerCommand):
         """
         subprocess.run([self._executable, "-m"] + self._command)
 
-    def would_install(self) -> list[InstallTarget]:
+    def would_install(self) -> list[Package]:
         """
-        Determine the package release targets a `pip` command would install if it were run.
+        Determine the package targets a `pip` command would install if it were run.
 
         Returns:
-            A `list[InstallTarget]` representing the package release targets the `pip` command
+            A `list[Package]` representing the package targets the `pip` command
             would install if it were run.
 
         Raises:
             ValueError: The `pip` install report did not have the required format.
         """
-        def report_to_install_targets(install_report: dict) -> InstallTarget:
+        def report_to_install_target(install_report: dict) -> Package:
             if not (metadata := install_report.get("metadata")):
                 raise ValueError("Missing metadata for pip install target")
-            if not (package := metadata.get("name")):
+            if not (name := metadata.get("name")):
                 raise ValueError("Missing name for pip install target")
             if not (version := metadata.get("version")):
                 raise ValueError("Missing version for pip install target")
-            return InstallTarget(ECOSYSTEM.PyPI, package, version)
+            return Package(ECOSYSTEM.PyPI, name, version)
 
         # pip only installs or upgrades packages via the `pip install` subcommand
         # If `install` is not present, the command is automatically safe to run
@@ -135,8 +135,8 @@ class PipCommand(PackageManagerCommand):
         dry_run_command = [self._executable, "-m"] + self._command + ["--dry-run", "--quiet", "--report", "-"]
         try:
             dry_run = subprocess.run(dry_run_command, check=True, text=True, capture_output=True)
-            install_report = json.loads(dry_run.stdout).get("install", [])
-            return list(map(report_to_install_targets, install_report))
+            install_reports = json.loads(dry_run.stdout).get("install", [])
+            return list(map(report_to_install_target, install_reports))
         except subprocess.CalledProcessError:
             # An error must have resulted from the given pip command
             # As nothing will be installed in this case, allow the command

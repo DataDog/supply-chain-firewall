@@ -5,7 +5,7 @@ A class for structuring and displaying the results of installation target verifi
 from collections.abc import Iterable
 from typing import Optional
 
-from scfw.target import InstallTarget
+from scfw.package import Package
 
 
 class VerificationReport:
@@ -16,7 +16,7 @@ class VerificationReport:
         """
         Initialize a new, empty `VerificationReport`.
         """
-        self._report: dict[InstallTarget, list[str]] = {}
+        self._report: dict[Package, list[str]] = {}
 
     def __len__(self) -> int:
         """
@@ -39,7 +39,7 @@ class VerificationReport:
                 show_line(linenum, line) for linenum, line in enumerate(finding.split('\n'))
             )
 
-        def show_findings(target: InstallTarget, findings: list[str]) -> str:
+        def show_findings(target: Package, findings: list[str]) -> str:
             return (
                 f"Installation target {target}:\n" + '\n'.join(map(show_finding, findings))
             )
@@ -48,12 +48,12 @@ class VerificationReport:
             show_findings(target, findings) for target, findings in self._report.items()
         )
 
-    def get(self, target: InstallTarget) -> Optional[list[str]]:
+    def get(self, target: Package) -> Optional[list[str]]:
         """
         Get the findings for the given installation target.
 
         Args:
-            target: The `InstallTarget` to look up in the report.
+            target: The `Package` to look up in the report.
 
         Returns:
             The findings for `target` contained in the report or `None` if `target`
@@ -61,12 +61,12 @@ class VerificationReport:
         """
         return self._report.get(target)
 
-    def insert(self, target: InstallTarget, finding: str) -> None:
+    def insert(self, target: Package, finding: str) -> None:
         """
         Insert the given installation target and finding into the report.
 
         Args:
-            target: The `InstallTarget` to insert into the report.
+            target: The `Package` to insert into the report.
             findings: The finding being reported for `target`.
         """
         if target in self._report:
@@ -74,8 +74,8 @@ class VerificationReport:
         else:
             self._report[target] = [finding]
 
-    def targets(self) -> Iterable[InstallTarget]:
+    def targets(self) -> Iterable[Package]:
         """
-        Return an iterator over `InstallTargets` mentioned in the report.
+        Return an iterator over `Package` mentioned in the report.
         """
         return (target for target in self._report)

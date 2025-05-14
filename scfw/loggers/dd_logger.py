@@ -14,7 +14,7 @@ import scfw
 from scfw.configure import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
-from scfw.target import InstallTarget
+from scfw.package import Package
 
 _log = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ class DDLogger(FirewallLogger):
         ecosystem: ECOSYSTEM,
         executable: str,
         command: list[str],
-        targets: list[InstallTarget],
+        targets: list[Package],
         action: FirewallAction,
         warned: bool
     ):

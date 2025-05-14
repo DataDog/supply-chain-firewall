@@ -29,8 +29,8 @@ import logging
 import os
 import pkgutil
 
+from scfw.package import Package
 from scfw.report import VerificationReport
-from scfw.target import InstallTarget
 from scfw.verifier import FindingSeverity
 
 _log = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class FirewallVerifiers:
         """
         return [verifier.name() for verifier in self._verifiers]
 
-    def verify_targets(self, targets: list[InstallTarget]) -> dict[FindingSeverity, VerificationReport]:
+    def verify_targets(self, targets: list[Package]) -> dict[FindingSeverity, VerificationReport]:
         """
         Verify a set of installation targets against all discovered verifiers.
 

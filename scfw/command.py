@@ -6,7 +6,7 @@ from abc import (ABCMeta, abstractmethod)
 from typing import Optional
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.target import InstallTarget
+from scfw.package import Package
 
 
 class PackageManagerCommand(metaclass=ABCMeta):
@@ -67,13 +67,13 @@ class PackageManagerCommand(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def would_install(self) -> list[InstallTarget]:
+    def would_install(self) -> list[Package]:
         """
         Without running the command, determine the packages that would be installed by a
         package manager command if it were run.
 
         Returns:
-            A list of `InstallTarget` representing the installation targets the command would
+            A list of `Package` representing the installation targets the command would
             install or upgrade if it were run.
         """
         pass

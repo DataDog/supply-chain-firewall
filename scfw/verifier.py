@@ -5,7 +5,7 @@ Provides a base class for installation target verifiers.
 from abc import (ABCMeta, abstractmethod)
 from enum import Enum
 
-from scfw.target import InstallTarget
+from scfw.package import Package
 
 
 class FindingSeverity(Enum):
@@ -44,7 +44,7 @@ class InstallTargetVerifier(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def verify(self, target: InstallTarget) -> list[tuple[FindingSeverity, str]]:
+    def verify(self, target: Package) -> list[tuple[FindingSeverity, str]]:
         """
         Verify the given installation target.
 

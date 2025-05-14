@@ -6,7 +6,7 @@ import pytest
 
 from scfw.commands.npm_command import NpmCommand
 from scfw.ecosystem import ECOSYSTEM
-from scfw.target import InstallTarget
+from scfw.package import Package
 
 from .test_npm import INIT_NPM_STATE, TEST_TARGET, npm_list
 
@@ -46,7 +46,7 @@ def test_npm_command_would_install_exact():
     """
     true_targets = list(
         map(
-            lambda p: InstallTarget(ECOSYSTEM.Npm, p[0], p[1]),
+            lambda p: Package(ECOSYSTEM.Npm, p[0], p[1]),
             [
                 ("js-tokens", "4.0.0"),
                 ("loose-envify", "1.4.0"),

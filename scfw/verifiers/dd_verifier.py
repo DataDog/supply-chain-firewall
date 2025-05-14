@@ -6,7 +6,7 @@ malicious software packages dataset.
 import requests
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.target import InstallTarget
+from scfw.package import Package
 from scfw.verifier import FindingSeverity, InstallTargetVerifier
 
 _DD_DATASET_SAMPLES_URL = "https://raw.githubusercontent.com/DataDog/malicious-software-packages-dataset/main/samples"
@@ -42,7 +42,7 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
         """
         return "DatadogMaliciousPackagesVerifier"
 
-    def verify(self, target: InstallTarget) -> list[tuple[FindingSeverity, str]]:
+    def verify(self, target: Package) -> list[tuple[FindingSeverity, str]]:
         """
         Determine whether the given installation target is malicious by consulting
         the dataset's manifests.
@@ -61,13 +61,13 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
             case ECOSYSTEM.PyPI:
                 manifest = self._pypi_manifest
 
-        # We take the more conservative approach of ignoring version numbers when
+        # We take the more conservative approach of ignoring version strings when
         # deciding whether the given target is malicious
-        if target.package in manifest:
+        if target.name in manifest:
             return [
                 (
                     FindingSeverity.CRITICAL,
-                    f"Datadog Security Research has determined that package {target.package} is malicious"
+                    f"Datadog Security Research has determined that package {target.name} is malicious"
                 )
             ]
         else:

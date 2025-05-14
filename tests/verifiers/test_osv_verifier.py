@@ -5,7 +5,7 @@ Tests of `OsvVerifier`.
 import pytest
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.target import InstallTarget
+from scfw.package import Package
 from scfw.verifier import FindingSeverity
 from scfw.verifiers import FirewallVerifiers
 from scfw.verifiers.osv_verifier import OsvVerifier
@@ -230,8 +230,8 @@ def test_osv_verifier_malicious(ecosystem: ECOSYSTEM):
             test_set = PYPI_TEST_SET
 
     test_set = [
-        (InstallTarget(ecosystem, package, version), has_critical, has_warning)
-        for package, version, has_critical, has_warning in test_set
+        (Package(ecosystem, name, version), has_critical, has_warning)
+        for name, version, has_critical, has_warning in test_set
     ]
 
     # Create a modified `FirewallVerifiers` only containing the OSV.dev verifier

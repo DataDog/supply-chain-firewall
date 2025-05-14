@@ -9,7 +9,7 @@ import pytest
 
 from scfw.commands.pip_command import PipCommand
 from scfw.ecosystem import ECOSYSTEM
-from scfw.target import InstallTarget
+from scfw.package import Package
 
 from .test_pip import INIT_PIP_STATE, TEST_TARGET, pip_list
 
@@ -60,7 +60,7 @@ def test_pip_command_would_install_exact():
     """
     true_targets = list(
         map(
-            lambda p: InstallTarget(ECOSYSTEM.PyPI, p[0], p[1]),
+            lambda p: Package(ECOSYSTEM.PyPI, p[0], p[1]),
             [
                 ("botocore", "1.15.0"),
                 ("docutils", "0.15.2"),

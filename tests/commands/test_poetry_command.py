@@ -4,7 +4,7 @@ Tests of `PoetryCommand`.
 
 from scfw.commands.poetry_command import PoetryCommand
 from scfw.ecosystem import ECOSYSTEM
-from scfw.target import InstallTarget
+from scfw.package import Package
 
 from .test_poetry import (
     POETRY_V2, TARGET, TARGET_LATEST, TARGET_PREVIOUS, TEST_PROJECT_NAME,
@@ -61,7 +61,7 @@ def test_poetry_command_would_install_add(
         assert (
             len(targets) == 1
             and targets[0].ecosystem == ECOSYSTEM.PyPI
-            and targets[0].package == TARGET
+            and targets[0].name == TARGET
             and targets[0].version == target_version
         )
         assert poetry_show(poetry_project) == init_state
@@ -146,6 +146,6 @@ def _test_poetry_command_would_install(command, project, targets) -> bool:
     """
     init_state = poetry_show(project)
 
-    targets = [InstallTarget(ECOSYSTEM.PyPI, package, version) for package, version in targets]
+    targets = [Package(ECOSYSTEM.PyPI, name, version) for name, version in targets]
 
     return PoetryCommand(command).would_install() == targets and poetry_show(project) == init_state

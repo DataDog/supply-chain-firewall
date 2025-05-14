@@ -13,7 +13,7 @@ from packaging.version import InvalidVersion, Version, parse as version_parse
 
 from scfw.command import PackageManagerCommand, UnsupportedVersionError
 from scfw.ecosystem import ECOSYSTEM
-from scfw.target import InstallTarget
+from scfw.package import Package
 
 _log = logging.getLogger(__name__)
 
@@ -93,25 +93,24 @@ class PoetryCommand(PackageManagerCommand):
         """
         subprocess.run(self._command)
 
-    def would_install(self) -> list[InstallTarget]:
+    def would_install(self) -> list[Package]:
         """
-        Determine the package release targets a `poetry` command would install if
-        it were run.
+        Determine the package targets a `poetry` command would install if it were run.
 
         Returns:
-            A `list[InstallTarget]` representing the packages release targets the
-            `poetry` command would install if it were run.
+            A `list[Package]` representing the package targets the `poetry` command
+            would install if it were run.
         """
         def get_target_version(version_spec: str) -> str:
             _, arrow, new_version = version_spec.partition(" -> ")
             version, _, _ = version_spec.partition(' ')
             return get_target_version(new_version) if arrow else version
 
-        def line_to_install_target(line: str) -> Optional[InstallTarget]:
+        def line_to_install_target(line: str) -> Optional[Package]:
             # All supported versions adhere to this format
             pattern = r"(Installing|Updating|Downgrading) (?:the current project: )?(.*) \((.*)\)"
             if "Skipped" not in line and (match := re.search(pattern, line.strip())):
-                return InstallTarget(self.ecosystem(), match.group(2), get_target_version(match.group(3)))
+                return Package(self.ecosystem(), match.group(2), get_target_version(match.group(3)))
             return None
 
         if not any(subcommand in self._command for subcommand in INSPECTED_SUBCOMMANDS):

@@ -8,7 +8,7 @@ import logging
 
 import requests
 
-from scfw.target import InstallTarget
+from scfw.package import Package
 from scfw.verifier import FindingSeverity, InstallTargetVerifier
 from scfw.verifiers.osv_verifier.osv_advisory import OsvAdvisory
 
@@ -34,7 +34,7 @@ class OsvVerifier(InstallTargetVerifier):
         """
         return "OsvVerifier"
 
-    def verify(self, target: InstallTarget) -> list[tuple[FindingSeverity, str]]:
+    def verify(self, target: Package) -> list[tuple[FindingSeverity, str]]:
         """
         Query an given installation target against the OSV.dev database.
 
@@ -62,7 +62,7 @@ class OsvVerifier(InstallTargetVerifier):
             )
 
         def error_message(e: str) -> str:
-            url = f"{_OSV_DEV_LIST_URL_PREFIX}?q={target.package}&ecosystem={str(target.ecosystem)}"
+            url = f"{_OSV_DEV_LIST_URL_PREFIX}?q={target.name}&ecosystem={str(target.ecosystem)}"
             return (
                 f"Failed to verify target against OSV.dev: {e if e else 'An unspecified error occurred'}.\n"
                 f"Before proceeding, please check for OSV.dev advisories related to this target.\n"
@@ -75,7 +75,7 @@ class OsvVerifier(InstallTargetVerifier):
         query = {
             "version": target.version,
             "package": {
-                "name": target.package,
+                "name": target.name,
                 "ecosystem": str(target.ecosystem)
             }
         }

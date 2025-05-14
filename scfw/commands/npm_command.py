@@ -12,7 +12,7 @@ from packaging.version import InvalidVersion, Version, parse as version_parse
 
 from scfw.command import PackageManagerCommand, UnsupportedVersionError
 from scfw.ecosystem import ECOSYSTEM
-from scfw.target import InstallTarget
+from scfw.package import Package
 
 _log = logging.getLogger(__name__)
 
@@ -98,12 +98,12 @@ class NpmCommand(PackageManagerCommand):
         """
         subprocess.run(self._command)
 
-    def would_install(self) -> list[InstallTarget]:
+    def would_install(self) -> list[Package]:
         """
-        Determine the package release targets an `npm` command would install if it were run.
+        Determine the package targets an `npm` command would install if it were run.
 
         Returns:
-            A `list[InstallTarget]` representing the package release targets the `npm` command
+            A `list[Package]` representing the package targets the `npm` command
             would install if it were run.
 
         Raises:
@@ -115,11 +115,11 @@ class NpmCommand(PackageManagerCommand):
         def line_to_dependency(line: str) -> str:
             return line.split()[_NPM_LOG_DEP_TOKEN]
 
-        def str_to_install_target(s: str) -> InstallTarget:
-            package, sep, version = s.rpartition('@')
-            if version == s or (sep and not package):
+        def str_to_install_target(s: str) -> Package:
+            name, sep, version = s.rpartition('@')
+            if version == s or (sep and not name):
                 raise ValueError("Failed to parse npm install target")
-            return InstallTarget(ECOSYSTEM.Npm, package, version)
+            return Package(ECOSYSTEM.Npm, name, version)
 
         # For now, automatically allow all non-`install` commands
         if not self._is_install_command():

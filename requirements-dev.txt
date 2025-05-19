@@ -181,9 +181,9 @@ packaging==25.0 ; python_version >= "3.10" and python_version < "4" \
 pdoc==15.0.3 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:6482d8ebbd40185fea5e6aec2f1592f4be92e93cf6bf70b9e2a00378bbaf3252 \
     --hash=sha256:686c921ef2622f166de5f73b7241935a4ddac79c8d10dbfa43def8c1fca86550
-pluggy==1.5.0 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:2cffa88e94fdc978c4c574f15f9e59b7f4201d439195c3715ca9e2486f1d0cf1 \
-    --hash=sha256:44e1ad92c8ca002de6377e165f3e0f1be63266ab4d554740532335b9d75ea669
+pluggy==1.6.0 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
+    --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
 pycodestyle==2.13.0 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:35863c5974a271c7a726ed228a14a4f6daf49df369d8c50cd9a6f58a5e143ba9 \
     --hash=sha256:c8415bf09abe81d9c7f872502a6eee881fbe85d8763dd5b9924bb0a01d67efae

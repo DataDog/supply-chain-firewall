@@ -6,11 +6,13 @@ of Supply-Chain Firewall.
 from typing import Optional
 
 from scfw.package_manager import PackageManager
+from scfw.package_managers.go import Go
 from scfw.package_managers.npm import Npm
 from scfw.package_managers.pip import Pip
 from scfw.package_managers.poetry import Poetry
 
 SUPPORTED_PACKAGE_MANAGERS = {
+    Go.name(),
     Npm.name(),
     Pip.name(),
     Poetry.name(),
@@ -37,6 +39,8 @@ def get_package_manager(command: list[str], executable: Optional[str] = None) ->
     if not command:
         raise ValueError("Missing package manager command")
 
+    if command[0] == Go.name():
+        return Go(executable)
     if command[0] == Npm.name():
         return Npm(executable)
     if command[0] == Pip.name():

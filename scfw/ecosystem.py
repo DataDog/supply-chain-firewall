@@ -11,6 +11,7 @@ class ECOSYSTEM(Enum):
     """
     Npm = "npm"
     PyPI = "PyPI"
+    Go = "Go"
 
     def __str__(self) -> str:
         """

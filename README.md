@@ -11,7 +11,7 @@ Supply-Chain Firewall is a command-line tool for preventing the installation of 
 
 ![scfw demo usage](https://github.com/DataDog/supply-chain-firewall/blob/main/images/demo.gif?raw=true)
 
-Given a command for a supported package manager, Supply-Chain Firewall collects all targets that would be installed by the command and checks them against reputable sources of data on open source malware and vulnerabilities.  The command is automatically blocked from running when any data source finds that any target is malicious.  In cases where a data source reports other findings for a target, they are presented to the user along with a prompt confirming intent to proceed with the installation.
+Given a command for a supported package manager, Supply-Chain Firewall collects all package targets that would be installed by the command and checks them against reputable sources of data on open source malware and vulnerabilities.  The command is automatically blocked from running when any data source finds that any target is malicious.  In cases where a data source reports other findings for a target, they are presented to the user along with a prompt confirming intent to proceed with the installation.
 
 Default data sources include:
 

@@ -41,17 +41,17 @@ def run_firewall(args: Namespace) -> int:
         if targets:
             verifiers = FirewallVerifiers()
             _log.info(
-                f"Using installation target verifiers: [{', '.join(verifiers.names())}]"
+                f"Using package verifiers: [{', '.join(verifiers.names())}]"
             )
 
-            reports = verifiers.verify_targets(targets)
+            reports = verifiers.verify_packages(targets)
 
             if (critical_report := reports.get(FindingSeverity.CRITICAL)):
                 loggers.log(
                     command.ecosystem(),
                     command.executable(),
                     args.command,
-                    list(critical_report.targets()),
+                    list(critical_report.packages()),
                     action=FirewallAction.BLOCK,
                     warned=False
                 )
@@ -68,7 +68,7 @@ def run_firewall(args: Namespace) -> int:
                         command.ecosystem(),
                         command.executable(),
                         args.command,
-                        list(warning_report.targets()),
+                        list(warning_report.packages()),
                         action=FirewallAction.BLOCK,
                         warned=warned
                     )

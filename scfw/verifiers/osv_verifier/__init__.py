@@ -1,6 +1,5 @@
 """
-Defines an installation target verifier that uses OSV.dev's database of vulnerable
-and malicious open source software packages.
+Defines a package verifier for the OSV.dev advisory database.
 """
 
 import functools
@@ -9,7 +8,7 @@ import logging
 import requests
 
 from scfw.package import Package
-from scfw.verifier import FindingSeverity, InstallTargetVerifier
+from scfw.verifier import FindingSeverity, PackageVerifier
 from scfw.verifiers.osv_verifier.osv_advisory import OsvAdvisory
 
 _log = logging.getLogger(__name__)
@@ -19,10 +18,9 @@ _OSV_DEV_VULN_URL_PREFIX = "https://osv.dev/vulnerability"
 _OSV_DEV_LIST_URL_PREFIX = "https://osv.dev/list"
 
 
-class OsvVerifier(InstallTargetVerifier):
+class OsvVerifier(PackageVerifier):
     """
-    An `InstallTargetVerifier` for the OSV.dev open source vulnerability and
-    malicious package database.
+    A `PackageVerifier` for the OSV.dev advisory database.
     """
     @classmethod
     def name(cls) -> str:
@@ -34,38 +32,38 @@ class OsvVerifier(InstallTargetVerifier):
         """
         return "OsvVerifier"
 
-    def verify(self, target: Package) -> list[tuple[FindingSeverity, str]]:
+    def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
         """
-        Query an given installation target against the OSV.dev database.
+        Query a given package against the OSV.dev database.
 
         Args:
-            target: The installation target to query.
+            package: The `Package` to query.
 
         Returns:
-            A list containing any findings for the given installation target, obtained
-            by querying for it against OSV.dev.
+            A list containing any findings for the given package, obtained by querying
+            the OSV.dev API.
 
-            OSV.dev disclosures with `MAL` IDs are treated as `CRITICAL` findings and all
+            OSV.dev advisories with `MAL` IDs are treated as `CRITICAL` findings and all
             others are treated as `WARNING`.  *It is very important to note that most but
-            **not all** OSV.dev malicious package disclosures have `MAL` IDs.*
+            **not all** OSV.dev malicious package advisories have `MAL` IDs.*
 
         Raises:
             requests.HTTPError:
-                An error occurred while querying an installation target against the OSV.dev API.
+                An error occurred while querying a package against the OSV.dev API.
         """
         def finding(osv: OsvAdvisory) -> str:
             kind = "malicious package " if osv.id.startswith("MAL") else ""
             severity_tag = f"[{osv.severity}] " if osv.severity else ""
             return (
-                f"An OSV.dev {kind}disclosure exists for package {target}:\n"
+                f"An OSV.dev {kind}advisory exists for package {package}:\n"
                 f"  * {severity_tag}{_OSV_DEV_VULN_URL_PREFIX}/{osv.id}"
             )
 
         def error_message(e: str) -> str:
-            url = f"{_OSV_DEV_LIST_URL_PREFIX}?q={target.name}&ecosystem={str(target.ecosystem)}"
+            url = f"{_OSV_DEV_LIST_URL_PREFIX}?q={package.name}&ecosystem={str(package.ecosystem)}"
             return (
-                f"Failed to verify target against OSV.dev: {e if e else 'An unspecified error occurred'}.\n"
-                f"Before proceeding, please check for OSV.dev advisories related to this target.\n"
+                f"Failed to verify package against OSV.dev: {e if e else 'An unspecified error occurred'}.\n"
+                f"Before proceeding, please check for OSV.dev advisories related to this package.\n"
                 f"DO NOT PROCEED if it has an advisory with a MAL ID: it is very likely malicious.\n"
                 f"  * {url}"
             )
@@ -73,10 +71,10 @@ class OsvVerifier(InstallTargetVerifier):
         vulns = []
 
         query = {
-            "version": target.version,
+            "version": package.version,
             "package": {
-                "name": target.name,
-                "ecosystem": str(target.ecosystem)
+                "name": package.name,
+                "ecosystem": str(package.ecosystem)
             }
         }
 
@@ -112,19 +110,19 @@ class OsvVerifier(InstallTargetVerifier):
             )
 
         except requests.exceptions.RequestException as e:
-            _log.warning(f"Failed to query OSV.dev API: returning WARNING finding for target {target}")
+            _log.warning(f"Failed to query OSV.dev API: returning WARNING finding for package {package}")
             return [(FindingSeverity.WARNING, error_message(str(e)))]
 
         except Exception as e:
-            _log.warning(f"Target verification failed: returning WARNING finding for target {target}")
+            _log.warning(f"Verification failed: returning WARNING finding for package {package}")
             return [(FindingSeverity.WARNING, error_message(str(e)))]
 
 
-def load_verifier() -> InstallTargetVerifier:
+def load_verifier() -> PackageVerifier:
     """
-    Export `OsvVerifier` for discovery by the firewall.
+    Export `OsvVerifier` for discovery by Supply-Chain Firewall.
 
     Returns:
-        An `OsvVerifier` for use in a run of the supply chain firewall.
+        An `OsvVerifier` for use in a run of Supply-Chain Firewall.
     """
     return OsvVerifier()

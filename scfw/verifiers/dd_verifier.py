@@ -1,20 +1,19 @@
 """
-Defines an installation target verifier that uses Datadog Security Research's
-malicious software packages dataset.
+Defines a package verifier for Datadog Security Research's malicious packages dataset.
 """
 
 import requests
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity, InstallTargetVerifier
+from scfw.verifier import FindingSeverity, PackageVerifier
 
 _DD_DATASET_SAMPLES_URL = "https://raw.githubusercontent.com/DataDog/malicious-software-packages-dataset/main/samples"
 
 
-class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
+class DatadogMaliciousPackagesVerifier(PackageVerifier):
     """
-    An `InstallTargetVerifier` for Datadog Security Research's malicious packages dataset.
+    A `PackageVerifier` for Datadog Security Research's malicious packages dataset.
     """
     def __init__(self):
         """
@@ -42,43 +41,42 @@ class DatadogMaliciousPackagesVerifier(InstallTargetVerifier):
         """
         return "DatadogMaliciousPackagesVerifier"
 
-    def verify(self, target: Package) -> list[tuple[FindingSeverity, str]]:
+    def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
         """
-        Determine whether the given installation target is malicious by consulting
-        the dataset's manifests.
+        Determine whether the given package is malicious by consulting the dataset's manifests.
 
         Args:
-            target: The installation target to verify.
+            package: The `Package` to verify.
 
         Returns:
-            A list containing any findings for the given installation target, obtained
-            by checking for its presence in the dataset's manifests.  Only a single
-            `CRITICAL` finding to this effect is present in this case.
+            A list containing any findings for the given package, obtained by checking for its
+            presence in the dataset's manifests.  Only a single `CRITICAL` finding to this effect
+            is present in this case.
         """
-        match target.ecosystem:
+        match package.ecosystem:
             case ECOSYSTEM.Npm:
                 manifest = self._npm_manifest
             case ECOSYSTEM.PyPI:
                 manifest = self._pypi_manifest
 
         # We take the more conservative approach of ignoring version strings when
-        # deciding whether the given target is malicious
-        if target.name in manifest:
+        # deciding whether the given package is malicious
+        if package.name in manifest:
             return [
                 (
                     FindingSeverity.CRITICAL,
-                    f"Datadog Security Research has determined that package {target.name} is malicious"
+                    f"Datadog Security Research has determined that package {package.name} is malicious"
                 )
             ]
         else:
             return []
 
 
-def load_verifier() -> InstallTargetVerifier:
+def load_verifier() -> PackageVerifier:
     """
-    Export `DatadogMaliciousPackagesVerifier` for discovery by the firewall.
+    Export `DatadogMaliciousPackagesVerifier` for discovery by Supply-Chain Firewall.
 
     Returns:
-        A `DatadogMaliciousPackagesVerifier` for use in a run of the supply chain firewall.
+        A `DatadogMaliciousPackagesVerifier` for use in a run of Supply-Chain Firewall.
     """
     return DatadogMaliciousPackagesVerifier()

@@ -238,21 +238,21 @@ def test_osv_verifier_malicious(ecosystem: ECOSYSTEM):
     verifier = FirewallVerifiers()
     verifier._verifiers = [OsvVerifier()]
 
-    reports = verifier.verify_targets([test[0] for test in test_set])
+    reports = verifier.verify_packages([test[0] for test in test_set])
     critical_report = reports.get(FindingSeverity.CRITICAL)
     warning_report = reports.get(FindingSeverity.WARNING)
 
-    for target, has_critical, has_warning in test_set:
+    for package, has_critical, has_warning in test_set:
         if has_critical:
-            assert (critical_report and critical_report.get(target))
+            assert (critical_report and critical_report.get(package))
         else:
             assert (
-                not (critical_report and critical_report.get(target))
+                not (critical_report and critical_report.get(package))
             )
 
         if has_warning:
-            assert (warning_report and warning_report.get(target))
+            assert (warning_report and warning_report.get(package))
         else:
             assert (
-                not (warning_report and warning_report.get(target))
+                not (warning_report and warning_report.get(package))
             )

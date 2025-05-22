@@ -1,5 +1,5 @@
 """
-Provides a base class for installation target verifiers.
+Provides a base class for package verifiers.
 """
 
 from abc import (ABCMeta, abstractmethod)
@@ -10,27 +10,26 @@ from scfw.package import Package
 
 class FindingSeverity(Enum):
     """
-    A hierarchy of severity levels for installation target verifier findings.
+    A hierarchy of severity levels for package verifier findings.
 
-    Installation target verifiers attach severity levels to their findings in
-    order to direct the supply-chain firewall to take the correct action with
-    respect to blocking or warning on an installation request.
+    Package verifiers attach severity levels to their findings in order to direct
+    Supply-Chain Firewall to take the correct action with respect to blocking or
+    warning on a package manager command.
 
-    A `CRITICAL` finding causes the supply-chain firewall to block. A `WARNING`
-    finding prompts the firewall to seek confirmation from the user before
-    proceeding with the installation request.
+    A `CRITICAL` finding causes Supply-Chain Firewall to block. A `WARNING` finding
+    prompts it to seek confirmation from the user before running the command.
     """
     CRITICAL = "CRITICAL"
     WARNING = "WARNING"
 
 
-class InstallTargetVerifier(metaclass=ABCMeta):
+class PackageVerifier(metaclass=ABCMeta):
     """
-    Abstract base class for installation target verifiers.
+    Abstract base class for package verifiers.
 
-    Each installation target verifier should implement a service for verifying
-    installation targets in all supported ecosystems against a single reputable
-    source of data on vulnerable and malicious open source packages.
+    Each package verifier should implement a service for verifying packages in all
+    supported ecosystems against a single reputable source of data on vulnerable and
+    malicious open source packages.
     """
     @classmethod
     @abstractmethod
@@ -44,20 +43,19 @@ class InstallTargetVerifier(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def verify(self, target: Package) -> list[tuple[FindingSeverity, str]]:
+    def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
         """
-        Verify the given installation target.
+        Verify the given package.
 
         Args:
-            target: The installation target to verify.
+            package: The `Package` to verify.
 
         Returns:
-            A `list[tuple[FindingSeverity, str]]` of all findings for the given
-            installation target reported by the backing data source, each tagged
-            with a severity level for the firewall's use.
+            A `list[tuple[FindingSeverity, str]]` of all findings for the given package
+            reported by the backing data source, each tagged with a severity level.
 
-            Each `str` in this list should be a concise summary of a single finding
-            and would ideally provide a link or handle to more information about that
-            finding for the benefit of the user.
+            Each `str` in this list should be a concise summary of a single finding and
+            would ideally provide a link or handle to more information about that finding
+            for the benefit of the user.
         """
         pass

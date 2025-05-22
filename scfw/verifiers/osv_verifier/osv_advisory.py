@@ -131,8 +131,8 @@ class OsvSeverityScore:
 @dataclass(eq=True, frozen=True)
 class OsvAdvisory:
     """
-    A representation of an OSV advisory containing only the fields relevant
-    to installation target verification.
+    A representation of an OSV advisory containing only the fields relevant to
+    package verification.
     """
     id: str
     severity: Optional[Severity]

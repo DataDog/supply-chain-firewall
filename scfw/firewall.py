@@ -36,7 +36,7 @@ def run_firewall(args: Namespace) -> int:
 
         package_manager = package_managers.get_package_manager(args.command, executable=args.executable)
 
-        targets = package_manager.dry_run_command(args.command)
+        targets = package_manager.resolve_install_targets(args.command)
         _log.info(f"Command would install: [{', '.join(map(str, targets))}]")
 
         if targets:

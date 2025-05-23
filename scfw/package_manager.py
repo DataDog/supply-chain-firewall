@@ -59,14 +59,20 @@ class PackageManager(metaclass=ABCMeta):
     def run_command(self, command: list[str]):
         """
         Run the given package manager command.
+
+        Args:
+            command: The package manager command to be run.
         """
         pass
 
     @abstractmethod
-    def dry_run_command(self, command: list[str]) -> list[Package]:
+    def resolve_install_targets(self, command: list[str]) -> list[Package]:
         """
-        Perform a dry-run of the given package manager command, resolving the packages
-        that would be installed if it were run.
+        Resolve the package targets that would be installed if the given package
+        manager command were run (without running it).
+
+        Args:
+            command: The package manager command whose installation targets are to be resolved.
 
         Returns:
             A `list[Package]` representing the package targets that would be installed

@@ -104,12 +104,14 @@ class Pip(PackageManager):
         """
         subprocess.run(self._normalize_command(command))
 
-    def dry_run_command(self, command: list[str]) -> list[Package]:
+    def resolve_install_targets(self, command: list[str]) -> list[Package]:
         """
-        Perform a dry-run of the given `pip` command.
+        Resolve the installation targets of the given `pip` command.
 
         Args:
-            command: A `list[str]` containing a `pip` command to dry-run.
+            command:
+                A `list[str]` representing a `pip` command whose installation targets
+                are to be resolved.
 
         Returns:
             A `list[Package]` representing the package targets that would be installed

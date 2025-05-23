@@ -88,12 +88,14 @@ class Npm(PackageManager):
         """
         subprocess.run(self._normalize_command(command))
 
-    def dry_run_command(self, command: list[str]) -> list[Package]:
+    def resolve_install_targets(self, command: list[str]) -> list[Package]:
         """
-        Perform a dry-run of the given `npm` command.
+        Resolve the installation targets of the given `npm` command.
 
         Args:
-            command: A `list[str]` containing an `npm` command to dry-run.
+            command:
+                A `list[str]` representing an `npm` command whose installation targets
+                are to be resolved.
 
         Returns:
             A `list[Package]` representing the package targets that would be installed

@@ -31,11 +31,11 @@ Fixed `PackageManager` to use across all tests.
 )
 def test_npm_command_would_install(command_line: list[str], has_targets: bool):
     """
-    Backend function for testing that an `Npm.dry_run_command` call either
-    does or does not have install targets and does not modify the local npm
-    installation state.
+    Backend function for testing that an `Npm.resolve_install_targets` call
+    either does or does not have install targets and does not modify the local
+    npm installation state.
     """
-    targets = PACKAGE_MANAGER.dry_run_command(command_line)
+    targets = PACKAGE_MANAGER.resolve_install_targets(command_line)
     if has_targets:
         assert targets
     else:
@@ -45,8 +45,8 @@ def test_npm_command_would_install(command_line: list[str], has_targets: bool):
 
 def test_npm_command_would_install_exact():
     """
-    Test that `Npm.dry_run_command` gives the right answer relative to an
-    exact top-level installation target and its dependencies.
+    Test that `Npm.resolve_install_targets` gives the right answer relative to
+    an exact top-level installation target and its dependencies.
     """
     true_targets = list(
         map(
@@ -60,6 +60,6 @@ def test_npm_command_would_install_exact():
     )
 
     command_line = ["npm", "install", "react@18.3.1"]
-    targets = PACKAGE_MANAGER.dry_run_command(command_line)
+    targets = PACKAGE_MANAGER.resolve_install_targets(command_line)
     assert len(targets) == len(true_targets)
     assert all(target in true_targets for target in targets)

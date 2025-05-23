@@ -43,11 +43,11 @@ def test_executable():
 )
 def test_pip_command_would_install(command_line: list[str], has_targets: bool):
     """
-    Backend function for testing that a `Pip.dry_run_command` call either
-    does or does not have install targets and does not modify the local pip
-    installation state.
+    Backend function for testing that a `Pip.resolve_install_targets` call
+    either does or does not have install targets and does not modify the
+    local pip installation state.
     """
-    targets = PACKAGE_MANAGER.dry_run_command(command_line)
+    targets = PACKAGE_MANAGER.resolve_install_targets(command_line)
     if has_targets:
         assert targets
     else:
@@ -57,8 +57,8 @@ def test_pip_command_would_install(command_line: list[str], has_targets: bool):
 
 def test_pip_command_would_install_exact():
     """
-    Test that `PipCommand.would_install` gives the right answer relative to an
-    exact top-level installation target and its dependencies.
+    Test that `Pip.resolve_install_targets` gives the right answer relative to
+    an exact top-level installation target and its dependencies.
     """
     true_targets = list(
         map(
@@ -75,6 +75,6 @@ def test_pip_command_would_install_exact():
     )
 
     command_line = ["pip", "install", "--ignore-installed", "botocore==1.15.0"]
-    targets = PACKAGE_MANAGER.dry_run_command(command_line)
+    targets = PACKAGE_MANAGER.resolve_install_targets(command_line)
     assert len(targets) == len(true_targets)
     assert all(target in true_targets for target in targets)

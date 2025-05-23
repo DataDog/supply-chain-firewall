@@ -1,10 +1,10 @@
 """
-Tests of `PoetryCommand`.
+Tests of `Poetry`, the `PackageManager` subclass.
 """
 
-from scfw.commands.poetry_command import PoetryCommand
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
+from scfw.package_managers.poetry import Poetry
 
 from .test_poetry import (
     POETRY_V2, TARGET, TARGET_LATEST, TARGET_PREVIOUS, TEST_PROJECT_NAME,
@@ -13,6 +13,11 @@ from .test_poetry import (
     poetry_project_target_previous, poetry_project_target_previous_lock_latest,
     poetry_show, poetry_version,
 )
+
+PACKAGE_MANAGER = Poetry()
+"""
+Fixed `PackageManager` to use across all tests.
+"""
 
 TARGET_REPO = f"https://github.com/{TARGET}/py-tree-sitter"
 
@@ -55,8 +60,7 @@ def test_poetry_command_would_install_add(
 
         init_state = poetry_show(poetry_project)
 
-        command = PoetryCommand(["poetry", "add", "--directory", poetry_project, target_spec])
-        targets = command.would_install()
+        targets = PACKAGE_MANAGER.dry_run_command(["poetry", "add", "--directory", poetry_project, target_spec])
 
         assert (
             len(targets) == 1
@@ -148,4 +152,4 @@ def _test_poetry_command_would_install(command, project, targets) -> bool:
 
     targets = [Package(ECOSYSTEM.PyPI, name, version) for name, version in targets]
 
-    return PoetryCommand(command).would_install() == targets and poetry_show(project) == init_state
+    return PACKAGE_MANAGER.dry_run_command(command) == targets and poetry_show(project) == init_state

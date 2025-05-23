@@ -6,10 +6,10 @@ from argparse import Namespace
 import inquirer  # type: ignore
 import logging
 
-from scfw.command import UnsupportedVersionError
-import scfw.commands as commands
 from scfw.logger import FirewallAction
 from scfw.loggers import FirewallLoggers
+from scfw.package_manager import UnsupportedVersionError
+import scfw.package_managers as package_managers
 from scfw.verifier import FindingSeverity
 from scfw.verifiers import FirewallVerifiers
 
@@ -34,8 +34,9 @@ def run_firewall(args: Namespace) -> int:
         loggers = FirewallLoggers()
         _log.info(f"Command: '{' '.join(args.command)}'")
 
-        command = commands.get_package_manager_command(args.command, executable=args.executable)
-        targets = command.would_install()
+        package_manager = package_managers.get_package_manager(args.command, executable=args.executable)
+
+        targets = package_manager.dry_run_command(args.command)
         _log.info(f"Command would install: [{', '.join(map(str, targets))}]")
 
         if targets:
@@ -48,8 +49,8 @@ def run_firewall(args: Namespace) -> int:
 
             if (critical_report := reports.get(FindingSeverity.CRITICAL)):
                 loggers.log(
-                    command.ecosystem(),
-                    command.executable(),
+                    package_manager.ecosystem(),
+                    package_manager.executable(),
                     args.command,
                     list(critical_report.packages()),
                     action=FirewallAction.BLOCK,
@@ -65,8 +66,8 @@ def run_firewall(args: Namespace) -> int:
 
                 if not (inquirer.confirm("Proceed with installation?", default=False)):
                     loggers.log(
-                        command.ecosystem(),
-                        command.executable(),
+                        package_manager.ecosystem(),
+                        package_manager.executable(),
                         args.command,
                         list(warning_report.packages()),
                         action=FirewallAction.BLOCK,
@@ -80,14 +81,14 @@ def run_firewall(args: Namespace) -> int:
             print("Dry-run: exiting without running command.")
         else:
             loggers.log(
-                command.ecosystem(),
-                command.executable(),
+                package_manager.ecosystem(),
+                package_manager.executable(),
                 args.command,
                 targets,
                 action=FirewallAction.ALLOW,
                 warned=warned
             )
-            command.run()
+            package_manager.run_command(args.command)
         return 0
 
     except UnsupportedVersionError as e:

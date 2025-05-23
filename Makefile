@@ -9,7 +9,7 @@ checks: typecheck lint test
 
 coverage: test coverage-report
 
-test: test-cli test-python-executable test-pip test-pip-command test-poetry test-poetry-command test-npm test-npm-command test-verifiers
+test: test-cli test-python-executable test-pip test-pip-class test-poetry test-poetry-class test-npm test-npm-class test-verifiers
 
 typecheck:
 	mypy --install-types --non-interactive scfw
@@ -21,34 +21,34 @@ test-cli:
 	COVERAGE_FILE=.coverage.cli coverage run -m pytest tests/test_cli.py
 
 test-python-executable:
-	COVERAGE_FILE=.coverage.python.executable coverage run -m pytest tests/commands/test_pip_command.py -k test_executable
+	COVERAGE_FILE=.coverage.python.executable coverage run -m pytest tests/package_managers/test_pip_class.py -k test_executable
 
 test-pip:
-	COVERAGE_FILE=.coverage.pip coverage run -m pytest tests/commands/test_pip.py
+	COVERAGE_FILE=.coverage.pip coverage run -m pytest tests/package_managers/test_pip.py
 
-test-pip-command:
-	COVERAGE_FILE=.coverage.pip.command coverage run -m pytest tests/commands/test_pip_command.py -k 'not test_executable'
+test-pip-class:
+	COVERAGE_FILE=.coverage.pip.class coverage run -m pytest tests/package_managers/test_pip_class.py -k 'not test_executable'
 
 test-poetry:
-	COVERAGE_FILE=.coverage.poetry coverage run -m pytest tests/commands/test_poetry.py
+	COVERAGE_FILE=.coverage.poetry coverage run -m pytest tests/package_managers/test_poetry.py
 
-test-poetry-command:
-	COVERAGE_FILE=.coverage.poetry.command coverage run -m pytest tests/commands/test_poetry_command.py
+test-poetry-class:
+	COVERAGE_FILE=.coverage.poetry.class coverage run -m pytest tests/package_managers/test_poetry_class.py
 
 test-npm:
-	COVERAGE_FILE=.coverage.npm coverage run -m pytest tests/commands/test_npm.py
+	COVERAGE_FILE=.coverage.npm coverage run -m pytest tests/package_managers/test_npm.py
 
-test-npm-command:
-	COVERAGE_FILE=.coverage.npm.command coverage run -m pytest tests/commands/test_npm_command.py
+test-npm-class:
+	COVERAGE_FILE=.coverage.npm.class coverage run -m pytest tests/package_managers/test_npm_class.py
 
 test-verifiers:
 	COVERAGE_FILE=.coverage.verifiers coverage run -m pytest tests/verifiers
 
 coverage-report:
 	coverage combine .coverage.cli \
-	.coverage.python.executable .coverage.pip .coverage.pip.command \
-	.coverage.poetry .coverage.poetry.command \
-	.coverage.npm .coverage.npm.command \
+	.coverage.python.executable .coverage.pip .coverage.pip.class \
+	.coverage.poetry .coverage.poetry.class \
+	.coverage.npm .coverage.npm.class \
 	.coverage.verifiers
 	coverage report
 

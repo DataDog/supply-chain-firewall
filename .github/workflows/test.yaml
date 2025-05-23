@@ -76,7 +76,7 @@ jobs:
       - name: Test firewall pip integration
         run: |
           make test-pip
-          make test-pip-command
+          make test-pip-class
 
   poetry-integration:
     runs-on: ubuntu-latest
@@ -106,7 +106,7 @@ jobs:
       - name: Test firewall Poetry integration
         run: |
           make test-poetry
-          make test-poetry-command
+          make test-poetry-class
 
   npm-integration:
     name: npm-integration (${{ matrix.npm-version }})
@@ -277,7 +277,7 @@ jobs:
           fi
           npm install -g npm@${{ matrix.npm-version }}
           make test-npm
-          make test-npm-command
+          make test-npm-class
 
   verifiers:
     runs-on: ubuntu-latest

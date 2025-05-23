@@ -5,7 +5,7 @@ Tests of `DatadogMaliciousPackagesVerifier.
 import pytest
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.target import InstallTarget
+from scfw.package import Package
 from scfw.verifier import FindingSeverity
 from scfw.verifiers import FirewallVerifiers
 from scfw.verifiers.dd_verifier import DatadogMaliciousPackagesVerifier
@@ -27,17 +27,15 @@ def test_dd_verifier_malicious(ecosystem: ECOSYSTEM):
             manifest = DD_VERIFIER._pypi_manifest
 
     # Only the package name is checked, so use a dummy version string
-    test_set = [
-        InstallTarget(ecosystem, package, "dummy version") for package in manifest
-    ]
+    test_set = [Package(ecosystem, name, "dummy version") for name in manifest]
 
     # Create a modified `FirewallVerifiers` only containing the Datadog verifier
     verifier = FirewallVerifiers()
     verifier._verifiers = [DD_VERIFIER]
 
-    reports = verifier.verify_targets(test_set)
+    reports = verifier.verify_packages(test_set)
     assert (critical_report := reports.get(FindingSeverity.CRITICAL))
     assert not reports.get(FindingSeverity.WARNING)
 
-    for target in test_set:
-        assert critical_report.get(target)
+    for package in test_set:
+        assert critical_report.get(package)

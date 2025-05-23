@@ -1,27 +1,30 @@
 """
-Tests of `PipCommand`.
+Tests of `Pip`, the `PackageManager` subclass.
 """
 
 import shutil
-import sys
 
 import pytest
 
-from scfw.commands.pip_command import PipCommand
 from scfw.ecosystem import ECOSYSTEM
-from scfw.target import InstallTarget
+from scfw.package import Package
+from scfw.package_managers.pip import Pip
 
 from .test_pip import INIT_PIP_STATE, TEST_TARGET, pip_list
+
+PACKAGE_MANAGER = Pip()
+"""
+Fixed `PackageManager` to use across all tests.
+"""
 
 
 def test_executable():
     """
-    Test whether `PipCommand` correctly discovers the Python executable active
-    in the current environment.
+    Test whether `Pip` correctly discovers the Python executable active in the
+    current environment.
     """
     python = shutil.which("python")
-    command = PipCommand(["pip", "--version"])
-    assert python and command.executable() == python
+    assert python and PACKAGE_MANAGER.executable() == python
 
 
 @pytest.mark.parametrize(
@@ -40,12 +43,11 @@ def test_executable():
 )
 def test_pip_command_would_install(command_line: list[str], has_targets: bool):
     """
-    Backend function for testing that a `PipCommand.would_install` call either
-    does or does not have install targets and does not modify the local pip
-    installation state.
+    Backend function for testing that a `Pip.resolve_install_targets` call
+    either does or does not have install targets and does not modify the
+    local pip installation state.
     """
-    command = PipCommand(command_line, executable=sys.executable)
-    targets = command.would_install()
+    targets = PACKAGE_MANAGER.resolve_install_targets(command_line)
     if has_targets:
         assert targets
     else:
@@ -55,12 +57,12 @@ def test_pip_command_would_install(command_line: list[str], has_targets: bool):
 
 def test_pip_command_would_install_exact():
     """
-    Test that `PipCommand.would_install` gives the right answer relative to an
-    exact top-level installation target and its dependencies.
+    Test that `Pip.resolve_install_targets` gives the right answer relative to
+    an exact top-level installation target and its dependencies.
     """
     true_targets = list(
         map(
-            lambda p: InstallTarget(ECOSYSTEM.PyPI, p[0], p[1]),
+            lambda p: Package(ECOSYSTEM.PyPI, p[0], p[1]),
             [
                 ("botocore", "1.15.0"),
                 ("docutils", "0.15.2"),
@@ -73,7 +75,6 @@ def test_pip_command_would_install_exact():
     )
 
     command_line = ["pip", "install", "--ignore-installed", "botocore==1.15.0"]
-    command = PipCommand(command_line, executable=sys.executable)
-    targets = command.would_install()
+    targets = PACKAGE_MANAGER.resolve_install_targets(command_line)
     assert len(targets) == len(true_targets)
     assert all(target in true_targets for target in targets)

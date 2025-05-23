@@ -9,8 +9,8 @@ import sys
 from typing import Callable, Optional
 
 import scfw
-from scfw.commands import SUPPORTED_PACKAGE_MANAGERS
 from scfw.logger import FirewallAction
+from scfw.package_managers import SUPPORTED_PACKAGE_MANAGERS
 from scfw.parser import ArgumentParser
 
 _LOG_LEVELS = list(

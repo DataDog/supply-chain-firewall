@@ -1,22 +1,22 @@
 """
-A class for structuring and displaying the results of installation target verification.
+A class for structuring and displaying the results of package verification.
 """
 
 from collections.abc import Iterable
 from typing import Optional
 
-from scfw.target import InstallTarget
+from scfw.package import Package
 
 
 class VerificationReport:
     """
-    A structured report containing findings resulting from installation target verification.
+    A structured report containing findings resulting from package verification.
     """
     def __init__(self) -> None:
         """
         Initialize a new, empty `VerificationReport`.
         """
-        self._report: dict[InstallTarget, list[str]] = {}
+        self._report: dict[Package, list[str]] = {}
 
     def __len__(self) -> int:
         """
@@ -39,43 +39,40 @@ class VerificationReport:
                 show_line(linenum, line) for linenum, line in enumerate(finding.split('\n'))
             )
 
-        def show_findings(target: InstallTarget, findings: list[str]) -> str:
-            return (
-                f"Installation target {target}:\n" + '\n'.join(map(show_finding, findings))
-            )
+        def show_findings(package: Package, findings: list[str]) -> str:
+            return f"Package {package}:\n" + '\n'.join(map(show_finding, findings))
 
         return '\n'.join(
-            show_findings(target, findings) for target, findings in self._report.items()
+            show_findings(package, findings) for package, findings in self._report.items()
         )
 
-    def get(self, target: InstallTarget) -> Optional[list[str]]:
+    def get(self, package: Package) -> Optional[list[str]]:
         """
-        Get the findings for the given installation target.
+        Get the findings for the given package.
 
         Args:
-            target: The `InstallTarget` to look up in the report.
+            package: The `Package` to look up in the report.
 
         Returns:
-            The findings for `target` contained in the report or `None` if `target`
-            is not reported on.
+            The reported findings for `package` or `None` if it is not present.
         """
-        return self._report.get(target)
+        return self._report.get(package)
 
-    def insert(self, target: InstallTarget, finding: str) -> None:
+    def insert(self, package: Package, finding: str) -> None:
         """
-        Insert the given installation target and finding into the report.
+        Insert the given package and finding into the report.
 
         Args:
-            target: The `InstallTarget` to insert into the report.
-            findings: The finding being reported for `target`.
+            package: The `Package` to insert into the report.
+            findings: The finding being reported for `package`.
         """
-        if target in self._report:
-            self._report[target].append(finding)
+        if package in self._report:
+            self._report[package].append(finding)
         else:
-            self._report[target] = [finding]
+            self._report[package] = [finding]
 
-    def targets(self) -> Iterable[InstallTarget]:
+    def packages(self) -> Iterable[Package]:
         """
-        Return an iterator over `InstallTargets` mentioned in the report.
+        Return an iterator over `Package` mentioned in the report.
         """
-        return (target for target in self._report)
+        return (package for package in self._report)

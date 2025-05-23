@@ -1,10 +1,10 @@
 """
-Tests of `PoetryCommand`.
+Tests of `Poetry`, the `PackageManager` subclass.
 """
 
-from scfw.commands.poetry_command import PoetryCommand
 from scfw.ecosystem import ECOSYSTEM
-from scfw.target import InstallTarget
+from scfw.package import Package
+from scfw.package_managers.poetry import Poetry
 
 from .test_poetry import (
     POETRY_V2, TARGET, TARGET_LATEST, TARGET_PREVIOUS, TEST_PROJECT_NAME,
@@ -13,6 +13,11 @@ from .test_poetry import (
     poetry_project_target_previous, poetry_project_target_previous_lock_latest,
     poetry_show, poetry_version,
 )
+
+PACKAGE_MANAGER = Poetry()
+"""
+Fixed `PackageManager` to use across all tests.
+"""
 
 TARGET_REPO = f"https://github.com/{TARGET}/py-tree-sitter"
 
@@ -23,7 +28,7 @@ def test_poetry_command_would_install_add(
     poetry_project_target_previous,
 ):
     """
-    Tests that `PoetryCommand.would_install()` for a `poetry add` command
+    Tests that `Poetry.resolve_install_targets()` for a `poetry add` command
     correctly resolves installation targets for a variety of target specfications
     without installing anything.
     """
@@ -55,13 +60,14 @@ def test_poetry_command_would_install_add(
 
         init_state = poetry_show(poetry_project)
 
-        command = PoetryCommand(["poetry", "add", "--directory", poetry_project, target_spec])
-        targets = command.would_install()
+        targets = PACKAGE_MANAGER.resolve_install_targets(
+            ["poetry", "add", "--directory", poetry_project, target_spec]
+        )
 
         assert (
             len(targets) == 1
             and targets[0].ecosystem == ECOSYSTEM.PyPI
-            and targets[0].package == TARGET
+            and targets[0].name == TARGET
             and targets[0].version == target_version
         )
         assert poetry_show(poetry_project) == init_state
@@ -74,7 +80,7 @@ def test_poetry_command_would_install_install(
     poetry_project_target_previous_lock_latest,
 ):
     """
-    Tests that `PoetryCommand.would_install()` for a `poetry install` command
+    Tests that `Poetry.resolve_install_targets()` for a `poetry install` command
     correctly resolves installation targets without installing anything.
     """
     test_cases = [
@@ -98,7 +104,7 @@ def test_poetry_command_would_install_sync(
     poetry_project_target_previous_lock_latest,
 ):
     """
-    Tests that `PoetryCommand.would_install()` for a `poetry sync` command
+    Tests that `Poetry.resolve_install_targets()` for a `poetry sync` command
     correctly resolves installation targets without installing anything.
     """
     if poetry_version() < POETRY_V2:
@@ -124,7 +130,7 @@ def test_poetry_command_would_install_update(
     poetry_project_target_previous_lock_latest,
 ):
     """
-    Tests that `PoetryCommand.would_install()` for a `poetry update` command
+    Tests that `Poetry.resolve_install_targets()` for a `poetry update` command
     correctly resolves installation targets without installing anything.
     """
     test_cases = [
@@ -141,11 +147,11 @@ def test_poetry_command_would_install_update(
 
 def _test_poetry_command_would_install(command, project, targets) -> bool:
     """
-    Tests that a `PoetryCommand` initialized from `command` when run in `project`
-    correctly resolves installation targets without installing anything.
+    Tests that `Poetry.resolve_install_targets()` correctly resolves installation
+    targets without installing anything.
     """
     init_state = poetry_show(project)
 
-    targets = [InstallTarget(ECOSYSTEM.PyPI, package, version) for package, version in targets]
+    targets = [Package(ECOSYSTEM.PyPI, name, version) for name, version in targets]
 
-    return PoetryCommand(command).would_install() == targets and poetry_show(project) == init_state
+    return PACKAGE_MANAGER.resolve_install_targets(command) == targets and poetry_show(project) == init_state

@@ -1,14 +1,19 @@
 """
-Tests of `NpmCommand`.
+Tests of `Npm`, the `PackageManager` subclass.
 """
 
 import pytest
 
-from scfw.commands.npm_command import NpmCommand
 from scfw.ecosystem import ECOSYSTEM
-from scfw.target import InstallTarget
+from scfw.package import Package
+from scfw.package_managers.npm import Npm
 
 from .test_npm import INIT_NPM_STATE, TEST_TARGET, npm_list
+
+PACKAGE_MANAGER = Npm()
+"""
+Fixed `PackageManager` to use across all tests.
+"""
 
 
 @pytest.mark.parametrize(
@@ -26,12 +31,11 @@ from .test_npm import INIT_NPM_STATE, TEST_TARGET, npm_list
 )
 def test_npm_command_would_install(command_line: list[str], has_targets: bool):
     """
-    Backend function for testing that an `NpmCommand.would_install` call either
-    does or does not have install targets and does not modify the local npm
-    installation state.
+    Backend function for testing that an `Npm.resolve_install_targets` call
+    either does or does not have install targets and does not modify the local
+    npm installation state.
     """
-    command = NpmCommand(command_line)
-    targets = command.would_install()
+    targets = PACKAGE_MANAGER.resolve_install_targets(command_line)
     if has_targets:
         assert targets
     else:
@@ -41,12 +45,12 @@ def test_npm_command_would_install(command_line: list[str], has_targets: bool):
 
 def test_npm_command_would_install_exact():
     """
-    Test that `NpmCommand.would_install` gives the right answer relative to an
-    exact top-level installation target and its dependencies.
+    Test that `Npm.resolve_install_targets` gives the right answer relative to
+    an exact top-level installation target and its dependencies.
     """
     true_targets = list(
         map(
-            lambda p: InstallTarget(ECOSYSTEM.Npm, p[0], p[1]),
+            lambda p: Package(ECOSYSTEM.Npm, p[0], p[1]),
             [
                 ("js-tokens", "4.0.0"),
                 ("loose-envify", "1.4.0"),
@@ -56,7 +60,6 @@ def test_npm_command_would_install_exact():
     )
 
     command_line = ["npm", "install", "react@18.3.1"]
-    command = NpmCommand(command_line)
-    targets = command.would_install()
+    targets = PACKAGE_MANAGER.resolve_install_targets(command_line)
     assert len(targets) == len(true_targets)
     assert all(target in true_targets for target in targets)

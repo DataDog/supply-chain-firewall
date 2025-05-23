@@ -62,9 +62,9 @@ coverage==7.8.0 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:f3c38e4e5ccbdc9198aecc766cedbb134b2d89bf64533973678dfcf07effd883 \
     --hash=sha256:f9983d01d7705b2d1f7a95e10bbe4091fabc03a46881a256c2787637b087003f \
     --hash=sha256:fa260de59dfb143af06dcf30c2be0b200bed2a73737a8a59248fcb9fa601ef0f
-exceptiongroup==1.2.2 ; python_version == "3.10" \
-    --hash=sha256:3111b9d131c238bec2f8f516e123e14ba243563fb135d3fe885990585aa7795b \
-    --hash=sha256:47c2edf7c6738fafb49fd34290706d1a1a2f4d1c6df275526b62cbb4aa5393cc
+exceptiongroup==1.3.0 ; python_version == "3.10" \
+    --hash=sha256:4d111e6e0c13d0644cad6ddaa7ed0261a0b36971f6d23e7ec9b4b9097da78a10 \
+    --hash=sha256:b241f5885f560bc56a59ee63ca4c6a8bfa46ae4ad651af316d4e81817bb9fd88
 flake8==7.2.0 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:93b92ba5bdb60754a6da14fa3b93a9361fd00a59632ada61fd7b130436c40343 \
     --hash=sha256:fa558ae3f6f7dbf2b4f22663e5343b6b6023620461f8d4ff2019ef4b5ee70426
@@ -181,9 +181,9 @@ packaging==25.0 ; python_version >= "3.10" and python_version < "4" \
 pdoc==15.0.3 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:6482d8ebbd40185fea5e6aec2f1592f4be92e93cf6bf70b9e2a00378bbaf3252 \
     --hash=sha256:686c921ef2622f166de5f73b7241935a4ddac79c8d10dbfa43def8c1fca86550
-pluggy==1.5.0 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:2cffa88e94fdc978c4c574f15f9e59b7f4201d439195c3715ca9e2486f1d0cf1 \
-    --hash=sha256:44e1ad92c8ca002de6377e165f3e0f1be63266ab4d554740532335b9d75ea669
+pluggy==1.6.0 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
+    --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
 pycodestyle==2.13.0 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:35863c5974a271c7a726ed228a14a4f6daf49df369d8c50cd9a6f58a5e143ba9 \
     --hash=sha256:c8415bf09abe81d9c7f872502a6eee881fbe85d8763dd5b9924bb0a01d67efae

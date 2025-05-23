@@ -8,7 +8,7 @@ from enum import Enum
 from typing_extensions import Self
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.target import InstallTarget
+from scfw.package import Package
 
 
 class FirewallAction(Enum):
@@ -80,7 +80,7 @@ class FirewallLogger(metaclass=ABCMeta):
         ecosystem: ECOSYSTEM,
         executable: str,
         command: list[str],
-        targets: list[InstallTarget],
+        targets: list[Package],
         action: FirewallAction,
         warned: bool
     ):

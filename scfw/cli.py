@@ -22,6 +22,29 @@ _LOG_LEVELS = list(
 _DEFAULT_LOG_LEVEL = logging.getLevelName(logging.WARNING)
 
 
+def _add_audit_cli(parser: ArgumentParser):
+    """
+    Defines the command-line interface for the firewall's `audit` subcommand.
+
+    Args:
+        parser: The `ArgumentParser` to which the `audit` command line will be added.
+    """
+    parser.add_argument(
+        "package_manager",
+        type=str,
+        choices=SUPPORTED_PACKAGE_MANAGERS,
+        help="The package manager whose installed packages should be verified"
+    )
+
+    parser.add_argument(
+        "--executable",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Package manager executable to use for running commands (default: environmentally determined)"
+    )
+
+
 def _add_configure_cli(parser: ArgumentParser):
     """
     Defines the command-line interface for the firewall's `configure` subcommand.
@@ -105,7 +128,7 @@ def _add_run_cli(parser: ArgumentParser):
         type=str,
         default=None,
         metavar="PATH",
-        help="Python or npm executable to use for running commands (default: environmentally determined)"
+        help="Package manager executable to use for running commands (default: environmentally determined)"
     )
 
 
@@ -113,6 +136,7 @@ class Subcommand(Enum):
     """
     The set of subcommands that comprise the supply-chain firewall's command line.
     """
+    Audit = "audit"
     Configure = "configure"
     Run = "run"
 
@@ -134,6 +158,11 @@ class Subcommand(Enum):
             method for configuring the subparser corresponding to the subcommand.
         """
         match self:
+            case Subcommand.Audit:
+                return {
+                    "exit_on_error": False,
+                    "description": "Audit installed packages using Supply-Chain Firewall's verifiers."
+                }
             case Subcommand.Configure:
                 return {
                     "exit_on_error": False,
@@ -157,6 +186,8 @@ class Subcommand(Enum):
             case via a sequence of calls to `ArgumentParser.add_argument()`.
         """
         match self:
+            case Subcommand.Audit:
+                return _add_audit_cli
             case Subcommand.Configure:
                 return _add_configure_cli
             case Subcommand.Run:
@@ -234,7 +265,12 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
         args = parser.parse_args(argv[1:hinge+1])
         args.subcommand = Subcommand(args.subcommand)
 
-        # Config removal option is mutually exclusive with the others
+        if args.subcommand == Subcommand.Run:
+            args.command = argv[hinge:]
+
+        if args.subcommand == Subcommand.Audit and argv[hinge+1:]:
+            raise ArgumentError(None, "Received unexpected package manager command")
+
         if (
             args.subcommand == Subcommand.Configure
             and args.remove
@@ -248,9 +284,6 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
             })
         ):
             raise ArgumentError(None, "Cannot combine configuration and removal options")
-
-        if args.subcommand == Subcommand.Run:
-            args.command = argv[hinge:]
 
         return args, help_msg
 

@@ -138,6 +138,16 @@ class Poetry(PackageManager):
             _log.info("Encountered an error while resolving poetry installation targets")
             return []
 
+    def list_installed_packages(self) -> list[Package]:
+        """
+        List all `PyPI` packages installed in the active `poetry` environment.
+
+        Returns:
+            A `list[Package]` representing all `PyPI` packages installed in the active
+            `poetry` environment.
+        """
+        raise NotImplementedError("Not yet implemented")
+
     def _normalize_command(self, command: list[str]) -> list[str]:
         """
         Normalize a `poetry` command.

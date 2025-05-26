@@ -163,6 +163,16 @@ class Npm(PackageManager):
 
         return list(map(str_to_package, targets))
 
+    def list_installed_packages(self) -> list[Package]:
+        """
+        List all `npm` packages installed in the active `npm` environment.
+
+        Returns:
+            A `list[Package]` representing all `npm` packages installed in the active
+            `npm` environment.
+        """
+        raise NotImplementedError("Not yet implemented")
+
     def _normalize_command(self, command: list[str]) -> list[str]:
         """
         Normalize an `npm` command.

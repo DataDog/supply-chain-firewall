@@ -31,7 +31,7 @@ def main() -> int:
     _log.info(f"Starting Supply-Chain Firewall on {time.asctime(time.localtime())}")
     _log.debug(f"Command line: {vars(args)}")
 
-    match Subcommand(args.subcommand):
+    match args.subcommand:
         case Subcommand.Configure:
             return configure.run_configure(args)
         case Subcommand.Run:

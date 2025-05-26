@@ -32,12 +32,9 @@ def run_firewall(args: Namespace) -> int:
         warned = False
 
         loggers = FirewallLoggers()
-
-        if not args.command:
-            raise ValueError("Missing package manager command")
         _log.info(f"Command: '{' '.join(args.command)}'")
 
-        package_manager = package_managers.get_package_manager(args.command[0], executable=args.executable)
+        package_manager = package_managers.get_package_manager(args.package_manager, executable=args.executable)
 
         targets = package_manager.resolve_install_targets(args.command)
         _log.info(f"Command would install: [{', '.join(map(str, targets))}]")

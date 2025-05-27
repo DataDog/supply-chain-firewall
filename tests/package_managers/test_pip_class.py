@@ -6,6 +6,7 @@ import shutil
 
 import pytest
 
+import scfw
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.package_managers.pip import Pip
@@ -78,3 +79,10 @@ def test_pip_command_would_install_exact():
     targets = PACKAGE_MANAGER.resolve_install_targets(command_line)
     assert len(targets) == len(true_targets)
     assert all(target in true_targets for target in targets)
+
+
+def test_pip_list_installed_packages():
+    """
+    Test that `Pip.list_installed_packages` correctly parses `pip` output.
+    """
+    assert Package(ECOSYSTEM.PyPI, "scfw", scfw.__version__) in PACKAGE_MANAGER.list_installed_packages()

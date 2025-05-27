@@ -2,6 +2,7 @@
 Provides a `PackageManager` representation of `npm`.
 """
 
+import json
 import logging
 import os
 import shutil
@@ -170,8 +171,35 @@ class Npm(PackageManager):
         Returns:
             A `list[Package]` representing all `npm` packages installed in the active
             `npm` environment.
+
+        Raises:
+            RuntimeError: Failed to list installed packages or decode report JSON.
+            ValueError: Encountered a malformed report for an installed package.
         """
-        raise NotImplementedError("Not yet implemented")
+        def dependencies_to_packages(dependencies: dict[str, dict]) -> set[Package]:
+            packages = set()
+
+            for name, package_data in dependencies.items():
+                if (package_dependencies := package_data.get("dependencies")):
+                    packages |= dependencies_to_packages(package_dependencies)
+                packages.add(Package(ECOSYSTEM.Npm, name, package_data["version"]))
+
+            return packages
+
+        try:
+            npm_list_command = self._normalize_command(["npm", "list", "--all", "--json"])
+            npm_list = subprocess.run(npm_list_command, check=True, text=True, capture_output=True)
+            dependencies = json.loads(npm_list.stdout.strip()).get("dependencies")
+            return list(dependencies_to_packages(dependencies)) if dependencies else []
+
+        except subprocess.CalledProcessError:
+            raise RuntimeError("Failed to list npm installed packages")
+
+        except json.JSONDecodeError:
+            raise RuntimeError("Failed to decode installed package report JSON")
+
+        except KeyError:
+            raise ValueError("Malformed installed package report")
 
     def _normalize_command(self, command: list[str]) -> list[str]:
         """

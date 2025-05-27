@@ -145,6 +145,16 @@ def test_poetry_command_would_install_update(
     )
 
 
+def test_poetry_list_installed_packages(monkeypatch, poetry_project_target_latest):
+    """
+    Tests that `Poetry.list_installed_packages` correctly parses `poetry` output.
+    """
+    # Change directories into the test project directory for only this test
+    monkeypatch.chdir(poetry_project_target_latest)
+
+    assert PACKAGE_MANAGER.list_installed_packages() == [Package(ECOSYSTEM.PyPI, TARGET, TARGET_LATEST)]
+
+
 def _test_poetry_command_would_install(command, project, targets) -> bool:
     """
     Tests that `Poetry.resolve_install_targets()` correctly resolves installation

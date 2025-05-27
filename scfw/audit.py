@@ -6,6 +6,7 @@ from argparse import Namespace
 import logging
 
 import scfw.package_managers as package_managers
+from scfw.report import VerificationReport
 from scfw.verifier import FindingSeverity
 from scfw.verifiers import FirewallVerifiers
 
@@ -33,10 +34,15 @@ def run_audit(args: Namespace) -> int:
 
         reports = verifiers.verify_packages(packages)
 
+        merged_report = VerificationReport()
         for severity in FindingSeverity:
-            if (report := reports.get(severity)):
-                print(f"\n{severity} findings:")
-                print(report)
+            if (severity_report := reports.get(severity)):
+                merged_report.extend(severity_report)
+
+        if merged_report:
+            print(merged_report)
+        else:
+            print("No issues found.")
 
         return 0
 

@@ -3,6 +3,8 @@ Tests of `Npm`, the `PackageManager` subclass.
 """
 
 import pytest
+import subprocess
+from tempfile import TemporaryDirectory
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
@@ -63,3 +65,15 @@ def test_npm_command_would_install_exact():
     targets = PACKAGE_MANAGER.resolve_install_targets(command_line)
     assert len(targets) == len(true_targets)
     assert all(target in true_targets for target in targets)
+
+
+def test_npm_list_installed_packages(monkeypatch):
+    """
+    Test that `Npm.list_installed_packages` correctly parses `npm` output.
+    """
+    target = Package(ECOSYSTEM.Npm, "react", "19.1.0")
+
+    with TemporaryDirectory() as tmp:
+        monkeypatch.chdir(tmp)
+        subprocess.run(["npm", "install", f"{target.name}@{target.version}"], check=True)
+        assert PACKAGE_MANAGER.list_installed_packages() == [target]

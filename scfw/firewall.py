@@ -34,7 +34,7 @@ def run_firewall(args: Namespace) -> int:
         loggers = FirewallLoggers()
         _log.info(f"Command: '{' '.join(args.command)}'")
 
-        package_manager = package_managers.get_package_manager(args.command, executable=args.executable)
+        package_manager = package_managers.get_package_manager(args.package_manager, executable=args.executable)
 
         targets = package_manager.resolve_install_targets(args.command)
         _log.info(f"Command would install: [{', '.join(map(str, targets))}]")
@@ -64,7 +64,7 @@ def run_firewall(args: Namespace) -> int:
                 print(warning_report)
                 warned = True
 
-                if not (inquirer.confirm("Proceed with installation?", default=False)):
+                if not args.dry_run and not inquirer.confirm("Proceed with installation?", default=False):
                     loggers.log(
                         package_manager.ecosystem(),
                         package_manager.executable(),

@@ -4,6 +4,7 @@ A class for structuring and displaying the results of package verification.
 
 from collections.abc import Iterable
 from typing import Optional
+from typing_extensions import Self
 
 from scfw.package import Package
 
@@ -70,6 +71,19 @@ class VerificationReport:
             self._report[package].append(finding)
         else:
             self._report[package] = [finding]
+
+    def extend(self, other: Self) -> None:
+        """
+        Extend a `VerificationReport` with additional findings from another.
+
+        Args:
+            other: The `VerificationReport` whose findings will be extended into `self`.
+        """
+        for package, findings in other._report.items():
+            if package in self._report:
+                self._report[package].extend(findings)
+            else:
+                self._report[package] = findings
 
     def packages(self) -> Iterable[Package]:
         """

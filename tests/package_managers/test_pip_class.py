@@ -3,6 +3,7 @@ Tests of `Pip`, the `PackageManager` subclass.
 """
 
 import shutil
+import subprocess
 
 import pytest
 
@@ -85,4 +86,18 @@ def test_pip_list_installed_packages():
     """
     Test that `Pip.list_installed_packages` correctly parses `pip` output.
     """
-    assert Package(ECOSYSTEM.PyPI, "scfw", scfw.__version__) in PACKAGE_MANAGER.list_installed_packages()
+    def pip_list() -> list[Package]:
+        pip_list = subprocess.run(["pip", "list"], check=True, text=True, capture_output=True)
+        package_lines = pip_list.stdout.strip().split('\n')[2:]
+        return [
+            Package(ECOSYSTEM.PyPI, tokens[0], tokens[1])
+            for tokens in map(lambda l: l.split(), package_lines)
+        ]
+
+    true_installed = pip_list()
+    test_installed = PACKAGE_MANAGER.list_installed_packages()
+
+    assert (
+        len(test_installed) == len(true_installed)
+        and all(package in true_installed for package in test_installed)
+    )

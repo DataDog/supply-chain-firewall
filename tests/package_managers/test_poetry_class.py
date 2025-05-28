@@ -22,7 +22,7 @@ Fixed `PackageManager` to use across all tests.
 TARGET_REPO = f"https://github.com/{TARGET}/py-tree-sitter"
 
 
-def test_poetry_command_would_install_add(
+def test_poetry_command_resolve_install_targets_add(
     new_poetry_project,
     poetry_project_target_latest,
     poetry_project_target_previous,
@@ -73,7 +73,7 @@ def test_poetry_command_would_install_add(
         assert poetry_show(poetry_project) == init_state
 
 
-def test_poetry_command_would_install_install(
+def test_poetry_command_resolve_install_targets_install(
     new_poetry_project,
     poetry_project_target_latest,
     poetry_project_target_latest_lock_previous,
@@ -91,12 +91,12 @@ def test_poetry_command_would_install_install(
     ]
 
     assert all(
-        _test_poetry_command_would_install(["poetry", "install", "--directory", project], project, targets)
+        _test_poetry_command_resolve_install_targets(["poetry", "install", "--directory", project], project, targets)
         for project, targets in test_cases
     )
 
 
-def test_poetry_command_would_install_sync(
+def test_poetry_command_resolve_install_targets_sync(
     new_poetry_project,
     poetry_project_target_latest,
     poetry_project_target_previous,
@@ -119,12 +119,12 @@ def test_poetry_command_would_install_sync(
     ]
 
     assert all(
-        _test_poetry_command_would_install(["poetry", "sync", "--directory", project], project, targets)
+        _test_poetry_command_resolve_install_targets(["poetry", "sync", "--directory", project], project, targets)
         for project, targets in test_cases
     )
 
 
-def test_poetry_command_would_install_update(
+def test_poetry_command_resolve_install_targets_update(
     poetry_project_lock_latest,
     poetry_project_target_latest_lock_previous,
     poetry_project_target_previous_lock_latest,
@@ -140,7 +140,7 @@ def test_poetry_command_would_install_update(
     ]
 
     assert all(
-        _test_poetry_command_would_install(["poetry", "update", "--directory", project], project, targets)
+        _test_poetry_command_resolve_install_targets(["poetry", "update", "--directory", project], project, targets)
         for project, targets in test_cases
     )
 
@@ -155,7 +155,7 @@ def test_poetry_list_installed_packages(monkeypatch, poetry_project_target_lates
     assert PACKAGE_MANAGER.list_installed_packages() == [Package(ECOSYSTEM.PyPI, TARGET, TARGET_LATEST)]
 
 
-def _test_poetry_command_would_install(command, project, targets) -> bool:
+def _test_poetry_command_resolve_install_targets(command, project, targets) -> bool:
     """
     Tests that `Poetry.resolve_install_targets()` correctly resolves installation
     targets without installing anything.

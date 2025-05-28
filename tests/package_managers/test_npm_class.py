@@ -31,7 +31,7 @@ Fixed `PackageManager` to use across all tests.
             (["npm", "--non-existent-option"], False)
         ]
 )
-def test_npm_command_would_install(command_line: list[str], has_targets: bool):
+def test_npm_command_resolve_install_targets(command_line: list[str], has_targets: bool):
     """
     Backend function for testing that an `Npm.resolve_install_targets` call
     either does or does not have install targets and does not modify the local
@@ -45,7 +45,7 @@ def test_npm_command_would_install(command_line: list[str], has_targets: bool):
     assert npm_list() == INIT_NPM_STATE
 
 
-def test_npm_command_would_install_exact():
+def test_npm_command_resolve_install_targets_exact():
     """
     Test that `Npm.resolve_install_targets` gives the right answer relative to
     an exact top-level installation target and its dependencies.

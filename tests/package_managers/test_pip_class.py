@@ -44,7 +44,7 @@ def test_executable():
             (["pip", "install", "--non-existent-option", TEST_TARGET], False)
         ]
 )
-def test_pip_command_would_install(command_line: list[str], has_targets: bool):
+def test_pip_command_resolve_install_targets(command_line: list[str], has_targets: bool):
     """
     Backend function for testing that a `Pip.resolve_install_targets` call
     either does or does not have install targets and does not modify the
@@ -58,7 +58,7 @@ def test_pip_command_would_install(command_line: list[str], has_targets: bool):
     assert pip_list() == INIT_PIP_STATE
 
 
-def test_pip_command_would_install_exact():
+def test_pip_command_resolve_install_targets_exact():
     """
     Test that `Pip.resolve_install_targets` gives the right answer relative to
     an exact top-level installation target and its dependencies.

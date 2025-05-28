@@ -77,7 +77,9 @@ $ scfw configure --remove
 
 ## Usage
 
-To use Supply-Chain Firewall, simply prepend `scfw run` to the command you want to run.
+### Inspect package manager commands
+
+To use Supply-Chain Firewall, simply prepend `scfw run` to the package manager command you want to run.
 
 ```
 $ scfw run npm install react
@@ -86,6 +88,31 @@ $ scfw run poetry add git+https://github.com/DataDog/guarddog
 ```
 
 For `pip install` commands, packages will be installed in the same environment (virtual or global) in which the command was run.
+
+### Audit installed packages
+
+Supply-Chain Firewall can also use its verifiers to audit installed packages.
+
+```
+$ scfw audit npm
+No issues found.
+
+$ scfw audit --executable venv/bin/python pip
+Package pip-23.0.1:
+  - An OSV.dev advisory exists for package pip-23.0.1:
+      * [Medium] https://osv.dev/vulnerability/GHSA-mq26-g339-26xf
+  - An OSV.dev advisory exists for package pip-23.0.1:
+      * [Low] https://osv.dev/vulnerability/PYSEC-2023-228
+Package setuptools-65.5.0:
+  - An OSV.dev advisory exists for package setuptools-65.5.0:
+      * [High] https://osv.dev/vulnerability/GHSA-cx63-2mw6-8hw5
+  - An OSV.dev advisory exists for package setuptools-65.5.0:
+      * [High] https://osv.dev/vulnerability/GHSA-5rjg-fvgr-3xxf
+  - An OSV.dev advisory exists for package setuptools-65.5.0:
+      * [High] https://osv.dev/vulnerability/GHSA-r9hx-vwmv-q579
+  - An OSV.dev advisory exists for package setuptools-65.5.0:
+      * https://osv.dev/vulnerability/PYSEC-2022-43012
+```
 
 ## Datadog Log Management integration
 

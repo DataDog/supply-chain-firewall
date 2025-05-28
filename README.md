@@ -79,7 +79,7 @@ $ scfw configure --remove
 
 ### Inspect package manager commands
 
-To use Supply-Chain Firewall, simply prepend `scfw run` to the package manager command you want to run.
+To use Supply-Chain Firewall to inspect a package manager command, simply prepend `scfw run` to the command you intend to run:
 
 ```
 $ scfw run npm install react

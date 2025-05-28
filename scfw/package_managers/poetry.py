@@ -157,7 +157,8 @@ class Poetry(PackageManager):
         try:
             poetry_show_command = self._normalize_command(["poetry", "show", "--all"])
             poetry_show = subprocess.run(poetry_show_command, check=True, text=True, capture_output=True)
-            return list(map(line_to_package, poetry_show.stdout.strip().split('\n')))
+            installed_report = poetry_show.stdout.strip()
+            return list(map(line_to_package, installed_report.split('\n'))) if installed_report else []
 
         except subprocess.CalledProcessError:
             raise RuntimeError("Failed to list poetry installed packages")

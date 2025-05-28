@@ -24,20 +24,21 @@ def run_audit(args: Namespace) -> int:
         An integer status code, 0 or 1.
     """
     try:
+        merged_report = VerificationReport()
+
         package_manager = package_managers.get_package_manager(args.package_manager, executable=args.executable)
 
-        packages = package_manager.list_installed_packages()
-        _log.info(f"Installed packages: [{', '.join(map(str, packages))}]")
+        if (packages := package_manager.list_installed_packages()):
+            _log.info(f"Installed packages: [{', '.join(map(str, packages))}]")
 
-        verifiers = FirewallVerifiers()
-        _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
+            verifiers = FirewallVerifiers()
+            _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
 
-        reports = verifiers.verify_packages(packages)
+            reports = verifiers.verify_packages(packages)
 
-        merged_report = VerificationReport()
-        for severity in FindingSeverity:
-            if (severity_report := reports.get(severity)):
-                merged_report.extend(severity_report)
+            for severity in FindingSeverity:
+                if (severity_report := reports.get(severity)):
+                    merged_report.extend(severity_report)
 
         if merged_report:
             print(merged_report)

@@ -98,6 +98,7 @@ def test_pip_list_installed_packages():
     test_installed = PACKAGE_MANAGER.list_installed_packages()
 
     assert (
-        len(test_installed) == len(true_installed)
+        len(true_installed) != 0
+        and len(test_installed) == len(true_installed)
         and all(package in true_installed for package in test_installed)
     )

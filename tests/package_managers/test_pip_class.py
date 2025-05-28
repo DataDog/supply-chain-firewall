@@ -4,10 +4,11 @@ Tests of `Pip`, the `PackageManager` subclass.
 
 import shutil
 import subprocess
+import sys
+from tempfile import TemporaryDirectory
 
 import pytest
 
-import scfw
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.package_managers.pip import Pip
@@ -82,23 +83,17 @@ def test_pip_command_would_install_exact():
     assert all(target in true_targets for target in targets)
 
 
-def test_pip_list_installed_packages():
+def test_pip_list_installed_packages(monkeypatch):
     """
     Test that `Pip.list_installed_packages` correctly parses `pip` output.
     """
-    def pip_list() -> list[Package]:
-        pip_list = subprocess.run(["pip", "list"], check=True, text=True, capture_output=True)
-        package_lines = pip_list.stdout.strip().split('\n')[2:]
-        return [
-            Package(ECOSYSTEM.PyPI, tokens[0], tokens[1])
-            for tokens in map(lambda l: l.split(), package_lines)
-        ]
+    target = Package(ECOSYSTEM.PyPI, "tree-sitter", "0.24.0")
 
-    true_installed = pip_list()
-    test_installed = PACKAGE_MANAGER.list_installed_packages()
+    with TemporaryDirectory() as tmp:
+        monkeypatch.chdir(tmp)
 
-    assert (
-        len(true_installed) != 0
-        and len(test_installed) == len(true_installed)
-        and all(package in true_installed for package in test_installed)
-    )
+        venv_python = "venv/bin/python"
+        subprocess.run([sys.executable, "-m", "venv", "venv"], check=True)
+        subprocess.run([venv_python, "-m", "pip", "install", f"{target.name}=={target.version}"], check=True)
+
+        assert target in Pip(executable=venv_python).list_installed_packages()

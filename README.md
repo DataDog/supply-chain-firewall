@@ -91,7 +91,7 @@ For `pip install` commands, packages will be installed in the same environment (
 
 ### Audit installed packages
 
-Supply-Chain Firewall can also use its verifiers to audit installed packages.
+Supply-Chain Firewall can also use its verifiers to audit installed packages:
 
 ```
 $ scfw audit npm

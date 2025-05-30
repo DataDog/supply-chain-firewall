@@ -48,6 +48,7 @@ def run_configure(args: Namespace) -> int:
         args.alias_npm,
         args.alias_pip,
         args.alias_poetry,
+        args.alias_go,
         args.dd_agent_port,
         args.dd_api_key,
         args.dd_log_level,

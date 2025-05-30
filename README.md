@@ -58,11 +58,12 @@ $ scfw configure
 
 ### Compatibility and limitations
 
-|  Package manager  |  Compatible versions  |        Inspected subcommands       |
-| :---------------: | :-------------------: | :--------------------------------: |
-| npm               | >= 7.0                | `install` (including aliases)      |
-| pip               | >= 22.2               | `install`                          |
-| poetry            | >= 1.7                | `add`, `install`, `sync`, `update` |
+|  Package manager  |  Compatible versions  |        Inspected subcommands                        |
+| :---------------: | :-------------------: | :-------------------------------------------------: |
+| npm               | >= 7.0                | `install` (including aliases)                       |
+| pip               | >= 22.2               | `install`                                           |
+| poetry            | >= 1.7                | `add`, `install`, `sync`, `update`                  |
+| go                | >= 1.17.0             | `build`, `generate`, `get`, `install`, `mod`, `run` |
 
 In keeping with its goal of blocking 100% of known-malicious package installations, `scfw` will refuse to run with an incompatible version of a supported package manager.  Please upgrade to or verify that you are running a compatible version before using this tool.
 
@@ -89,6 +90,7 @@ To use Supply-Chain Firewall to inspect a package manager command, simply prepen
 $ scfw run npm install react
 $ scfw run pip install -r requirements.txt
 $ scfw run poetry add git+https://github.com/DataDog/guarddog
+$ scfw run go mod download
 ```
 
 For `pip install` commands, packages will be installed in the same environment (virtual or global) in which the command was run.

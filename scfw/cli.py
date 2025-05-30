@@ -78,6 +78,12 @@ def _add_configure_cli(parser: ArgumentParser):
     )
 
     parser.add_argument(
+        "--alias-go",
+        action="store_true",
+        help="Add shell aliases to always run go commands through Supply-Chain Firewall"
+    )
+
+    parser.add_argument(
         "--dd-agent-port",
         type=str,
         default=None,
@@ -306,6 +312,7 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
                 args.alias_npm,
                 args.alias_pip,
                 args.alias_poetry,
+                args.alias_go,
                 args.dd_agent_port,
                 args.dd_api_key,
                 args.dd_log_level,

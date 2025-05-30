@@ -30,6 +30,7 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
 
         self._pypi_manifest = download_manifest("pypi")
         self._npm_manifest = download_manifest("npm")
+        self._go_manifest = {}
 
     @classmethod
     def name(cls) -> str:
@@ -54,6 +55,8 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
             is present in this case.
         """
         match package.ecosystem:
+            case ECOSYSTEM.Go:
+                manifest = self._go_manifest
             case ECOSYSTEM.Npm:
                 manifest = self._npm_manifest
             case ECOSYSTEM.PyPI:

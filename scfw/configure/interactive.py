@@ -58,6 +58,11 @@ def get_answers() -> dict:
             default=True
         ),
         inquirer.Confirm(
+            name="alias_go",
+            message="Would you like to set a shell alias to run all go commands through the firewall?",
+            default=True
+        ),
+        inquirer.Confirm(
             name="dd_agent_logging",
             message="If you have the Datadog Agent installed locally, would you like to forward firewall logs to it?",
             default=False

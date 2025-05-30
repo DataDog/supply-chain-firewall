@@ -77,6 +77,8 @@ def _format_answers(answers: dict) -> str:
         config += '\nalias pip="scfw run pip"'
     if answers.get("alias_poetry"):
         config += '\nalias poetry="scfw run poetry"'
+    if answers.get("alias_go"):
+        config += '\nalias go="scfw run go"'
     if (dd_agent_port := answers.get("dd_agent_port")):
         config += f'\nexport {DD_AGENT_PORT_VAR}="{dd_agent_port}"'
     if (dd_api_key := answers.get("dd_api_key")):

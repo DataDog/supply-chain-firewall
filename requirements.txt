@@ -100,9 +100,9 @@ charset-normalizer==3.4.2 ; python_version >= "3.10" and python_version < "4" \
 cvss==3.4 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:632353244ba3c58b53355466677edc968b9d7143c317b66271f9fd7939951ee8 \
     --hash=sha256:d9950613758e60820f7fac37ca5f35158712f8f2ea4f6629858a60c4984fe4ef
-datadog-api-client==2.34.0 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:29534095d6270bfe3a0a80882f060e65f25b28250fae3437b97bfcd9e9ff027d \
-    --hash=sha256:ec1061ec272dd426e183947d9103a9a98f6823b9882157abec1ba4fcdfea9f05
+datadog-api-client==2.35.0 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:45de8e2e3ced859f6b3d54b2c1caf74c5f26171af0493a04791e9e7552a467e9 \
+    --hash=sha256:801dba061684f7ac3d7e1914a866cba2acd5c53a1d617a735e2227a88c535310
 editor==1.6.6 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:bb6989e872638cd119db9a4fce284cd8e13c553886a1c044c6b8d8a160c871f8 \
     --hash=sha256:e818e6913f26c2a81eadef503a2741d7cca7f235d20e217274a009ecd5a74abf

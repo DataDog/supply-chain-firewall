@@ -193,9 +193,9 @@ pyflakes==3.3.2 ; python_version >= "3.10" and python_version < "4" \
 pygments==2.19.1 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:61c16d2a8576dc0649d9f39e089b5f02bcd27fba10d8fb4dcc28173f7a45151f \
     --hash=sha256:9ea1544ad55cecf4b8242fab6dd35a93bbce657034b0611ee383099054ab6d8c
-pytest==8.3.5 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:c69214aa47deac29fad6c2a4f590b9c4a9fdb16a403176fe154b79c0b4d4d820 \
-    --hash=sha256:f4efe70cc14e511565ac476b57c279e12a855b11f48f212af1080ef2263d3845
+pytest==8.4.0 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:14d920b48472ea0dbf68e45b96cd1ffda4705f33307dcc86c676c1b5104838a6 \
+    --hash=sha256:f40f825768ad76c0977cbacdf1fd37c6f7a468e460ea6a0636078f8972d4517e
 tomli==2.2.1 ; python_version == "3.10" \
     --hash=sha256:023aa114dd824ade0100497eb2318602af309e5a55595f76b626d6d9f3b7b0a6 \
     --hash=sha256:02abe224de6ae62c19f090f68da4e27b10af2b93213d36cf44e6e1c5abd19fdd \

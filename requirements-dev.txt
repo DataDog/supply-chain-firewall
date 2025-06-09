@@ -178,9 +178,9 @@ mypy==1.15.0 ; python_version >= "3.10" and python_version < "4" \
 packaging==25.0 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484 \
     --hash=sha256:d443872c98d677bf60f6a1f2f8c1cb748e8fe762d2bf9d3148b5599295b0fc4f
-pdoc==15.0.3 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:6482d8ebbd40185fea5e6aec2f1592f4be92e93cf6bf70b9e2a00378bbaf3252 \
-    --hash=sha256:686c921ef2622f166de5f73b7241935a4ddac79c8d10dbfa43def8c1fca86550
+pdoc==15.0.4 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:cf9680f10f5b4863381f44ef084b1903f8f356acb0d4cc6b64576ba9fb712c82 \
+    --hash=sha256:f9028e85e7bb8475b054e69bde1f6d26fc4693d25d9fa1b1ce9009bec7f7a5c4
 pluggy==1.6.0 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
     --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746

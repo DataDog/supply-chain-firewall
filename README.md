@@ -114,9 +114,9 @@ Package setuptools-65.5.0:
       * https://osv.dev/vulnerability/PYSEC-2022-43012
 ```
 
-Supply-Chain Firewall audits all installed packages visible to the package manager in the invoking environment.  The user may specify the package manager executable they wish to use on the command line.
+Supply-Chain Firewall audits all installed packages visible to the package manager in the invoking environment.  The user may specify the package manager executable they wish to use on the command line.  For `npm` and `poetry` audits, Supply-Chain Firewall assumes the project of interest is in the current working directory.
 
-For `npm` and `poetry` audits, Supply-Chain Firewall assumes the project of interest is in the current working directory.  Currently, `npm` audits do not take globally installed packages into consideration.
+Currently, `npm` audits do not take globally installed packages into consideration.  To audit a globally installed `npm` package, first `cd` into the package's directory (inside the global `node_modules/`) and perform a local audit there.
 
 ## Datadog Log Management integration
 

@@ -186,17 +186,11 @@ class Npm(PackageManager):
 
             return packages
 
-        def npm_list_to_packages(stdout: str) -> set[Package]:
-            return dependencies_to_packages(json.loads(stdout.strip()).get("dependencies", {}))
-
         try:
             npm_list_command = self._normalize_command(["npm", "list", "--all", "--json"])
             npm_list = subprocess.run(npm_list_command, check=True, text=True, capture_output=True)
-
-            npm_list_global_command = npm_list_command + ["--global"]
-            npm_list_global = subprocess.run(npm_list_global_command, check=True, text=True, capture_output=True)
-
-            return list(npm_list_to_packages(npm_list.stdout) | npm_list_to_packages(npm_list_global.stdout))
+            dependencies = json.loads(npm_list.stdout.strip()).get("dependencies")
+            return list(dependencies_to_packages(dependencies)) if dependencies else []
 
         except subprocess.CalledProcessError:
             raise RuntimeError("Failed to list npm installed packages")

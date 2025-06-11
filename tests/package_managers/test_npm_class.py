@@ -76,4 +76,4 @@ def test_npm_list_installed_packages(monkeypatch):
     with TemporaryDirectory() as tmp:
         monkeypatch.chdir(tmp)
         subprocess.run(["npm", "install", f"{target.name}@{target.version}"], check=True)
-        assert target in PACKAGE_MANAGER.list_installed_packages()
+        assert PACKAGE_MANAGER.list_installed_packages() == [target]

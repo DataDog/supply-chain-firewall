@@ -116,7 +116,7 @@ Package setuptools-65.5.0:
 
 Supply-Chain Firewall audits all installed packages visible to the package manager in the invoking environment.  The user may specify the package manager executable they wish to use on the command line.
 
-For `npm` and `poetry` audits, Supply-Chain Firewall assumes the project of interest is in the current working directory.  Currently, `npm` audits always include globally installed packages.
+For `npm` and `poetry` audits, Supply-Chain Firewall assumes the project of interest is in the current working directory.  Currently, `npm` audits do not take globally installed packages into consideration.
 
 ## Datadog Log Management integration
 

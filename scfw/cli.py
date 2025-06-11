@@ -2,7 +2,7 @@
 Defines the supply-chain firewall's command-line interface and performs argument parsing.
 """
 
-from argparse import ArgumentError, Namespace
+from argparse import ArgumentError, Namespace, SUPPRESS
 from enum import Enum
 import logging
 import sys
@@ -20,6 +20,29 @@ _LOG_LEVELS = list(
     )
 )
 _DEFAULT_LOG_LEVEL = logging.getLevelName(logging.WARNING)
+
+
+def _add_audit_cli(parser: ArgumentParser):
+    """
+    Defines the command-line interface for the firewall's `audit` subcommand.
+
+    Args:
+        parser: The `ArgumentParser` to which the `audit` command line will be added.
+    """
+    parser.add_argument(
+        "package_manager",
+        type=str,
+        choices=SUPPORTED_PACKAGE_MANAGERS,
+        help="The package manager whose installed packages should be verified"
+    )
+
+    parser.add_argument(
+        "--executable",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Package manager executable to use for running commands (default: environmentally determined)"
+    )
 
 
 def _add_configure_cli(parser: ArgumentParser):
@@ -88,6 +111,13 @@ def _add_run_cli(parser: ArgumentParser):
         parser: The `ArgumentParser` to which the `run` command line will be added.
     """
     parser.add_argument(
+        "package_manager",
+        type=str,
+        choices=SUPPORTED_PACKAGE_MANAGERS,
+        help=SUPPRESS,
+    )
+
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Verify any installation targets but do not run the package manager command"
@@ -98,7 +128,7 @@ def _add_run_cli(parser: ArgumentParser):
         type=str,
         default=None,
         metavar="PATH",
-        help="Python or npm executable to use for running commands (default: environmentally determined)"
+        help="Package manager executable to use for running commands (default: environmentally determined)"
     )
 
 
@@ -106,6 +136,7 @@ class Subcommand(Enum):
     """
     The set of subcommands that comprise the supply-chain firewall's command line.
     """
+    Audit = "audit"
     Configure = "configure"
     Run = "run"
 
@@ -127,6 +158,11 @@ class Subcommand(Enum):
             method for configuring the subparser corresponding to the subcommand.
         """
         match self:
+            case Subcommand.Audit:
+                return {
+                    "exit_on_error": False,
+                    "description": "Audit installed packages using Supply-Chain Firewall's verifiers."
+                }
             case Subcommand.Configure:
                 return {
                     "exit_on_error": False,
@@ -150,6 +186,8 @@ class Subcommand(Enum):
             case via a sequence of calls to `ArgumentParser.add_argument()`.
         """
         match self:
+            case Subcommand.Audit:
+                return _add_audit_cli
             case Subcommand.Configure:
                 return _add_configure_cli
             case Subcommand.Run:
@@ -224,11 +262,17 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
     help_msg = parser.format_help()
 
     try:
-        args = parser.parse_args(argv[1:hinge])
+        args = parser.parse_args(argv[1:hinge+1])
+        args.subcommand = Subcommand(args.subcommand)
 
-        # Config removal option is mutually exclusive with the others
+        if args.subcommand == Subcommand.Run:
+            args.command = argv[hinge:]
+
+        if args.subcommand == Subcommand.Audit and argv[hinge+1:]:
+            raise ArgumentError(None, "Received unexpected package manager command")
+
         if (
-            Subcommand(args.subcommand) == Subcommand.Configure
+            args.subcommand == Subcommand.Configure
             and args.remove
             and any({
                 args.alias_npm,
@@ -240,18 +284,6 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
             })
         ):
             raise ArgumentError(None, "Cannot combine configuration and removal options")
-
-        # Only allow a package manager `command` argument when the user selected
-        # the `run` subcommand
-        match Subcommand(args.subcommand), argv[hinge:]:
-            case Subcommand.Run, []:
-                raise ArgumentError(None, "Missing required package manager command")
-            case Subcommand.Run, _:
-                args.command = argv[hinge:]
-            case _, []:
-                pass
-            case _:
-                raise ArgumentError(None, "Received unexpected package manager command")
 
         return args, help_msg
 
@@ -269,8 +301,10 @@ def parse_command_line() -> tuple[Optional[Namespace], str]:
         early exits. In the case of a parsing failure, `None` is returned instead
         of a `Namespace`.
 
-        On success, the returned `Namespace` contains the package manager command
-        provided to the firewall as a (possibly empty) `list[str]` under the `command`
+        On successful parsing of a command line for the `run` subcommand, the
+        returned `Namespace` contains the package manager command provided to the
+        firewall as a `list[str]` under the `command` attribute. Meanwhile, the name
+        of the selected package manager is contained under the `package_manager`
         attribute.
     """
     return _parse_command_line(sys.argv)

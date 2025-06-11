@@ -252,6 +252,8 @@ jobs:
             npm-version: "11.2"
           - node-version: "22.9.0"
             npm-version: "11.3"
+          - node-version: "22.9.0"
+            npm-version: "11.4"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python 3.10

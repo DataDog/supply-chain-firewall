@@ -3,6 +3,9 @@ Tests of `Pip`, the `PackageManager` subclass.
 """
 
 import shutil
+import subprocess
+import sys
+from tempfile import TemporaryDirectory
 
 import pytest
 
@@ -41,7 +44,7 @@ def test_executable():
             (["pip", "install", "--non-existent-option", TEST_TARGET], False)
         ]
 )
-def test_pip_command_would_install(command_line: list[str], has_targets: bool):
+def test_pip_command_resolve_install_targets(command_line: list[str], has_targets: bool):
     """
     Backend function for testing that a `Pip.resolve_install_targets` call
     either does or does not have install targets and does not modify the
@@ -55,7 +58,7 @@ def test_pip_command_would_install(command_line: list[str], has_targets: bool):
     assert pip_list() == INIT_PIP_STATE
 
 
-def test_pip_command_would_install_exact():
+def test_pip_command_resolve_install_targets_exact():
     """
     Test that `Pip.resolve_install_targets` gives the right answer relative to
     an exact top-level installation target and its dependencies.
@@ -78,3 +81,19 @@ def test_pip_command_would_install_exact():
     targets = PACKAGE_MANAGER.resolve_install_targets(command_line)
     assert len(targets) == len(true_targets)
     assert all(target in true_targets for target in targets)
+
+
+def test_pip_list_installed_packages(monkeypatch):
+    """
+    Test that `Pip.list_installed_packages` correctly parses `pip` output.
+    """
+    target = Package(ECOSYSTEM.PyPI, "tree-sitter", "0.24.0")
+
+    with TemporaryDirectory() as tmp:
+        monkeypatch.chdir(tmp)
+
+        venv_python = "venv/bin/python"
+        subprocess.run([sys.executable, "-m", "venv", "venv"], check=True)
+        subprocess.run([venv_python, "-m", "pip", "install", f"{target.name}=={target.version}"], check=True)
+
+        assert target in Pip(executable=venv_python).list_installed_packages()

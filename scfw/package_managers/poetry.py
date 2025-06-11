@@ -138,6 +138,34 @@ class Poetry(PackageManager):
             _log.info("Encountered an error while resolving poetry installation targets")
             return []
 
+    def list_installed_packages(self) -> list[Package]:
+        """
+        List all `PyPI` packages installed in the active `poetry` environment.
+
+        Returns:
+            A `list[Package]` representing all `PyPI` packages installed in the active
+            `poetry` environment.
+
+        Raises:
+            RuntimeError: Failed to list installed packages.
+            ValueError: Malformed installed package report.
+        """
+        def line_to_package(line: str) -> Package:
+            tokens = line.split()
+            return Package(ECOSYSTEM.PyPI, tokens[0], tokens[1])
+
+        try:
+            poetry_show_command = self._normalize_command(["poetry", "show", "--all"])
+            poetry_show = subprocess.run(poetry_show_command, check=True, text=True, capture_output=True)
+            installed_report = poetry_show.stdout.strip()
+            return list(map(line_to_package, installed_report.split('\n'))) if installed_report else []
+
+        except subprocess.CalledProcessError:
+            raise RuntimeError("Failed to list poetry installed packages")
+
+        except IndexError:
+            raise ValueError("Malformed installed package report")
+
     def _normalize_command(self, command: list[str]) -> list[str]:
         """
         Normalize a `poetry` command.

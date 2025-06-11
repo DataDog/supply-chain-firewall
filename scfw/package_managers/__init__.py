@@ -10,38 +10,38 @@ from scfw.package_managers.npm import Npm
 from scfw.package_managers.pip import Pip
 from scfw.package_managers.poetry import Poetry
 
-SUPPORTED_PACKAGE_MANAGERS = {
+SUPPORTED_PACKAGE_MANAGERS = [
     Npm.name(),
     Pip.name(),
     Poetry.name(),
-}
+]
 """
 Contains the command line names of supported package managers.
 """
 
 
-def get_package_manager(command: list[str], executable: Optional[str] = None) -> PackageManager:
+def get_package_manager(name: str, executable: Optional[str] = None) -> PackageManager:
     """
-    Return a `PackageManager` corresponding to the given command line.
+    Return a `PackageManager` corresponding to the given command line name.
 
     Args:
-        command: The command line of the desired command as provided to Supply-Chain Firewall.
+        name: The command line name of the desired `PackageManager`.
         executable: An optional executable to use to initialize the returned `PackageManager`.
 
     Returns:
-        A `PackageManager` corresponding to `command` and initialized from `executable`.
+        A `PackageManager` corresponding to `name` and initialized from `executable`.
 
     Raises:
-        ValueError: An empty or unsupported package manager command line was provided.
+        ValueError: An empty or unsupported package manager name was provided.
     """
-    if not command:
-        raise ValueError("Missing package manager command")
+    if not name:
+        raise ValueError("Missing package manager")
 
-    if command[0] == Npm.name():
+    if name == Npm.name():
         return Npm(executable)
-    if command[0] == Pip.name():
+    if name == Pip.name():
         return Pip(executable)
-    if command[0] == Poetry.name():
+    if name == Poetry.name():
         return Poetry(executable)
 
-    raise ValueError(f"Unsupported package manager '{command[0]}'")
+    raise ValueError(f"Unsupported package manager '{name}'")

@@ -151,6 +151,35 @@ class Pip(PackageManager):
             _log.info("Encountered an error while resolving pip installation targets")
             return []
 
+    def list_installed_packages(self) -> list[Package]:
+        """
+        List all `PyPI` packages installed in the active `pip` environment.
+
+        Returns:
+            A `list[Package]` representing all `PyPI` packages installed in the active
+            `pip` environment.
+
+        Raises:
+            RuntimeError: Failed to list installed packages or decode report JSON.
+            ValueError: Encountered a malformed report for an installed package.
+        """
+        try:
+            pip_list_command = self._normalize_command(["pip", "list", "--format", "json"])
+            pip_list = subprocess.run(pip_list_command, check=True, text=True, capture_output=True)
+            return [
+                Package(ECOSYSTEM.PyPI, package["name"], package["version"])
+                for package in json.loads(pip_list.stdout.strip())
+            ]
+
+        except subprocess.CalledProcessError:
+            raise RuntimeError("Failed to list pip installed packages")
+
+        except json.JSONDecodeError:
+            raise RuntimeError("Failed to decode installed package report JSON")
+
+        except KeyError:
+            raise ValueError("Malformed installed package report")
+
     def _normalize_command(self, command: list[str]) -> list[str]:
         """
         Normalize a `pip` command.

@@ -4,7 +4,7 @@ Tests of the Supply-Chain Firewall command-line interface.
 
 import pytest
 
-from scfw.cli import _parse_command_line, _DEFAULT_LOG_LEVEL
+from scfw.cli import _parse_command_line, _DEFAULT_LOG_LEVEL, Subcommand
 
 
 def test_cli_no_options_no_command():
@@ -50,7 +50,7 @@ def test_cli_basic_usage_configure():
     """
     argv = ["scfw", "configure"]
     args, _ = _parse_command_line(argv)
-    assert args.subcommand == "configure"
+    assert args.subcommand == Subcommand.Configure
     assert "command" not in args
     assert "dry_run" not in args
     assert "executable" not in args
@@ -92,7 +92,7 @@ def test_cli_basic_usage_run(command: list[str]):
     """
     argv = ["scfw", "run"] + command
     args, _ = _parse_command_line(argv)
-    assert args.subcommand == "run"
+    assert args.subcommand == Subcommand.Run
     assert args.command == argv[2:]
     assert not args.dry_run
     assert not args.executable
@@ -114,7 +114,7 @@ def test_cli_all_options_run_command(command: list[str]):
     executable = "/path/to/executable"
     argv = ["scfw", "run", "--executable", executable, "--dry-run"] + command
     args, _ = _parse_command_line(argv)
-    assert args.subcommand == "run"
+    assert args.subcommand == Subcommand.Run
     assert args.command == argv[5:]
     assert args.dry_run
     assert args.executable == executable
@@ -136,7 +136,7 @@ def test_cli_package_manager_dry_run(command: list[str]):
     """
     argv = ["scfw", "run"] + command + ["--dry-run"]
     args, _ = _parse_command_line(argv)
-    assert args.subcommand == "run"
+    assert args.subcommand == Subcommand.Run
     assert args.command == argv[2:]
     assert not args.dry_run
     assert not args.executable

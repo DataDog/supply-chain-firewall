@@ -80,6 +80,16 @@ class PackageManager(metaclass=ABCMeta):
         """
         pass
 
+    @abstractmethod
+    def list_installed_packages(self) -> list[Package]:
+        """
+        List all installed packages.
+
+        Returns:
+            A `list[Package]` representing all currently installed packages.
+        """
+        pass
+
 
 class UnsupportedVersionError(Exception):
     """

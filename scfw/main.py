@@ -5,6 +5,7 @@ Provides the supply-chain firewall's main routine.
 import logging
 import time
 
+import scfw.audit as audit
 import scfw.cli as cli
 from scfw.cli import Subcommand
 import scfw.configure as configure
@@ -31,7 +32,9 @@ def main() -> int:
     _log.info(f"Starting Supply-Chain Firewall on {time.asctime(time.localtime())}")
     _log.debug(f"Command line: {vars(args)}")
 
-    match Subcommand(args.subcommand):
+    match args.subcommand:
+        case Subcommand.Audit:
+            return audit.run_audit(args)
         case Subcommand.Configure:
             return configure.run_configure(args)
         case Subcommand.Run:

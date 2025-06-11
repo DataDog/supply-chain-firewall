@@ -236,7 +236,7 @@ jobs:
             npm-version: "10.4"
           - node-version: "22.0.0"
             npm-version: "10.5"
-          - node-version: "22.0.0"
+          - node-version: "20.0.0"
             npm-version: "10.6"
           - node-version: "22.0.0"
             npm-version: "10.7"

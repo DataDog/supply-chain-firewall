@@ -32,3 +32,8 @@ DD_AGENT_PORT_VAR = "SCFW_DD_AGENT_LOG_PORT"
 The environment variable under which the firewall looks for a port number on which to
 forward firewall logs to the local Datadog Agent.
 """
+
+SCFW_HOME_VAR = "SCFW_HOME"
+"""
+The environment variable under which the firewall looks for its home (cache) directory.
+"""

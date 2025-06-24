@@ -2,8 +2,13 @@
 Defines a package verifier for Datadog Security Research's malicious packages dataset.
 """
 
+import json
+import os
+from pathlib import Path
 import requests
+from typing import Optional
 
+from scfw.configure import SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.verifier import FindingSeverity, PackageVerifier
@@ -20,16 +25,37 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
         Initialize a new `DatadogMaliciousPackagesVerifier`.
 
         Raises:
-            requests.HTTPError: An error occurred while fetching a manifest file.
+            RuntimeError: Failed to download the dataset from GitHub and no cached copy is available.
         """
-        def download_manifest(ecosystem: str) -> dict[str, list[str]]:
-            manifest_url = f"{_DD_DATASET_SAMPLES_URL}/{ecosystem}/manifest.json"
-            request = requests.get(manifest_url, timeout=5)
-            request.raise_for_status()
-            return request.json()
+        def get_manifest(cache_dir: Optional[Path], ecosystem: str) -> dict[str, list[str]]:
+            cached_manifest_file = cache_dir / f"{ecosystem}_manifest.json" if cache_dir else None
 
-        self._pypi_manifest = download_manifest("pypi")
-        self._npm_manifest = download_manifest("npm")
+            try:
+                manifest_url = f"{_DD_DATASET_SAMPLES_URL}/{ecosystem}/manifest.json"
+                request = requests.get(manifest_url, timeout=5)
+                request.raise_for_status()
+
+                # Update the cached manifest file
+                if cached_manifest_file:
+                    if not cached_manifest_file.parent.is_dir():
+                        cached_manifest_file.parent.mkdir(parents=True, exist_ok=True)
+                    with open(cached_manifest_file, 'w') as f:
+                        f.write(request.text)
+
+                return request.json()
+
+            except requests.HTTPError:
+                if not cached_manifest_file:
+                    raise RuntimeError(f"Failed to download {ecosystem} dataset and no local copy available")
+
+                with open(cached_manifest_file) as f:
+                    return json.loads(f.read())
+
+        home_dir = os.getenv(SCFW_HOME_VAR)
+        cache_dir = Path(home_dir) / "dd_verifier" if home_dir else None
+
+        self._npm_manifest = get_manifest(cache_dir, "npm")
+        self._pypi_manifest = get_manifest(cache_dir, "pypi")
 
     @classmethod
     def name(cls) -> str:

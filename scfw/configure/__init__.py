@@ -33,7 +33,8 @@ def run_configure(args: Namespace) -> int:
                 "alias_poetry": False,
                 "dd_agent_port": None,
                 "dd_api_key": None,
-                "dd_log_level": None
+                "dd_log_level": None,
+                "scfw_home": None,
             })
             dd_agent.remove_agent_logging()
             print(
@@ -51,7 +52,8 @@ def run_configure(args: Namespace) -> int:
             args.alias_poetry,
             args.dd_agent_port,
             args.dd_api_key,
-            args.dd_log_level
+            args.dd_log_level,
+            args.scfw_home,
         })
 
         if is_interactive:

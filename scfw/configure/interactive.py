@@ -2,7 +2,10 @@
 Provides utilities for interactively accepting configuration options from the user.
 """
 
+import logging
 import os
+from pathlib import Path
+from typing import Optional
 
 import inquirer  # type: ignore
 
@@ -16,6 +19,8 @@ GREETING = (
     "of scfw. You can rerun this script at any time.\n"
 )
 
+_log = logging.getLogger(__name__)
+
 _DD_AGENT_DEFAULT_LOG_PORT = "10365"
 
 
@@ -26,9 +31,17 @@ def get_answers() -> dict:
     Returns:
         A `dict` containing the user's selected configuration options.
     """
+    home_dir_default = _get_home_dir_default()
     has_dd_api_key = os.getenv(DD_API_KEY_VAR) is not None
 
     questions = [
+        inquirer.Text(
+            name="scfw_home",
+            message=(
+                "Enter a directory the firewall can use as a local cache"
+                f" (default: {home_dir_default})" if home_dir_default else ""
+            )
+        ),
         inquirer.Confirm(
             name="alias_npm",
             message="Would you like to set a shell alias to run all npm commands through the firewall?",
@@ -75,6 +88,10 @@ def get_answers() -> dict:
     ]
 
     answers = inquirer.prompt(questions)
+
+    # Patch for inquirer's strange `default` option
+    if home_dir_default and not answers.get("scfw_home"):
+        answers["scfw_home"] = home_dir_default
 
     # Patch for inquirer's broken `default` option
     if answers.get("dd_agent_logging") and not answers.get("dd_agent_port"):
@@ -123,3 +140,19 @@ def _describe_log_level(action: FirewallAction) -> str:
             return "Log allowed and blocked commands"
         case FirewallAction.BLOCK:
             return "Log only blocked commands"
+
+
+def _get_home_dir_default() -> Optional[str]:
+    """
+    Resolve the default firewall cache directory from the user's home directory.
+
+    Returns:
+        A `str` representing the default firewall cache directory or `None`, which is
+        contained inside the user's home directory, or `None` if the home directory
+        cannot be resolved.
+    """
+    try:
+        return str(Path.home() / ".scfw")
+    except Exception as e:
+        _log.warning(f"Failed to determine user's home directory: {e}")
+        return None

@@ -149,9 +149,8 @@ def _get_home_dir_default() -> Optional[str]:
     Resolve the default firewall cache directory from the user's home directory.
 
     Returns:
-        A `str` representing the default firewall cache directory or `None`, which is
-        contained inside the user's home directory, or `None` if the home directory
-        cannot be resolved.
+        A `str` representing the default firewall cache directory, which is contained
+        inside the user's home directory, or `None` if the home directory cannot be resolved.
     """
     try:
         return str(Path.home() / ".scfw")

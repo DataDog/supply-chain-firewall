@@ -3,6 +3,7 @@ Defines a package verifier for Datadog Security Research's malicious packages da
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 import requests
@@ -12,6 +13,8 @@ from scfw.configure import SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.verifier import FindingSeverity, PackageVerifier
+
+_log = logging.getLogger(__name__)
 
 _DD_DATASET_SAMPLES_URL = "https://raw.githubusercontent.com/DataDog/malicious-software-packages-dataset/main/samples"
 
@@ -45,6 +48,7 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
                 return request.json()
 
             except requests.HTTPError:
+                _log.warning(f"Failed to download latest malicious {ecosystem} packages dataset")
                 if not cached_manifest_file or not cached_manifest_file.is_file():
                     raise RuntimeError(f"Failed to download {ecosystem} dataset and no local copy available")
 

@@ -84,6 +84,7 @@ def cache_latest_manifest(cache_dir: Path, ecosystem: ECOSYSTEM) -> Manifest:
                 cached_manifest_file.parent.mkdir(parents=True, exist_ok=True)
             with open(cached_manifest_file, 'w') as f:
                 json.dump(latest_manifest, f)
+
         except Exception as e:
             _log.warning(f"Failed to update cached copy of malicious {ecosystem} packages dataset: {e}")
 

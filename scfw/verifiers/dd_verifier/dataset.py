@@ -73,11 +73,15 @@ def cache_latest_manifest(cache_dir: Path, ecosystem: ECOSYSTEM) -> Manifest:
         raise RuntimeError(f"Failed to obtain malicious {ecosystem} packages dataset from GitHub or cache")
 
     if update_cache:
-        _log.info(f"Updating cached copy of malicious {ecosystem} packages dataset")
         try:
             if cached_manifest_file:
+                _log.info(f"Removing outdated malicious {ecosystem} packages dataset cache")
                 os.remove(cached_manifest_file)
+
+            _log.info(f"Updating malicious {ecosystem} packages dataset cache")
             cached_manifest_file = cache_dir / f"{ecosystem}{latest_etag if latest_etag else ''}.json"
+            if not cached_manifest_file.parent.is_dir():
+                cached_manifest_file.parent.mkdir(parents=True, exist_ok=True)
             with open(cached_manifest_file, 'w') as f:
                 json.dump(latest_manifest, f)
         except Exception as e:

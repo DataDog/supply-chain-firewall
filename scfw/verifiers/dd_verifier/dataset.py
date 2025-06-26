@@ -42,18 +42,16 @@ def cache_latest_manifest(cache_dir: Path, ecosystem: ECOSYSTEM) -> Manifest:
     cached_manifest_file = None
     latest_etag, latest_manifest = None, None
 
-    manifest_files = glob.glob(str(cache_dir / f"{ecosystem}*.json"))
-
     try:
         if (
-            manifest_files
+            (manifest_files := glob.glob(str(cache_dir / f"{ecosystem}*.json")))
             and (cached_manifest_file := Path(manifest_files[0]))
             and (last_etag := _extract_etag_file_name(ecosystem, cached_manifest_file.name))
         ):
             latest_etag, manifest = _update_manifest(ecosystem, last_etag)
 
             if latest_etag == last_etag:
-                _log.info(f"Loading malicious {ecosystem} packages dataset from cache")
+                _log.info(f"Cached malicious {ecosystem} packages dataset is up-to-date")
                 update_cache = False
                 with open(cached_manifest_file) as f:
                     latest_manifest = json.load(f)
@@ -61,20 +59,18 @@ def cache_latest_manifest(cache_dir: Path, ecosystem: ECOSYSTEM) -> Manifest:
                 latest_manifest = manifest
         else:
             latest_etag, latest_manifest = download_manifest(ecosystem)
+
     except requests.HTTPError:
         _log.warning(f"Failed to obtain malicious {ecosystem} packages metadata or dataset from GitHub")
 
         if cached_manifest_file:
             _log.warning(f"Using cached copy of malicious {ecosystem} packages dataset after GitHub failure")
+            update_cache = False
             with open(cached_manifest_file) as f:
-                return json.load(f)
-        else:
-            raise RuntimeError(
-                f"Failed to read cached malicious {ecosystem} packages dataset after GitHub failure"
-            )
+                latest_manifest = json.load(f)
 
     if not latest_manifest:
-        raise RuntimeError(f"Failed to obtain malicious {ecosystem} packages dataset")
+        raise RuntimeError(f"Failed to obtain malicious {ecosystem} packages dataset from GitHub or cache")
 
     if update_cache:
         _log.info(f"Updating cached copy of malicious {ecosystem} packages dataset")

@@ -28,7 +28,7 @@ def download_manifest(ecosystem: ECOSYSTEM) -> tuple[Optional[str], Manifest]:
     """
     Download the dataset manifest for the given `ecosystem`.
     """
-    request = requests.get(_manifest_url(ecosystem))
+    request = requests.get(_manifest_url(ecosystem), timeout=5)
     request.raise_for_status()
 
     return (_extract_etag_header(request.headers.get("ETag", "")), request.json())
@@ -94,7 +94,7 @@ def _update_manifest(ecosystem: ECOSYSTEM, etag: str) -> tuple[Optional[str], Op
     """
     Get the latest dataset manifest for the given `ecosystem` relative to the given `etag`.
     """
-    request = requests.get(_manifest_url(ecosystem), headers={"If-None-Match": f'W/"{etag}"'})
+    request = requests.get(_manifest_url(ecosystem), headers={"If-None-Match": f'W/"{etag}"'}, timeout=5)
     request.raise_for_status()
 
     if request.status_code == requests.codes.NOT_MODIFIED:

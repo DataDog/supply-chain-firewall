@@ -34,9 +34,10 @@ def download_manifest(ecosystem: ECOSYSTEM) -> tuple[Optional[str], Manifest]:
     return (_extract_etag_header(request.headers.get("ETag", "")), request.json())
 
 
-def cache_latest_manifest(cache_dir: Path, ecosystem: ECOSYSTEM) -> Manifest:
+def get_latest_manifest(cache_dir: Path, ecosystem: ECOSYSTEM) -> Manifest:
     """
-    Return the dataset manifest for the given `ecosystem` and update its cache in `cache_dir`.
+    Return the dataset manifest for the given `ecosystem`, either from the given `cache_dir`
+    or from the remote dataset, and update the local cache accordingly.
     """
     update_cache = True
     cached_manifest_file = None

@@ -22,8 +22,8 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
         """
         if (home_dir := os.getenv(SCFW_HOME_VAR)):
             cache_dir = Path(home_dir) / "dd_verifier"
-            self._npm_manifest = dataset.cache_latest_manifest(cache_dir, ECOSYSTEM.Npm)
-            self._pypi_manifest = dataset.cache_latest_manifest(cache_dir, ECOSYSTEM.PyPI)
+            self._npm_manifest = dataset.get_latest_manifest(cache_dir, ECOSYSTEM.Npm)
+            self._pypi_manifest = dataset.get_latest_manifest(cache_dir, ECOSYSTEM.PyPI)
         else:
             _, self._npm_manifest = dataset.download_manifest(ECOSYSTEM.Npm)
             _, self._pypi_manifest = dataset.download_manifest(ECOSYSTEM.PyPI)

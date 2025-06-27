@@ -102,6 +102,14 @@ def _add_configure_cli(parser: ArgumentParser):
         help="Desired logging level for Datadog log forwarding (options: %(choices)s)"
     )
 
+    parser.add_argument(
+        "--scfw-home",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Directory that Supply-Chain Firewall can use as a local cache"
+    )
+
 
 def _add_run_cli(parser: ArgumentParser):
     """

@@ -2,13 +2,14 @@
 Defines a package verifier for Datadog Security Research's malicious packages dataset.
 """
 
-import requests
+import os
+from pathlib import Path
 
+from scfw.configure import SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.verifier import FindingSeverity, PackageVerifier
-
-_DD_DATASET_SAMPLES_URL = "https://raw.githubusercontent.com/DataDog/malicious-software-packages-dataset/main/samples"
+import scfw.verifiers.dd_verifier.dataset as dataset
 
 
 class DatadogMaliciousPackagesVerifier(PackageVerifier):
@@ -18,18 +19,14 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
     def __init__(self):
         """
         Initialize a new `DatadogMaliciousPackagesVerifier`.
-
-        Raises:
-            requests.HTTPError: An error occurred while fetching a manifest file.
         """
-        def download_manifest(ecosystem: str) -> dict[str, list[str]]:
-            manifest_url = f"{_DD_DATASET_SAMPLES_URL}/{ecosystem}/manifest.json"
-            request = requests.get(manifest_url, timeout=5)
-            request.raise_for_status()
-            return request.json()
-
-        self._pypi_manifest = download_manifest("pypi")
-        self._npm_manifest = download_manifest("npm")
+        if (home_dir := os.getenv(SCFW_HOME_VAR)):
+            cache_dir = Path(home_dir) / "dd_verifier"
+            self._npm_manifest = dataset.get_latest_manifest(cache_dir, ECOSYSTEM.Npm)
+            self._pypi_manifest = dataset.get_latest_manifest(cache_dir, ECOSYSTEM.PyPI)
+        else:
+            _, self._npm_manifest = dataset.download_manifest(ECOSYSTEM.Npm)
+            _, self._pypi_manifest = dataset.download_manifest(ECOSYSTEM.PyPI)
 
     @classmethod
     def name(cls) -> str:

@@ -33,6 +33,7 @@ packages = [
     "scfw.loggers",
     "scfw.package_managers",
     "scfw.verifiers",
+    "scfw.verifiers.dd_verifier",
     "scfw.verifiers.osv_verifier"
 ]
 

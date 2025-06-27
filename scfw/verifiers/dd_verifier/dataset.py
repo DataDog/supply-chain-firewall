@@ -38,6 +38,10 @@ def get_latest_manifest(cache_dir: Path, ecosystem: ECOSYSTEM) -> Manifest:
     """
     Return the dataset manifest for the given `ecosystem`, either from the given `cache_dir`
     or from the remote dataset, and update the local cache accordingly.
+
+    The names of the cached manifest files adhere to the format `<ecosystem><tag>.json`,
+    where `tag` is the (possibly empty) value of the `"ETag"` header obtained on the
+    most recent refresh of the manifest files from the dataset on GitHub.
     """
     update_cache = True
     cached_manifest_file = None
@@ -49,15 +53,13 @@ def get_latest_manifest(cache_dir: Path, ecosystem: ECOSYSTEM) -> Manifest:
             and (cached_manifest_file := Path(manifest_files[0]))
             and (last_etag := _extract_etag_file_name(ecosystem, cached_manifest_file.name))
         ):
-            latest_etag, manifest = _update_manifest(ecosystem, last_etag)
+            latest_etag, latest_manifest = _update_manifest(ecosystem, last_etag)
 
             if latest_etag == last_etag:
-                _log.info(f"Cached malicious {ecosystem} packages dataset is up-to-date")
+                _log.debug(f"Cached malicious {ecosystem} packages dataset is up-to-date")
                 update_cache = False
                 with open(cached_manifest_file) as f:
                     latest_manifest = json.load(f)
-            else:
-                latest_manifest = manifest
         else:
             latest_etag, latest_manifest = download_manifest(ecosystem)
 
@@ -76,10 +78,10 @@ def get_latest_manifest(cache_dir: Path, ecosystem: ECOSYSTEM) -> Manifest:
     if update_cache:
         try:
             if cached_manifest_file:
-                _log.info(f"Removing outdated malicious {ecosystem} packages dataset cache")
+                _log.debug(f"Removing outdated malicious {ecosystem} packages dataset cache")
                 os.remove(cached_manifest_file)
 
-            _log.info(f"Updating malicious {ecosystem} packages dataset cache")
+            _log.debug(f"Updating malicious {ecosystem} packages dataset cache")
             cached_manifest_file = cache_dir / f"{ecosystem}{latest_etag if latest_etag else ''}.json"
             if not cached_manifest_file.parent.is_dir():
                 cached_manifest_file.parent.mkdir(parents=True, exist_ok=True)

@@ -129,6 +129,6 @@ class FirewallLogger(metaclass=ABCMeta):
 
                 These reports contain only those packages for which at least one verifier had
                 a finding (at the severity level associated with the entire report).  That is,
-                packages with no findings are not included in the audit results.
+                packages with no findings are excluded from the audit results.
         """
         pass

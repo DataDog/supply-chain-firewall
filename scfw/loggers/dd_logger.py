@@ -22,6 +22,10 @@ _log = logging.getLogger(__name__)
 
 _DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
 
+# The `created` and `msg` attributes are provided by `logging.LogRecord`
+_AUDIT_ATTRIBUTES = {"created", "ecosystem", "executable", "reports"}
+_FIREWALL_ACTION_ATTRIBUTES = {"action", "created", "ecosystem", "executable", "msg", "targets", "warned"}
+
 
 dotenv.load_dotenv()
 
@@ -50,9 +54,9 @@ class DDLogFormatter(logging.Formatter):
         except Exception as e:
             _log.warning(f"Failed to query username: {e}")
 
-        # The `created` and `msg` attributes are provided by `logging.LogRecord`
-        for key in {"action", "created", "ecosystem", "executable", "msg", "targets", "warned"}:
-            log_record[key] = record.__dict__[key]
+        for key in _AUDIT_ATTRIBUTES | _FIREWALL_ACTION_ATTRIBUTES:
+            if (value := record.__dict__.get(key)):
+                log_record[key] = value
 
         return json.dumps(log_record) + '\n'
 
@@ -120,4 +124,14 @@ class DDLogger(FirewallLogger):
         """
         Lorem ipsum dolor sit amet.
         """
-        pass
+        # TODO(ikretz): Add some log level check
+        self._logger.info(
+            None,
+            extra={
+                "ecosystem": str(ecosystem),
+                "executable": executable,
+                "reports": {
+                    str(severity): list(map(str, report.packages())) for severity, report in reports.items()
+                },
+            }
+        )

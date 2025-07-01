@@ -80,6 +80,7 @@ class FirewallLogger(metaclass=ABCMeta):
     def log_firewall_action(
         self,
         ecosystem: ECOSYSTEM,
+        package_manager: str,
         executable: str,
         command: list[str],
         targets: list[Package],
@@ -91,6 +92,7 @@ class FirewallLogger(metaclass=ABCMeta):
 
         Args:
             ecosystem: The ecosystem of the inspected package manager command.
+            package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
             command: The package manager command line provided to the firewall.
             targets:

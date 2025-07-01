@@ -57,6 +57,7 @@ class FirewallLoggers(FirewallLogger):
     def log_firewall_action(
         self,
         ecosystem: ECOSYSTEM,
+        package_manager: str,
         executable: str,
         command: list[str],
         targets: list[Package],
@@ -68,7 +69,7 @@ class FirewallLoggers(FirewallLogger):
         all client loggers.
         """
         for logger in self._loggers:
-            logger.log_firewall_action(ecosystem, executable, command, targets, action, warned)
+            logger.log_firewall_action(ecosystem, package_manager, executable, command, targets, action, warned)
 
     def log_audit(
         self,

@@ -50,6 +50,7 @@ def run_firewall(args: Namespace) -> int:
             if (critical_report := reports.get(FindingSeverity.CRITICAL)):
                 loggers.log_firewall_action(
                     package_manager.ecosystem(),
+                    package_manager.name(),
                     package_manager.executable(),
                     args.command,
                     list(critical_report.packages()),
@@ -67,6 +68,7 @@ def run_firewall(args: Namespace) -> int:
                 if not args.dry_run and not inquirer.confirm("Proceed with installation?", default=False):
                     loggers.log_firewall_action(
                         package_manager.ecosystem(),
+                        package_manager.name(),
                         package_manager.executable(),
                         args.command,
                         list(warning_report.packages()),
@@ -82,6 +84,7 @@ def run_firewall(args: Namespace) -> int:
         else:
             loggers.log_firewall_action(
                 package_manager.ecosystem(),
+                package_manager.name(),
                 package_manager.executable(),
                 args.command,
                 targets,

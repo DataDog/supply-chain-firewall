@@ -23,8 +23,24 @@ _log = logging.getLogger(__name__)
 _DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
 
 # The `created` and `msg` attributes are provided by `logging.LogRecord`
-_AUDIT_ATTRIBUTES = {"created", "ecosystem", "executable", "msg", "package_manager", "reports"}
-_FIREWALL_ACTION_ATTRIBUTES = {"action", "created", "ecosystem", "executable", "msg", "targets", "warned"}
+_AUDIT_ATTRIBUTES = {
+    "created",
+    "ecosystem",
+    "executable",
+    "msg",
+    "package_manager",
+    "reports"
+}
+_FIREWALL_ACTION_ATTRIBUTES = {
+    "action",
+    "created",
+    "ecosystem",
+    "executable",
+    "msg",
+    "package_manager",
+    "targets",
+    "warned"
+}
 
 
 dotenv.load_dotenv()
@@ -84,6 +100,7 @@ class DDLogger(FirewallLogger):
     def log_firewall_action(
         self,
         ecosystem: ECOSYSTEM,
+        package_manager: str,
         executable: str,
         command: list[str],
         targets: list[Package],
@@ -95,6 +112,7 @@ class DDLogger(FirewallLogger):
 
         Args:
             ecosystem: The ecosystem of the inspected package manager command.
+            package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
             command: The package manager command line provided to the firewall.
             targets: The installation targets relevant to firewall's action.
@@ -108,6 +126,7 @@ class DDLogger(FirewallLogger):
             f"Command '{' '.join(command)}' was {str(action).lower()}ed",
             extra={
                 "ecosystem": str(ecosystem),
+                "package_manager": package_manager,
                 "executable": executable,
                 "targets": list(map(str, targets)),
                 "action": str(action),

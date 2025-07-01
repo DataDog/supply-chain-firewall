@@ -73,6 +73,7 @@ class FirewallLoggers(FirewallLogger):
     def log_audit(
         self,
         ecosystem: ECOSYSTEM,
+        package_manager: str,
         executable: str,
         reports: dict[FindingSeverity, VerificationReport]
     ):
@@ -80,4 +81,4 @@ class FirewallLoggers(FirewallLogger):
         Lorem ipsum dolor sit amet.
         """
         for logger in self._loggers:
-            logger.log_audit(ecosystem, executable, reports)
+            logger.log_audit(ecosystem, package_manager, executable, reports)

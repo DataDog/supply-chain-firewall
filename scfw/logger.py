@@ -111,6 +111,7 @@ class FirewallLogger(metaclass=ABCMeta):
     def log_audit(
         self,
         ecosystem: ECOSYSTEM,
+        package_manager: str,
         executable: str,
         reports: dict[FindingSeverity, VerificationReport],
     ):

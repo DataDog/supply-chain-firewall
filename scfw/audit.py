@@ -36,7 +36,12 @@ def run_audit(args: Namespace) -> int:
             _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
 
             reports = verifiers.verify_packages(packages)
-            FirewallLoggers().log_audit(package_manager.ecosystem(), package_manager.executable(), reports)
+            FirewallLoggers().log_audit(
+                package_manager.ecosystem(),
+                package_manager.name(),
+                package_manager.executable(),
+                reports
+            )
 
             for severity in FindingSeverity:
                 if (severity_report := reports.get(severity)):

@@ -23,7 +23,7 @@ _log = logging.getLogger(__name__)
 _DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
 
 # The `created` and `msg` attributes are provided by `logging.LogRecord`
-_AUDIT_ATTRIBUTES = {"created", "ecosystem", "executable", "reports"}
+_AUDIT_ATTRIBUTES = {"created", "ecosystem", "executable", "msg", "package_manager", "reports"}
 _FIREWALL_ACTION_ATTRIBUTES = {"action", "created", "ecosystem", "executable", "msg", "targets", "warned"}
 
 
@@ -118,6 +118,7 @@ class DDLogger(FirewallLogger):
     def log_audit(
         self,
         ecosystem: ECOSYSTEM,
+        package_manager: str,
         executable: str,
         reports: dict[FindingSeverity, VerificationReport]
     ):
@@ -126,9 +127,10 @@ class DDLogger(FirewallLogger):
         """
         # TODO(ikretz): Add some log level check
         self._logger.info(
-            None,
+            f"Successfully audited {ecosystem} packages managed by {package_manager}",
             extra={
                 "ecosystem": str(ecosystem),
+                "package_manager": package_manager,
                 "executable": executable,
                 "reports": {
                     str(severity): list(map(str, report.packages())) for severity, report in reports.items()

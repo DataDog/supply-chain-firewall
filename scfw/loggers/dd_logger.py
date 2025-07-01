@@ -15,6 +15,8 @@ from scfw.configure import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.package import Package
+from scfw.report import VerificationReport
+from scfw.verifier import FindingSeverity
 
 _log = logging.getLogger(__name__)
 
@@ -108,3 +110,14 @@ class DDLogger(FirewallLogger):
                 "warned": warned,
             }
         )
+
+    def log_audit(
+        self,
+        ecosystem: ECOSYSTEM,
+        executable: str,
+        reports: dict[FindingSeverity, VerificationReport]
+    ):
+        """
+        Lorem ipsum dolor sit amet.
+        """
+        pass

@@ -29,6 +29,8 @@ import pkgutil
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.package import Package
+from scfw.report import VerificationReport
+from scfw.verifier import FindingSeverity
 
 _log = logging.getLogger(__name__)
 
@@ -66,4 +68,16 @@ class FirewallLoggers(FirewallLogger):
         all client loggers.
         """
         for logger in self._loggers:
-            logger.log(ecosystem, executable, command, targets, action, warned)
+            logger.log_firewall_action(ecosystem, executable, command, targets, action, warned)
+
+    def log_audit(
+        self,
+        ecosystem: ECOSYSTEM,
+        executable: str,
+        reports: dict[FindingSeverity, VerificationReport]
+    ):
+        """
+        Lorem ipsum dolor sit amet.
+        """
+        for logger in self._loggers:
+            logger.log_audit(ecosystem, executable, reports)

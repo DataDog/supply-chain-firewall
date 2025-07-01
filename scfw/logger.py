@@ -9,6 +9,8 @@ from typing_extensions import Self
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
+from scfw.report import VerificationReport
+from scfw.verifier import FindingSeverity
 
 
 class FirewallAction(Enum):
@@ -102,5 +104,17 @@ class FirewallLogger(metaclass=ABCMeta):
             warned:
                 Indicates whether the user was warned about findings for any installation
                 targets and prompted for approval to proceed with `command`.
+        """
+        pass
+
+    @abstractmethod
+    def log_audit(
+        self,
+        ecosystem: ECOSYSTEM,
+        executable: str,
+        reports: dict[FindingSeverity, VerificationReport],
+    ):
+        """
+        Lorem ipsum dolor sit amet.
         """
         pass

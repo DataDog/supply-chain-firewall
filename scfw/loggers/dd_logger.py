@@ -75,7 +75,7 @@ class DDLogger(FirewallLogger):
         except ValueError:
             _log.warning(f"Undefined or invalid Datadog log level: using default level {_DD_LOG_LEVEL_DEFAULT}")
 
-    def log(
+    def log_firewall_action(
         self,
         ecosystem: ECOSYSTEM,
         executable: str,
@@ -85,7 +85,7 @@ class DDLogger(FirewallLogger):
         warned: bool
     ):
         """
-        Receive and log data about a completed firewall run.
+        Log the data and action taken in a completed run of Supply-Chain Firewall.
 
         Args:
             ecosystem: The ecosystem of the inspected package manager command.

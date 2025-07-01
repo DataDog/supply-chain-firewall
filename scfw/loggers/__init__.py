@@ -52,7 +52,7 @@ class FirewallLoggers(FirewallLogger):
             except AttributeError:
                 _log.info(f"Module {module} does not export a logger")
 
-    def log(
+    def log_firewall_action(
         self,
         ecosystem: ECOSYSTEM,
         executable: str,
@@ -62,7 +62,8 @@ class FirewallLoggers(FirewallLogger):
         warned: bool
     ):
         """
-        Log a completed run of the supply-chain firewall to all discovered loggers.
+        Log the data and action taken in a completed run of Supply-Chain Firewall to
+        all client loggers.
         """
         for logger in self._loggers:
             logger.log(ecosystem, executable, command, targets, action, warned)

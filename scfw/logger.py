@@ -71,11 +71,11 @@ class FirewallAction(Enum):
 
 class FirewallLogger(metaclass=ABCMeta):
     """
-    An interface for passing information about a completed firewall run to
+    An interface for passing information about runs of Supply-Chain Firewall to
     client loggers.
     """
     @abstractmethod
-    def log(
+    def log_firewall_action(
         self,
         ecosystem: ECOSYSTEM,
         executable: str,
@@ -85,7 +85,7 @@ class FirewallLogger(metaclass=ABCMeta):
         warned: bool
     ):
         """
-        Pass data from a completed run of the firewall to a logger.
+        Log the data and action taken in a completed run of Supply-Chain Firewall.
 
         Args:
             ecosystem: The ecosystem of the inspected package manager command.

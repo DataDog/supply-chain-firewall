@@ -142,9 +142,14 @@ class DDLogger(FirewallLogger):
         reports: dict[FindingSeverity, VerificationReport]
     ):
         """
-        Lorem ipsum dolor sit amet.
+        Log the results of an audit for the given ecosystem and package manager.
+
+        Args:
+            ecosystem: The ecosystem of the audited packages.
+            package_manager: The package manager that manages the audited packages.
+            executable: The package manager executable used to enumerate audited packages.
+            reports: The severity-ranked reports resulting from auditing the installed packages.
         """
-        # TODO(ikretz): Add some log level check
         self._logger.info(
             f"Successfully audited {ecosystem} packages managed by {package_manager}",
             extra={

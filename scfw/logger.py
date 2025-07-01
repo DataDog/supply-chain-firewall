@@ -118,6 +118,17 @@ class FirewallLogger(metaclass=ABCMeta):
         reports: dict[FindingSeverity, VerificationReport],
     ):
         """
-        Lorem ipsum dolor sit amet.
+        Log the results of an audit for the given ecosystem and package manager.
+
+        Args:
+            ecosystem: The ecosystem of the audited packages.
+            package_manager: The package manager that manages the audited packages.
+            executable: The package manager executable used to enumerate audited packages.
+            reports:
+                The severity-ranked reports resulting from auditing the installed packages.
+
+                These reports contain only those packages for which at least one verifier had
+                a finding (at the severity level associated with the entire report).  That is,
+                packages with no findings are not included in the audit results.
         """
         pass

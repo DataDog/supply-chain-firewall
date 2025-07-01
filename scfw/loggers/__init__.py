@@ -79,7 +79,7 @@ class FirewallLoggers(FirewallLogger):
         reports: dict[FindingSeverity, VerificationReport]
     ):
         """
-        Lorem ipsum dolor sit amet.
+        Log the results of an audit to all client loggers.
         """
         for logger in self._loggers:
             logger.log_audit(ecosystem, package_manager, executable, reports)

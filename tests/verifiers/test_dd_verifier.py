@@ -87,7 +87,7 @@ def test_get_latest_manifest_no_cache(ecosystem: ECOSYSTEM):
 
         test_manifest = dataset.get_latest_manifest(cache_dir, ecosystem)
 
-        assert  test_manifest == latest_manifest
+        assert test_manifest == latest_manifest
         assert len(glob.glob(str(cache_dir / f"{ecosystem}{latest_etag}.json"))) == 1
 
 

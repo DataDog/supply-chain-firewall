@@ -5,6 +5,7 @@ Implements Supply-Chain Firewall's `audit` subcommand.
 from argparse import Namespace
 import logging
 
+from scfw.loggers import FirewallLoggers
 import scfw.package_managers as package_managers
 from scfw.report import VerificationReport
 from scfw.verifier import FindingSeverity
@@ -35,6 +36,12 @@ def run_audit(args: Namespace) -> int:
             _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
 
             reports = verifiers.verify_packages(packages)
+            FirewallLoggers().log_audit(
+                package_manager.ecosystem(),
+                package_manager.name(),
+                package_manager.executable(),
+                reports
+            )
 
             for severity in FindingSeverity:
                 if (severity_report := reports.get(severity)):

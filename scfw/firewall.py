@@ -48,8 +48,9 @@ def run_firewall(args: Namespace) -> int:
             reports = verifiers.verify_packages(targets)
 
             if (critical_report := reports.get(FindingSeverity.CRITICAL)):
-                loggers.log(
+                loggers.log_firewall_action(
                     package_manager.ecosystem(),
+                    package_manager.name(),
                     package_manager.executable(),
                     args.command,
                     list(critical_report.packages()),
@@ -65,8 +66,9 @@ def run_firewall(args: Namespace) -> int:
                 warned = True
 
                 if not args.dry_run and not inquirer.confirm("Proceed with installation?", default=False):
-                    loggers.log(
+                    loggers.log_firewall_action(
                         package_manager.ecosystem(),
+                        package_manager.name(),
                         package_manager.executable(),
                         args.command,
                         list(warning_report.packages()),
@@ -80,8 +82,9 @@ def run_firewall(args: Namespace) -> int:
             _log.info("Firewall dry-run mode enabled: command will not be run")
             print("Dry-run: exiting without running command.")
         else:
-            loggers.log(
+            loggers.log_firewall_action(
                 package_manager.ecosystem(),
+                package_manager.name(),
                 package_manager.executable(),
                 args.command,
                 targets,

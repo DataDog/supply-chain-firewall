@@ -63,7 +63,7 @@ def get_latest_manifest(cache_dir: Path, ecosystem: ECOSYSTEM) -> Manifest:
         else:
             latest_etag, latest_manifest = download_manifest(ecosystem)
 
-    except requests.HTTPError:
+    except Exception:
         _log.warning(f"Failed to obtain malicious {ecosystem} packages metadata or dataset from GitHub")
 
         if cached_manifest_file:

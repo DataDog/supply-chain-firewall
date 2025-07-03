@@ -22,6 +22,15 @@ class FindingSeverity(Enum):
     CRITICAL = "CRITICAL"
     WARNING = "WARNING"
 
+    def __str__(self) -> str:
+        """
+        Format a `FindingSeverity` for printing.
+
+        Returns:
+            A `str` representing the given `FindingSeverity` suitable for printing.
+        """
+        return self.name
+
 
 class PackageVerifier(metaclass=ABCMeta):
     """

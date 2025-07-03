@@ -29,6 +29,8 @@ import pkgutil
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.package import Package
+from scfw.report import VerificationReport
+from scfw.verifier import FindingSeverity
 
 _log = logging.getLogger(__name__)
 
@@ -52,9 +54,10 @@ class FirewallLoggers(FirewallLogger):
             except AttributeError:
                 _log.info(f"Module {module} does not export a logger")
 
-    def log(
+    def log_firewall_action(
         self,
         ecosystem: ECOSYSTEM,
+        package_manager: str,
         executable: str,
         command: list[str],
         targets: list[Package],
@@ -62,7 +65,21 @@ class FirewallLoggers(FirewallLogger):
         warned: bool
     ):
         """
-        Log a completed run of the supply-chain firewall to all discovered loggers.
+        Log the data and action taken in a completed run of Supply-Chain Firewall to
+        all client loggers.
         """
         for logger in self._loggers:
-            logger.log(ecosystem, executable, command, targets, action, warned)
+            logger.log_firewall_action(ecosystem, package_manager, executable, command, targets, action, warned)
+
+    def log_audit(
+        self,
+        ecosystem: ECOSYSTEM,
+        package_manager: str,
+        executable: str,
+        reports: dict[FindingSeverity, VerificationReport]
+    ):
+        """
+        Log the results of an audit to all client loggers.
+        """
+        for logger in self._loggers:
+            logger.log_audit(ecosystem, package_manager, executable, reports)

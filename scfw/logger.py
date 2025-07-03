@@ -9,6 +9,8 @@ from typing_extensions import Self
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
+from scfw.report import VerificationReport
+from scfw.verifier import FindingSeverity
 
 
 class FirewallAction(Enum):
@@ -71,13 +73,14 @@ class FirewallAction(Enum):
 
 class FirewallLogger(metaclass=ABCMeta):
     """
-    An interface for passing information about a completed firewall run to
+    An interface for passing information about runs of Supply-Chain Firewall to
     client loggers.
     """
     @abstractmethod
-    def log(
+    def log_firewall_action(
         self,
         ecosystem: ECOSYSTEM,
+        package_manager: str,
         executable: str,
         command: list[str],
         targets: list[Package],
@@ -85,10 +88,11 @@ class FirewallLogger(metaclass=ABCMeta):
         warned: bool
     ):
         """
-        Pass data from a completed run of the firewall to a logger.
+        Log the data and action taken in a completed run of Supply-Chain Firewall.
 
         Args:
             ecosystem: The ecosystem of the inspected package manager command.
+            package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
             command: The package manager command line provided to the firewall.
             targets:
@@ -102,5 +106,29 @@ class FirewallLogger(metaclass=ABCMeta):
             warned:
                 Indicates whether the user was warned about findings for any installation
                 targets and prompted for approval to proceed with `command`.
+        """
+        pass
+
+    @abstractmethod
+    def log_audit(
+        self,
+        ecosystem: ECOSYSTEM,
+        package_manager: str,
+        executable: str,
+        reports: dict[FindingSeverity, VerificationReport],
+    ):
+        """
+        Log the results of an audit for the given ecosystem and package manager.
+
+        Args:
+            ecosystem: The ecosystem of the audited packages.
+            package_manager: The package manager that manages the audited packages.
+            executable: The package manager executable used to enumerate audited packages.
+            reports:
+                The severity-ranked reports resulting from auditing the installed packages.
+
+                These reports contain only those packages for which at least one verifier had
+                a finding (at the severity level associated with the entire report).  That is,
+                packages with no findings are excluded from the audit results.
         """
         pass

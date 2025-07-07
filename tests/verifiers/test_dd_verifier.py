@@ -36,7 +36,7 @@ def test_dd_verifier_malicious(ecosystem: ECOSYSTEM):
     test_set = [Package(ecosystem, name, "dummy version") for name in manifest]
 
     # Create a modified `FirewallVerifiers` only containing the Datadog verifier
-    verifier = FirewallVerifiers()
+    verifier = FirewallVerifiers(ecosystem)
     verifier._verifiers = [DD_VERIFIER]
 
     reports = verifier.verify_packages(test_set)

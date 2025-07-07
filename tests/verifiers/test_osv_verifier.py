@@ -235,7 +235,7 @@ def test_osv_verifier_malicious(ecosystem: ECOSYSTEM):
     ]
 
     # Create a modified `FirewallVerifiers` only containing the OSV.dev verifier
-    verifier = FirewallVerifiers()
+    verifier = FirewallVerifiers(ecosystem)
     verifier._verifiers = [OsvVerifier()]
 
     reports = verifier.verify_packages([test[0] for test in test_set])

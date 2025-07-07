@@ -26,17 +26,13 @@ def test_dd_verifier_malicious(ecosystem: ECOSYSTEM):
     Run a test of the `DatadogMaliciousPackagesVerifier` against all samples
     present for the given ecosystem.
     """
-    match ecosystem:
-        case ECOSYSTEM.Npm:
-            manifest = DD_VERIFIER._npm_manifest
-        case ECOSYSTEM.PyPI:
-            manifest = DD_VERIFIER._pypi_manifest
+    manifest = DD_VERIFIER._manifests[ecosystem]
 
     # Only the package name is checked, so use a dummy version string
     test_set = [Package(ecosystem, name, "dummy version") for name in manifest]
 
     # Create a modified `FirewallVerifiers` only containing the Datadog verifier
-    verifier = FirewallVerifiers()
+    verifier = FirewallVerifiers(ecosystem)
     verifier._verifiers = [DD_VERIFIER]
 
     reports = verifier.verify_packages(test_set)

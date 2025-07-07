@@ -5,6 +5,7 @@ Provides a base class for package verifiers.
 from abc import (ABCMeta, abstractmethod)
 from enum import Enum
 
+from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 
 
@@ -48,6 +49,18 @@ class PackageVerifier(metaclass=ABCMeta):
 
         Returns:
             A constant, short, descriptive name `str` identifying the verifier.
+        """
+        pass
+
+    @classmethod
+    @abstractmethod
+    def supported_ecosystems(cls) -> set[ECOSYSTEM]:
+        """
+        Return the set of package ecosystems the verifier supports.
+
+        Returns:
+            A constant `set` of `ECOSYSTEM` representing the package ecosystems
+            supported for verification by the verifier.
         """
         pass
 

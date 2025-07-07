@@ -27,6 +27,7 @@ import logging
 import os
 import pkgutil
 
+from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.report import VerificationReport
 from scfw.verifier import FindingSeverity
@@ -39,20 +40,28 @@ class FirewallVerifiers:
     Provides a simple interface to verifying packages against the set of currently
     discoverable verifiers.
     """
-    def __init__(self):
+    def __init__(self, ecosystem: ECOSYSTEM):
         """
-        Initialize a `FirewallVerifiers` from currently discoverable package verifiers.
+        Initialize a `FirewallVerifiers` from currently discoverable package verifiers
+        that support the given package ecosystem.
+
+        Raises:
+            RuntimeError: No verifiers supporting the given package ecosystem currently discoverable.
         """
         self._verifiers = []
 
         for _, module, _ in pkgutil.iter_modules([os.path.dirname(__file__)]):
             try:
                 verifier = importlib.import_module(f".{module}", package=__name__).load_verifier()
-                self._verifiers.append(verifier)
+                if ecosystem in verifier.supported_ecosystems():
+                    self._verifiers.append(verifier)
             except ModuleNotFoundError:
                 _log.warning(f"Failed to load module {module} while collecting package verifiers")
             except AttributeError:
                 _log.warning(f"Module {module} does not export a package verifier")
+
+        if not self._verifiers:
+            raise RuntimeError(f"No verifiers for package ecosystem {ecosystem} currently discoverable")
 
     def names(self) -> list[str]:
         """

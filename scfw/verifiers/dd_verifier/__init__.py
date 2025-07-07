@@ -20,13 +20,17 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
         """
         Initialize a new `DatadogMaliciousPackagesVerifier`.
         """
+        self._manifests = {}
+
+        cache_dir = None
         if (home_dir := os.getenv(SCFW_HOME_VAR)):
             cache_dir = Path(home_dir) / "dd_verifier"
-            self._npm_manifest = dataset.get_latest_manifest(cache_dir, ECOSYSTEM.Npm)
-            self._pypi_manifest = dataset.get_latest_manifest(cache_dir, ECOSYSTEM.PyPI)
-        else:
-            _, self._npm_manifest = dataset.download_manifest(ECOSYSTEM.Npm)
-            _, self._pypi_manifest = dataset.download_manifest(ECOSYSTEM.PyPI)
+
+        for ecosystem in self.supported_ecosystems():
+            if cache_dir:
+                self._manifests[ecosystem] = dataset.get_latest_manifest(cache_dir, ecosystem)
+            else:
+                _, self._manifests[ecosystem] = dataset.download_manifest(ecosystem)
 
     @classmethod
     def name(cls) -> str:
@@ -60,11 +64,9 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
             presence in the dataset's manifests.  Only a single `CRITICAL` finding to this effect
             is present in this case.
         """
-        match package.ecosystem:
-            case ECOSYSTEM.Npm:
-                manifest = self._npm_manifest
-            case ECOSYSTEM.PyPI:
-                manifest = self._pypi_manifest
+        manifest = self._manifests.get(package.ecosystem)
+        if not manifest:
+            return [(FindingSeverity.WARNING, f"Package ecosystem {package.ecosystem} is not supported")]
 
         # We take the more conservative approach of ignoring version strings when
         # deciding whether the given package is malicious

@@ -70,8 +70,18 @@ class OsvVerifier(PackageVerifier):
                 f"  * {severity_tag}{_OSV_DEV_VULN_URL_PREFIX}/{osv.id}"
             )
 
-        vulns = []
+        def failure_message() -> str:
+            return (
+                f"Failed to verify package {package} via the OSV.dev API.\n"
+                f"Before proceeding, please check the OSV.dev website for advisories related to this package.\n"
+                f"DO NOT PROCEED if the package has advisories with a MAL ID: it is very likely malicious.\n"
+                f"  * {_OSV_DEV_LIST_URL_PREFIX}?q={package.name}&ecosystem={str(package.ecosystem)}"
+            )
 
+        if package.ecosystem not in self.supported_ecosystems():
+            return [(FindingSeverity.WARNING, f"Package ecosystem {package.ecosystem} is not supported")]
+
+        vulns = []
         query = {
             "version": package.version,
             "package": {
@@ -79,13 +89,6 @@ class OsvVerifier(PackageVerifier):
                 "ecosystem": str(package.ecosystem)
             }
         }
-
-        failure_message = (
-            f"Failed to verify package {package} via the OSV.dev API.\n"
-            f"Before proceeding, please check the OSV.dev website for advisories related to this package.\n"
-            f"DO NOT PROCEED if the package has advisories with a MAL ID: it is very likely malicious.\n"
-            f"  * {_OSV_DEV_LIST_URL_PREFIX}?q={package.name}&ecosystem={str(package.ecosystem)}"
-        )
 
         try:
             while True:
@@ -120,11 +123,11 @@ class OsvVerifier(PackageVerifier):
 
         except requests.exceptions.RequestException as e:
             _log.warning(f"Failed to query OSV.dev API for package {package}: {e}")
-            return [(FindingSeverity.WARNING, failure_message)]
+            return [(FindingSeverity.WARNING, failure_message())]
 
         except Exception as e:
             _log.warning(f"Verification failed for package {package}: {e}")
-            return [(FindingSeverity.WARNING, failure_message)]
+            return [(FindingSeverity.WARNING, failure_message())]
 
 
 def load_verifier() -> PackageVerifier:

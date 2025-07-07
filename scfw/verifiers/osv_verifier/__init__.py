@@ -7,6 +7,7 @@ import logging
 
 import requests
 
+from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.verifier import FindingSeverity, PackageVerifier
 from scfw.verifiers.osv_verifier.osv_advisory import OsvAdvisory
@@ -31,6 +32,16 @@ class OsvVerifier(PackageVerifier):
             The class' constant name string: `"OsvVerifier"`.
         """
         return "OsvVerifier"
+
+    @classmethod
+    def supported_ecosystems(cls) -> set[ECOSYSTEM]:
+        """
+        Return the set of package ecosystems supported by `OsvVerifier`.
+
+        Returns:
+            The class' constant set of supported ecosystems: `{ECOSYSTEM.Npm, ECOSYSTEM.PyPI}`.
+        """
+        return {ECOSYSTEM.Npm, ECOSYSTEM.PyPI}
 
     def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
         """

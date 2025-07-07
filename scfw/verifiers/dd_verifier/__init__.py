@@ -38,6 +38,16 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
         """
         return "DatadogMaliciousPackagesVerifier"
 
+    @classmethod
+    def supported_ecosystems(cls) -> set[ECOSYSTEM]:
+        """
+        Return the set of package ecosystems supported by `DatadogMaliciousPackagesVerifier`.
+
+        Returns:
+            The class' constant set of supported ecosystems: `{ECOSYSTEM.Npm, ECOSYSTEM.PyPI}`.
+        """
+        return {ECOSYSTEM.Npm, ECOSYSTEM.PyPI}
+
     def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
         """
         Determine whether the given package is malicious by consulting the dataset's manifests.

@@ -40,7 +40,7 @@ def run_firewall(args: Namespace) -> int:
         _log.info(f"Command would install: [{', '.join(map(str, targets))}]")
 
         if targets:
-            verifiers = FirewallVerifiers()
+            verifiers = FirewallVerifiers(package_manager.ecosystem())
             _log.info(
                 f"Using package verifiers: [{', '.join(verifiers.names())}]"
             )

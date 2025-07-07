@@ -32,7 +32,7 @@ def run_audit(args: Namespace) -> int:
         if (packages := package_manager.list_installed_packages()):
             _log.info(f"Installed packages: [{', '.join(map(str, packages))}]")
 
-            verifiers = FirewallVerifiers()
+            verifiers = FirewallVerifiers(package_manager.ecosystem())
             _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
 
             reports = verifiers.verify_packages(packages)

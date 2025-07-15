@@ -132,6 +132,12 @@ def _add_run_cli(parser: ArgumentParser):
     )
 
     parser.add_argument(
+        "--error-on-block",
+        action="store_true",
+        help="Treat blocked commands as errors (useful for scripting)"
+    )
+
+    parser.add_argument(
         "--executable",
         type=str,
         default=None,

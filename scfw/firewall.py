@@ -59,7 +59,7 @@ def run_firewall(args: Namespace) -> int:
                 )
                 print(critical_report)
                 print("\nThe installation request was blocked. No changes have been made.")
-                return 0
+                return 1 if args.error_on_block else 0
 
             if (warning_report := reports.get(FindingSeverity.WARNING)):
                 print(warning_report)
@@ -76,7 +76,7 @@ def run_firewall(args: Namespace) -> int:
                         warned=warned
                     )
                     print("The installation request was aborted. No changes have been made.")
-                    return 0
+                    return 1 if args.error_on_block else 0
 
         if args.dry_run:
             _log.info("Firewall dry-run mode enabled: command will not be run")

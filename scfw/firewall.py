@@ -81,6 +81,7 @@ def run_firewall(args: Namespace) -> int:
         if args.dry_run:
             _log.info("Firewall dry-run mode enabled: command will not be run")
             print("Dry-run: exiting without running command.")
+            return 0
         else:
             loggers.log_firewall_action(
                 package_manager.ecosystem(),
@@ -91,8 +92,7 @@ def run_firewall(args: Namespace) -> int:
                 action=FirewallAction.ALLOW,
                 warned=warned
             )
-            package_manager.run_command(args.command)
-        return 0
+            return package_manager.run_command(args.command)
 
     except UnsupportedVersionError as e:
         _log.error(f"Incompatible package manager version: {e}")

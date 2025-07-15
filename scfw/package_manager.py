@@ -56,12 +56,15 @@ class PackageManager(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def run_command(self, command: list[str]):
+    def run_command(self, command: list[str]) -> int:
         """
         Run the given package manager command.
 
         Args:
             command: The package manager command to be run.
+
+        Returns:
+            An `int` return code describing the exit status of the executed command.
         """
         pass
 

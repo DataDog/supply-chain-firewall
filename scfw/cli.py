@@ -131,6 +131,20 @@ def _add_run_cli(parser: ArgumentParser):
         help="Verify any installation targets but do not run the package manager command"
     )
 
+    group = parser.add_mutually_exclusive_group()
+
+    group.add_argument(
+        "--allow-on-warning",
+        action="store_true",
+        help="Non-interactively allow commands with only warning-level findings"
+    )
+
+    group.add_argument(
+        "--block-on-warning",
+        action="store_true",
+        help="Non-interactively block commands with only warning-level findings"
+    )
+
     parser.add_argument(
         "--error-on-block",
         action="store_true",

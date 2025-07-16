@@ -65,7 +65,11 @@ def run_firewall(args: Namespace) -> int:
                 print(warning_report)
                 warned = True
 
-                if not args.dry_run and not inquirer.confirm("Proceed with installation?", default=False):
+                if (
+                    not args.dry_run
+                    and not args.allow_on_warning
+                    and (args.block_on_warning or not inquirer.confirm("Proceed with installation?", default=False))
+                ):
                     loggers.log_firewall_action(
                         package_manager.ecosystem(),
                         package_manager.name(),

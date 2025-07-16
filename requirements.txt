@@ -1,9 +1,9 @@
 blessed==1.21.0 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:ece8bbc4758ab9176452f4e3a719d70088eb5739798cd5582c9e05f2a28337ec \
     --hash=sha256:f831e847396f5a2eac6c106f4dfadedf46c4f804733574b15fe86d2ed45a9588
-certifi==2025.6.15 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:2e0c7ce7cb5d8f8634ca55d2ba7e6ec2689a2fd6537d8dec1296a477a4910057 \
-    --hash=sha256:d747aa5a8b9bbbb1bb8c22bb13e22bd1f18e9796defa16bab421f7f7a317323b
+certifi==2025.7.14 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:6b31f564a415d79ee77df69d757bb49a5bb53bd9f756cbbe24394ffd6fc1f4b2 \
+    --hash=sha256:8ea99dbdfaaf2ba2f9bac77b9249ef62ec5218e7c2b2e903378ed5fccf765995
 charset-normalizer==3.4.2 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:005fa3432484527f9732ebd315da8da8001593e2cf46a3d817669f062c3d9ed4 \
     --hash=sha256:046595208aae0120559a67693ecc65dd75d46f7bf687f159127046628178dc45 \
@@ -100,9 +100,9 @@ charset-normalizer==3.4.2 ; python_version >= "3.10" and python_version < "4" \
 cvss==3.4 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:632353244ba3c58b53355466677edc968b9d7143c317b66271f9fd7939951ee8 \
     --hash=sha256:d9950613758e60820f7fac37ca5f35158712f8f2ea4f6629858a60c4984fe4ef
-datadog-api-client==2.39.0 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:011633adff7441b76d2f0a69f580760e0c0c0348e2ce74fe7efb5094aab68cf8 \
-    --hash=sha256:581da02d426c001e915a13d317481c819aa9ed61e08132e34376e7b549a15e02
+datadog-api-client==2.40.0 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:7fc693e1e118b8bf1f11dd176f28c1321df7624fed8a08e11349b3e377142bae \
+    --hash=sha256:f1a856fd5d4d6809fb3ce7422caccc9abb1fc8d6005afa7d3a5500184a8c75b7
 editor==1.6.6 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:bb6989e872638cd119db9a4fce284cd8e13c553886a1c044c6b8d8a160c871f8 \
     --hash=sha256:e818e6913f26c2a81eadef503a2741d7cca7f235d20e217274a009ecd5a74abf

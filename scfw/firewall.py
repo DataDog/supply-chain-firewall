@@ -59,7 +59,7 @@ def run_firewall(args: Namespace) -> int:
                 )
                 print(critical_report)
                 print("\nThe installation request was blocked. No changes have been made.")
-                return 0
+                return 1 if args.error_on_block else 0
 
             if (warning_report := reports.get(FindingSeverity.WARNING)):
                 print(warning_report)
@@ -76,11 +76,12 @@ def run_firewall(args: Namespace) -> int:
                         warned=warned
                     )
                     print("The installation request was aborted. No changes have been made.")
-                    return 0
+                    return 1 if args.error_on_block else 0
 
         if args.dry_run:
             _log.info("Firewall dry-run mode enabled: command will not be run")
             print("Dry-run: exiting without running command.")
+            return 0
         else:
             loggers.log_firewall_action(
                 package_manager.ecosystem(),
@@ -91,8 +92,7 @@ def run_firewall(args: Namespace) -> int:
                 action=FirewallAction.ALLOW,
                 warned=warned
             )
-            package_manager.run_command(args.command)
-        return 0
+            return package_manager.run_command(args.command)
 
     except UnsupportedVersionError as e:
         _log.error(f"Incompatible package manager version: {e}")

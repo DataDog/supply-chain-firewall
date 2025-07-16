@@ -92,17 +92,20 @@ class Pip(PackageManager):
         """
         return self._executable
 
-    def run_command(self, command: list[str]):
+    def run_command(self, command: list[str]) -> int:
         """
         Run a `pip` command.
 
         Args:
             command: A `list[str]` containing a `pip` command to execute.
 
+        Returns:
+            An `int` return code describing the exit status of the executed `pip` command.
+
         Raises:
             ValueError: The given `command` is empty or not a valid `pip` command.
         """
-        subprocess.run(self._normalize_command(command))
+        return subprocess.run(self._normalize_command(command)).returncode
 
     def resolve_install_targets(self, command: list[str]) -> list[Package]:
         """

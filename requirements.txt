@@ -1,9 +1,9 @@
 blessed==1.21.0 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:ece8bbc4758ab9176452f4e3a719d70088eb5739798cd5582c9e05f2a28337ec \
     --hash=sha256:f831e847396f5a2eac6c106f4dfadedf46c4f804733574b15fe86d2ed45a9588
-certifi==2025.7.14 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:6b31f564a415d79ee77df69d757bb49a5bb53bd9f756cbbe24394ffd6fc1f4b2 \
-    --hash=sha256:8ea99dbdfaaf2ba2f9bac77b9249ef62ec5218e7c2b2e903378ed5fccf765995
+certifi==2025.8.3 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:e564105f78ded564e3ae7c923924435e1daa7463faeab5bb932bc53ffae63407 \
+    --hash=sha256:f6c12493cfb1b06ba2ff328595af9350c65d6644968e5d3a2ffd78699af217a5
 charset-normalizer==3.4.2 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:005fa3432484527f9732ebd315da8da8001593e2cf46a3d817669f062c3d9ed4 \
     --hash=sha256:046595208aae0120559a67693ecc65dd75d46f7bf687f159127046628178dc45 \

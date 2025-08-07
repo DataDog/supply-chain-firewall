@@ -68,13 +68,14 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
         if not manifest:
             return [(FindingSeverity.WARNING, f"Package ecosystem {package.ecosystem} is not supported")]
 
-        # We take the more conservative approach of ignoring version strings when
-        # deciding whether the given package is malicious
-        if package.name in manifest:
+        if (
+            package.name in manifest
+            and (not manifest[package.name] or package.version in manifest[package.name])
+        ):
             return [
                 (
                     FindingSeverity.CRITICAL,
-                    f"Datadog Security Research has determined that package {package.name} is malicious"
+                    f"Datadog Security Research has determined that package {package} is malicious"
                 )
             ]
         else:

@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 from tempfile import TemporaryDirectory
 
-from scfw.configure import SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.verifier import FindingSeverity
@@ -20,16 +19,30 @@ import scfw.verifiers.dd_verifier.dataset as dataset
 DD_VERIFIER = DatadogMaliciousPackagesVerifier()
 
 
-@pytest.mark.parametrize("ecosystem", [ECOSYSTEM.Npm, ECOSYSTEM.PyPI])
-def test_dd_verifier_malicious(ecosystem: ECOSYSTEM):
+@pytest.mark.parametrize(
+    "ecosystem,kind",
+    [
+        (ECOSYSTEM.Npm, "malicious_intent"),
+        (ECOSYSTEM.Npm, "compromised_lib"),
+        (ECOSYSTEM.PyPI, "malicious_intent"),
+        (ECOSYSTEM.PyPI, "compromised_lib"),
+    ]
+)
+def test_dd_verifier_malicious(ecosystem: ECOSYSTEM, kind: str):
     """
     Run a test of the `DatadogMaliciousPackagesVerifier` against all samples
-    present for the given ecosystem.
+    of the given ecosystem and kind.
     """
     manifest = DD_VERIFIER._manifests[ecosystem]
 
-    # Only the package name is checked, so use a dummy version string
-    test_set = [Package(ecosystem, name, "dummy version") for name in manifest]
+    test_set = []
+    for name, versions in manifest.items():
+        if kind == "malicious_intent" and not versions:
+            # Version is not checked in this case, so use a dummy version string
+            test_set.append(Package(ecosystem, name, "dummy_version"))
+        elif kind == "compromised_lib" and versions:
+            test_set.extend([Package(ecosystem, name, version) for version in versions])
+    assert test_set
 
     # Create a modified `FirewallVerifiers` only containing the Datadog verifier
     verifier = FirewallVerifiers(ecosystem)
@@ -50,6 +63,8 @@ def test_update_manifest_no_change(ecosystem: ECOSYSTEM):
     the current ETag.
     """
     last_etag, _ = dataset.download_manifest(ecosystem)
+    assert last_etag is not None
+
     latest_etag, latest_manifest = dataset._update_manifest(ecosystem, last_etag)
 
     assert latest_etag is not None and latest_etag == last_etag

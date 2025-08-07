@@ -40,7 +40,7 @@ To check whether the installation succeeded, run the following command and verif
 
 ```bash
 $ scfw --version
-2.1.0
+2.2.0
 ```
 
 ### Post-installation steps

@@ -84,6 +84,15 @@ def test_go_command_would_install_local(new_go_project):
         assert base_go.get_go_dir_contents() == global_init_state
 
 
+def test_go_list_installed_packages(new_go_project):
+    """
+    Test that `Go.list_installed_packages` correctly parses `go` output.
+    """
+    target = Package(ECOSYSTEM.Go, TARGET, LATEST_VERSION)
+    _install_target(new_go_project)
+    assert [target] == PACKAGE_MANAGER.list_installed_packages()
+
+
 def _install_target(project: GoProject):
     """
     Install the target package to the provided directory and write a dummy source file.

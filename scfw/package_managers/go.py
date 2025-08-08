@@ -342,6 +342,27 @@ class Go(PackageManager):
 
         return [self._executable] + command[1:]
 
+    def list_installed_packages(self) -> list[Package]:
+        """
+        List all installed packages.
+
+        Returns:
+            A `list[Package]` representing all currently installed packages.
+        """
+        def line_to_package(line: str) -> Optional[Package]:
+            # All supported versions adhere to this format
+            components = line.strip().split()
+            if len(components) == 2:
+                return Package(self.ecosystem(), components[0], components[1])
+            return None
+
+        try:
+            go_list_cmd = [self._executable, "list", "-m", "all"]
+            list_cmd = subprocess.run(go_list_cmd, check=True, text=True, capture_output=True)
+            return list(filter(None, map(line_to_package, list_cmd.stdout.split('\n'))))
+        except subprocess.CalledProcessError:
+            raise RuntimeError("Failed to list go installed packages")
+
 
 class GoModNotFoundError(Exception):
     """

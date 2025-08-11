@@ -22,6 +22,10 @@ Users may also implement verifiers for alternative data sources. A template for 
 
 The principal goal of Supply-Chain Firewall is to block 100% of installations of known-malicious packages within the purview of its data sources.
 
+---
+Want more from the tool. Enroll as a design partner, [click here and fill the form](https://docs.google.com/forms/d/1Xqh5h1n3-jC7au2t30fdTq732dkTJqt_cb7C7T-AkPc/edit)
+---
+
 ## Getting started
 
 ### Installation

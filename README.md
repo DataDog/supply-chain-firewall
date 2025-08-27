@@ -23,10 +23,8 @@ Users may also implement verifiers for alternative data sources. A template for 
 The principal goal of Supply-Chain Firewall is to block 100% of installations of known-malicious packages within the purview of its data sources.
 
 ---
-### Enroll as a design partner, [click here and fill the form](https://docs.google.com/forms/d/1Xqh5h1n3-jC7au2t30fdTq732dkTJqt_cb7C7T-AkPc/edit)
+### Interested in SCFW for your business use-case? [Enroll](https://docs.google.com/forms/d/1Xqh5h1n3-jC7au2t30fdTq732dkTJqt_cb7C7T-AkPc/edit) as a design partner.
 ---
-
-
 
 ## Getting started
 
@@ -132,7 +130,7 @@ Supply-Chain Firewall can optionally send logs of blocked and successful install
 
 Users can configure their environments so that Supply-Chain Firewall forwards logs either via the Datadog HTTP API (requires an API key) or to a local Datadog Agent process.  Configuration consists of setting necessary environment variables and, for Agent log forwarding, configuring the Datadog Agent to accept logs from Supply-Chain Firewall.
 
-To opt in, use the `scfw configure` command to interactively or non-interactively configure your environment for Datadog logging.
+To opt in, use the `scfw configure` command to interactively or non-interactively configure your environment for Datadog logging.  API key users can additionally set the appropriate [Datadog site parameter](https://docs.datadoghq.com/getting_started/site/#access-the-datadog-site) via the `DD_SITE` environment variable.
 
 Supply-Chain Firewall can integrate with user-supplied loggers.  A template for implementating a custom logger may be found in `examples/logger.py`. Refer to the API documentation for details.
 

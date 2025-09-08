@@ -41,10 +41,11 @@ class Pip(PackageManager):
         def get_python_executable() -> Optional[str]:
             # Explicitly checking whether we are in a venv circumvents issues
             # caused by pyenv shims stomping the PATH with its own directories
+            venv_path = None
             if (venv := os.environ.get("VIRTUAL_ENV")):
-                return os.path.join(venv, "bin/python")
+                venv_path = os.path.join(venv, "bin")
             for bin in ["python3", "python"]:
-                if (executable := shutil.which(bin)):
+                if (executable := shutil.which(bin, path=venv_path)):
                     return executable
             return None
 

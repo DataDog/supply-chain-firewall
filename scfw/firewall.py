@@ -5,6 +5,7 @@ Implements the supply-chain firewall's core `run` subcommand.
 from argparse import Namespace
 import inquirer  # type: ignore
 import logging
+import subprocess
 
 from scfw.logger import FirewallAction
 from scfw.loggers import FirewallLoggers
@@ -99,7 +100,14 @@ def run_firewall(args: Namespace) -> int:
             return package_manager.run_command(args.command)
 
     except UnsupportedVersionError as e:
-        _log.error(f"Incompatible package manager version: {e}")
+        version_log = f"Unsupported package manager version: {e}"
+
+        if args.allow_unsupported:
+            _log.warning(version_log)
+            _log.warning(f"Running command \'{' '.join(args.command)}\' without verification")
+            return subprocess.run(args.command).returncode
+
+        _log.error(version_log)
         return 0
 
     except Exception as e:

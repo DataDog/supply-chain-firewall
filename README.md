@@ -64,7 +64,7 @@ $ scfw configure
 | pip               | >= 22.2               | `install`                          |
 | poetry            | >= 1.7                | `add`, `install`, `sync`, `update` |
 
-In keeping with its goal of blocking 100% of known-malicious package installations, `scfw` will refuse to run with an incompatible version of a supported package manager.  Please upgrade to or verify that you are running a compatible version before using this tool.
+By default, `scfw` will refuse to run with an unsupported version of a supported package manager.  This is in keeping with its goal of blocking 100% of known-malicious package installations.  Please upgrade to or verify that you are running a supported version before using this tool.
 
 Supply-Chain Firewall may only know how to inspect some of the "installish" subcommands for its supported package managers.  These are shown in the above table.  Any other subcommands are always allowed to run.
 

@@ -98,7 +98,8 @@ class UnsupportedVersionError(Exception):
     """
     An exception that occurs when an attempt is made to initialize a `PackageManager`
     with an unsupported version of the underlying executable. Supply-Chain Firewall
-    handles this exception gracefully by alerting the user and, in firewall mode,
-    running the given package manager command without verification.
+    handles this exception gracefully by alerting the user to the issue. In firewall
+    mode, the user can optionally run commands in unsupported package manager versions
+    with all verification disabled.
     """
     pass

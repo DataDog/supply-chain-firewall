@@ -37,7 +37,6 @@ class Poetry(PackageManager):
 
         Raises:
             RuntimeError: A valid executable could not be resolved.
-            UnsupportedVersionError: The underlying `poetry` executable is of an unsupported version.
         """
         def get_poetry_version(executable: str) -> Optional[Version]:
             try:
@@ -54,11 +53,8 @@ class Poetry(PackageManager):
         if not os.path.isfile(executable):
             raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
 
-        poetry_version = get_poetry_version(executable)
-        if not poetry_version or poetry_version < MIN_POETRY_VERSION:
-            raise UnsupportedVersionError(f"Poetry before v{MIN_POETRY_VERSION} is not supported")
-
         self._executable = executable
+        self._version = get_poetry_version(executable)
 
     @classmethod
     def name(cls) -> str:
@@ -110,6 +106,7 @@ class Poetry(PackageManager):
 
         Raises:
             ValueError: The given `command` is empty or not a valid `poetry` command.
+            UnsupportedVersionError: The underlying `poetry` executable is of an unsupported version.
         """
         def get_target_version(version_spec: str) -> str:
             _, arrow, new_version = version_spec.partition(" -> ")
@@ -127,6 +124,8 @@ class Poetry(PackageManager):
 
         if not any(subcommand in command for subcommand in INSPECTED_SUBCOMMANDS):
             return []
+
+        self._check_version()
 
         # The presence of these options prevents the command from running
         if any(opt in command for opt in {"-V", "--version", "-h", "--help", "--dry-run"}):
@@ -152,10 +151,13 @@ class Poetry(PackageManager):
         Raises:
             RuntimeError: Failed to list installed packages.
             ValueError: Malformed installed package report.
+            UnsupportedVersionError: The underlying `poetry` executable is of an unsupported version.
         """
         def line_to_package(line: str) -> Package:
             tokens = line.split()
             return Package(ECOSYSTEM.PyPI, tokens[0], tokens[1])
+
+        self._check_version()
 
         try:
             poetry_show_command = self._normalize_command(["poetry", "show", "--all"])
@@ -168,6 +170,16 @@ class Poetry(PackageManager):
 
         except IndexError:
             raise ValueError("Malformed installed package report")
+
+    def _check_version(self):
+        """
+        Check whether the underlying `poetry` executable is of a supported version.
+
+        Raises:
+            UnsupportedVersionError: The underlying `poetry` executable is of an unsupported version.
+        """
+        if not self._version or self._version < MIN_POETRY_VERSION:
+            raise UnsupportedVersionError(f"Poetry before v{MIN_POETRY_VERSION} is not supported")
 
     def _normalize_command(self, command: list[str]) -> list[str]:
         """

@@ -127,7 +127,7 @@ class Poetry(PackageManager):
 
         self._check_version()
 
-        # The presence of these options prevents the command from running
+        # On supported versions, the presence of these options prevents the command from running
         if any(opt in command for opt in {"-V", "--version", "-h", "--help", "--dry-run"}):
             return []
 

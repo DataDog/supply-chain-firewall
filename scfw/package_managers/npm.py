@@ -135,7 +135,7 @@ class Npm(PackageManager):
 
         self._check_version()
 
-        # The presence of these options prevents the install command from running
+        # On supported versions, the presence of these options prevents the command from running
         if any(opt in command for opt in {"-h", "--help", "--dry-run"}):
             return []
 

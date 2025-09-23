@@ -58,13 +58,13 @@ $ scfw configure
 
 ### Compatibility and limitations
 
-|  Package manager  |  Compatible versions  |        Inspected subcommands       |
+|  Package manager  |   Supported versions  |        Inspected subcommands       |
 | :---------------: | :-------------------: | :--------------------------------: |
 | npm               | >= 7.0                | `install` (including aliases)      |
 | pip               | >= 22.2               | `install`                          |
 | poetry            | >= 1.7                | `add`, `install`, `sync`, `update` |
 
-By default, `scfw` will refuse to run with an unsupported version of a supported package manager.  This is in keeping with its goal of blocking 100% of known-malicious package installations.  Please upgrade to or verify that you are running a supported version before using this tool.
+When used with an unsupported version of a supported package manager, `scfw` warns the user and runs the given command without any verification.  This is done in the interest of compatibility with existing workflows.  Users are encouraged to upgrade to or verify that they are using a supported package manager version whenever possible in order to benefit from Supply-Chain Firewall to the fullest.
 
 Supply-Chain Firewall may only know how to inspect some of the "installish" subcommands for its supported package managers.  These are shown in the above table.  Any other subcommands are always allowed to run.
 

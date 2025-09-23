@@ -100,15 +100,9 @@ def run_firewall(args: Namespace) -> int:
             return package_manager.run_command(args.command)
 
     except UnsupportedVersionError as e:
-        version_log = f"Unsupported package manager version: {e}"
-
-        if args.allow_unsupported:
-            _log.warning(version_log)
-            _log.warning(f"Running command \'{' '.join(args.command)}\' without verification")
-            return subprocess.run(args.command).returncode
-
-        _log.error(version_log)
-        return 0
+        _log.warning(f"Unsupported package manager version: {e}")
+        _log.warning(f"Running command \'{' '.join(args.command)}\' without verification")
+        return subprocess.run(args.command).returncode
 
     except Exception as e:
         _log.error(e)

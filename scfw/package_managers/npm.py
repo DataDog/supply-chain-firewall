@@ -35,7 +35,6 @@ class Npm(PackageManager):
 
         Raises:
             RuntimeError: A valid executable could not be resolved.
-            UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
         def get_npm_version(executable: str) -> Optional[Version]:
             try:
@@ -51,11 +50,8 @@ class Npm(PackageManager):
         if not os.path.isfile(executable):
             raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
 
-        npm_version = get_npm_version(executable)
-        if not npm_version or npm_version < MIN_NPM_VERSION:
-            raise UnsupportedVersionError(f"npm before v{MIN_NPM_VERSION} is not supported")
-
         self._executable = executable
+        self._version = get_npm_version(executable)
 
     @classmethod
     def name(cls) -> str:
@@ -107,6 +103,7 @@ class Npm(PackageManager):
 
         Raises:
             ValueError: Failed to parse an installation target.
+            UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
         def is_install_command(command: list[str]) -> bool:
             # https://docs.npmjs.com/cli/v10/commands/npm-install
@@ -135,6 +132,8 @@ class Npm(PackageManager):
         # For now, allow all non-`install` commands
         if not is_install_command(command):
             return []
+
+        self._check_version()
 
         # The presence of these options prevents the install command from running
         if any(opt in command for opt in {"-h", "--help", "--dry-run"}):
@@ -178,6 +177,7 @@ class Npm(PackageManager):
         Raises:
             RuntimeError: Failed to list installed packages or decode report JSON.
             ValueError: Encountered a malformed report for an installed package.
+            UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
         def dependencies_to_packages(dependencies: dict[str, dict]) -> set[Package]:
             packages = set()
@@ -188,6 +188,8 @@ class Npm(PackageManager):
                 packages.add(Package(ECOSYSTEM.Npm, name, package_data["version"]))
 
             return packages
+
+        self._check_version()
 
         try:
             npm_list_command = self._normalize_command(["npm", "list", "--all", "--json"])
@@ -203,6 +205,16 @@ class Npm(PackageManager):
 
         except KeyError:
             raise ValueError("Malformed installed package report")
+
+    def _check_version(self):
+        """
+        Check whether the underlying `npm` executable is of a supported version.
+
+        Raises:
+            UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
+        """
+        if not self._version or self._version < MIN_NPM_VERSION:
+            raise UnsupportedVersionError(f"npm before v{MIN_NPM_VERSION} is not supported")
 
     def _normalize_command(self, command: list[str]) -> list[str]:
         """

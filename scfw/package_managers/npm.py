@@ -35,25 +35,12 @@ class Npm(PackageManager):
 
         Raises:
             RuntimeError: A valid executable could not be resolved.
-            UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
-        def get_npm_version(executable: str) -> Optional[Version]:
-            try:
-                # All supported versions adhere to this format
-                npm_version = subprocess.run([executable, "--version"], check=True, text=True, capture_output=True)
-                return version_parse(npm_version.stdout.strip())
-            except InvalidVersion:
-                return None
-
         executable = executable if executable else shutil.which(self.name())
         if not executable:
             raise RuntimeError("Failed to resolve local npm executable")
         if not os.path.isfile(executable):
             raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
-
-        npm_version = get_npm_version(executable)
-        if not npm_version or npm_version < MIN_NPM_VERSION:
-            raise UnsupportedVersionError(f"npm before v{MIN_NPM_VERSION} is not supported")
 
         self._executable = executable
 
@@ -106,7 +93,10 @@ class Npm(PackageManager):
             if `command` were run.
 
         Raises:
-            ValueError: Failed to parse an installation target.
+            ValueError:
+                1) The given `command` is empty or not a valid `npm` command, or 2) failed to parse
+                an installation target.
+            UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
         def is_install_command(command: list[str]) -> bool:
             # https://docs.npmjs.com/cli/v10/commands/npm-install
@@ -136,7 +126,9 @@ class Npm(PackageManager):
         if not is_install_command(command):
             return []
 
-        # The presence of these options prevents the install command from running
+        self._check_version()
+
+        # On supported versions, the presence of these options prevents the command from running
         if any(opt in command for opt in {"-h", "--help", "--dry-run"}):
             return []
 
@@ -178,6 +170,7 @@ class Npm(PackageManager):
         Raises:
             RuntimeError: Failed to list installed packages or decode report JSON.
             ValueError: Encountered a malformed report for an installed package.
+            UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
         def dependencies_to_packages(dependencies: dict[str, dict]) -> set[Package]:
             packages = set()
@@ -188,6 +181,8 @@ class Npm(PackageManager):
                 packages.add(Package(ECOSYSTEM.Npm, name, package_data["version"]))
 
             return packages
+
+        self._check_version()
 
         try:
             npm_list_command = self._normalize_command(["npm", "list", "--all", "--json"])
@@ -203,6 +198,25 @@ class Npm(PackageManager):
 
         except KeyError:
             raise ValueError("Malformed installed package report")
+
+    def _check_version(self):
+        """
+        Check whether the underlying `npm` executable is of a supported version.
+
+        Raises:
+            UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
+        """
+        def get_npm_version(executable: str) -> Optional[Version]:
+            try:
+                # All supported versions adhere to this format
+                npm_version = subprocess.run([executable, "--version"], check=True, text=True, capture_output=True)
+                return version_parse(npm_version.stdout.strip())
+            except InvalidVersion:
+                return None
+
+        npm_version = get_npm_version(self._executable)
+        if not npm_version or npm_version < MIN_NPM_VERSION:
+            raise UnsupportedVersionError(f"npm before v{MIN_NPM_VERSION} is not supported")
 
     def _normalize_command(self, command: list[str]) -> list[str]:
         """

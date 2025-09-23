@@ -57,7 +57,7 @@ class FirewallLoggers(FirewallLogger):
                 _log.warning(f"Failed to initialize logger defined in module {module}: {e}")
 
         if not self._loggers:
-            _log.warning(f"No loggers are currently discoverable")
+            _log.warning("No loggers are currently discoverable")
 
     def log_firewall_action(
         self,

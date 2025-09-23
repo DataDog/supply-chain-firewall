@@ -41,7 +41,15 @@ def test_executable():
             (["pip", "install" "--dry-run", TEST_TARGET], False),
             (["pip", "--dry-run", "install", TEST_TARGET], False),
             (["pip", "install", "--report", "report.json", TEST_TARGET], True),
-            (["pip", "install", "--non-existent-option", TEST_TARGET], False)
+            (["pip", "install", "--non-existent-option", TEST_TARGET], False),
+            (["pip", "install", "-v", TEST_TARGET], True),
+            (["pip", "install", "-vv", TEST_TARGET], True),
+            (["pip", "install", "-vvv", TEST_TARGET], True),
+            (["pip", "install", "-vvvv", TEST_TARGET], True),
+            (["pip", "install", "--verbose", TEST_TARGET], True),
+            (["pip", "install", "--verbose", "--verbose", TEST_TARGET], True),
+            (["pip", "install", "--verbose", "--verbose", "--verbose", TEST_TARGET], True),
+            (["pip", "install", "--verbose", "--verbose", "--verbose", "--verbose", TEST_TARGET], True),
         ]
 )
 def test_pip_command_resolve_install_targets(command_line: list[str], has_targets: bool):

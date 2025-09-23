@@ -48,22 +48,6 @@ class Pip(PackageManager):
                     return executable
             return None
 
-        def get_pip_version(executable: str) -> Optional[Version]:
-            try:
-                pip_version = subprocess.run(
-                    [executable, "-m", "pip", "--version"],
-                    check=True,
-                    text=True,
-                    capture_output=True
-                )
-                # All supported versions adhere to this format
-                version_str = pip_version.stdout.split()[1]
-                return version_parse(version_str)
-            except IndexError:
-                return None
-            except InvalidVersion:
-                return None
-
         executable = executable if executable else get_python_executable()
         if not executable:
             raise RuntimeError("Failed to resolve local Python executable")
@@ -71,7 +55,6 @@ class Pip(PackageManager):
             raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
 
         self._executable = executable
-        self._version = get_pip_version(executable)
 
     @classmethod
     def name(cls) -> str:
@@ -122,7 +105,9 @@ class Pip(PackageManager):
             if `command` were run.
 
         Raises:
-            ValueError: The dry-run output did not have the required format.
+            ValueError:
+                1) The given `command` is empty or not a valid `pip` command, or 2) dry-run output
+                did not have the required format.
             UnsupportedVersionError: The underlying `pip` executable is of an unsupported version.
         """
         def report_to_install_target(install_report: dict) -> Package:
@@ -199,7 +184,24 @@ class Pip(PackageManager):
         Raises:
             UnsupportedVersionError: The underlying `pip` executable is of an unsupported version.
         """
-        if not self._version or self._version < MIN_PIP_VERSION:
+        def get_pip_version(executable: str) -> Optional[Version]:
+            try:
+                pip_version = subprocess.run(
+                    [executable, "-m", "pip", "--version"],
+                    check=True,
+                    text=True,
+                    capture_output=True
+                )
+                # All supported versions adhere to this format
+                version_str = pip_version.stdout.split()[1]
+                return version_parse(version_str)
+            except IndexError:
+                return None
+            except InvalidVersion:
+                return None
+
+        pip_version = get_pip_version(self._executable)
+        if not pip_version or pip_version < MIN_PIP_VERSION:
             raise UnsupportedVersionError(f"pip before v{MIN_PIP_VERSION} is not supported")
 
     def _normalize_command(self, command: list[str]) -> list[str]:

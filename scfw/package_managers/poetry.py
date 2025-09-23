@@ -38,15 +38,6 @@ class Poetry(PackageManager):
         Raises:
             RuntimeError: A valid executable could not be resolved.
         """
-        def get_poetry_version(executable: str) -> Optional[Version]:
-            try:
-                # All supported versions adhere to this format
-                poetry_version = subprocess.run([executable, "--version"], check=True, text=True, capture_output=True)
-                match = re.search(r"Poetry \(version (.*)\)", poetry_version.stdout.strip())
-                return version_parse(match.group(1)) if match else None
-            except InvalidVersion:
-                return None
-
         executable = executable if executable else shutil.which(self.name())
         if not executable:
             raise RuntimeError("Failed to resolve local poetry executable")
@@ -54,7 +45,6 @@ class Poetry(PackageManager):
             raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
 
         self._executable = executable
-        self._version = get_poetry_version(executable)
 
     @classmethod
     def name(cls) -> str:
@@ -178,7 +168,17 @@ class Poetry(PackageManager):
         Raises:
             UnsupportedVersionError: The underlying `poetry` executable is of an unsupported version.
         """
-        if not self._version or self._version < MIN_POETRY_VERSION:
+        def get_poetry_version(executable: str) -> Optional[Version]:
+            try:
+                # All supported versions adhere to this format
+                poetry_version = subprocess.run([executable, "--version"], check=True, text=True, capture_output=True)
+                match = re.search(r"Poetry \(version (.*)\)", poetry_version.stdout.strip())
+                return version_parse(match.group(1)) if match else None
+            except InvalidVersion:
+                return None
+
+        poetry_version = get_poetry_version(self._executable)
+        if not poetry_version or poetry_version < MIN_POETRY_VERSION:
             raise UnsupportedVersionError(f"Poetry before v{MIN_POETRY_VERSION} is not supported")
 
     def _normalize_command(self, command: list[str]) -> list[str]:

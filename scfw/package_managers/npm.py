@@ -36,14 +36,6 @@ class Npm(PackageManager):
         Raises:
             RuntimeError: A valid executable could not be resolved.
         """
-        def get_npm_version(executable: str) -> Optional[Version]:
-            try:
-                # All supported versions adhere to this format
-                npm_version = subprocess.run([executable, "--version"], check=True, text=True, capture_output=True)
-                return version_parse(npm_version.stdout.strip())
-            except InvalidVersion:
-                return None
-
         executable = executable if executable else shutil.which(self.name())
         if not executable:
             raise RuntimeError("Failed to resolve local npm executable")
@@ -51,7 +43,6 @@ class Npm(PackageManager):
             raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
 
         self._executable = executable
-        self._version = get_npm_version(executable)
 
     @classmethod
     def name(cls) -> str:
@@ -102,7 +93,9 @@ class Npm(PackageManager):
             if `command` were run.
 
         Raises:
-            ValueError: Failed to parse an installation target.
+            ValueError:
+                1) The given `command` is empty or not a valid `npm` command, or 2) failed to parse
+                an installation target.
             UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
         def is_install_command(command: list[str]) -> bool:
@@ -213,7 +206,16 @@ class Npm(PackageManager):
         Raises:
             UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
-        if not self._version or self._version < MIN_NPM_VERSION:
+        def get_npm_version(executable: str) -> Optional[Version]:
+            try:
+                # All supported versions adhere to this format
+                npm_version = subprocess.run([executable, "--version"], check=True, text=True, capture_output=True)
+                return version_parse(npm_version.stdout.strip())
+            except InvalidVersion:
+                return None
+
+        npm_version = get_npm_version(self._executable)
+        if not npm_version or npm_version < MIN_NPM_VERSION:
             raise UnsupportedVersionError(f"npm before v{MIN_NPM_VERSION} is not supported")
 
     def _normalize_command(self, command: list[str]) -> list[str]:

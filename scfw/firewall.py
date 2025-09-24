@@ -29,7 +29,7 @@ def run_firewall(args: Namespace) -> int:
         An integer status code, 0 or 1.
     """
     try:
-        warned = False
+        warned, has_findings = False, False
 
         loggers = FirewallLoggers()
         _log.info(f"Command: '{' '.join(args.command)}'")
@@ -48,22 +48,25 @@ def run_firewall(args: Namespace) -> int:
             reports = verifiers.verify_packages(targets)
 
             if (critical_report := reports.get(FindingSeverity.CRITICAL)):
-                loggers.log_firewall_action(
-                    package_manager.ecosystem(),
-                    package_manager.name(),
-                    package_manager.executable(),
-                    args.command,
-                    list(critical_report.packages()),
-                    action=FirewallAction.BLOCK,
-                    warned=False
-                )
                 print(critical_report)
-                print("\nThe installation request was blocked. No changes have been made.")
-                return 1 if args.error_on_block else 0
+                has_findings = True
+
+                if not args.dry_run:
+                    loggers.log_firewall_action(
+                        package_manager.ecosystem(),
+                        package_manager.name(),
+                        package_manager.executable(),
+                        args.command,
+                        list(critical_report.packages()),
+                        action=FirewallAction.BLOCK,
+                        warned=False
+                    )
+                    print("\nThe installation request was blocked. No changes have been made.")
+                    return 1 if args.error_on_block else 0
 
             if (warning_report := reports.get(FindingSeverity.WARNING)):
                 print(warning_report)
-                warned = True
+                warned, has_findings = True, True
 
                 if (
                     not args.dry_run
@@ -85,7 +88,7 @@ def run_firewall(args: Namespace) -> int:
         if args.dry_run:
             _log.info("Firewall dry-run mode enabled: command will not be run")
             print("Dry-run: exiting without running command.")
-            return 0
+            return 1 if has_findings else 0
         else:
             loggers.log_firewall_action(
                 package_manager.ecosystem(),

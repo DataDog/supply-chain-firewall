@@ -135,7 +135,7 @@ class Pip(PackageManager):
         # Otherwise, this is probably a live `pip install` command
         # To be certain, we would need to write a full parser for pip
         try:
-            dry_run_command = command + ["--dry-run", "--quiet", "--report", "-"]
+            dry_run_command = command + ["--dry-run", "-qqqqq", "--report", "-"]
             dry_run = subprocess.run(dry_run_command, check=True, text=True, capture_output=True)
             install_reports = json.loads(dry_run.stdout).get("install", [])
             return list(map(report_to_install_target, install_reports))

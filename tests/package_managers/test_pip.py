@@ -81,6 +81,38 @@ def test_pip_no_change_error(command_line: list[str]):
     assert pip_list() == INIT_PIP_STATE
 
 
+@pytest.mark.parametrize(
+        "should_fail,verbose_options",
+        [
+            (True,  ["-v"]),
+            (False, ["-q"]),
+            (True,  ["-v", "-q"]),
+            (False, ["-v", "-qq"]),
+            (True,  ["-vv", "-qq"]),
+            (False, ["-vv", "-qqq"]),
+            (True,  ["-vvv", "-qqq"]),
+            (False, ["-vvv", "-qqqq"]),
+            (True,  ["-vvvv", "-qqqq"]),
+            (False, ["-vvvv", "-qqqqq"]),
+        ]
+)
+def test_pip_install_report_verbose_json(should_fail: bool, verbose_options: list[str]):
+    """
+    Test to determine how many `-q/--quiet` options are needed to override various
+    numbers of `-v/--verbose` options (no effect after three), measured by whether
+    the report JSON parses successfully when read from stdout.
+    """
+    command_line = (
+        PIP_COMMAND_PREFIX + ["install", "--dry-run", "--report", "-", TEST_TARGET] + verbose_options
+    )
+    p = subprocess.run(command_line, check=True, text=True, capture_output=True)
+    if should_fail:
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(p.stdout)
+    else:
+        json.loads(p.stdout)
+
+
 def test_pip_install_report_override():
     """
     Test that all but the last instance of the `--report` option in the command

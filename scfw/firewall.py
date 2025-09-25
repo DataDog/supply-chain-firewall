@@ -29,7 +29,7 @@ def run_firewall(args: Namespace) -> int:
         An integer status code, 0 or 1.
     """
     try:
-        warned = False
+        critical_report, warning_report = None, None
 
         loggers = FirewallLoggers()
         _log.info(f"Command: '{' '.join(args.command)}'")
@@ -41,13 +41,13 @@ def run_firewall(args: Namespace) -> int:
 
         if targets:
             verifiers = FirewallVerifiers(package_manager.ecosystem())
-            _log.info(
-                f"Using package verifiers: [{', '.join(verifiers.names())}]"
-            )
+            _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
 
             reports = verifiers.verify_packages(targets)
+            critical_report = reports.get(FindingSeverity.CRITICAL)
+            warning_report = reports.get(FindingSeverity.WARNING)
 
-            if (critical_report := reports.get(FindingSeverity.CRITICAL)):
+            if not args.dry_run and critical_report:
                 loggers.log_firewall_action(
                     package_manager.ecosystem(),
                     package_manager.name(),
@@ -61,13 +61,10 @@ def run_firewall(args: Namespace) -> int:
                 print("\nThe installation request was blocked. No changes have been made.")
                 return 1 if args.error_on_block else 0
 
-            if (warning_report := reports.get(FindingSeverity.WARNING)):
+            if not args.dry_run and warning_report:
                 print(warning_report)
-                warned = True
-
                 if (
-                    not args.dry_run
-                    and not args.allow_on_warning
+                    not args.allow_on_warning
                     and (args.block_on_warning or not inquirer.confirm("Proceed with installation?", default=False))
                 ):
                     loggers.log_firewall_action(
@@ -77,26 +74,30 @@ def run_firewall(args: Namespace) -> int:
                         args.command,
                         list(warning_report.packages()),
                         action=FirewallAction.BLOCK,
-                        warned=warned
+                        warned=True
                     )
                     print("The installation request was aborted. No changes have been made.")
                     return 1 if args.error_on_block else 0
 
         if args.dry_run:
             _log.info("Firewall dry-run mode enabled: command will not be run")
+            if critical_report:
+                print(critical_report)
+            elif warning_report:
+                print(warning_report)
             print("Dry-run: exiting without running command.")
-            return 0
-        else:
-            loggers.log_firewall_action(
-                package_manager.ecosystem(),
-                package_manager.name(),
-                package_manager.executable(),
-                args.command,
-                targets,
-                action=FirewallAction.ALLOW,
-                warned=warned
-            )
-            return package_manager.run_command(args.command)
+            return 1 if (critical_report or warning_report) else 0
+
+        loggers.log_firewall_action(
+            package_manager.ecosystem(),
+            package_manager.name(),
+            package_manager.executable(),
+            args.command,
+            targets,
+            action=FirewallAction.ALLOW,
+            warned=True if warning_report else False,
+        )
+        return package_manager.run_command(args.command)
 
     except UnsupportedVersionError as e:
         _log.error(f"Incompatible package manager version: {e}")

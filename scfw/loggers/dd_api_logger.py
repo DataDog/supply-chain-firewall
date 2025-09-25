@@ -12,7 +12,7 @@ from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
 
 import scfw
-from scfw.configure import DD_API_LOG_ENABLED_VAR, DD_ENV, DD_SERVICE, DD_SOURCE
+from scfw.configure import DD_API_LOGGER_ENABLED_VAR, DD_ENV, DD_SERVICE, DD_SOURCE
 from scfw.logger import FirewallLogger
 from scfw.loggers.dd_logger import DDLogFormatter, DDLogger
 
@@ -59,7 +59,7 @@ class _DDLogHandler(logging.Handler):
 
 
 # Configure a single logging handle for all `DDAPILogger` instances to share
-_handler = _DDLogHandler() if os.getenv(DD_API_LOG_ENABLED_VAR) else logging.NullHandler()
+_handler = _DDLogHandler() if os.getenv(DD_API_LOGGER_ENABLED_VAR) else logging.NullHandler()
 _handler.setFormatter(DDLogFormatter())
 
 _ddlog = logging.getLogger(_DD_LOG_NAME)

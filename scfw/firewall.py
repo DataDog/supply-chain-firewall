@@ -44,8 +44,10 @@ def run_firewall(args: Namespace) -> int:
             _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
 
             reports = verifiers.verify_packages(targets)
+            critical_report = reports.get(FindingSeverity.CRITICAL)
+            warning_report = reports.get(FindingSeverity.WARNING)
 
-            if (critical_report := reports.get(FindingSeverity.CRITICAL)) and not args.dry_run:
+            if not args.dry_run and critical_report:
                 loggers.log_firewall_action(
                     package_manager.ecosystem(),
                     package_manager.name(),
@@ -59,7 +61,7 @@ def run_firewall(args: Namespace) -> int:
                 print("\nThe installation request was blocked. No changes have been made.")
                 return 1 if args.error_on_block else 0
 
-            if (warning_report := reports.get(FindingSeverity.WARNING)) and not args.dry_run:
+            if not args.dry_run and warning_report:
                 print(warning_report)
                 if (
                     not args.allow_on_warning

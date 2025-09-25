@@ -94,6 +94,12 @@ def _add_configure_cli(parser: ArgumentParser):
     )
 
     parser.add_argument(
+        "--dd-api-logger",
+        action="store_true",
+        help="Enable log forwarding via the Datadog API (requires API key)"
+    )
+
+    parser.add_argument(
         "--dd-log-level",
         type=str,
         default=None,
@@ -308,6 +314,7 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
                 args.alias_poetry,
                 args.dd_agent_port,
                 args.dd_api_key,
+                args.dd_api_logger,
                 args.dd_log_level,
             })
         ):

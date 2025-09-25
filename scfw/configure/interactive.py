@@ -58,32 +58,32 @@ def get_answers() -> dict:
             default=True
         ),
         inquirer.Confirm(
-            name="dd_agent_logging",
+            name="dd_agent_logger",
             message="If you have the Datadog Agent installed locally, would you like to forward firewall logs to it?",
             default=False
         ),
         inquirer.Text(
             name="dd_agent_port",
             message=f"Enter the local port where the Agent will receive logs (default: {_DD_AGENT_DEFAULT_LOG_PORT})",
-            ignore=lambda answers: not answers["dd_agent_logging"]
+            ignore=lambda answers: not answers["dd_agent_logger"]
         ),
         inquirer.Confirm(
-            name="dd_api_logging",
+            name="dd_api_logger",
             message="Would you like to enable sending firewall logs to Datadog using an API key?",
             default=False,
-            ignore=lambda answers: has_dd_api_key or answers["dd_agent_logging"]
+            ignore=lambda answers: has_dd_api_key or answers["dd_agent_logger"]
         ),
         inquirer.Text(
             name="dd_api_key",
             message="Enter a Datadog API key",
             validate=lambda _, current: current != '',
-            ignore=lambda answers: has_dd_api_key or not answers["dd_api_logging"]
+            ignore=lambda answers: has_dd_api_key or not answers["dd_api_logger"]
         ),
         inquirer.List(
             name="dd_log_level",
             message="Select the desired log level for Datadog logging",
             choices=[(_describe_log_level(action), str(action)) for action in FirewallAction],
-            ignore=lambda answers: not (answers["dd_agent_logging"] or has_dd_api_key or answers["dd_api_logging"])
+            ignore=lambda answers: not (answers["dd_agent_logger"] or has_dd_api_key or answers["dd_api_logger"])
         )
     ]
 
@@ -96,7 +96,7 @@ def get_answers() -> dict:
         answers["scfw_home"] = home_dir_default
 
     # Patch for inquirer's broken `default` option
-    if answers.get("dd_agent_logging") and not answers.get("dd_agent_port"):
+    if answers.get("dd_agent_logger") and not answers.get("dd_agent_port"):
         answers["dd_agent_port"] = _DD_AGENT_DEFAULT_LOG_PORT
 
     return answers
@@ -119,7 +119,7 @@ def get_farewell(answers: dict) -> str:
         "\n* Update your current shell environment by sourcing from your .bashrc/.zshrc file."
     )
 
-    if answers.get("dd_agent_logging"):
+    if answers.get("dd_agent_logger"):
         farewell += "\n* Restart the Datadog Agent in order for it to accept firewall logs."
 
     farewell += "\n\nGood luck!"

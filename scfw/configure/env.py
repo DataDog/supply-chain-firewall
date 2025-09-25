@@ -7,7 +7,9 @@ import re
 import os
 import tempfile
 
-from scfw.configure.constants import DD_AGENT_PORT_VAR, DD_API_KEY_VAR, DD_LOG_LEVEL_VAR, SCFW_HOME_VAR
+from scfw.configure.constants import (
+    DD_AGENT_PORT_VAR, DD_API_KEY_VAR, DD_API_LOGGER_ENABLED_VAR, DD_LOG_LEVEL_VAR, SCFW_HOME_VAR
+)
 
 _CONFIG_FILES = [".bashrc", ".zshrc"]
 
@@ -81,6 +83,8 @@ def _format_answers(answers: dict) -> str:
         config += f'\nexport {DD_AGENT_PORT_VAR}="{dd_agent_port}"'
     if (dd_api_key := answers.get("dd_api_key")):
         config += f'\nexport {DD_API_KEY_VAR}="{dd_api_key}"'
+    if answers.get("dd_api_logger"):
+        config += f'\nexport {DD_API_LOGGER_ENABLED_VAR}=1'
     if (dd_log_level := answers.get("dd_log_level")):
         config += f'\nexport {DD_LOG_LEVEL_VAR}="{dd_log_level}"'
     if (scfw_home := answers.get("scfw_home")):

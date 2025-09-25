@@ -3,13 +3,11 @@ Provides utilities for interactively accepting configuration options from the us
 """
 
 import logging
-import os
 from pathlib import Path
 from typing import Optional
 
 import inquirer  # type: ignore
 
-from scfw.configure.constants import DD_API_KEY_VAR
 from scfw.logger import FirewallAction
 
 GREETING = (
@@ -32,7 +30,6 @@ def get_answers() -> dict:
         A `dict` containing the user's selected configuration options.
     """
     home_dir_default = _get_home_dir_default()
-    has_dd_api_key = os.getenv(DD_API_KEY_VAR) is not None
 
     questions = [
         inquirer.Text(
@@ -71,19 +68,13 @@ def get_answers() -> dict:
             name="dd_api_logger",
             message="Would you like to enable sending firewall logs to Datadog using an API key?",
             default=False,
-            ignore=lambda answers: has_dd_api_key or answers["dd_agent_logger"]
-        ),
-        inquirer.Text(
-            name="dd_api_key",
-            message="Enter a Datadog API key",
-            validate=lambda _, current: current != '',
-            ignore=lambda answers: has_dd_api_key or not answers["dd_api_logger"]
+            ignore=lambda answers: answers["dd_agent_logger"]
         ),
         inquirer.List(
             name="dd_log_level",
             message="Select the desired log level for Datadog logging",
             choices=[(_describe_log_level(action), str(action)) for action in FirewallAction],
-            ignore=lambda answers: not (answers["dd_agent_logger"] or has_dd_api_key or answers["dd_api_logger"])
+            ignore=lambda answers: not (answers["dd_agent_logger"] or answers["dd_api_logger"])
         )
     ]
 

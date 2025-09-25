@@ -17,11 +17,6 @@ DD_ENV = "dev"
 Default environment value for Datadog logging.
 """
 
-DD_API_KEY_VAR = "DD_API_KEY"
-"""
-The environment variable under which the firewall looks for a Datadog API key.
-"""
-
 DD_API_LOGGER_ENABLED_VAR = "SCFW_DD_API_LOGGER_ENABLED"
 """
 The environment variable that determines whether logging via the Datadog API is enabled.

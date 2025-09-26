@@ -50,7 +50,7 @@ class Pip(PackageManager):
 
         executable = executable if executable else get_python_executable()
         if not executable:
-            raise RuntimeError("Failed to resolve local Python executable")
+            raise RuntimeError("Failed to resolve local Python executable: is Python installed?")
         if not os.path.isfile(executable):
             raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
 

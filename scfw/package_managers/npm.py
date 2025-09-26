@@ -38,7 +38,7 @@ class Npm(PackageManager):
         """
         executable = executable if executable else shutil.which(self.name())
         if not executable:
-            raise RuntimeError("Failed to resolve local npm executable")
+            raise RuntimeError("Failed to resolve local npm executable: is npm installed?")
         if not os.path.isfile(executable):
             raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
 

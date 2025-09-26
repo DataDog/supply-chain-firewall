@@ -66,7 +66,7 @@ def get_answers() -> dict:
         ),
         inquirer.Confirm(
             name="dd_api_logger",
-            message="Would you like to enable sending firewall logs to Datadog using an API key?",
+            message="Would you like to forward firewall logs to the Datadog API? This requires an API key.",
             default=False,
             ignore=lambda answers: answers["dd_agent_logger"]
         ),
@@ -114,7 +114,7 @@ def get_farewell(answers: dict) -> str:
         farewell += "\n* Restart the Datadog Agent in order for it to accept firewall logs."
 
     if answers.get("dd_api_logger"):
-        farewell += "\n* Ensure that environment variable DD_API_KEY contains your Datadog API key."
+        farewell += "\n* Ensure that environment variable DD_API_KEY is set to your Datadog API key."
         farewell += "\n* Verify any additional configuration needed to use this key (e.g., DD_SITE)."
 
     farewell += "\n\nGood luck!"

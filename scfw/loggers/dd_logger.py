@@ -68,7 +68,7 @@ class DDLogFormatter(logging.Formatter):
         try:
             log_record["username"] = getpass.getuser()
         except Exception as e:
-            _log.warning(f"Failed to query username: {e}")
+            _log.warning(f"Failed to query username while formatting log: {e}")
 
         for key in _AUDIT_ATTRIBUTES | _FIREWALL_ACTION_ATTRIBUTES:
             if (value := record.__dict__.get(key)):

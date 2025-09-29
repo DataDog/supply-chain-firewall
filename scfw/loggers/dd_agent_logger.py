@@ -50,7 +50,7 @@ class _DDLogHandler(logging.Handler):
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect(("localhost", self._agent_port))
             if s.send(message) != len(message):
-                raise ValueError("Log send failed")
+                raise ValueError("Failed to send log message over local socket")
             s.close()
 
         except Exception as e:

@@ -69,7 +69,10 @@ class FirewallLoggers(FirewallLogger):
         all client loggers.
         """
         for logger in self._loggers:
-            logger.log_firewall_action(ecosystem, package_manager, executable, command, targets, action, warned)
+            try:
+                logger.log_firewall_action(ecosystem, package_manager, executable, command, targets, action, warned)
+            except Exception as e:
+                _log.warning(f"Failed to log firewall action: {e}")
 
     def log_audit(
         self,
@@ -82,4 +85,7 @@ class FirewallLoggers(FirewallLogger):
         Log the results of an audit to all client loggers.
         """
         for logger in self._loggers:
-            logger.log_audit(ecosystem, package_manager, executable, reports)
+            try:
+                logger.log_audit(ecosystem, package_manager, executable, reports)
+            except Exception as e:
+                _log.warning(f"Failed to log audit action: {e}")

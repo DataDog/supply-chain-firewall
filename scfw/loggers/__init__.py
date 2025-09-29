@@ -53,6 +53,11 @@ class FirewallLoggers(FirewallLogger):
                 _log.warning(f"Failed to load module {module} while collecting loggers")
             except AttributeError:
                 _log.info(f"Module {module} does not export a logger")
+            except Exception as e:
+                _log.warning(f"Failed to initialize logger defined in {module}: {e}")
+
+        if not self._loggers:
+            _log.warning("No loggers were discovered and successfully initialized")
 
     def log_firewall_action(
         self,

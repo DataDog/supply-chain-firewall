@@ -6,6 +6,7 @@ from argparse import Namespace
 import logging
 
 from scfw.loggers import FirewallLoggers
+from scfw.package_manager import UnsupportedVersionError
 import scfw.package_managers as package_managers
 from scfw.report import VerificationReport
 from scfw.verifier import FindingSeverity
@@ -52,6 +53,10 @@ def run_audit(args: Namespace) -> int:
         else:
             print("No issues found.")
 
+        return 0
+
+    except UnsupportedVersionError as e:
+        _log.error(f"Unsupported package manager version: {e}")
         return 0
 
     except Exception as e:

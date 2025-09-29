@@ -88,4 +88,4 @@ class FirewallLoggers(FirewallLogger):
             try:
                 logger.log_audit(ecosystem, package_manager, executable, reports)
             except Exception as e:
-                _log.warning(f"Failed to log audit action: {e}")
+                _log.warning(f"Failed to log audit: {e}")

@@ -58,7 +58,7 @@ class _DDLogHandler(logging.Handler):
 
 
 # Configure a single logging handle for all `DDAgentLogger` instances to share
-_handler = logging.NullHandler()
+_handler: logging.Handler = logging.NullHandler()
 if (dd_agent_port := os.getenv(DD_AGENT_PORT_VAR)):
     try:
         _handler = _DDLogHandler(int(dd_agent_port))

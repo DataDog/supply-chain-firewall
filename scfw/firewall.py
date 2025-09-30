@@ -108,7 +108,7 @@ def run_firewall(args: Namespace) -> int:
             )
             return 0
 
-        _log.info(e)
+        _log.info(f"Unsupported package manager version: {e}")
         _log.info(f"Unsupported versions allowed: running command '{' '.join(args.command)}' without verification")
 
         if not package_manager:

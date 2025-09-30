@@ -52,7 +52,7 @@ class FirewallLoggers(FirewallLogger):
             except ModuleNotFoundError:
                 _log.warning(f"Failed to load module {module} while collecting loggers")
             except AttributeError:
-                _log.info(f"Module {module} does not export a logger")
+                _log.debug(f"Module {module} does not export a logger")
             except Exception as e:
                 _log.warning(f"Failed to initialize logger defined in {module}: {e}")
 

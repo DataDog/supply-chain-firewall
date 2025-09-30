@@ -39,7 +39,8 @@ _FIREWALL_ACTION_ATTRIBUTES = {
     "msg",
     "package_manager",
     "targets",
-    "warned"
+    "warned",
+    "verification"
 }
 
 
@@ -71,8 +72,10 @@ class DDLogFormatter(logging.Formatter):
             _log.warning(f"Failed to query username while formatting log: {e}")
 
         for key in _AUDIT_ATTRIBUTES | _FIREWALL_ACTION_ATTRIBUTES:
-            if (value := record.__dict__.get(key)):
-                log_record[key] = value
+            try:
+                log_record[key] = record.__dict__[key]
+            except KeyError:
+                pass
 
         return json.dumps(log_record) + '\n'
 
@@ -105,7 +108,8 @@ class DDLogger(FirewallLogger):
         command: list[str],
         targets: list[Package],
         action: FirewallAction,
-        warned: bool
+        warned: bool,
+        verification: bool = True
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall.
@@ -118,6 +122,7 @@ class DDLogger(FirewallLogger):
             targets: The installation targets relevant to firewall's action.
             action: The action taken by the firewall.
             warned: Indicates whether the user was warned about findings and prompted for approval.
+            verification: Indicates whether verification was performed in taking the specified `action`.
         """
         if not self._level or action < self._level:
             return
@@ -131,6 +136,7 @@ class DDLogger(FirewallLogger):
                 "targets": list(map(str, targets)),
                 "action": str(action),
                 "warned": warned,
+                "verification": verification,
             }
         )
 

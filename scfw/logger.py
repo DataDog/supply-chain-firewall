@@ -85,7 +85,8 @@ class FirewallLogger(metaclass=ABCMeta):
         command: list[str],
         targets: list[Package],
         action: FirewallAction,
-        warned: bool
+        warned: bool,
+        verification: bool = True
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall.
@@ -102,6 +103,13 @@ class FirewallLogger(metaclass=ABCMeta):
             warned:
                 Indicates whether the user was warned about findings for any installation
                 targets and prompted for approval to proceed with `command`.
+            verification:
+                Indicates whether Supply-Chain Firewall performed installation target
+                verification in deciding to take the specified `action`.
+
+                Verification is skipped only when the underlying package manager is of an
+                unsupported version and the user has passed the `--allow-unsupported` option
+                on the command line.
         """
         pass
 

@@ -114,4 +114,14 @@ def run_firewall(args: Namespace) -> int:
         if not package_manager:
             raise RuntimeError("Failed to initialize package manager handle: cannot run command")
 
+        loggers.log_firewall_action(
+            package_manager.ecosystem(),
+            package_manager.name(),
+            package_manager.executable(),
+            args.command,
+            targets=[],
+            action=FirewallAction.ALLOW,
+            warned=False,
+            verification=False,
+        )
         return package_manager.run_command(args.command)

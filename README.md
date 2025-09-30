@@ -58,15 +58,15 @@ $ scfw configure
 
 ### Compatibility and limitations
 
-|  Package manager  |  Compatible versions  |        Inspected subcommands       |
+|  Package manager  |   Supported versions  |        Inspected subcommands       |
 | :---------------: | :-------------------: | :--------------------------------: |
 | npm               | >= 7.0                | `install` (including aliases)      |
 | pip               | >= 22.2               | `install`                          |
 | poetry            | >= 1.7                | `add`, `install`, `sync`, `update` |
 
-In keeping with its goal of blocking 100% of known-malicious package installations, `scfw` will refuse to run with an incompatible version of a supported package manager.  Please upgrade to or verify that you are running a compatible version before using this tool.
-
 Supply-Chain Firewall may only know how to inspect some of the "installish" subcommands for its supported package managers.  These are shown in the above table.  Any other subcommands are always allowed to run.
+
+By default, `scfw` will refuse to run inspected subcommands with an unsupported version of a supported package manager.  This is in keeping with its goal of blocking 100% of known-malicious package installations.  In order to get the most out of `scfw`, please verify that you are running a supported version of your package manager and upgrade accordingly before using this tool.  Otherwise, the `--allow-unsupported` option enables users to disable verification and run one-off commands in unsupported package manager versions.
 
 Currently, Supply-Chain Firewall is only fully supported on macOS systems, though it should run as intended on common Linux distributions.  It is currently not supported on Windows.
 

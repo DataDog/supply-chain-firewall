@@ -139,6 +139,12 @@ def _add_run_cli(parser: ArgumentParser):
         help="Non-interactively allow commands with only warning-level findings"
     )
 
+    parser.add_argument(
+        "--allow-unsupported",
+        action="store_true",
+        help="Disable verification and allow commands for unsupported package manager versions"
+    )
+
     group.add_argument(
         "--block-on-warning",
         action="store_true",

@@ -28,12 +28,13 @@ def run_firewall(args: Namespace) -> int:
     Returns:
         An integer status code indicating normal or error exit.
     """
+    package_manager = None
+    critical_report, warning_report = None, None
+
+    loggers = FirewallLoggers()
+    _log.info(f"Command: '{' '.join(args.command)}'")
+
     try:
-        critical_report, warning_report = None, None
-
-        loggers = FirewallLoggers()
-        _log.info(f"Command: '{' '.join(args.command)}'")
-
         package_manager = package_managers.get_package_manager(args.package_manager, executable=args.executable)
 
         targets = package_manager.resolve_install_targets(args.command)
@@ -100,5 +101,19 @@ def run_firewall(args: Namespace) -> int:
         return package_manager.run_command(args.command)
 
     except UnsupportedVersionError as e:
-        _log.error(f"Incompatible package manager version: {e}")
-        return 0
+        version_log = f"Unsupported package manager version: {e}"
+
+        if not args.allow_unsupported:
+            _log.error(version_log)
+            _log.error(
+                "Upgrade to a supported version or rerun with --allow-unsupported to bypass verification (use caution)"
+            )
+            return 0
+
+        _log.info(version_log)
+        _log.info(f"Unsupported versions allowed: running command '{' '.join(args.command)}' without verification")
+
+        if not package_manager:
+            raise RuntimeError("Failed to initialize package manager handle: cannot run command")
+
+        return package_manager.run_command(args.command)

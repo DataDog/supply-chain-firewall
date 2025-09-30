@@ -101,16 +101,14 @@ def run_firewall(args: Namespace) -> int:
         return package_manager.run_command(args.command)
 
     except UnsupportedVersionError as e:
-        version_log = f"Unsupported package manager version: {e}"
-
         if not args.allow_unsupported:
-            _log.error(version_log)
+            _log.error(e)
             _log.error(
                 "Upgrade to a supported version or rerun with --allow-unsupported to bypass verification (use caution)"
             )
             return 0
 
-        _log.info(version_log)
+        _log.info(e)
         _log.info(f"Unsupported versions allowed: running command '{' '.join(args.command)}' without verification")
 
         if not package_manager:

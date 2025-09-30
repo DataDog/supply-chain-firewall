@@ -96,12 +96,8 @@ class FirewallLogger(metaclass=ABCMeta):
             executable: The executable used to execute the inspected package manager command.
             command: The package manager command line provided to the firewall.
             targets:
-                The installation targets relevant to firewall's action.
-
-                In the case of a blocking action, `targets` contains the installation
-                targets that caused the firewall to block.  In the case of an aborting
-                action, `targets` contains the targets that prompted the firewall to
-                warn the user and seek confirmation to proceed.
+                The installation targets relevant to firewall's action. For BLOCK actions,
+                contains the installation targets that caused the firewall to block or warn.
             action: The action taken by the firewall.
             warned:
                 Indicates whether the user was warned about findings for any installation

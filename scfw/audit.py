@@ -23,7 +23,7 @@ def run_audit(args: Namespace) -> int:
         args: A `Namespace` containing the parsed `audit` subcommand command line.
 
     Returns:
-        An integer status code, 0 or 1.
+        An integer status code indicating normal exit.
     """
     try:
         merged_report = VerificationReport()
@@ -58,7 +58,3 @@ def run_audit(args: Namespace) -> int:
     except UnsupportedVersionError as e:
         _log.error(f"Unsupported package manager version: {e}")
         return 0
-
-    except Exception as e:
-        _log.error(e)
-        return 1

@@ -26,7 +26,7 @@ def run_firewall(args: Namespace) -> int:
             command to run through the firewall.
 
     Returns:
-        An integer status code, 0 or 1.
+        An integer status code indicating normal or error exit.
     """
     try:
         critical_report, warning_report = None, None
@@ -102,7 +102,3 @@ def run_firewall(args: Namespace) -> int:
     except UnsupportedVersionError as e:
         _log.error(f"Incompatible package manager version: {e}")
         return 0
-
-    except Exception as e:
-        _log.error(e)
-        return 1

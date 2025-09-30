@@ -19,7 +19,7 @@ def main() -> int:
     The supply-chain firewall's main routine.
 
     Returns:
-        An integer status code, 0 or 1.
+        An integer status code indicating normal or error exit.
     """
     args, help = cli.parse_command_line()
 
@@ -32,15 +32,20 @@ def main() -> int:
     _log.info(f"Starting Supply-Chain Firewall on {time.asctime(time.localtime())}")
     _log.debug(f"Command line: {vars(args)}")
 
-    match args.subcommand:
-        case Subcommand.Audit:
-            return audit.run_audit(args)
-        case Subcommand.Configure:
-            return configure.run_configure(args)
-        case Subcommand.Run:
-            return firewall.run_firewall(args)
+    try:
+        match args.subcommand:
+            case Subcommand.Audit:
+                return audit.run_audit(args)
+            case Subcommand.Configure:
+                return configure.run_configure(args)
+            case Subcommand.Run:
+                return firewall.run_firewall(args)
 
-    return 0
+        return 0
+
+    except Exception as e:
+        _log.error(e)
+        return 1
 
 
 def _configure_logging(level: int):

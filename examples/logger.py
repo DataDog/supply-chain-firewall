@@ -32,8 +32,8 @@ class CustomFirewallLogger(FirewallLogger):
         command: list[str],
         targets: list[Package],
         action: FirewallAction,
+        verified: bool,
         warned: bool,
-        verified: bool = True
     ):
         return
 

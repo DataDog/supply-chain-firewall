@@ -56,6 +56,7 @@ def run_firewall(args: Namespace) -> int:
                     args.command,
                     list(critical_report.packages()),
                     action=FirewallAction.BLOCK,
+                    verified=True,
                     warned=False
                 )
                 print(critical_report)
@@ -75,6 +76,7 @@ def run_firewall(args: Namespace) -> int:
                         args.command,
                         list(warning_report.packages()),
                         action=FirewallAction.BLOCK,
+                        verified=True,
                         warned=True
                     )
                     print("The installation request was aborted. No changes have been made.")
@@ -96,7 +98,8 @@ def run_firewall(args: Namespace) -> int:
             args.command,
             targets,
             action=FirewallAction.ALLOW,
-            warned=True if warning_report else False,
+            verified=True,
+            warned=True if warning_report else False
         )
         return package_manager.run_command(args.command)
 
@@ -121,7 +124,7 @@ def run_firewall(args: Namespace) -> int:
             args.command,
             targets=[],
             action=FirewallAction.ALLOW,
-            warned=False,
             verified=False,
+            warned=False
         )
         return package_manager.run_command(args.command)

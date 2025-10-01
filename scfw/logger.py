@@ -85,8 +85,8 @@ class FirewallLogger(metaclass=ABCMeta):
         command: list[str],
         targets: list[Package],
         action: FirewallAction,
+        verified: bool,
         warned: bool,
-        verified: bool = True,
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall.
@@ -98,19 +98,18 @@ class FirewallLogger(metaclass=ABCMeta):
             command: The package manager command line provided to the firewall.
             targets:
                 The installation targets relevant to Supply-Chain Firewall's action:
-                    * For `BLOCK` actions, contains the installation targets that caused the block
-                    * For `ALLOW` actions, contains all installation targets
+                  * For `BLOCK` actions, contains the installation targets that caused the block
+                  * For `ALLOW` actions, contains all installation targets
             action: The action taken by Supply-Chain Firewall.
+            verified:
+                Indicates whether Supply-Chain Firewall performed installation target
+                verification in deciding to take the specified `action`. Verification is not
+                performed **only** under the following conditions:
+                  * The package manager is of an unsupported version and the user has passed the
+                    command-line option `--allow-unsupported`
             warned:
                 Indicates whether the user was warned about findings for any installation
                 targets and prompted for approval to proceed with `command`.
-            verified:
-                Indicates whether Supply-Chain Firewall performed installation target
-                verification in deciding to take the specified `action`.
-
-                Verification is skipped only when the underlying package manager is of an
-                unsupported version and the user has passed the `--allow-unsupported` option
-                on the command line.
         """
         pass
 

@@ -122,6 +122,6 @@ def run_firewall(args: Namespace) -> int:
             targets=[],
             action=FirewallAction.ALLOW,
             warned=False,
-            verification=False,
+            verified=False,
         )
         return package_manager.run_command(args.command)

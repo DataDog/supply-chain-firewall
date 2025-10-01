@@ -40,7 +40,7 @@ _FIREWALL_ACTION_ATTRIBUTES = {
     "package_manager",
     "targets",
     "warned",
-    "verification"
+    "verified"
 }
 
 
@@ -109,7 +109,7 @@ class DDLogger(FirewallLogger):
         targets: list[Package],
         action: FirewallAction,
         warned: bool,
-        verification: bool = True
+        verified: bool = True
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall.
@@ -122,7 +122,7 @@ class DDLogger(FirewallLogger):
             targets: The installation targets relevant to firewall's action.
             action: The action taken by the firewall.
             warned: Indicates whether the user was warned about findings and prompted for approval.
-            verification: Indicates whether verification was performed in taking the specified `action`.
+            verified: Indicates whether verification was performed in taking the specified `action`.
         """
         if not self._level or action < self._level:
             return
@@ -136,7 +136,7 @@ class DDLogger(FirewallLogger):
                 "targets": list(map(str, targets)),
                 "action": str(action),
                 "warned": warned,
-                "verification": verification,
+                "verified": verified,
             }
         )
 

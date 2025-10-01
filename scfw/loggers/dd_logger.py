@@ -29,7 +29,7 @@ _AUDIT_ATTRIBUTES = {
     "executable",
     "msg",
     "package_manager",
-    "reports"
+    "reports",
 }
 _FIREWALL_ACTION_ATTRIBUTES = {
     "action",
@@ -40,7 +40,7 @@ _FIREWALL_ACTION_ATTRIBUTES = {
     "package_manager",
     "targets",
     "verified",
-    "warned"
+    "warned",
 }
 
 
@@ -109,7 +109,7 @@ class DDLogger(FirewallLogger):
         targets: list[Package],
         action: FirewallAction,
         verified: bool,
-        warned: bool
+        warned: bool,
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall.
@@ -145,7 +145,7 @@ class DDLogger(FirewallLogger):
         ecosystem: ECOSYSTEM,
         package_manager: str,
         executable: str,
-        reports: dict[FindingSeverity, VerificationReport]
+        reports: dict[FindingSeverity, VerificationReport],
     ):
         """
         Log the results of an audit for the given ecosystem and package manager.

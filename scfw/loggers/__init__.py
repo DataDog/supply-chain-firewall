@@ -68,7 +68,7 @@ class FirewallLoggers(FirewallLogger):
         targets: list[Package],
         action: FirewallAction,
         verified: bool,
-        warned: bool
+        warned: bool,
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall to
@@ -84,7 +84,7 @@ class FirewallLoggers(FirewallLogger):
                     targets,
                     action,
                     verified,
-                    warned
+                    warned,
                 )
             except Exception as e:
                 _log.warning(f"Failed to log firewall action: {e}")
@@ -94,7 +94,7 @@ class FirewallLoggers(FirewallLogger):
         ecosystem: ECOSYSTEM,
         package_manager: str,
         executable: str,
-        reports: dict[FindingSeverity, VerificationReport]
+        reports: dict[FindingSeverity, VerificationReport],
     ):
         """
         Log the results of an audit to all client loggers.

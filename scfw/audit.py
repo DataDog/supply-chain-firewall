@@ -39,7 +39,7 @@ def run_audit(args: Namespace) -> int:
             package_manager.ecosystem(),
             package_manager.name(),
             package_manager.executable(),
-            reports
+            reports,
         )
 
         for severity in FindingSeverity:

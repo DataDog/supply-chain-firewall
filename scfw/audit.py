@@ -22,38 +22,33 @@ def run_audit(args: Namespace) -> int:
         args: A `Namespace` containing the parsed `audit` subcommand command line.
 
     Returns:
-        An integer status code, 0 or 1.
+        An integer status code indicating normal exit.
     """
-    try:
-        merged_report = VerificationReport()
+    merged_report = VerificationReport()
 
-        package_manager = package_managers.get_package_manager(args.package_manager, executable=args.executable)
+    package_manager = package_managers.get_package_manager(args.package_manager, executable=args.executable)
 
-        if (packages := package_manager.list_installed_packages()):
-            _log.info(f"Installed packages: [{', '.join(map(str, packages))}]")
+    if (packages := package_manager.list_installed_packages()):
+        _log.info(f"Installed packages: [{', '.join(map(str, packages))}]")
 
-            verifiers = FirewallVerifiers(package_manager.ecosystem())
-            _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
+        verifiers = FirewallVerifiers(package_manager.ecosystem())
+        _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
 
-            reports = verifiers.verify_packages(packages)
-            FirewallLoggers().log_audit(
-                package_manager.ecosystem(),
-                package_manager.name(),
-                package_manager.executable(),
-                reports
-            )
+        reports = verifiers.verify_packages(packages)
+        FirewallLoggers().log_audit(
+            package_manager.ecosystem(),
+            package_manager.name(),
+            package_manager.executable(),
+            reports,
+        )
 
-            for severity in FindingSeverity:
-                if (severity_report := reports.get(severity)):
-                    merged_report.extend(severity_report)
+        for severity in FindingSeverity:
+            if (severity_report := reports.get(severity)):
+                merged_report.extend(severity_report)
 
-        if merged_report:
-            print(merged_report)
-        else:
-            print("No issues found.")
+    if merged_report:
+        print(merged_report)
+    else:
+        print("No issues found.")
 
-        return 0
-
-    except Exception as e:
-        _log.error(e)
-        return 1
+    return 0

@@ -1,34 +1,48 @@
 """
-Users of the supply chain firewall are able to use their own custom
-loggers according to their own logging needs.  This module contains a
-template for writing such a custom logger.
+Users of Supply-Chain Firewall may want to use custom loggers according to their
+own logging needs.  This module contains a template for writing a custom logger.
 
-The firewall discovers loggers at runtime via the following simple protocol.
-The module implementing the custom logger must contain a function with the
-following name and signature:
+Supply-Chain Firewall discovers loggers at runtime via the following simple protocol.
+The module implementing the custom logger must contain a function with the following
+name and signature:
 
 ```
 def load_logger() -> FirewallLogger
 ```
 
-This `load_logger` function should return an instance of the custom logger
-for the firewall's use. The module may then be placed in the `scfw/loggers`
-directory for runtime import, no further modification required. Make sure
-to reinstall the package after doing so.
+This `load_logger` function should return an instance of the custom logger for
+Supply-Chain Firewall's use. The module may then be placed in the `scfw/loggers`
+directory for runtime import, no further modification required. Make sure to reinstall
+the `scfw` package after doing so.
 """
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
-from scfw.target import InstallTarget
+from scfw.package import Package
+from scfw.report import VerificationReport
+from scfw.verifier import FindingSeverity
 
 
 class CustomFirewallLogger(FirewallLogger):
-    def log(
+    def log_firewall_action(
         self,
-        action: FirewallAction,
         ecosystem: ECOSYSTEM,
+        package_manager: str,
+        executable: str,
         command: list[str],
-        targets: list[InstallTarget]
+        targets: list[Package],
+        action: FirewallAction,
+        verified: bool,
+        warned: bool,
+    ):
+        return
+
+    def log_audit(
+        self,
+        ecosystem: ECOSYSTEM,
+        package_manager: str,
+        executable: str,
+        reports: dict[FindingSeverity, VerificationReport],
     ):
         return
 

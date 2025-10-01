@@ -26,14 +26,15 @@ def run_firewall(args: Namespace) -> int:
             command to run through the firewall.
 
     Returns:
-        An integer status code, 0 or 1.
+        An integer status code indicating normal or error exit.
     """
+    package_manager = None
+    critical_report, warning_report = None, None
+
+    loggers = FirewallLoggers()
+    _log.info(f"Command: '{' '.join(args.command)}'")
+
     try:
-        critical_report, warning_report = None, None
-
-        loggers = FirewallLoggers()
-        _log.info(f"Command: '{' '.join(args.command)}'")
-
         package_manager = package_managers.get_package_manager(args.package_manager, executable=args.executable)
 
         targets = package_manager.resolve_install_targets(args.command)
@@ -55,7 +56,8 @@ def run_firewall(args: Namespace) -> int:
                     args.command,
                     list(critical_report.packages()),
                     action=FirewallAction.BLOCK,
-                    warned=False
+                    verified=True,
+                    warned=False,
                 )
                 print(critical_report)
                 print("\nThe installation request was blocked. No changes have been made.")
@@ -74,7 +76,8 @@ def run_firewall(args: Namespace) -> int:
                         args.command,
                         list(warning_report.packages()),
                         action=FirewallAction.BLOCK,
-                        warned=True
+                        verified=True,
+                        warned=True,
                     )
                     print("The installation request was aborted. No changes have been made.")
                     return 1 if args.error_on_block else 0
@@ -95,14 +98,33 @@ def run_firewall(args: Namespace) -> int:
             args.command,
             targets,
             action=FirewallAction.ALLOW,
+            verified=True,
             warned=True if warning_report else False,
         )
         return package_manager.run_command(args.command)
 
     except UnsupportedVersionError as e:
-        _log.error(f"Incompatible package manager version: {e}")
-        return 0
+        if not args.allow_unsupported:
+            _log.error(e)
+            _log.error(
+                "Upgrade to a supported version or rerun with --allow-unsupported to bypass verification (use caution)"
+            )
+            return 0
 
-    except Exception as e:
-        _log.error(e)
-        return 1
+        _log.info(f"Unsupported package manager version: {e}")
+        _log.info(f"Unsupported versions allowed: running command '{' '.join(args.command)}' without verification")
+
+        if not package_manager:
+            raise RuntimeError("Failed to initialize package manager handle: cannot run command")
+
+        loggers.log_firewall_action(
+            package_manager.ecosystem(),
+            package_manager.name(),
+            package_manager.executable(),
+            args.command,
+            targets=[],
+            action=FirewallAction.ALLOW,
+            verified=False,
+            warned=False,
+        )
+        return package_manager.run_command(args.command)

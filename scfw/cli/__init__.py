@@ -9,9 +9,9 @@ import sys
 from typing import Callable, Optional
 
 import scfw
+from scfw.cli.parser import ArgumentParser
 from scfw.logger import FirewallAction
 from scfw.package_managers import SUPPORTED_PACKAGE_MANAGERS
-from scfw.parser import ArgumentParser
 
 _LOG_LEVELS = list(
     map(
@@ -137,6 +137,12 @@ def _add_run_cli(parser: ArgumentParser):
         "--allow-on-warning",
         action="store_true",
         help="Non-interactively allow commands with only warning-level findings"
+    )
+
+    parser.add_argument(
+        "--allow-unsupported",
+        action="store_true",
+        help="Disable verification and allow commands for unsupported package manager versions"
     )
 
     group.add_argument(
@@ -309,6 +315,7 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
                 args.dd_agent_port,
                 args.dd_api_key,
                 args.dd_log_level,
+                args.scfw_home,
             })
         ):
             raise ArgumentError(None, "Cannot combine configuration and removal options")

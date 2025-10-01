@@ -52,7 +52,12 @@ class FirewallLoggers(FirewallLogger):
             except ModuleNotFoundError:
                 _log.warning(f"Failed to load module {module} while collecting loggers")
             except AttributeError:
-                _log.info(f"Module {module} does not export a logger")
+                _log.debug(f"Module {module} does not export a logger")
+            except Exception as e:
+                _log.warning(f"Failed to initialize logger defined in {module}: {e}")
+
+        if not self._loggers:
+            _log.warning("No loggers were discovered and successfully initialized")
 
     def log_firewall_action(
         self,
@@ -62,7 +67,8 @@ class FirewallLoggers(FirewallLogger):
         command: list[str],
         targets: list[Package],
         action: FirewallAction,
-        warned: bool
+        verified: bool,
+        warned: bool,
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall to
@@ -70,7 +76,16 @@ class FirewallLoggers(FirewallLogger):
         """
         for logger in self._loggers:
             try:
-                logger.log_firewall_action(ecosystem, package_manager, executable, command, targets, action, warned)
+                logger.log_firewall_action(
+                    ecosystem,
+                    package_manager,
+                    executable,
+                    command,
+                    targets,
+                    action,
+                    verified,
+                    warned,
+                )
             except Exception as e:
                 _log.warning(f"Failed to log firewall action: {e}")
 
@@ -79,7 +94,7 @@ class FirewallLoggers(FirewallLogger):
         ecosystem: ECOSYSTEM,
         package_manager: str,
         executable: str,
-        reports: dict[FindingSeverity, VerificationReport]
+        reports: dict[FindingSeverity, VerificationReport],
     ):
         """
         Log the results of an audit to all client loggers.

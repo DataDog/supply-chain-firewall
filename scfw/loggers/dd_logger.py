@@ -29,7 +29,7 @@ _AUDIT_ATTRIBUTES = {
     "executable",
     "msg",
     "package_manager",
-    "reports"
+    "reports",
 }
 _FIREWALL_ACTION_ATTRIBUTES = {
     "action",
@@ -39,7 +39,8 @@ _FIREWALL_ACTION_ATTRIBUTES = {
     "msg",
     "package_manager",
     "targets",
-    "warned"
+    "verified",
+    "warned",
 }
 
 
@@ -71,8 +72,10 @@ class DDLogFormatter(logging.Formatter):
             _log.warning(f"Failed to query username while formatting log: {e}")
 
         for key in _AUDIT_ATTRIBUTES | _FIREWALL_ACTION_ATTRIBUTES:
-            if (value := record.__dict__.get(key)):
-                log_record[key] = value
+            try:
+                log_record[key] = record.__dict__[key]
+            except KeyError:
+                pass
 
         return json.dumps(log_record) + '\n'
 
@@ -105,7 +108,8 @@ class DDLogger(FirewallLogger):
         command: list[str],
         targets: list[Package],
         action: FirewallAction,
-        warned: bool
+        verified: bool,
+        warned: bool,
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall.
@@ -117,6 +121,7 @@ class DDLogger(FirewallLogger):
             command: The package manager command line provided to the firewall.
             targets: The installation targets relevant to firewall's action.
             action: The action taken by the firewall.
+            verified: Indicates whether verification was performed in taking the specified `action`.
             warned: Indicates whether the user was warned about findings and prompted for approval.
         """
         if not self._level or action < self._level:
@@ -130,6 +135,7 @@ class DDLogger(FirewallLogger):
                 "executable": executable,
                 "targets": list(map(str, targets)),
                 "action": str(action),
+                "verified": verified,
                 "warned": warned,
             }
         )
@@ -139,7 +145,7 @@ class DDLogger(FirewallLogger):
         ecosystem: ECOSYSTEM,
         package_manager: str,
         executable: str,
-        reports: dict[FindingSeverity, VerificationReport]
+        reports: dict[FindingSeverity, VerificationReport],
     ):
         """
         Log the results of an audit for the given ecosystem and package manager.

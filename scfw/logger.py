@@ -85,7 +85,8 @@ class FirewallLogger(metaclass=ABCMeta):
         command: list[str],
         targets: list[Package],
         action: FirewallAction,
-        warned: bool
+        verified: bool,
+        warned: bool,
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall.
@@ -96,13 +97,16 @@ class FirewallLogger(metaclass=ABCMeta):
             executable: The executable used to execute the inspected package manager command.
             command: The package manager command line provided to the firewall.
             targets:
-                The installation targets relevant to firewall's action.
-
-                In the case of a blocking action, `targets` contains the installation
-                targets that caused the firewall to block.  In the case of an aborting
-                action, `targets` contains the targets that prompted the firewall to
-                warn the user and seek confirmation to proceed.
-            action: The action taken by the firewall.
+                The installation targets relevant to Supply-Chain Firewall's action:
+                  * For `BLOCK` actions, contains the installation targets that caused the block
+                  * For `ALLOW` actions, contains all installation targets
+            action: The action taken by Supply-Chain Firewall.
+            verified:
+                Indicates whether Supply-Chain Firewall performed installation target
+                verification in deciding to take the specified `action`. Verification is not
+                performed **only** under the following conditions:
+                  * The package manager is of an unsupported version and the user has passed the
+                    command-line option `--allow-unsupported`
             warned:
                 Indicates whether the user was warned about findings for any installation
                 targets and prompted for approval to proceed with `command`.

@@ -315,6 +315,7 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
                 args.dd_agent_port,
                 args.dd_api_key,
                 args.dd_log_level,
+                args.scfw_home,
             })
         ):
             raise ArgumentError(None, "Cannot combine configuration and removal options")

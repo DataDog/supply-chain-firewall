@@ -38,14 +38,10 @@ def _update_config_file(config_file: Path, answers: dict):
     scfw_config = _format_answers(answers)
     scfw_block = f"{_BLOCK_START}{scfw_config}\n{_BLOCK_END}" if scfw_config else ""
 
-    pattern = f"{_BLOCK_START}(.*?){_BLOCK_END}"
-    if not scfw_config:
-        pattern = f"\n{pattern}\n"
-
     with open(config_file) as f:
         original_config = f.read()
 
-    updated_config = re.sub(pattern, scfw_block, original_config, flags=re.DOTALL)
+    updated_config = re.sub(f"{_BLOCK_START}(.*?){_BLOCK_END}", scfw_block, original_config, flags=re.DOTALL)
     if updated_config == original_config and scfw_config not in original_config:
         updated_config = f"{original_config}\n{scfw_block}\n"
 

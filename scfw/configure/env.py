@@ -4,8 +4,6 @@ Provides utilities for configuring the environment (via `.rc` files) for using S
 
 from pathlib import Path
 import re
-import os
-import tempfile
 
 from scfw.configure.constants import DD_AGENT_PORT_VAR, DD_API_KEY_VAR, DD_LOG_LEVEL_VAR, SCFW_HOME_VAR
 

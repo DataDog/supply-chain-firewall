@@ -4,8 +4,6 @@ Provides utilities for configuring the environment (via `.rc` files) for using S
 
 from pathlib import Path
 import re
-import os
-import tempfile
 
 from scfw.configure.constants import DD_AGENT_PORT_VAR, DD_API_KEY_VAR, DD_LOG_LEVEL_VAR, SCFW_HOME_VAR
 
@@ -38,19 +36,16 @@ def _update_config_file(config_file: Path, answers: dict):
     scfw_config = _format_answers(answers)
     scfw_block = f"{_BLOCK_START}{scfw_config}\n{_BLOCK_END}" if scfw_config else ""
 
-    with open(config_file) as f:
+    with open(config_file, "r+") as f:
         original_config = f.read()
 
-    updated_config = re.sub(f"{_BLOCK_START}(.*?){_BLOCK_END}", scfw_block, original_config, flags=re.DOTALL)
-    if updated_config == original_config and scfw_config not in original_config:
-        updated_config = f"{original_config}\n{scfw_block}\n"
+        updated_config = re.sub(f"{_BLOCK_START}(.*?){_BLOCK_END}", scfw_block, original_config, flags=re.DOTALL)
+        if updated_config == original_config and scfw_config not in original_config:
+            updated_config = f"{original_config}\n{scfw_block}\n"
 
-    temp_fd, temp_file = tempfile.mkstemp(text=True)
-    temp_handle = os.fdopen(temp_fd, 'w')
-    temp_handle.write(updated_config)
-    temp_handle.close()
-
-    os.rename(temp_file, config_file)
+        f.seek(0)
+        f.write(updated_config)
+        f.truncate()
 
 
 def _format_answers(answers: dict) -> str:

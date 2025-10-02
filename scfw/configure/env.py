@@ -43,11 +43,11 @@ def _update_config_file(config_file: Path, answers: dict):
         pattern = f"\n{pattern}\n"
 
     with open(config_file, "r+") as f:
-        contents = f.read()
+        original = f.read()
 
-        updated = re.sub(pattern, enclose(config) if config else '', contents, flags=re.DOTALL)
-        if updated == contents and config not in contents:
-            updated = f"{contents}\n{enclose(config)}\n"
+        updated = re.sub(pattern, enclose(config) if config else '', original, flags=re.DOTALL)
+        if updated == original and config not in original:
+            updated = f"{original}\n{enclose(config)}\n"
 
         f.truncate(0)
         f.write(updated)

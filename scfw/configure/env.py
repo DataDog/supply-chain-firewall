@@ -35,25 +35,23 @@ def _update_config_file(config_file: Path, answers: dict):
         config_file: A `Path` to the configuration file to update.
         answers: The `dict` of configuration options to write.
     """
-    def enclose(config: str) -> str:
-        return f"{_BLOCK_START}{config}\n{_BLOCK_END}"
-
-    with open(config_file) as f:
-        contents = f.read()
-
-    config = _format_answers(answers)
+    scfw_config = _format_answers(answers)
+    scfw_block = f"{_BLOCK_START}{scfw_config}\n{_BLOCK_END}" if scfw_config else ""
 
     pattern = f"{_BLOCK_START}(.*?){_BLOCK_END}"
-    if not config:
+    if not scfw_config:
         pattern = f"\n{pattern}\n"
 
-    updated = re.sub(pattern, enclose(config) if config else '', contents, flags=re.DOTALL)
-    if updated == contents and config not in contents:
-        updated = f"{contents}\n{enclose(config)}\n"
+    with open(config_file) as f:
+        original_config = f.read()
+
+    updated_config = re.sub(pattern, scfw_block, original_config, flags=re.DOTALL)
+    if updated_config == original_config and scfw_config not in original_config:
+        updated_config = f"{original_config}\n{scfw_block}\n"
 
     temp_fd, temp_file = tempfile.mkstemp(text=True)
     temp_handle = os.fdopen(temp_fd, 'w')
-    temp_handle.write(updated)
+    temp_handle.write(updated_config)
     temp_handle.close()
 
     os.rename(temp_file, config_file)

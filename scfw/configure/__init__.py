@@ -61,10 +61,10 @@ def run_configure(args: Namespace) -> int:
     if not answers:
         return 0
 
+    env.update_config_files(answers)
+
     if (port := answers.get("dd_agent_port")):
         dd_agent.configure_agent_logging(port)
-
-    env.update_config_files(answers)
 
     if is_interactive:
         print(interactive.get_farewell(answers))

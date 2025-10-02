@@ -2,10 +2,13 @@
 Provides utilities for configuring the environment (via `.rc` files) for using Supply-Chain Firewall.
 """
 
+import logging
 from pathlib import Path
 import re
 
 from scfw.configure.constants import DD_AGENT_PORT_VAR, DD_API_KEY_VAR, DD_LOG_LEVEL_VAR, SCFW_HOME_VAR
+
+_log = logging.getLogger(__name__)
 
 _CONFIG_FILES = [".bashrc", ".zshrc"]
 
@@ -20,32 +23,26 @@ def update_config_files(answers: dict):
     Args:
         answers: A `dict` configuration options to format and write to each file.
     """
-    for file in [Path.home() / file for file in _CONFIG_FILES]:
-        if file.exists():
-            _update_config_file(file, answers)
-
-
-def _update_config_file(config_file: Path, answers: dict):
-    """
-    Update the firewall's section in the given configuration file.
-
-    Args:
-        config_file: A `Path` to the configuration file to update.
-        answers: The `dict` of configuration options to write.
-    """
     scfw_config = _format_answers(answers)
     scfw_block = f"{_BLOCK_START}{scfw_config}\n{_BLOCK_END}" if scfw_config else ""
 
-    with open(config_file, "r+") as f:
-        original_config = f.read()
+    for config_file in [Path.home() / file for file in _CONFIG_FILES]:
+        if not config_file.exists():
+            _log.info(f"Skipped adding configuration to file {config_file}: file does not already exist")
+            continue
 
-        updated_config = re.sub(f"{_BLOCK_START}(.*?){_BLOCK_END}", scfw_block, original_config, flags=re.DOTALL)
-        if updated_config == original_config and scfw_config not in original_config:
-            updated_config = f"{original_config}\n{scfw_block}\n"
+        with open(config_file, "r+") as f:
+            original_config = f.read()
 
-        f.seek(0)
-        f.write(updated_config)
-        f.truncate()
+            updated_config = re.sub(f"{_BLOCK_START}(.*?){_BLOCK_END}", scfw_block, original_config, flags=re.DOTALL)
+            if updated_config == original_config and scfw_config not in original_config:
+                updated_config = f"{original_config}\n{scfw_block}\n"
+
+            f.seek(0)
+            f.write(updated_config)
+            f.truncate()
+
+        _log.info(f"Successfully added configuration to file {config_file}")
 
 
 def _format_answers(answers: dict) -> str:

@@ -38,25 +38,21 @@ def _update_config_file(config_file: Path, answers: dict):
     def enclose(config: str) -> str:
         return f"{_BLOCK_START}{config}\n{_BLOCK_END}"
 
-    with open(config_file) as f:
-        contents = f.read()
-
     config = _format_answers(answers)
 
     pattern = f"{_BLOCK_START}(.*?){_BLOCK_END}"
     if not config:
         pattern = f"\n{pattern}\n"
 
-    updated = re.sub(pattern, enclose(config) if config else '', contents, flags=re.DOTALL)
-    if updated == contents and config not in contents:
-        updated = f"{contents}\n{enclose(config)}\n"
+    with open(config_file, "r+") as f:
+        contents = f.read()
 
-    temp_fd, temp_file = tempfile.mkstemp(text=True)
-    temp_handle = os.fdopen(temp_fd, 'w')
-    temp_handle.write(updated)
-    temp_handle.close()
+        updated = re.sub(pattern, enclose(config) if config else '', contents, flags=re.DOTALL)
+        if updated == contents and config not in contents:
+            updated = f"{contents}\n{enclose(config)}\n"
 
-    os.rename(temp_file, config_file)
+        f.truncate(0)
+        f.write(updated)
 
 
 def _format_answers(answers: dict) -> str:

@@ -42,8 +42,9 @@ def _update_config_file(config_file: Path, answers: dict):
         return f"{_BLOCK_START}{config}\n{_BLOCK_END}"
 
     def overwrite_file(f, contents: str):
-        f.truncate(0)
+        f.seek(0)
         f.write(contents)
+        f.truncate()
 
     config = _format_answers(answers)
 

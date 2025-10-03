@@ -18,10 +18,10 @@ _BLOCK_END = "# END SCFW MANAGED BLOCK"
 
 def update_config_files(answers: dict):
     """
-    Update the firewall's configuration in all supported .rc files.
+    Update the Supply-Chain Firewall configuration in all supported files.
 
     Args:
-        answers: A `dict` configuration options to format and write to each file.
+        answers: A `dict` of configuration options to format and write to each file.
     """
     scfw_config = _format_answers(answers)
 

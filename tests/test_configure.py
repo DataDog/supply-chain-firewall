@@ -49,6 +49,12 @@ def enclose(scfw_config: str) -> str:
                 SCFW_CONFIG_BASE,
                 f"{ORIGINAL_CONFIG}\n{enclose(SCFW_CONFIG_BASE)}\n",
             ),
+            # Update configuration when there is no content inside the SCFW block
+            (
+                enclose(""),
+                SCFW_CONFIG_UPDATED,
+                enclose(SCFW_CONFIG_UPDATED),
+            ),
             # Update configuration in an otherwise empty file with leading and
             # trailing whitespace (as would be added when we configure initially)
             (
@@ -89,6 +95,18 @@ def enclose(scfw_config: str) -> str:
                 f"{ORIGINAL_CONFIG}{enclose(SCFW_CONFIG_BASE)}{ORIGINAL_CONFIG}",
                 SCFW_CONFIG_UPDATED,
                 f"{ORIGINAL_CONFIG}{enclose(SCFW_CONFIG_UPDATED)}{ORIGINAL_CONFIG}",
+            ),
+            # Remove configuration from an empty file
+            (
+                "",
+                "",
+                "",
+            ),
+            # Remove configuration from a file that contains no configuration
+            (
+                ORIGINAL_CONFIG,
+                "",
+                ORIGINAL_CONFIG,
             ),
             # Remove configuration from an otherwise empty file with no leading or
             # trailing whitespace

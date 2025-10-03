@@ -22,11 +22,8 @@ export DD_LOG_LEVEL="ALLOW"
 """
 
 SCFW_CONFIG_UPDATED = """\
-alias npm="scfw run npm"
-alias pip="scfw run pip"
 alias poetry="scfw run poetry"
-export SCFW_DD_AGENT_LOG_PORT="10365"
-export DD_LOG_LEVEL="ALLOW"
+export SCFW_HOME="~/.scfw"
 """
 
 
@@ -52,7 +49,14 @@ def enclose(scfw_config: str) -> str:
                 SCFW_CONFIG_BASE,
                 f"{ORIGINAL_CONFIG}\n{enclose(SCFW_CONFIG_BASE)}\n",
             ),
-            # Update configuration in an otherwise empty file
+            # Update configuration in an otherwise empty file with leading and
+            # trailing whitespace (as would be added when we configure initially)
+            (
+                f"\n{enclose(SCFW_CONFIG_BASE)}\n",
+                SCFW_CONFIG_UPDATED,
+                f"\n{enclose(SCFW_CONFIG_UPDATED)}\n",
+            ),
+            # Update configuration in an otherwise empty file with no surrounding whitespace
             (
                 enclose(SCFW_CONFIG_BASE),
                 SCFW_CONFIG_UPDATED,

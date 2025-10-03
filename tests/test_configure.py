@@ -10,8 +10,8 @@ from scfw.configure.env import _BLOCK_END, _BLOCK_START
 import scfw.configure.env as env
 
 ORIGINAL_CONFIG = """\
-# Add Rust environment
-. "$HOME/.cargo/env"
+# Set an environment variable
+export MY_ENV_VAR=foo
 """
 
 SCFW_CONFIG_BASE = """\

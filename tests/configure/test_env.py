@@ -3,18 +3,15 @@ Tests of utilities for writing Supply-Chain Firewall configuration to supported 
 """
 
 from pathlib import Path
+import pytest
 from tempfile import NamedTemporaryFile
 
 from scfw.configure.env import _BLOCK_END, _BLOCK_START
 import scfw.configure.env as env
 
-ORIGINAL_CONFIG_1 = """\
+ORIGINAL_CONFIG = """\
 # Add Rust environment
 . "$HOME/.cargo/env"
-"""
-
-ORIGINAL_CONFIG_2 = """\
-alias ..="cd .."
 """
 
 SCFW_CONFIG_BASE = """\
@@ -33,93 +30,118 @@ export DD_LOG_LEVEL="ALLOW"
 """
 
 
-def test_add_initial_config_empty_file():
+def enclose(scfw_config: str) -> str:
     """
-    Test of initially adding the SCFW config to an empty file.
+    Enclose the given `scfw_config` in its block comments.
+    """
+    return f"{_BLOCK_START}\n{scfw_config}{_BLOCK_END}"
+
+
+@pytest.mark.parametrize(
+        "original_config,scfw_config,updated_config",
+        [
+            # Initial configuration of an empty file
+            (
+                "",
+                SCFW_CONFIG_BASE,
+                f"\n{enclose(SCFW_CONFIG_BASE)}\n",
+            ),
+            # Initial configuration of a nonempty file
+            (
+                ORIGINAL_CONFIG,
+                SCFW_CONFIG_BASE,
+                f"{ORIGINAL_CONFIG}\n{enclose(SCFW_CONFIG_BASE)}\n",
+            ),
+            # Update configuration in an otherwise empty file
+            (
+                enclose(SCFW_CONFIG_BASE),
+                SCFW_CONFIG_UPDATED,
+                enclose(SCFW_CONFIG_UPDATED),
+            ),
+            # Update configuration at the end of a nonempty file where the SCFW
+            # configuration block is separated from surrounding content by whitespace
+            (
+                f"{ORIGINAL_CONFIG}\n{enclose(SCFW_CONFIG_BASE)}\n",
+                SCFW_CONFIG_UPDATED,
+                f"{ORIGINAL_CONFIG}\n{enclose(SCFW_CONFIG_UPDATED)}\n",
+            ),
+            # Update configuration at the end of a nonempty file where the SCFW
+            # configuration block is not separated from surrounding content by whitespace
+            (
+                f"{ORIGINAL_CONFIG}{enclose(SCFW_CONFIG_BASE)}",
+                SCFW_CONFIG_UPDATED,
+                f"{ORIGINAL_CONFIG}{enclose(SCFW_CONFIG_UPDATED)}",
+            ),
+            # Update configuration in the middle of a nonempty file where the SCFW
+            # configuration block is separated from surrounding content by whitespace
+            (
+                f"{ORIGINAL_CONFIG}\n{enclose(SCFW_CONFIG_BASE)}\n{ORIGINAL_CONFIG}",
+                SCFW_CONFIG_UPDATED,
+                f"{ORIGINAL_CONFIG}\n{enclose(SCFW_CONFIG_UPDATED)}\n{ORIGINAL_CONFIG}",
+            ),
+            # Update configuration in the middle of a nonempty file where the SCFW
+            # configuration block is not separated from surrounding content by whitespace
+            (
+                f"{ORIGINAL_CONFIG}{enclose(SCFW_CONFIG_BASE)}{ORIGINAL_CONFIG}",
+                SCFW_CONFIG_UPDATED,
+                f"{ORIGINAL_CONFIG}{enclose(SCFW_CONFIG_UPDATED)}{ORIGINAL_CONFIG}",
+            ),
+            # Remove configuration from an otherwise empty file with no leading or
+            # trailing whitespace
+            (
+                enclose(SCFW_CONFIG_BASE),
+                "",
+                "",
+            ),
+            # Remove configuration from an otherwise empty file with leading and
+            # trailing whitespace (as would be added when we configure initially)
+            (
+                f"\n{enclose(SCFW_CONFIG_BASE)}\n",
+                "",
+                "\n\n",
+            ),
+            # Remove configuration from the end of a nonempty file where the SCFW
+            # configuration block is separated from surrounding content by whitespace
+            (
+                f"{ORIGINAL_CONFIG}\n{enclose(SCFW_CONFIG_BASE)}\n",
+                "",
+                f"{ORIGINAL_CONFIG}\n\n"
+            ),
+            # Remove configuration from the end of a nonempty file where the SCFW
+            # configuration block is not separated from surrounding content by whitespace
+            (
+                f"{ORIGINAL_CONFIG}{enclose(SCFW_CONFIG_BASE)}",
+                "",
+                ORIGINAL_CONFIG,
+            ),
+            # Remove configuration from the middle of a nonempty file where the SCFW
+            # configuation block is separated from surrounding content by whitespace
+            (
+                f"{ORIGINAL_CONFIG}\n{enclose(SCFW_CONFIG_BASE)}\n{ORIGINAL_CONFIG}",
+                "",
+                f"{ORIGINAL_CONFIG}\n\n{ORIGINAL_CONFIG}",
+            ),
+            # Remove configuration from the middle of a nonempty file where the SCFW
+            # configuation block is not separated from surrounding content by whitespace
+            (
+                f"{ORIGINAL_CONFIG}{enclose(SCFW_CONFIG_BASE)}{ORIGINAL_CONFIG}",
+                "",
+                f"{ORIGINAL_CONFIG}{ORIGINAL_CONFIG}",
+            ),
+        ]
+)
+def test_config_file_update(original_config: str, scfw_config: str, updated_config: str):
+    """
+    Test that an update to configuration file contents has the expected result.
     """
     with NamedTemporaryFile(mode="r+") as f:
-        env._update_config_file(Path(f.name), SCFW_CONFIG_BASE)
+        if original_config:
+            f.write(original_config)
+            f.seek(0)
+
+        env._update_config_file(Path(f.name), scfw_config)
 
         content = f.read()
         print(f"'{content}'")
 
-        assert content == (
-            "\n"
-            f"{_BLOCK_START}\n"
-            f"{SCFW_CONFIG_BASE}"
-            f"{_BLOCK_END}\n"
-        )
-
-
-def test_add_initial_config_nonempty_file():
-    """
-    Test of initially adding the SCFW config to a nonempty file.
-    """
-    with NamedTemporaryFile(mode="r+") as f:
-        f.write(ORIGINAL_CONFIG_1)
-        f.seek(0)
-
-        env._update_config_file(Path(f.name), SCFW_CONFIG_BASE)
-
-        content = f.read()
-        print(f"'{content}'")
-
-        assert content == (
-            f"{ORIGINAL_CONFIG_1}"
-            "\n"
-            f"{_BLOCK_START}\n"
-            f"{SCFW_CONFIG_BASE}"
-            f"{_BLOCK_END}\n"
-        )
-
-
-def test_update_config_end_of_file():
-    """
-    Test of updating the SCFW config when it is at the end of the file.
-    """
-    with NamedTemporaryFile(mode="r+") as f:
-        f.write(ORIGINAL_CONFIG_1)
-        f.write(f"\n{_BLOCK_START}\n")
-        f.write(SCFW_CONFIG_BASE)
-        f.write(f"{_BLOCK_END}\n")
-        f.seek(0)
-
-        env._update_config_file(Path(f.name), SCFW_CONFIG_UPDATED)
-
-        content = f.read()
-        print(f"'{content}'")
-
-        assert content == (
-            f"{ORIGINAL_CONFIG_1}"
-            "\n"
-            f"{_BLOCK_START}\n"
-            f"{SCFW_CONFIG_UPDATED}"
-            f"{_BLOCK_END}\n"
-        )
-
-
-def test_update_config_middle_of_file():
-    """
-    Test of updating the SCFW config when it is in the middle of the file.
-    """
-    with NamedTemporaryFile(mode="r+") as f:
-        f.write(ORIGINAL_CONFIG_1)
-        f.write(f"\n{_BLOCK_START}\n")
-        f.write(SCFW_CONFIG_BASE)
-        f.write(f"{_BLOCK_END}\n")
-        f.write(f"\n{ORIGINAL_CONFIG_2}")
-        f.seek(0)
-
-        env._update_config_file(Path(f.name), SCFW_CONFIG_UPDATED)
-
-        content = f.read()
-        print(f"'{content}'")
-
-        assert content == (
-            f"{ORIGINAL_CONFIG_1}"
-            "\n"
-            f"{_BLOCK_START}\n"
-            f"{SCFW_CONFIG_UPDATED}"
-            f"{_BLOCK_END}\n"
-            f"\n{ORIGINAL_CONFIG_2}"
-        )
+        assert content == updated_config

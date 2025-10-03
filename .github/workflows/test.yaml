@@ -26,10 +26,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
-      - name: Install supply-chain firewall
+      - name: Install Supply-Chain Firewall
         run: pip install .
       - name: Test firewall CLI
         run: make test-cli
+
+  configure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      - name: Install Supply-Chain Firewall
+        run: pip install .
+      - name: Test firewall configure script
+        run: make test-configure
 
   python-executable:
     runs-on: ubuntu-latest
@@ -44,7 +62,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
-      - name: Install supply-chain firewall
+      - name: Install Supply-Chain Firewall
         run: pip install .
       - name: Test Python executable in the global environment
         run: make test-python-executable
@@ -71,7 +89,7 @@ jobs:
           python -m pip install pip==${{ matrix.pip-version }}
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
-      - name: Install supply-chain firewall
+      - name: Install Supply-Chain Firewall
         run: pip install .
       - name: Test firewall pip integration
         run: |
@@ -101,7 +119,7 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
-      - name: Install supply-chain firewall
+      - name: Install Supply-Chain Firewall
         run: pip install .
       - name: Test firewall Poetry integration
         run: |
@@ -269,7 +287,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
-      - name: Install supply-chain firewall
+      - name: Install Supply-Chain Firewall
         run: pip install .
       - name: Install Node.js v${{ matrix.node-version }}
         uses: actions/setup-node@v4
@@ -298,7 +316,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
-      - name: Install supply-chain firewall
+      - name: Install Supply-Chain Firewall
         run: pip install .
       - name: Test firewall installation target verifiers
         run: make test-verifiers

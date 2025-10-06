@@ -21,7 +21,7 @@ def configure_agent_logging(port: str):
         ValueError: An invalid port number was provided.
         RuntimeError: An error occurred while querying the Agent's status.
     """
-    if not (0 < int(port) < 65536):
+    if not (0 < int(port) < 2 ** 16):
         raise ValueError("Invalid port number provided for Datadog Agent logging")
 
     config_file = (
@@ -71,14 +71,17 @@ def _dd_agent_scfw_config_dir() -> Path:
 
     Raises:
         RuntimeError:
-            Unable to query Datadog Agent status to read the location of its
-            global configuration directory.
+            * Unable to query Datadog Agent status to read the location of its global
+              configuration directory
+            * Datadog Agent global configuration directory is not set or does not exist
+        ValueError: Failed to parse Datadog Agent status JSON report.
     """
     try:
         agent_status = subprocess.run(
             ["datadog-agent", "status", "--json"], check=True, text=True, capture_output=True
         )
-        agent_config_dir = json.loads(agent_status.stdout).get("config", {}).get("confd_path", "")
+        config_confd_path = json.loads(agent_status.stdout).get("config", {}).get("confd_path")
+        agent_config_dir = Path(config_confd_path) if config_confd_path else None
 
     except subprocess.CalledProcessError:
         raise RuntimeError(
@@ -86,4 +89,12 @@ def _dd_agent_scfw_config_dir() -> Path:
             "Linux users may need sudo to run this command."
         )
 
-    return Path(agent_config_dir) / "scfw.d"
+    except json.JSONDecodeError:
+        raise ValueError("Failed to parse Datadog Agent status report as JSON")
+
+    if not (agent_config_dir and agent_config_dir.is_dir()):
+        raise RuntimeError(
+            "Datadog Agent global configuration directory is not set or does not exist"
+        )
+
+    return agent_config_dir / "scfw.d"

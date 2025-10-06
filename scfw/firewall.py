@@ -5,6 +5,7 @@ Implements the supply-chain firewall's core `run` subcommand.
 from argparse import Namespace
 import inquirer  # type: ignore
 import logging
+import sys
 
 from scfw.logger import FirewallAction
 from scfw.loggers import FirewallLoggers
@@ -67,7 +68,11 @@ def run_firewall(args: Namespace) -> int:
                 print(warning_report)
                 if (
                     not args.allow_on_warning
-                    and (args.block_on_warning or not inquirer.confirm("Proceed with installation?", default=False))
+                    and (
+                        args.block_on_warning
+                        or not sys.stdin.isatty()
+                        or not inquirer.confirm("Proceed with installation?", default=False)
+                    )
                 ):
                     loggers.log_firewall_action(
                         package_manager.ecosystem(),

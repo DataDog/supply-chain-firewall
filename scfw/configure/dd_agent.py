@@ -3,11 +3,14 @@ Provides utilities for configuring the local Datadog Agent to receive logs from 
 """
 
 import json
+import logging
 from pathlib import Path
 import shutil
 import subprocess
 
 from scfw.configure.constants import DD_SERVICE, DD_SOURCE
+
+_log = logging.getLogger(__name__)
 
 
 def configure_agent_logging(port: str):
@@ -37,8 +40,10 @@ def configure_agent_logging(port: str):
 
     if not scfw_config_dir.is_dir():
         scfw_config_dir.mkdir()
+        _log.info(f"Created directory {scfw_config_dir} for Datadog Agent configuration")
     with open(scfw_config_file, 'w') as f:
         f.write(config_file)
+        _log.info(f"Wrote file {scfw_config_file} with Datadog Agent configuration")
 
 
 def remove_agent_logging():
@@ -51,13 +56,15 @@ def remove_agent_logging():
     scfw_config_dir = _dd_agent_scfw_config_dir()
 
     if not scfw_config_dir.is_dir():
+        _log.info("No Datadog Agent configuration directory to remove")
         return
 
     try:
         shutil.rmtree(scfw_config_dir)
+        _log.info(f"Deleted directory {scfw_config_dir} with Datadog Agent configuration")
     except Exception:
         raise RuntimeError(
-            "Failed to delete Datadog Agent configuration directory for Supply-Chain Firewall"
+            f"Failed to delete directory {scfw_config_dir} with Datadog Agent configuration for Supply-Chain Firewall"
         )
 
 

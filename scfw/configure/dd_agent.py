@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
-from scfw.configure.constants import DD_SERVICE, DD_SOURCE
+from scfw.constants import DD_SERVICE, DD_SOURCE
 
 _log = logging.getLogger(__name__)
 

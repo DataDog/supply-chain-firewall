@@ -6,7 +6,7 @@ import logging
 import os
 import socket
 
-from scfw.configure import DD_AGENT_PORT_VAR
+from scfw.constants import DD_AGENT_PORT_VAR
 from scfw.logger import FirewallLogger
 from scfw.loggers.dd_logger import DDLogFormatter, DDLogger
 

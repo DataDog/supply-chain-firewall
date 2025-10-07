@@ -2,6 +2,16 @@
 Provides various configuration-related constants.
 """
 
+ALLOW_ON_WARNING_VAR = "SCFW_ALLOW_ON_WARNING"
+"""
+The environment variable that enables automatically allowing commands with only `WARNING` findings.
+"""
+
+BLOCK_ON_WARNING_VAR = "SCFW_BLOCK_ON_WARNING"
+"""
+The environment variable that enables automatically blocking commands with only `WARNING` findings.
+"""
+
 DD_SOURCE = "scfw"
 """
 Source value for Datadog logging.

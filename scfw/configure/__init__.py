@@ -4,7 +4,6 @@ Implements Supply-Chain Firewall's `configure` subcommand.
 
 from argparse import Namespace
 
-from scfw.configure.constants import *  # noqa
 import scfw.configure.dd_agent as dd_agent
 import scfw.configure.env as env
 import scfw.configure.interactive as interactive

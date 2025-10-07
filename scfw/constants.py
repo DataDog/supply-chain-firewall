@@ -33,6 +33,12 @@ The environment variable under which the firewall looks for a port number on whi
 forward firewall logs to the local Datadog Agent.
 """
 
+ON_WARNING_VAR = "SCFW_ON_WARNING"
+"""
+The environment variable under which the firewall looks for the user's choice of
+`FirewallAction` to take for commands with only warning-level findings.
+"""
+
 SCFW_HOME_VAR = "SCFW_HOME"
 """
 The environment variable under which the firewall looks for its home (cache) directory.

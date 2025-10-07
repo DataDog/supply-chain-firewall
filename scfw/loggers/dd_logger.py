@@ -11,7 +11,7 @@ import socket
 import dotenv
 
 import scfw
-from scfw.configure import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE
+from scfw.constants import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.package import Package

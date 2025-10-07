@@ -5,7 +5,7 @@ Defines a package verifier for Datadog Security Research's malicious packages da
 import os
 from pathlib import Path
 
-from scfw.configure import SCFW_HOME_VAR
+from scfw.constants import SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.verifier import FindingSeverity, PackageVerifier

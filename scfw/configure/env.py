@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 import re
 
-from scfw.configure.constants import DD_AGENT_PORT_VAR, DD_API_KEY_VAR, DD_LOG_LEVEL_VAR, SCFW_HOME_VAR
+from scfw.constants import DD_AGENT_PORT_VAR, DD_API_KEY_VAR, DD_LOG_LEVEL_VAR, SCFW_HOME_VAR
 
 _log = logging.getLogger(__name__)
 

@@ -5,7 +5,10 @@ Implements the supply-chain firewall's core `run` subcommand.
 from argparse import Namespace
 import inquirer  # type: ignore
 import logging
+import os
+import sys
 
+from scfw.constants import ON_WARNING_VAR
 from scfw.logger import FirewallAction
 from scfw.loggers import FirewallLoggers
 from scfw.package_manager import UnsupportedVersionError
@@ -65,10 +68,7 @@ def run_firewall(args: Namespace) -> int:
 
             if not args.dry_run and warning_report:
                 print(warning_report)
-                if (
-                    not args.allow_on_warning
-                    and (args.block_on_warning or not inquirer.confirm("Proceed with installation?", default=False))
-                ):
+                if _get_warning_action(args.allow_on_warning, args.block_on_warning) == FirewallAction.BLOCK:
                     loggers.log_firewall_action(
                         package_manager.ecosystem(),
                         package_manager.name(),
@@ -128,3 +128,38 @@ def run_firewall(args: Namespace) -> int:
             warned=False,
         )
         return package_manager.run_command(args.command)
+
+
+def _get_warning_action(cli_allow_choice: bool, cli_block_choice: bool) -> FirewallAction:
+    """
+    Return the `FirewallAction` that should be taken for `WARNING`-level findings.
+
+    Args:
+        cli_allow_choice:
+            A `bool` indicating whether the user selected `--allow-on-warning` on the command-line.
+        cli_block_choice:
+            A `bool` indicating whether the user selected `--block-on-warning` on the command-line.
+
+    Returns:
+        The `FirewallAction` that should be taken based on the user's configured choices or, if
+        no choice has been made, on the user's runtime (interactive) decision.
+    """
+    if cli_block_choice:
+        return FirewallAction.BLOCK
+    if cli_allow_choice:
+        return FirewallAction.ALLOW
+
+    if (action := os.getenv(ON_WARNING_VAR)):
+        try:
+            return FirewallAction.from_string(action)
+        except Exception:
+            _log.warning(f"Ignoring invalid firewall action {ON_WARNING_VAR}='{action}'")
+
+    if not sys.stdin.isatty():
+        _log.warning(
+            "Non-interactive terminal and no predefined action for WARNING findings: defaulting to BLOCK"
+        )
+        return FirewallAction.BLOCK
+
+    user_confirmed = inquirer.confirm("Proceed with installation?", default=False)
+    return FirewallAction.ALLOW if user_confirmed else FirewallAction.BLOCK

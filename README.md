@@ -151,4 +151,5 @@ We welcome community contributions to Supply-Chain Firewall.  Refer to the [CONT
 ## Maintainers
 
 - [Ian Kretz](https://github.com/ikretz)
+- [Tesnim Hamdouni](https://github.com/tesnim5hamdouni)
 - [Sebastian Obregoso](https://www.linkedin.com/in/sebastianobregoso/)

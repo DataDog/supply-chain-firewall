@@ -44,7 +44,7 @@ To check whether the installation succeeded, run the following command and verif
 
 ```bash
 $ scfw --version
-2.2.1
+2.3.0
 ```
 
 ### Post-installation steps
@@ -151,4 +151,5 @@ We welcome community contributions to Supply-Chain Firewall.  Refer to the [CONT
 ## Maintainers
 
 - [Ian Kretz](https://github.com/ikretz)
+- [Tesnim Hamdouni](https://github.com/tesnim5hamdouni)
 - [Sebastian Obregoso](https://www.linkedin.com/in/sebastianobregoso/)

@@ -7,7 +7,6 @@ import inquirer  # type: ignore
 import logging
 import os
 import sys
-from typing import Optional
 
 from scfw.constants import ALLOW_ON_WARNING_VAR, BLOCK_ON_WARNING_VAR
 from scfw.logger import FirewallAction

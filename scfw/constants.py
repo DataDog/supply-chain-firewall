@@ -2,16 +2,6 @@
 Provides various configuration-related constants.
 """
 
-ALLOW_ON_WARNING_VAR = "SCFW_ALLOW_ON_WARNING"
-"""
-The environment variable that enables automatically allowing commands with only `WARNING` findings.
-"""
-
-BLOCK_ON_WARNING_VAR = "SCFW_BLOCK_ON_WARNING"
-"""
-The environment variable that enables automatically blocking commands with only `WARNING` findings.
-"""
-
 DD_SOURCE = "scfw"
 """
 Source value for Datadog logging.
@@ -41,6 +31,12 @@ DD_AGENT_PORT_VAR = "SCFW_DD_AGENT_LOG_PORT"
 """
 The environment variable under which the firewall looks for a port number on which to
 forward firewall logs to the local Datadog Agent.
+"""
+
+ON_WARNING_VAR = "SCFW_ON_WARNING"
+"""
+The environment variable under which the firewall looks for the user's choice of
+`FirewallAction` to take for commands with only warning-level findings.
 """
 
 SCFW_HOME_VAR = "SCFW_HOME"

@@ -97,9 +97,7 @@ Several command-line options of the `run` subcommand are noteworthy:
 
 * `--dry-run`: Verify any installation targets but do not run the package manager command. The exit code indicates whether there were findings of any severity
 
-* `--allow-on-warning`: Non-interactively allow commands with only warning-level findings. Setting environment variable `SCFW_ALLOW_ON_WARNING=1` achieves the same effect
-
-* `--block-on-warning`: Non-interactively block commands with only warning-level findings. Setting environment variable `SCFW_BLOCK_ON_WARNING=1` achieves the same effect
+* `--allow-on-warning` and `--block-on-warning`: Non-interactively allow or block commands, respectively, with only warning-level findings. Setting the environment variable `SCFW_ON_WARNING` to `"ALLOW"` or `"BLOCK"` achieves the same effect, with the CLI options taking priority over the environment variable when both are used
 
 * `--error-on-block`: Treat blocked commands as errors (useful for scripting)
 

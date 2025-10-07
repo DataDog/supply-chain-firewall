@@ -8,7 +8,7 @@ import logging
 import os
 import sys
 
-from scfw.constants import ALLOW_ON_WARNING_VAR, BLOCK_ON_WARNING_VAR
+from scfw.constants import ON_WARNING_VAR
 from scfw.logger import FirewallAction
 from scfw.loggers import FirewallLoggers
 from scfw.package_manager import UnsupportedVersionError
@@ -144,10 +144,16 @@ def _get_warning_action(cli_allow_choice: bool, cli_block_choice: bool) -> Firew
         The `FirewallAction` that should be taken based on the user's configured choices or, if
         no choice has been made, on the user's runtime (interactive) decision.
     """
-    if cli_block_choice or os.getenv(BLOCK_ON_WARNING_VAR):
+    if cli_block_choice:
         return FirewallAction.BLOCK
-    if cli_allow_choice or os.getenv(ALLOW_ON_WARNING_VAR):
+    if cli_allow_choice:
         return FirewallAction.ALLOW
+
+    if (action := os.getenv(ON_WARNING_VAR)):
+        try:
+            return FirewallAction.from_string(action)
+        except Exception:
+            _log.warning(f"Ignoring invalid firewall action {ON_WARNING_VAR}='{action}'")
 
     if not sys.stdin.isatty():
         _log.warning(

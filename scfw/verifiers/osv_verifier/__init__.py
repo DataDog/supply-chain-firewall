@@ -6,6 +6,7 @@ import functools
 import logging
 import os
 from pathlib import Path
+import re
 
 import requests
 
@@ -138,7 +139,12 @@ class OsvVerifier(PackageVerifier):
 
             osvs = set(map(OsvAdvisory.from_json, filter(lambda vuln: vuln.get("id"), vulns)))
             mal_osvs = set(filter(lambda osv: osv.id.startswith("MAL"), osvs))
-            non_mal_osvs = set(filter(lambda osv: osv.id not in self.allowed_osv_ids, osvs - mal_osvs))
+            non_mal_osvs = set(
+                filter(
+                    lambda osv: not any(re.fullmatch(allowed, osv.id) for allowed in self.allowed_osv_ids),
+                    osvs - mal_osvs,
+                )
+            )
 
             osv_sort_key = functools.cmp_to_key(OsvAdvisory.compare_severities)
             sorted_mal_osvs = sorted(mal_osvs, reverse=True, key=osv_sort_key)

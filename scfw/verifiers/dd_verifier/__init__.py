@@ -11,6 +11,11 @@ from scfw.package import Package
 from scfw.verifier import FindingSeverity, PackageVerifier
 import scfw.verifiers.dd_verifier.dataset as dataset
 
+DD_CACHE_DIR = Path("dd_verifier/")
+"""
+The directory (relative to `SCFW_HOME`) where the verifier caches manifest files.
+"""
+
 
 class DatadogMaliciousPackagesVerifier(PackageVerifier):
     """
@@ -24,7 +29,7 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
 
         cache_dir = None
         if (home_dir := os.getenv(SCFW_HOME_VAR)):
-            cache_dir = Path(home_dir) / "dd_verifier"
+            cache_dir = Path(home_dir) / DD_CACHE_DIR
 
         for ecosystem in self.supported_ecosystems():
             if cache_dir:

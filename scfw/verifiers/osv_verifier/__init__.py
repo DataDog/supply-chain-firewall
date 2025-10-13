@@ -22,14 +22,9 @@ _OSV_DEV_QUERY_URL = "https://api.osv.dev/v1/query"
 _OSV_DEV_VULN_URL_PREFIX = "https://osv.dev/vulnerability"
 _OSV_DEV_LIST_URL_PREFIX = "https://osv.dev/list"
 
-HOME_DIR = Path("osv_verifier/")
+OSV_IGNORE_LIST = Path("osv_verifier/ignore.txt")
 """
-The `OsvVerifier` home directory (relative to `SCFW_HOME`).
-"""
-
-IGNORE_LIST = HOME_DIR / "ignore.txt"
-"""
-The file within `HOME_DIR` where `OsvVerifier` looks for OSV advisory IDs to ignore.
+The filepath (relative to `SCFW_HOME`) where `OsvVerifier` looks for OSV advisory IDs to ignore.
 """
 
 
@@ -47,7 +42,7 @@ class OsvVerifier(PackageVerifier):
         if not home_dir:
             return
 
-        ignore_list = Path(home_dir) / IGNORE_LIST
+        ignore_list = Path(home_dir) / OSV_IGNORE_LIST
         if not ignore_list.is_file():
             return
 

@@ -22,7 +22,7 @@ _OSV_DEV_QUERY_URL = "https://api.osv.dev/v1/query"
 _OSV_DEV_VULN_URL_PREFIX = "https://osv.dev/vulnerability"
 _OSV_DEV_LIST_URL_PREFIX = "https://osv.dev/list"
 
-OSV_IGNORE_LIST_VAR = "SCFW_OSV_IGNORE_LIST"
+OSV_IGNORE_LIST_VAR = "SCFW_OSV_VERIFIER_IGNORE"
 """
 The environment variable under which `OsvVerifier` looks for a filepath to an ignore list
 of OSV advisory IDs.

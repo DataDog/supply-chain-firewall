@@ -22,6 +22,16 @@ _OSV_DEV_QUERY_URL = "https://api.osv.dev/v1/query"
 _OSV_DEV_VULN_URL_PREFIX = "https://osv.dev/vulnerability"
 _OSV_DEV_LIST_URL_PREFIX = "https://osv.dev/list"
 
+HOME_DIR = Path("osv_verifier/")
+"""
+The `OsvVerifier` home directory (relative to `SCFW_HOME`).
+"""
+
+IGNORE_LIST = HOME_DIR / "ignore.txt"
+"""
+The file within `HOME_DIR` where `OsvVerifier` looks for OSV advisory IDs to ignore.
+"""
+
 
 class OsvVerifier(PackageVerifier):
     """
@@ -31,26 +41,26 @@ class OsvVerifier(PackageVerifier):
         """
         Initialize a new `OsvVerifier`.
         """
-        self.allowed_osv_ids = set()
+        self.ignored_osv_ids = set()
 
         home_dir = os.getenv(SCFW_HOME_VAR)
         if not home_dir:
             return
 
-        allow_list = Path(home_dir) / "osv_verifier" / "allow.txt"
-        if not allow_list.is_file():
+        ignore_list = Path(home_dir) / IGNORE_LIST
+        if not ignore_list.is_file():
             return
 
-        _log.info(f"Reading IDs of allowed OSV advisories from {allow_list}")
+        _log.info(f"Reading IDs of ignored OSV advisories from {ignore_list}")
         try:
-            with open(allow_list) as f:
+            with open(ignore_list) as f:
                 osv_ids = set(f.read().split())
-                allowed_osv_ids = set(filter(lambda id: not id.startswith("MAL"), osv_ids))
-                if allowed_osv_ids != osv_ids:
-                    _log.warning("Ignoring OSV malicious package advisory (MAL) IDs present in allow list")
-                self.allowed_osv_ids = allowed_osv_ids
+                ignored_osv_ids = set(filter(lambda id: not id.startswith("MAL"), osv_ids))
+                if ignored_osv_ids != osv_ids:
+                    _log.warning("Removing OSV malicious package advisory (MAL) IDs from ignored OSV advisories")
+                self.ignored_osv_ids = ignored_osv_ids
         except Exception as e:
-            _log.warning(f"Failed to read OSV advisory allow list: {e}")
+            _log.warning(f"Failed to read OSV advisory ignore list: {e}")
 
     @classmethod
     def name(cls) -> str:
@@ -141,7 +151,7 @@ class OsvVerifier(PackageVerifier):
             mal_osvs = set(filter(lambda osv: osv.id.startswith("MAL"), osvs))
             non_mal_osvs = set(
                 filter(
-                    lambda osv: not any(re.fullmatch(allowed, osv.id) for allowed in self.allowed_osv_ids),
+                    lambda osv: not any(re.fullmatch(ignored, osv.id) for ignored in self.ignored_osv_ids),
                     osvs - mal_osvs,
                 )
             )

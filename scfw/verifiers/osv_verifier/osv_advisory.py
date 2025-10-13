@@ -161,15 +161,16 @@ class OsvAdvisory:
         if not (isinstance(lhs, cls) and isinstance(rhs, cls)):
             raise TypeError("Received incompatible argument types while comparing OSV severities")
 
-        match lhs.severity, rhs.severity:
-            case l, r if l == r:
-                return 0
-            case None, _:
-                return -1
-            case _, None:
-                return 1
-            case l, r:
-                return -1 if l < r else 1
+        if lhs.severity == rhs.severity:
+            return 0
+        elif lhs.severity is None:
+            return -1
+        elif rhs.severity is None:
+            return 1
+        elif lhs.severity < rhs.severity:
+            return -1
+        else:
+            return 1
 
     @classmethod
     def from_json(cls, osv_json: dict) -> Self:

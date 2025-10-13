@@ -60,7 +60,7 @@ class OsvVerifier(PackageVerifier):
                 osv_ids = set(f.read().split())
                 ignored_osv_ids = set(filter(lambda id: not id.startswith("MAL"), osv_ids))
                 if ignored_osv_ids != osv_ids:
-                    _log.warning("Removing OSV malicious package advisory (MAL) IDs from ignored OSV advisories")
+                    _log.warning("OSV malicious package (MAL) advisories will not be ignored")
                 self.ignored_osv_ids = ignored_osv_ids
         except Exception as e:
             _log.warning(f"Failed to read OSV advisory ignore list: {e}")

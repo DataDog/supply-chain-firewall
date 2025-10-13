@@ -4,9 +4,12 @@ Defines a package verifier for the OSV.dev advisory database.
 
 import functools
 import logging
+import os
+from pathlib import Path
 
 import requests
 
+from scfw.constants import SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.verifier import FindingSeverity, PackageVerifier
@@ -23,6 +26,26 @@ class OsvVerifier(PackageVerifier):
     """
     A `PackageVerifier` for the OSV.dev advisory database.
     """
+    def __init__(self):
+        """
+        Initialize a new `OsvVerifier`.
+        """
+        self.allowed_osv_ids = set()
+
+        home_dir = os.getenv(SCFW_HOME_VAR)
+        if not home_dir:
+            return
+
+        allow_list = Path(home_dir) / "osv_verifier" / "allow.txt"
+        if not allow_list.is_file():
+            return
+
+        try:
+            with open(allow_list) as f:
+                self.allowed_osv_ids.update(filter(lambda id: not id.startswith("MAL"), f.read().split()))
+        except Exception as e:
+            _log.warning(f"Failed to read OSV advisory allow list: {e}")
+
     @classmethod
     def name(cls) -> str:
         """
@@ -110,7 +133,7 @@ class OsvVerifier(PackageVerifier):
 
             osvs = set(map(OsvAdvisory.from_json, filter(lambda vuln: vuln.get("id"), vulns)))
             mal_osvs = set(filter(lambda osv: osv.id.startswith("MAL"), osvs))
-            non_mal_osvs = osvs - mal_osvs
+            non_mal_osvs = set(filter(lambda osv: osv.id not in self.allowed_osv_ids, osvs - mal_osvs))
 
             osv_sort_key = functools.cmp_to_key(OsvAdvisory.compare_severities)
             sorted_mal_osvs = sorted(mal_osvs, reverse=True, key=osv_sort_key)

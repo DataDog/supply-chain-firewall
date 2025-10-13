@@ -22,9 +22,16 @@ _OSV_DEV_QUERY_URL = "https://api.osv.dev/v1/query"
 _OSV_DEV_VULN_URL_PREFIX = "https://osv.dev/vulnerability"
 _OSV_DEV_LIST_URL_PREFIX = "https://osv.dev/list"
 
-OSV_IGNORE_LIST = Path("osv_verifier/ignore.txt")
+OSV_IGNORE_LIST_VAR = "SCFW_OSV_IGNORE_LIST"
 """
-The filepath (relative to `SCFW_HOME`) where `OsvVerifier` looks for OSV advisory IDs to ignore.
+The environment variable under which `OsvVerifier` looks for a filepath to an ignore list
+of OSV advisory IDs.
+"""
+
+OSV_IGNORE_LIST_DEFAULT = Path("osv_verifier/ignore.txt")
+"""
+The default filepath (relative to `SCFW_HOME`) where `OsvVerifier` looks for an ignore list
+of OSV advisory IDs.
 """
 
 
@@ -38,12 +45,13 @@ class OsvVerifier(PackageVerifier):
         """
         self.ignored_osv_ids = set()
 
-        home_dir = os.getenv(SCFW_HOME_VAR)
-        if not home_dir:
-            return
+        ignore_list = None
+        if (filepath := os.getenv(OSV_IGNORE_LIST_VAR)):
+            ignore_list = Path(filepath)
+        elif (home_dir := os.getenv(SCFW_HOME_VAR)):
+            ignore_list = Path(home_dir) / OSV_IGNORE_LIST_DEFAULT
 
-        ignore_list = Path(home_dir) / OSV_IGNORE_LIST
-        if not ignore_list.is_file():
+        if not (ignore_list and ignore_list.is_file()):
             return
 
         _log.info(f"Reading IDs of ignored OSV advisories from {ignore_list}")

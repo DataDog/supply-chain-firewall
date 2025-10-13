@@ -40,9 +40,14 @@ class OsvVerifier(PackageVerifier):
         if not allow_list.is_file():
             return
 
+        _log.info(f"Reading IDs of allowed OSV advisories from {allow_list}")
         try:
             with open(allow_list) as f:
-                self.allowed_osv_ids.update(filter(lambda id: not id.startswith("MAL"), f.read().split()))
+                osv_ids = set(f.read().split())
+                allowed_osv_ids = set(filter(lambda id: not id.startswith("MAL"), osv_ids))
+                if allowed_osv_ids != osv_ids:
+                    _log.warning("Ignoring OSV malicious package advisory (MAL) IDs present in allow list")
+                self.allowed_osv_ids = allowed_osv_ids
         except Exception as e:
             _log.warning(f"Failed to read OSV advisory allow list: {e}")
 

@@ -22,12 +22,6 @@ _OSV_DEV_QUERY_URL = "https://api.osv.dev/v1/query"
 _OSV_DEV_VULN_URL_PREFIX = "https://osv.dev/vulnerability"
 _OSV_DEV_LIST_URL_PREFIX = "https://osv.dev/list"
 
-OSV_IGNORE_LIST_VAR = "SCFW_OSV_VERIFIER_IGNORE"
-"""
-The environment variable under which `OsvVerifier` looks for a filepath to an ignore list
-of OSV advisory IDs.
-"""
-
 OSV_VERIFIER_HOME = Path("osv_verifier/")
 """
 The `OsvVerifier` home directory, relative to `SCFW_HOME`.
@@ -36,6 +30,12 @@ The `OsvVerifier` home directory, relative to `SCFW_HOME`.
 OSV_IGNORE_LIST_DEFAULT = OSV_VERIFIER_HOME / "ignore.txt"
 """
 The default filepath where `OsvVerifier` looks for an ignore list of OSV advisory IDs.
+"""
+
+OSV_IGNORE_LIST_VAR = "SCFW_OSV_VERIFIER_IGNORE"
+"""
+The environment variable under which `OsvVerifier` looks for a filepath to an ignore list
+of OSV advisory IDs.
 """
 
 

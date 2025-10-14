@@ -30,12 +30,14 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
         cache_dir = None
         if (home_dir := os.getenv(SCFW_HOME_VAR)):
             cache_dir = Path(home_dir) / DD_CACHE_DIR
+            if not cache_dir.is_dir():
+                cache_dir.mkdir(parents=True)
 
         for ecosystem in self.supported_ecosystems():
             if cache_dir:
                 self._manifests[ecosystem] = dataset.get_latest_manifest(cache_dir, ecosystem)
             else:
-                _, self._manifests[ecosystem] = dataset.download_manifest(ecosystem)
+                self._manifests[ecosystem] = dataset.download_manifest(ecosystem)
 
     @classmethod
     def name(cls) -> str:

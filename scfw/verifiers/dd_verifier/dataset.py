@@ -58,6 +58,10 @@ def get_latest_manifest(cache_dir: Path, ecosystem: ECOSYSTEM) -> Manifest:
         manifest_files = glob.glob(str(cache_dir / f"{ecosystem}*.json"))
         return Path(manifest_files[0]) if manifest_files else None
 
+    def extract_etag_file_name(file_name: str) -> Optional[str]:
+        match = re.search(f"{ecosystem}(.*).json", file_name)
+        return match.group(1) if match else None
+
     def read_cached_manifest(manifest_file: Path) -> Manifest:
         with open(manifest_file) as f:
             return json.load(f)
@@ -67,46 +71,38 @@ def get_latest_manifest(cache_dir: Path, ecosystem: ECOSYSTEM) -> Manifest:
         with open(manifest_file, 'w') as f:
             json.dump(manifest, f)
 
-    update_cache = True
     latest_etag, latest_manifest = None, None
+
     cached_manifest_file = get_cached_manifest_file()
+    last_etag = extract_etag_file_name(cached_manifest_file.name) if cached_manifest_file else None
 
-    try:
-        if (
-            cached_manifest_file
-            and (last_etag := _extract_etag_file_name(ecosystem, cached_manifest_file.name))
-        ):
+    if last_etag:
+        # Request an update from the remote dataset using the last-known ETag
+        try:
             latest_etag, latest_manifest = _update_manifest(ecosystem, last_etag)
+        except Exception as e:
+            _log.warning(f"Failed to check for updated version of {ecosystem} dataset: {e}")
 
-            if latest_etag == last_etag:
-                _log.debug(f"Cached malicious {ecosystem} packages dataset is up-to-date")
-                update_cache = False
+        # If this failed or there has not been a remote update, use the cached copy
+        # Note: `cached_manifest_file` is implied by `last_etag` but Pylance can't keep up
+        if not latest_manifest and cached_manifest_file:
+            try:
                 latest_manifest = read_cached_manifest(cached_manifest_file)
-        else:
-            latest_etag, latest_manifest = _download_manifest_etagged(ecosystem)
+            except Exception as e:
+                _log.warning(f"Failed to read {ecosystem} dataset from cache: {e}")
 
-    except Exception:
-        _log.warning(f"Failed to obtain malicious {ecosystem} packages metadata or dataset from GitHub")
-
-        if cached_manifest_file:
-            _log.warning(f"Using cached copy of malicious {ecosystem} packages dataset after GitHub failure")
-            update_cache = False
-            latest_manifest = read_cached_manifest(cached_manifest_file)
-
+    # If we still have no manifest, download the remote dataset as a last resort
     if not latest_manifest:
-        raise RuntimeError(f"Failed to obtain malicious {ecosystem} packages dataset from GitHub or cache")
+        latest_etag, latest_manifest = _download_manifest_etagged(ecosystem)
 
-    if update_cache:
+    # Update the cache if we downloaded from the remote dataset
+    if not last_etag or (latest_etag and latest_etag != last_etag):
         try:
             if cached_manifest_file:
-                _log.debug(f"Removing outdated malicious {ecosystem} packages dataset cache")
                 os.remove(cached_manifest_file)
-
-            _log.debug(f"Updating malicious {ecosystem} packages dataset cache")
             write_cached_manifest(latest_etag, latest_manifest)
-
         except Exception as e:
-            _log.warning(f"Failed to update cached copy of malicious {ecosystem} packages dataset: {e}")
+            _log.warning(f"Failed to updated cached {ecosystem} dataset: {e}")
 
     return latest_manifest
 
@@ -139,14 +135,6 @@ def _extract_etag_header(s: str) -> Optional[str]:
     Extract an ETag from the given header string.
     """
     match = re.search('W/"(.*)"', s)
-    return match.group(1) if match else None
-
-
-def _extract_etag_file_name(ecosystem: ECOSYSTEM, s: str) -> Optional[str]:
-    """
-    Extract an ETag from the file name of the given `ecosystem` manifest cache.
-    """
-    match = re.search(f"{ecosystem}(.*).json", s)
     return match.group(1) if match else None
 
 

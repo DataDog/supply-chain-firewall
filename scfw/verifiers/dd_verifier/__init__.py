@@ -2,6 +2,7 @@
 Defines a package verifier for Datadog Security Research's malicious packages dataset.
 """
 
+import logging
 import os
 from pathlib import Path
 
@@ -11,9 +12,11 @@ from scfw.package import Package
 from scfw.verifier import FindingSeverity, PackageVerifier
 import scfw.verifiers.dd_verifier.dataset as dataset
 
-DD_CACHE_DIR = Path("dd_verifier/")
+_log = logging.getLogger(__name__)
+
+DD_VERIFIER_HOME = Path("dd_verifier/")
 """
-The directory (relative to `SCFW_HOME`) where the verifier caches manifest files.
+The `DatadogMaliciousPackagesVerifier` home directory, relative to `SCFW_HOME`.
 """
 
 
@@ -28,10 +31,16 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
         self._manifests = {}
 
         cache_dir = None
-        if (home_dir := os.getenv(SCFW_HOME_VAR)):
-            cache_dir = Path(home_dir) / DD_CACHE_DIR
-            if not cache_dir.is_dir():
-                cache_dir.mkdir(parents=True)
+        if (scfw_home := os.getenv(SCFW_HOME_VAR)):
+            dd_verifier_home = Path(scfw_home) / DD_VERIFIER_HOME
+            try:
+                if not dd_verifier_home.is_dir():
+                    dd_verifier_home.mkdir(parents=True)
+                cache_dir = dd_verifier_home
+            except Exception as e:
+                _log.warning(
+                    f"Failed to set up cache directory for Datadog malicious packages verifier: {e}"
+                )
 
         for ecosystem in self.supported_ecosystems():
             if cache_dir:

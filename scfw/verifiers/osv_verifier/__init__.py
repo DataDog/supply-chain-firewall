@@ -28,10 +28,14 @@ The environment variable under which `OsvVerifier` looks for a filepath to an ig
 of OSV advisory IDs.
 """
 
-OSV_IGNORE_LIST_DEFAULT = Path("osv_verifier/ignore.txt")
+OSV_VERIFIER_HOME = Path("osv_verifier/")
 """
-The default filepath (relative to `SCFW_HOME`) where `OsvVerifier` looks for an ignore list
-of OSV advisory IDs.
+The `OsvVerifier` home directory, relative to `SCFW_HOME`.
+"""
+
+OSV_IGNORE_LIST_DEFAULT = OSV_VERIFIER_HOME / "ignore.txt"
+"""
+The default filepath where `OsvVerifier` looks for an ignore list of OSV advisory IDs.
 """
 
 

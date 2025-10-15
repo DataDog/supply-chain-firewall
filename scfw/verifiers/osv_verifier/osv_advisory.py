@@ -163,14 +163,12 @@ class OsvAdvisory:
 
         if lhs.severity == rhs.severity:
             return 0
-        elif lhs.severity is None:
+        if lhs.severity is None:
             return -1
-        elif rhs.severity is None:
+        if rhs.severity is None:
             return 1
-        elif lhs.severity < rhs.severity:
-            return -1
-        else:
-            return 1
+
+        return -1 if lhs.severity < rhs.severity else 1
 
     @classmethod
     def from_json(cls, osv_json: dict) -> Self:

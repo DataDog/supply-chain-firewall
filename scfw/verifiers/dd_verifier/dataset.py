@@ -62,10 +62,6 @@ def get_latest_manifest(cache_dir: Path, ecosystem: ECOSYSTEM) -> Manifest:
         match = re.search(f"{ecosystem}(.*).json", file_name)
         return match.group(1) if match else None
 
-    def read_cached_manifest(manifest_file: Path) -> Manifest:
-        with open(manifest_file) as f:
-            return json.load(f)
-
     def write_cached_manifest(etag: Optional[str], manifest: Manifest):
         manifest_file = cache_dir / f"{ecosystem}{etag if etag else ''}.json"
         with open(manifest_file, 'w') as f:
@@ -87,7 +83,8 @@ def get_latest_manifest(cache_dir: Path, ecosystem: ECOSYSTEM) -> Manifest:
         # Note: `cached_manifest_file` is implied by `last_etag` but Pylance can't keep up
         if not latest_manifest and cached_manifest_file:
             try:
-                latest_manifest = read_cached_manifest(cached_manifest_file)
+                with open(cached_manifest_file) as f:
+                    latest_manifest = json.load(f)
             except Exception as e:
                 _log.warning(f"Failed to read {ecosystem} dataset from cache: {e}")
 

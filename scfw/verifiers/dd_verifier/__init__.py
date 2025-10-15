@@ -2,6 +2,7 @@
 Defines a package verifier for Datadog Security Research's malicious packages dataset.
 """
 
+import logging
 import os
 from pathlib import Path
 
@@ -10,6 +11,13 @@ from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.verifier import FindingSeverity, PackageVerifier
 import scfw.verifiers.dd_verifier.dataset as dataset
+
+_log = logging.getLogger(__name__)
+
+DD_VERIFIER_HOME = Path("dd_verifier/")
+"""
+The `DatadogMaliciousPackagesVerifier` home directory, relative to `SCFW_HOME`.
+"""
 
 
 class DatadogMaliciousPackagesVerifier(PackageVerifier):
@@ -23,14 +31,22 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
         self._manifests = {}
 
         cache_dir = None
-        if (home_dir := os.getenv(SCFW_HOME_VAR)):
-            cache_dir = Path(home_dir) / "dd_verifier"
+        if (scfw_home := os.getenv(SCFW_HOME_VAR)):
+            dd_verifier_home = Path(scfw_home) / DD_VERIFIER_HOME
+            try:
+                if not dd_verifier_home.is_dir():
+                    dd_verifier_home.mkdir(parents=True)
+                cache_dir = dd_verifier_home
+            except Exception as e:
+                _log.warning(
+                    f"Failed to set up cache directory for Datadog malicious packages verifier: {e}"
+                )
 
         for ecosystem in self.supported_ecosystems():
             if cache_dir:
                 self._manifests[ecosystem] = dataset.get_latest_manifest(cache_dir, ecosystem)
             else:
-                _, self._manifests[ecosystem] = dataset.download_manifest(ecosystem)
+                self._manifests[ecosystem] = dataset.download_manifest(ecosystem)
 
     @classmethod
     def name(cls) -> str:

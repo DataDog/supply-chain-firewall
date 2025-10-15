@@ -65,8 +65,10 @@ class Severity(Enum):
             ValueError: The given string does not refer to a valid `Severity`.
         """
         mappings = {f"{severity}".lower(): severity for severity in cls}
+
         if (severity := mappings.get(s.lower())):
             return severity
+
         raise ValueError(f"Invalid severity '{s}'")
 
 
@@ -104,9 +106,11 @@ class OsvSeverityScore:
         """
         type = osv_json.get("type")
         score = osv_json.get("score")
-        if type and score:
-            return cls(type=OsvSeverityType(type), score=score)
-        raise ValueError("Encountered malformed OSV severity score")
+
+        if not (type and score):
+            raise ValueError("Encountered malformed OSV severity score")
+
+        return cls(type=OsvSeverityType(type), score=score)
 
     def severity(self) -> Severity:
         """
@@ -125,7 +129,7 @@ class OsvSeverityScore:
             case OsvSeverityType.Ubuntu:
                 severity_str = "None" if self.score == "Negligible" else self.score
 
-        return Severity.from_string(severity_str)
+        return Severity.from_string(severity_str) if severity_str else Severity.Non
 
 
 @dataclass(eq=True, frozen=True)
@@ -157,19 +161,14 @@ class OsvAdvisory:
         if not (isinstance(lhs, cls) and isinstance(rhs, cls)):
             raise TypeError("Received incompatible argument types while comparing OSV severities")
 
-        # A match statement would be more natural here but mypy is not up to it
         if lhs.severity == rhs.severity:
-            result = 0
-        elif lhs.severity is None:
-            result = -1
-        elif rhs.severity is None:
-            result = 1
-        elif lhs.severity < rhs.severity:
-            result = -1
-        elif rhs.severity < lhs.severity:
-            result = 1
+            return 0
+        if lhs.severity is None:
+            return -1
+        if rhs.severity is None:
+            return 1
 
-        return result
+        return -1 if lhs.severity < rhs.severity else 1
 
     @classmethod
     def from_json(cls, osv_json: dict) -> Self:
@@ -185,10 +184,11 @@ class OsvAdvisory:
         Raises:
             ValueError: The advisory was malformed or missing required information.
         """
-        if (id := osv_json.get("id")):
-            scores = list(map(OsvSeverityScore.from_json, osv_json.get("severity", [])))
-            return cls(
-                id=id,
-                severity=max(map(lambda score: score.severity(), scores)) if scores else None
-            )
-        raise ValueError("Encountered OSV advisory with missing ID field")
+        id = osv_json.get("id")
+        if not id:
+            raise ValueError("Encountered OSV advisory with missing ID field")
+
+        scores = list(map(OsvSeverityScore.from_json, osv_json.get("severity", [])))
+        severity = max(map(lambda score: score.severity(), scores)) if scores else None
+
+        return cls(id, severity)

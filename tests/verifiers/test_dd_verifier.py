@@ -62,7 +62,7 @@ def test_update_manifest_no_change(ecosystem: ECOSYSTEM):
     Test that no update occurs when we attempt to update the manifest file using
     the current ETag.
     """
-    last_etag, _ = dataset.download_manifest(ecosystem)
+    last_etag, _ = dataset._download_manifest_etagged(ecosystem)
     assert last_etag is not None
 
     latest_etag, latest_manifest = dataset._update_manifest(ecosystem, last_etag)
@@ -77,7 +77,7 @@ def test_update_manifest_change(ecosystem: ECOSYSTEM):
     Tests that an update occurs with the latest ETag and manifest when we perform
     a manifest update operation using an outdated ETag value.
     """
-    last_etag, last_manifest = dataset.download_manifest(ecosystem)
+    last_etag, last_manifest = dataset._download_manifest_etagged(ecosystem)
     latest_etag, latest_manifest = dataset._update_manifest(ecosystem, "foo")
 
     assert latest_etag is not None and latest_etag == last_etag
@@ -92,7 +92,7 @@ def test_get_latest_manifest_no_cache(ecosystem: ECOSYSTEM):
     """
     with TemporaryDirectory() as tmp:
         cache_dir = Path(tmp)
-        latest_etag, latest_manifest = dataset.download_manifest(ecosystem)
+        latest_etag, latest_manifest = dataset._download_manifest_etagged(ecosystem)
 
         assert len(glob.glob(str(cache_dir / f"{ecosystem}*.json"))) == 0
 
@@ -111,7 +111,7 @@ def test_get_latest_manifest_cache_no_update(ecosystem: ECOSYSTEM):
     with TemporaryDirectory() as tmp:
         cache_dir = Path(tmp)
 
-        latest_etag, latest_manifest = dataset.download_manifest(ecosystem)
+        latest_etag, latest_manifest = dataset._download_manifest_etagged(ecosystem)
         with open(cache_dir / f"{ecosystem}{latest_etag}.json", 'w') as f:
             json.dump(latest_manifest, f)
         assert len(glob.glob(str(cache_dir / f"{ecosystem}{latest_etag}.json"))) == 1

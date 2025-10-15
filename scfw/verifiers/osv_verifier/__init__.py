@@ -4,9 +4,13 @@ Defines a package verifier for the OSV.dev advisory database.
 
 import functools
 import logging
+import os
+from pathlib import Path
+import re
 
 import requests
 
+from scfw.constants import SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.verifier import FindingSeverity, PackageVerifier
@@ -18,11 +22,56 @@ _OSV_DEV_QUERY_URL = "https://api.osv.dev/v1/query"
 _OSV_DEV_VULN_URL_PREFIX = "https://osv.dev/vulnerability"
 _OSV_DEV_LIST_URL_PREFIX = "https://osv.dev/list"
 
+OSV_VERIFIER_HOME = Path("osv_verifier/")
+"""
+The `OsvVerifier` home directory, relative to `SCFW_HOME`.
+"""
+
+OSV_IGNORE_LIST_DEFAULT = OSV_VERIFIER_HOME / "ignore.txt"
+"""
+The default filepath where `OsvVerifier` looks for an ignore list of OSV advisory IDs.
+"""
+
+OSV_IGNORE_LIST_VAR = "SCFW_OSV_VERIFIER_IGNORE"
+"""
+The environment variable under which `OsvVerifier` looks for a filepath to an ignore list
+of OSV advisory IDs.
+"""
+
 
 class OsvVerifier(PackageVerifier):
     """
     A `PackageVerifier` for the OSV.dev advisory database.
     """
+    def __init__(self):
+        """
+        Initialize a new `OsvVerifier`.
+        """
+        def read_ignore_list(ignore_list: Path) -> set[str]:
+            with open(ignore_list) as f:
+                osv_ids = set(f.read().split())
+                ignored_osv_ids = set(filter(lambda id: not id.startswith("MAL"), osv_ids))
+                if ignored_osv_ids != osv_ids:
+                    _log.warning("OSV malicious package (MAL) advisories will not be ignored")
+                return ignored_osv_ids
+
+        self.ignored_osv_ids = set()
+
+        ignore_list = None
+        if (filepath := os.getenv(OSV_IGNORE_LIST_VAR)):
+            ignore_list = Path(filepath)
+        elif (home_dir := os.getenv(SCFW_HOME_VAR)):
+            ignore_list = Path(home_dir) / OSV_IGNORE_LIST_DEFAULT
+
+        if not (ignore_list and ignore_list.is_file()):
+            return
+
+        _log.info(f"Reading IDs of ignored OSV advisories from {ignore_list}")
+        try:
+            self.ignored_osv_ids = read_ignore_list(ignore_list)
+        except Exception as e:
+            _log.warning(f"Failed to read OSV advisory ignore list from {ignore_list}: {e}")
+
     @classmethod
     def name(cls) -> str:
         """
@@ -110,7 +159,12 @@ class OsvVerifier(PackageVerifier):
 
             osvs = set(map(OsvAdvisory.from_json, filter(lambda vuln: vuln.get("id"), vulns)))
             mal_osvs = set(filter(lambda osv: osv.id.startswith("MAL"), osvs))
-            non_mal_osvs = osvs - mal_osvs
+            non_mal_osvs = set(
+                filter(
+                    lambda osv: not any(re.fullmatch(ignored, osv.id) for ignored in self.ignored_osv_ids),
+                    osvs - mal_osvs,
+                )
+            )
 
             osv_sort_key = functools.cmp_to_key(OsvAdvisory.compare_severities)
             sorted_mal_osvs = sorted(mal_osvs, reverse=True, key=osv_sort_key)

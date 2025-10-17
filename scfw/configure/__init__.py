@@ -45,10 +45,10 @@ def run_configure(args: Namespace) -> int:
 
     # The CLI parser guarantees that all of these arguments are present
     is_interactive = not any({
+        args.alias_go,
         args.alias_npm,
         args.alias_pip,
         args.alias_poetry,
-        args.alias_go,
         args.dd_agent_port,
         args.dd_api_key,
         args.dd_log_level,

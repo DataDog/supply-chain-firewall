@@ -33,7 +33,7 @@ class Package:
             `PyPI` packages: `"{name}-{version}"`
         """
         match self.ecosystem:
-            case ECOSYSTEM.Npm | ECOSYSTEM.Go:
+            case ECOSYSTEM.Go | ECOSYSTEM.Npm:
                 return f"{self.name}@{self.version}"
             case ECOSYSTEM.PyPI:
                 return f"{self.name}-{self.version}"

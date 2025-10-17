@@ -43,6 +43,11 @@ def get_answers() -> dict:
             )
         ),
         inquirer.Confirm(
+            name="alias_go",
+            message="Would you like to set a shell alias to run all go commands through the firewall?",
+            default=True
+        ),
+        inquirer.Confirm(
             name="alias_npm",
             message="Would you like to set a shell alias to run all npm commands through the firewall?",
             default=True

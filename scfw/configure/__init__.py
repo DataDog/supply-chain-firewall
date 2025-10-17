@@ -23,6 +23,7 @@ def run_configure(args: Namespace) -> int:
     if args.remove:
         # These options result in the firewall's configuration block being removed
         env.update_config_files({
+            "alias_go": False,
             "alias_npm": False,
             "alias_pip": False,
             "alias_poetry": False,
@@ -42,6 +43,7 @@ def run_configure(args: Namespace) -> int:
 
     # The CLI parser guarantees that all of these arguments are present
     is_interactive = not any({
+        args.alias_go,
         args.alias_npm,
         args.alias_pip,
         args.alias_poetry,

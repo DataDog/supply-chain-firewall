@@ -60,10 +60,10 @@ $ scfw configure
 
 |  Package manager  |   Supported versions  |        Inspected subcommands                        |
 | :---------------: | :-------------------: | :-------------------------------------------------: |
+| go                | >= 1.17.0             | `build`, `generate`, `get`, `install`, `mod`, `run` |
 | npm               | >= 7.0                | `install` (including aliases)                       |
 | pip               | >= 22.2               | `install`                                           |
 | poetry            | >= 1.7                | `add`, `install`, `sync`, `update`                  |
-| go                | >= 1.17.0             | `build`, `generate`, `get`, `install`, `mod`, `run` |
 
 Supply-Chain Firewall may only know how to inspect some of the "installish" subcommands for its supported package managers.  These are shown in the above table.  Any other subcommands are always allowed to run.
 
@@ -87,10 +87,10 @@ $ scfw configure --remove
 To use Supply-Chain Firewall to inspect a package manager command, simply prepend `scfw run` to the command you intend to run:
 
 ```
+$ scfw run go mod download
 $ scfw run npm install react
 $ scfw run pip install -r requirements.txt
 $ scfw run poetry add git+https://github.com/DataDog/guarddog
-$ scfw run go mod download
 ```
 
 For `pip install` commands, packages will be installed in the same environment (virtual or global) in which the command was run.

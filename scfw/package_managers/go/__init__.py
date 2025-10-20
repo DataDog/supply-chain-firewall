@@ -4,7 +4,7 @@ Defines a subclass of `PackageManagerCommand` for `go` commands.
 
 import logging
 import os
-import pathlib
+from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -128,7 +128,6 @@ class Go(PackageManager):
 
         try:
             # Compute installation targets: new dependencies and updates/downgrades of existing ones
-
             local_packages = []
             remote_packages = []
 
@@ -136,7 +135,7 @@ class Go(PackageManager):
             for param in command[2 if not is_tidy else 3:]:
                 if not param.startswith("-"):
                     # TODO: Handle packages with envvars?
-                    is_local = pathlib.Path(param).exists()
+                    is_local = Path(param).exists()
                     if is_local or len(param.split("/")) == 1:
                         local_packages.append(param)
                     else:
@@ -160,6 +159,7 @@ class Go(PackageManager):
                     packages.update(set(filter(None, map(line_to_package, dry_run.stdout.split('\n')))))
 
                 return list(packages)
+
         except subprocess.CalledProcessError:
             # An erroring command does not install anything
             _log.info("The Go command encountered an error while collecting installation targets")

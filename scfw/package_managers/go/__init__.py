@@ -45,24 +45,11 @@ class Go(PackageManager):
             RuntimeError: A valid executable could not be resolved.
             UnsupportedVersionError: The underlying `go` executable is of an unsupported version.
         """
-        def get_go_version(executable: str) -> Version:
-            try:
-                # All supported versions adhere to this format
-                go_version = subprocess.run([executable, "version"], check=True, text=True, capture_output=True)
-                if (match := re.search(r".*go(\d*(?:\.\d+)*).*", go_version.stdout.strip())):
-                    return version_parse(match.group(1))
-                raise UnsupportedVersionError("Failed to parse Go version output")
-            except InvalidVersion:
-                raise UnsupportedVersionError("Failed to parse Go version number")
-
         executable = executable if executable else shutil.which(self.name())
         if not executable:
-            raise RuntimeError("Failed to resolve local Go executable")
+            raise RuntimeError("Failed to resolve local Go executable: is Go installed?")
         if not os.path.isfile(executable):
             raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
-
-        if get_go_version(executable) < MIN_GO_VERSION:
-            raise UnsupportedVersionError(f"Go before v{MIN_GO_VERSION} is not supported")
 
         self._executable = executable
 
@@ -133,6 +120,8 @@ class Go(PackageManager):
         if len(command) > 2 and command[1] == "mod" and not command[2] in INSPECTED_MOD_COMMANDS:
             return []
 
+        self._check_version()
+
         # The presence of these options prevent the add command from running
         if any(opt in command for opt in {"-h", "-help"}):
             return []
@@ -190,6 +179,8 @@ class Go(PackageManager):
                 return Package(self.ecosystem(), components[0], components[1])
             return None
 
+        self._check_version()
+
         try:
             go_list_cmd = [self._executable, "list", "-m", "all"]
             list_cmd = subprocess.run(go_list_cmd, check=True, text=True, capture_output=True)
@@ -197,6 +188,26 @@ class Go(PackageManager):
 
         except subprocess.CalledProcessError:
             raise RuntimeError("Failed to list go installed packages")
+
+    def _check_version(self):
+        """
+        Check whether the underlying `go` executable is of a supported version.
+
+        Raises:
+            UnsupportedVersionError: The underlying `go` executable is of an unsupported version.
+        """
+        def get_go_version(executable: str) -> Optional[Version]:
+            try:
+                # All supported versions adhere to this format
+                go_version = subprocess.run([executable, "version"], check=True, text=True, capture_output=True)
+                match = re.search(r".*go(\d*(?:\.\d+)*).*", go_version.stdout.strip())
+                return version_parse(match.group(1)) if match else None
+            except InvalidVersion:
+                return None
+
+        go_version = get_go_version(self._executable)
+        if not go_version or go_version < MIN_GO_VERSION:
+            raise UnsupportedVersionError(f"Go before v{MIN_GO_VERSION} is not supported")
 
     def _normalize_command(self, command: list[str]) -> list[str]:
         """

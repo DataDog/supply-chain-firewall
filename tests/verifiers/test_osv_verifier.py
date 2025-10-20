@@ -216,9 +216,8 @@ NPM_TEST_SET = [
     ("cst-web-chat", "3.3.7", True, False),
 ]
 
-# Package name and version pairs from 8 handpicked Go OSV.dev disclosures + 92 randomly selected ones
-# The handpicked test cases (first 8 in the list) were chosen because they were the only Go packages
-# with MAL malicious package advisories at the time of test creation.
+# Package name and version pairs from 8 handpicked + 92 randomly selected Go OSV.dev disclosures
+# The handpicked cases correspond to the (at time of writing) eight Go ecosystem MAL advisories
 GO_TEST_SET = [
     ('github.com/vainreboot/layout', "0.1.0", True, False),
     ('github.com/shadowybulk/hypert', "0.1.0", True, False),

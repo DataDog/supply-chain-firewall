@@ -16,22 +16,22 @@ _TempGoEnvironmentType = TypeVar('_TempGoEnvironmentType', bound='TempGoEnvironm
 
 class TempGoEnvironment(TemporaryDirectory):
     """
-    Prepares a temporary environment in which go commands may be executed
-    without affecting the user's global environment.
+    Prepares a temporary environment in which go commands may be executed without affecting
+    the user's global environment.
 
-    This may be used as a context manager. On completion of the context
-    the temporary environment will be removed from the filesystem, alongside
-    any changes that may have been made to the current project.
+    This may be used as a context manager. On completion of the context the temporary
+    environment will be removed from the filesystem, alongside any changes that may have
+    been made to the current project.
 
-    Alternatively, when done with the environment, you may call cleanup()
-    to remove the temporary environment.
+    Alternatively, when done with the environment, you may call cleanup() to remove the
+    temporary environment.
     """
     def __init__(self, executable: str):
         """
         Initialize a new `TempGoEnvironment`.
 
         Args:
-            executable: Path to the `go` binary.
+            executable: A `str` path in the local filesystem to the `go` executable to use.
         """
         TemporaryDirectory.__init__(self)
 
@@ -94,15 +94,18 @@ class TempGoEnvironment(TemporaryDirectory):
 
         Args:
             args: The list of arguments passed to `go`.
+
         Returns:
             A representation of the finished proccess.
         """
-        cwd = self._dry_run_dir
-        if local:
-            cwd = None
-
-        command = [self._executable] + args
-        return subprocess.run(command, cwd=cwd, env=self.env, check=True, text=True, capture_output=True)
+        return subprocess.run(
+            [self._executable] + args,
+            cwd=None if local else self._dry_run_dir,
+            env=self.env,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
 
     def duplicate_go_mod(self):
         """
@@ -126,8 +129,8 @@ class TempGoEnvironment(TemporaryDirectory):
 
     def _create_tmp_env(self):
         """
-        Create the temporary environment and set every environment variable
-        required to run `go` commands keeping the global environment clean.
+        Create the temporary environment and set every environment variable required to run
+        `go` commands keeping the global environment clean.
         """
         self.tmp_dir = Path(self.name)
 
@@ -161,8 +164,8 @@ class TempGoEnvironment(TemporaryDirectory):
 
 class GoModNotFoundError(Exception):
     """
-    An exception that occurs when an attempt is made to execute a go command that
-    must be executed within a go project (with a go.mod file), but not such file
-    could be found in the direct directory hierarchy.
+    An exception that occurs when an attempt is made to execute a go command that must be
+    executed within a go project (with a go.mod file), but not such file could be found
+    in the direct directory hierarchy.
     """
     pass

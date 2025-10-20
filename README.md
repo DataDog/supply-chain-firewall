@@ -7,7 +7,7 @@
   <img src="https://github.com/DataDog/supply-chain-firewall/blob/main/images/logo.png?raw=true" alt="Supply-Chain Firewall" width="300" />
 </p>
 
-Supply-Chain Firewall is a command-line tool for preventing the installation of malicious PyPI and npm packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
+Supply-Chain Firewall is a command-line tool for preventing the installation of malicious open source packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
 
 ![scfw demo usage](https://github.com/DataDog/supply-chain-firewall/blob/main/images/demo.gif?raw=true)
 
@@ -58,12 +58,12 @@ $ scfw configure
 
 ### Compatibility and limitations
 
-|  Package manager  |   Supported versions  |        Inspected subcommands                        |
-| :---------------: | :-------------------: | :-------------------------------------------------: |
-| go                | >= 1.17.0             | `build`, `generate`, `get`, `install`, `mod`, `run` |
-| npm               | >= 7.0                | `install` (including aliases)                       |
-| pip               | >= 22.2               | `install`                                           |
-| poetry            | >= 1.7                | `add`, `install`, `sync`, `update`                  |
+|  Ecosystem  |   Package manager   |   Supported versions  |        Inspected subcommands                        |
+| :---------: | :-----------------: | :-------------------: | :-------------------------------------------------: |
+| Go          | `go`                | >= 1.17               | `build`, `generate`, `get`, `install`, `mod`, `run` |
+| npm         | `npm`               | >= 7.0                | `install` (including aliases)                       |
+| PyPI        | `pip`               | >= 22.2               | `install`                                           |
+| PyPI        | `poetry`            | >= 1.7                | `add`, `install`, `sync`, `update`                  |
 
 Supply-Chain Firewall may only know how to inspect some of the "installish" subcommands for its supported package managers.  These are shown in the above table.  Any other subcommands are always allowed to run.
 

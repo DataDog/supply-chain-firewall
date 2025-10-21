@@ -43,7 +43,6 @@ class Go(PackageManager):
 
         Raises:
             RuntimeError: A valid executable could not be resolved.
-            UnsupportedVersionError: The underlying `go` executable is of an unsupported version.
         """
         executable = executable if executable else shutil.which(self.name())
         if not executable:
@@ -103,6 +102,7 @@ class Go(PackageManager):
 
         Raises:
             ValueError: The given `command` is empty or not a valid `go` command.
+            UnsupportedVersionError: The underlying `go` executable is of an unsupported version.
             GoModNotFoundError: No `go.mod` file was found for the given `go` command.
         """
         def line_to_package(line: str) -> Optional[Package]:
@@ -167,10 +167,14 @@ class Go(PackageManager):
 
     def list_installed_packages(self) -> list[Package]:
         """
-        List all installed packages.
+        List all installed `go` packages.
 
         Returns:
-            A `list[Package]` representing all currently installed packages.
+            A `list[Package]` representing all currently installed `go` packages.
+
+        Raises:
+            UnsupportedVersionError: The underlying `go` executable is of an unsupported version.
+            RuntimeError: Failed to list installed `go` packages.
         """
         def line_to_package(line: str) -> Optional[Package]:
             # All supported versions adhere to this format
@@ -187,7 +191,7 @@ class Go(PackageManager):
             return list(filter(None, map(line_to_package, list_cmd.stdout.split('\n'))))
 
         except subprocess.CalledProcessError:
-            raise RuntimeError("Failed to list go installed packages")
+            raise RuntimeError("Failed to list installed go packages")
 
     def _check_version(self):
         """

@@ -103,7 +103,7 @@ class Go(PackageManager):
         Raises:
             ValueError: The given `command` is empty or not a valid `go` command.
             UnsupportedVersionError: The underlying `go` executable is of an unsupported version.
-            GoModNotFoundError: No `go.mod` file was found for the given `go` command.
+            RuntimeError: No `go.mod` file was found for the given `go` command.
         """
         def line_to_package(line: str) -> Optional[Package]:
             # All supported versions adhere to this format

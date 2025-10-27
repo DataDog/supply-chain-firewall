@@ -47,6 +47,10 @@ def main() -> int:
         _log.error(e)
         return 1
 
+    except KeyboardInterrupt:
+        _log.info("Exiting after receiving keyboard interrupt")
+        return 1
+
 
 def _configure_logging(level: int):
     """

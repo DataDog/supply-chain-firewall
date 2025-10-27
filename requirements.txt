@@ -105,9 +105,9 @@ packaging==25.0 ; python_version >= "3.10" and python_version < "4" \
 python-dateutil==2.9.0.post0 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3 \
     --hash=sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427
-python-dotenv==1.1.1 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:31f23644fe2602f88ff55e1f5c79ba497e01224ee7737937930c448e4d0e24dc \
-    --hash=sha256:a8a6399716257f45be6a007360200409fce5cda2661e3dec71d23dc15f6189ab
+python-dotenv==1.2.1 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:42667e897e16ab0d66954af0e60a9caa94f0fd4ecf3aaf6d2d260eec1aa36ad6 \
+    --hash=sha256:b81ee9561e9ca4004139c6cbba3a238c32b03e4894671e181b671e8cb8425d61
 readchar==4.2.1 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:91ce3faf07688de14d800592951e5575e9c7a3213738ed01d394dcc949b79adb \
     --hash=sha256:a769305cd3994bb5fa2764aa4073452dc105a4ec39068ffe6efd3c20c60acc77

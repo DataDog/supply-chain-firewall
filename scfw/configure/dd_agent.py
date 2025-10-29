@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 import shutil
 import subprocess
+from typing import Optional
 
 from scfw.constants import DD_SERVICE, DD_SOURCE
 
@@ -22,9 +23,9 @@ def configure_agent_logging(port: str):
 
     Raises:
         ValueError: An invalid port number was provided.
-        RuntimeError: An error occurred while querying the Agent's status.
+        RuntimeError: Failed to determine Datadog Agent configuration directory.
     """
-    if not (0 < int(port) < 2 ** 16):
+    if not (0 < int(port) < 65536):
         raise ValueError("Invalid port number provided for Datadog Agent logging")
 
     config_file = (
@@ -36,6 +37,9 @@ def configure_agent_logging(port: str):
     )
 
     scfw_config_dir = _dd_agent_scfw_config_dir()
+    if not scfw_config_dir:
+        raise RuntimeError("Failed to determine Datadog Agent configuration directory")
+
     scfw_config_file = scfw_config_dir / "conf.yaml"
 
     if not scfw_config_dir.is_dir():
@@ -49,63 +53,57 @@ def configure_agent_logging(port: str):
 def remove_agent_logging():
     """
     Remove Datadog Agent configuration for Supply-Chain Firewall, if it exists.
-
-    Raises:
-        RuntimeError: An error occurred while attempting to remove the configuration directory.
     """
-    try:
-        scfw_config_dir = _dd_agent_scfw_config_dir()
-    except FileNotFoundError:
-        _log.info("Datadog Agent binary is not available; no configuration to remove")
-        return
-
-    if not scfw_config_dir.is_dir():
+    scfw_config_dir = _dd_agent_scfw_config_dir()
+    if not (scfw_config_dir and scfw_config_dir.is_dir()):
         _log.info("No Datadog Agent configuration directory to remove")
         return
 
     try:
         shutil.rmtree(scfw_config_dir)
-        _log.info(f"Deleted directory {scfw_config_dir} with Datadog Agent configuration")
-    except Exception:
-        raise RuntimeError(
-            f"Failed to delete directory {scfw_config_dir} with Datadog Agent configuration for Supply-Chain Firewall"
+        _log.info(f"Removed directory {scfw_config_dir} with Datadog Agent configuration")
+    except Exception as e:
+        _log.warning(
+            f"Failed to remove Datadog Agent configuration directory {scfw_config_dir}: {e}"
         )
 
 
-def _dd_agent_scfw_config_dir() -> Path:
+def _dd_agent_scfw_config_dir() -> Optional[Path]:
     """
-    Get the filesystem path to the firewall's configuration directory for
-    Datadog Agent log forwarding.
+    Return the filesystem path to Supply-Chain Firewall's configuration directory
+    for Datadog Agent log forwarding.
 
     Returns:
-        A `Path` indicating the absolute filesystem path to this directory.
+        A `Path` containing the local filesystem path to Supply-Chain Firewall's
+        configuration directory for the Datadog Agent or `None` if the Agent binary
+        is inaccessible or the Agent's global configuration directory (always the
+        returned directory's parent) does not exist.
+
+        The returned path is what Supply-Chain Firewall's configuration directory
+        would be if it existed, but this function does not check that this directory
+        actually exists. It is the caller's responsibility to do so.
 
     Raises:
-        RuntimeError:
-            * Unable to query Datadog Agent status to read the location of its global
-              configuration directory
-            * Datadog Agent global configuration directory is not set or does not exist
-        ValueError: Failed to parse Datadog Agent status JSON report.
+        RuntimeError: Failed to query the Datadog Agent's status.
     """
+    agent_path = shutil.which("datadog-agent")
+    if not agent_path:
+        _log.info("No Datadog Agent binary is accessible in the current environment")
+        return None
+
+    agent_config_dir = None
     try:
         agent_status = subprocess.run(
-            ["datadog-agent", "status", "--json"], check=True, text=True, capture_output=True
+            [agent_path, "status", "--json"], check=True, text=True, capture_output=True
         )
-        config_confd_path = json.loads(agent_status.stdout).get("config", {}).get("confd_path")
-        agent_config_dir = Path(config_confd_path) if config_confd_path else None
+        if (config_confd_path := json.loads(agent_status.stdout).get("config", {}).get("confd_path")):
+            agent_config_dir = Path(config_confd_path).absolute()
 
-    except subprocess.CalledProcessError:
-        raise RuntimeError(
-            "Unable to query Datadog Agent status: please ensure the Agent is running. "
-            "Linux users may need sudo to run this command."
-        )
-
-    except json.JSONDecodeError:
-        raise ValueError("Failed to parse Datadog Agent status report as JSON")
+    except Exception as e:
+        raise RuntimeError(f"Failed to query Datadog Agent status: {e}")
 
     if not (agent_config_dir and agent_config_dir.is_dir()):
-        raise RuntimeError(
-            "Datadog Agent global configuration directory is not set or does not exist"
-        )
+        _log.info("No Datadog Agent global configuration directory found")
+        return None
 
     return agent_config_dir / "scfw.d"

@@ -16,13 +16,36 @@ _BLOCK_START = "# BEGIN SCFW MANAGED BLOCK"
 _BLOCK_END = "# END SCFW MANAGED BLOCK"
 
 
-def update_config_files(answers: dict):
+def remove_config() -> int:
+    """
+    Remove Supply-Chain Firewall configuration from all supported files.
+
+    Returns:
+        An integer status code indicating normal or error exit.
+    """
+    # These options result in the firewall's configuration block being removed
+    return update_config_files({
+        "alias_npm": False,
+        "alias_pip": False,
+        "alias_poetry": False,
+        "dd_agent_port": None,
+        "dd_api_key": None,
+        "dd_log_level": None,
+        "scfw_home": None,
+    })
+
+
+def update_config_files(answers: dict) -> int:
     """
     Update the Supply-Chain Firewall configuration in all supported files.
 
     Args:
         answers: A `dict` of configuration options to format and write to each file.
+
+    Returns:
+        An integer status code indicating normal or error exit.
     """
+    error_count = 0
     scfw_config = _format_answers(answers)
 
     for config_file in [Path.home() / file for file in _CONFIG_FILES]:
@@ -30,8 +53,15 @@ def update_config_files(answers: dict):
             _log.info(f"Skipped adding configuration to file {config_file}: file does not already exist")
             continue
 
-        _update_config_file(config_file, scfw_config)
-        _log.info(f"Successfully added configuration to file {config_file}")
+        try:
+            _update_config_file(config_file, scfw_config)
+            _log.info(f"Successfully updated configuration in file {config_file}")
+
+        except Exception as e:
+            _log.warning(f"Failed to update configuration in file {config_file}: {e}")
+            error_count += 1
+
+    return 1 if error_count else 0
 
 
 def _update_config_file(config_file: Path, scfw_config: str):

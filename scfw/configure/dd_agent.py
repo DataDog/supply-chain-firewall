@@ -53,7 +53,11 @@ def remove_agent_logging():
     Raises:
         RuntimeError: An error occurred while attempting to remove the configuration directory.
     """
-    scfw_config_dir = _dd_agent_scfw_config_dir()
+    try:
+        scfw_config_dir = _dd_agent_scfw_config_dir()
+    except FileNotFoundError:
+        _log.info("Datadog Agent binary is not available; no configuration to remove")
+        return
 
     if not scfw_config_dir.is_dir():
         _log.info("No Datadog Agent configuration directory to remove")

@@ -3,11 +3,14 @@ Implements Supply-Chain Firewall's `configure` subcommand.
 """
 
 from argparse import Namespace
+import logging
 
 import scfw.configure.dd_agent as dd_agent
 import scfw.configure.env as env
 import scfw.configure.interactive as interactive
 from scfw.configure.interactive import GREETING
+
+_log = logging.getLogger(__name__)
 
 
 def run_configure(args: Namespace) -> int:
@@ -21,6 +24,11 @@ def run_configure(args: Namespace) -> int:
         An integer status code indicating normal exit.
     """
     if args.remove:
+        try:
+            dd_agent.remove_agent_logging()
+        except Exception as e:
+            _log.warning(f"Failed to remove Datadog Agent configuration: {e}")
+
         # These options result in the firewall's configuration block being removed
         env.update_config_files({
             "alias_npm": False,
@@ -31,7 +39,7 @@ def run_configure(args: Namespace) -> int:
             "dd_log_level": None,
             "scfw_home": None,
         })
-        dd_agent.remove_agent_logging()
+
         print(
             "All Supply-Chain Firewall-managed configuration has been removed from your environment."
             "\n\nPost-removal tasks:"
@@ -60,10 +68,14 @@ def run_configure(args: Namespace) -> int:
     if not answers:
         return 0
 
-    env.update_config_files(answers)
-
     if (port := answers.get("dd_agent_port")):
-        dd_agent.configure_agent_logging(port)
+        try:
+            dd_agent.configure_agent_logging(port)
+        except Exception as e:
+            _log.warning(f"Failed to configure Datadog Agent for Supply-Chain Firewall: {e}")
+            answers["dd_agent_port"] = None
+
+    env.update_config_files(answers)
 
     if is_interactive:
         print(interactive.get_farewell(answers))

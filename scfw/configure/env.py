@@ -16,6 +16,22 @@ _BLOCK_START = "# BEGIN SCFW MANAGED BLOCK"
 _BLOCK_END = "# END SCFW MANAGED BLOCK"
 
 
+def remove_config():
+    """
+    Remove Supply-Chain Firewall configuration from all supported files.
+    """
+    # These options result in the firewall's configuration block being removed
+    update_config_files({
+        "alias_npm": False,
+        "alias_pip": False,
+        "alias_poetry": False,
+        "dd_agent_port": None,
+        "dd_api_key": None,
+        "dd_log_level": None,
+        "scfw_home": None,
+    })
+
+
 def update_config_files(answers: dict):
     """
     Update the Supply-Chain Firewall configuration in all supported files.
@@ -30,8 +46,12 @@ def update_config_files(answers: dict):
             _log.info(f"Skipped adding configuration to file {config_file}: file does not already exist")
             continue
 
-        _update_config_file(config_file, scfw_config)
-        _log.info(f"Successfully added configuration to file {config_file}")
+        try:
+            _update_config_file(config_file, scfw_config)
+            _log.info(f"Successfully updated configuration in file {config_file}")
+
+        except Exception as e:
+            _log.warning(f"Failed to update configuration in file {config_file}: {e}")
 
 
 def _update_config_file(config_file: Path, scfw_config: str):

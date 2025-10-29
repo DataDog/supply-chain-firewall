@@ -29,16 +29,7 @@ def run_configure(args: Namespace) -> int:
         except Exception as e:
             _log.warning(f"Failed to remove Datadog Agent configuration: {e}")
 
-        # These options result in the firewall's configuration block being removed
-        env.update_config_files({
-            "alias_npm": False,
-            "alias_pip": False,
-            "alias_poetry": False,
-            "dd_agent_port": None,
-            "dd_api_key": None,
-            "dd_log_level": None,
-            "scfw_home": None,
-        })
+        env.remove_config()
 
         print(
             "All Supply-Chain Firewall-managed configuration has been removed from your environment."
@@ -73,6 +64,7 @@ def run_configure(args: Namespace) -> int:
             dd_agent.configure_agent_logging(port)
         except Exception as e:
             _log.warning(f"Failed to configure Datadog Agent for Supply-Chain Firewall: {e}")
+            # Don't set the Agent port environment variable if Agent configuration failed
             answers["dd_agent_port"] = None
 
     env.update_config_files(answers)

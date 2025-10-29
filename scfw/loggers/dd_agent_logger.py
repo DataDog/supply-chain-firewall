@@ -28,7 +28,7 @@ class _DDLogHandler(logging.Handler):
         Raises:
             ValueError: An invalid port number was given.
         """
-        if not 0 < agent_port < 2 ** 16:
+        if not 0 < agent_port < 65536:
             raise ValueError(f"Invalid port number {agent_port}")
         self._agent_port = agent_port
 

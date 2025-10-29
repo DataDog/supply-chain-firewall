@@ -21,15 +21,19 @@ def run_configure(args: Namespace) -> int:
         args: A `Namespace` containing the parsed `configure` subcommand command line.
 
     Returns:
-        An integer status code indicating normal exit.
+        An integer status code indicating normal or error exit.
     """
+    dd_agent_status = 0
+    env_status = 0
+
     if args.remove:
         try:
             dd_agent.remove_agent_logging()
         except Exception as e:
             _log.warning(f"Failed to remove Datadog Agent configuration: {e}")
+            dd_agent_status = 1
 
-        env.remove_config()
+        env_status = env.remove_config()
 
         print(
             "All Supply-Chain Firewall-managed configuration has been removed from your environment."
@@ -37,7 +41,7 @@ def run_configure(args: Namespace) -> int:
             "\n* Update your current shell environment by sourcing from your .bashrc/.zshrc file."
             "\n* If you had previously configured Datadog Agent log forwarding, restart the Agent."
         )
-        return 0
+        return dd_agent_status or env_status
 
     # The CLI parser guarantees that all of these arguments are present
     is_interactive = not any({
@@ -64,12 +68,13 @@ def run_configure(args: Namespace) -> int:
             dd_agent.configure_agent_logging(port)
         except Exception as e:
             _log.warning(f"Failed to configure Datadog Agent for Supply-Chain Firewall: {e}")
+            dd_agent_status = 1
             # Don't set the Agent port environment variable if Agent configuration failed
             answers["dd_agent_port"] = None
 
-    env.update_config_files(answers)
+    env_status = env.update_config_files(answers)
 
     if is_interactive:
         print(interactive.get_farewell(answers))
 
-    return 0
+    return dd_agent_status or env_status

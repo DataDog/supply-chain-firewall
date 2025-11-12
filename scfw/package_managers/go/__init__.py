@@ -25,7 +25,7 @@ INSPECTED_SUBCOMMANDS = {"build", "generate", "get", "install", "mod", "run"}
 
 INSPECTED_MOD_COMMANDS = {"download", "graph", "tidy", "verify", "why"}
 
-DRY_RUN_PROJECT = "localhost/dry_run"
+DRY_RUN_PROJECT = "localhost/scfw_dry_run"
 
 
 class Go(PackageManager):
@@ -116,49 +116,48 @@ class Go(PackageManager):
 
         if not any(subcommand in command for subcommand in INSPECTED_SUBCOMMANDS):
             return []
-
         if len(command) > 2 and command[1] == "mod" and not command[2] in INSPECTED_MOD_COMMANDS:
             return []
 
         self._check_version()
 
-        # The presence of these options prevent the add command from running
+        # The presence of these options prevents the command from running
         if any(opt in command for opt in {"-h", "-help"}):
             return []
 
         try:
             # Compute installation targets: new dependencies and updates/downgrades of existing ones
-            local_packages = []
-            remote_packages = []
+            targets = set()
+            local_packages, remote_packages = set(), set()
 
             is_tidy = len(command) > 2 and command[1] == "mod" and command[2] == "tidy"
-            for param in command[2 if not is_tidy else 3:]:
-                if not param.startswith("-"):
-                    # TODO: Handle packages with envvars?
-                    is_local = Path(param).exists()
-                    if is_local or len(param.split("/")) == 1:
-                        local_packages.append(param)
-                    else:
-                        remote_packages.append(param)
+
+            # TODO(ikretz): Replace `is_tidy` with `is_mod` check
+            params = [token for token in command[2 if not is_tidy else 3:] if not token.startswith("-")]
+            for param in params:
+                # TODO(ikretz): Handle packages with envvars?
+                if Path(param).exists() or len(param.split("/")) == 1:
+                    local_packages.add(param)
+                else:
+                    remote_packages.add(param)
 
             with TempGoEnvironment(self.executable()) as tmp:
-                packages = set()
-                if len(remote_packages) > 0:
-                    # Create a temporary project and retrieve what would be installed in it.
+                if remote_packages:
+                    # Create a temporary project and retrieve what would be installed in it
                     tmp.run(["mod", "init", DRY_RUN_PROJECT])
-                    tmp.run(["get"] + remote_packages)
+                    tmp.run(["get"] + [package for package in remote_packages])
                     dry_run = tmp.run(["list", "-m", "all"])
-                    packages.update(set(filter(None, map(line_to_package, dry_run.stdout.split('\n')))))
+                    targets.update(set(filter(None, map(line_to_package, dry_run.stdout.split('\n')))))
 
                 if is_tidy:
                     tmp.duplicate_go_mod()
-                    tmp.run(["mod", "tidy"], True)
+                    tmp.run(["mod", "tidy"], local=True)
 
-                if is_tidy or len(local_packages) > 0:
-                    dry_run = tmp.run(["list", "-m", "all"], True)
-                    packages.update(set(filter(None, map(line_to_package, dry_run.stdout.split('\n')))))
+                if is_tidy or local_packages:
+                    dry_run = tmp.run(["list", "-m", "all"], local=True)
+                    targets.update(set(filter(None, map(line_to_package, dry_run.stdout.split('\n')))))
 
-                return list(packages)
+                return list(targets)
 
         except subprocess.CalledProcessError:
             # An erroring command does not install anything

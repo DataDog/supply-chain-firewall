@@ -8,9 +8,8 @@ import shutil
 import subprocess
 from tempfile import TemporaryDirectory
 from types import TracebackType
-from typing import Optional, Type, TypeVar
-
-_TempGoEnvironmentType = TypeVar('_TempGoEnvironmentType', bound='TempGoEnvironment')
+from typing import Optional, Type
+from typing_extensions import Self
 
 
 class TempGoEnvironment(TemporaryDirectory):
@@ -82,7 +81,7 @@ class TempGoEnvironment(TemporaryDirectory):
         self._env['GOMODCACHE'] = str(self._mod_cache_dir)
         self._env['GOPATH'] = self._gopath
 
-    def __enter__(self: _TempGoEnvironmentType) -> _TempGoEnvironmentType:
+    def __enter__(self) -> Self:
         """
         Convert the `TempGoEnvironment` to a context manager.
 

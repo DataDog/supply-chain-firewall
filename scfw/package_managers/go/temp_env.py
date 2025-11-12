@@ -36,13 +36,17 @@ class TempGoEnvironment(TemporaryDirectory):
             subdir.mkdir(mode=0o750)
             return subdir
 
-        def get_gomod_dir(executable: str) -> Optional[Path]:
+        def get_gomod_path(executable: str) -> Optional[Path]:
             gomod_command = [executable, "env", "GOMOD"]
             gomod = subprocess.run(gomod_command, check=True, text=True, capture_output=True)
             gomod_path = gomod.stdout.strip()
             if not gomod_path or gomod_path in {"/dev/null", "NUL"}:
                 return None
-            return Path(gomod_path).absolute().parent
+            return Path(gomod_path).absolute()
+
+        def get_gosum_path(gomod_path: Optional[Path]) -> Optional[Path]:
+            # If go.sum exists, it is in the same directory as go.mod
+            return gomod_path.parent / "go.sum" if gomod_path else None
 
         def get_gopath(executable: str) -> str:
             gopath_command = [executable, "env", "GOPATH"]
@@ -51,12 +55,13 @@ class TempGoEnvironment(TemporaryDirectory):
         TemporaryDirectory.__init__(self)
         self._tmp_dir = Path(self.name)
 
-        self._restore_mod_file = False
-        self._restore_sum_file = False
+        self._cached_gomod_path = None
+        self._cached_gosum_path = None
         self._remove_sum_file = False
 
         self._executable = executable
-        self._original_dir = get_gomod_dir(executable)
+        self._gomod_path = get_gomod_path(executable)
+        self._gosum_path = get_gosum_path(self._gomod_path)
 
         # Ephemeral dry-run subdirectory
         self._dry_run_dir = make_subdir(self._tmp_dir, "dry_run")
@@ -108,17 +113,15 @@ class TempGoEnvironment(TemporaryDirectory):
         On `cleanup()` (and hence context manager exit), these files are recovered,
         in case they were modified.
         """
-        if self._original_dir is None:
+        if self._gomod_path and self._gomod_path.is_file():
+            self._cached_gomod_path = self._tmp_dir / "go.mod"
+            shutil.copy(self._gomod_path, self._cached_gomod_path)
+        else:
             raise RuntimeError("Failed to find a 'go.mod' file to operate on")
 
-        mod_file = self._original_dir / "go.mod"
-        shutil.copy(mod_file, self._tmp_dir)
-        self._restore_mod_file = True
-
-        sum_file = self._original_dir / "go.sum"
-        if sum_file.exists():
-            shutil.copy(sum_file, self._tmp_dir)
-            self._restore_sum_file = True
+        if self._gosum_path and self._gosum_path.is_file():
+            self._cached_gosum_path = self._tmp_dir / "go.sum"
+            shutil.copy(self._gosum_path, self._cached_gosum_path)
         else:
             self._remove_sum_file = True
 
@@ -145,17 +148,13 @@ class TempGoEnvironment(TemporaryDirectory):
         """
         Clear the temporary environment and undo any changes made to the current project.
         """
-        if self._original_dir is not None:
-            if self._restore_mod_file:
-                mod_file = self._original_dir / "go.mod"
-                tmp_file = self._tmp_dir / "go.mod"
-                shutil.copy(tmp_file, mod_file)
+        if self._gomod_path and self._cached_gomod_path:
+            shutil.copy(self._cached_gomod_path, self._gomod_path)
 
-            sum_file = self._original_dir / "go.sum"
-            if self._restore_sum_file:
-                tmp_file = self._tmp_dir / "go.sum"
-                shutil.copy(tmp_file, sum_file)
-            elif self._remove_sum_file:
-                os.remove(sum_file)
+        if self._gosum_path:
+            if self._cached_gosum_path:
+                shutil.copy(self._cached_gosum_path, self._gosum_path)
+            elif self._gosum_path.is_file() and self._remove_sum_file:
+                os.remove(self._gosum_path)
 
         TemporaryDirectory.cleanup(self)

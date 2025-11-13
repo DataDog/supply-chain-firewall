@@ -17,18 +17,17 @@ class GoProject:
     """
     A representation of a Go project and its local environment.
     """
-    def __init__(self, go_dir: str, directory: str, env: dict):
+    def __init__(self, go_dir: Path, directory: Path, env: dict):
         self.go_dir = go_dir
         self.directory = directory
         self.env = env
-
 
     def get_go_dir_contents(self) -> str:
         """
         List the contents in the go directory.
 
-        Note that this only looks at the name and path of the filesm ignoring
-        their actual contents!
+        Note that this only looks at the name and path of the files, ignoring
+        their actual contents.
         """
         h = hashlib.new("md5")
         for root, _, files in os.walk(self.go_dir):
@@ -65,7 +64,13 @@ def test_go_no_change(new_go_project):
     Test that certain `go` commands relied on by Supply-Chain Firewall
     not to error or modify the local installation state indeed have these properties.
     """
-    def _test_go_no_change(project: GoProject, base_go: GoProject, local_init_state: str, global_init_state: str, command: list) -> bool:
+    def _test_go_no_change(
+            project: GoProject,
+            base_go: GoProject,
+            local_init_state: str,
+            global_init_state: str,
+            command: list
+        ) -> bool:
         """
         Tests that a given Poetry command does not encounter any errors and does not
         modify the local installation state when run in the context of a given project.
@@ -76,16 +81,19 @@ def test_go_no_change(new_go_project):
         return go_show(project) == local_init_state and base_go.get_go_dir_contents() == global_init_state
 
     test_cases = []
-    for command in ["build", "generate", "get", "install", "mod", "run"]:
-        for param in ["-h", "-help"]:
+    for command in {"build", "generate", "get", "install", "mod", "run"}:
+        for param in {"-h", "-help"}:
             test_cases.append(["go", command, param])
 
-    base_go = GoProject(get_gopath(), "", {})
+    base_go = GoProject(get_gopath(), Path(""), {})
     global_init_state = base_go.get_go_dir_contents()
 
     local_init_state = go_show(new_go_project)
 
-    assert all(_test_go_no_change(new_go_project, base_go, local_init_state, global_init_state, command) for command in test_cases)
+    assert all(
+        _test_go_no_change(new_go_project, base_go, local_init_state, global_init_state, command)
+        for command in test_cases
+    )
 
 
 def go_show(project: GoProject) -> str:
@@ -103,15 +111,15 @@ def go_show(project: GoProject) -> str:
     return go_show.stdout.lower()
 
 
-def get_gopath() -> str:
+def get_gopath() -> Path:
     """
     Retrieve the default path where go install packages.
     """
     gopath = subprocess.run(["go", "env", "GOPATH"], check=True, text=True, capture_output=True)
-    return gopath.stdout.strip()
+    return Path(gopath.stdout.strip())
 
 
-def _init_go_env(directory) -> (Path, dict):
+def _init_go_env(directory) -> tuple[Path, dict]:
     """
     Initialize a fresh Go environment in `directory` and return both the path
     used by go and the environment variables that should be provided to

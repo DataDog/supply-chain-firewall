@@ -10,7 +10,7 @@ from scfw.package_managers.go import Go
 import subprocess
 import textwrap
 
-from .test_go import GoProject, get_gopath, go_show, new_go_project
+from .test_go import GoProject, get_gopath, go_show
 
 PACKAGE_MANAGER = Go()
 """
@@ -33,7 +33,7 @@ def test_go_command_would_install_remote(new_go_project):
         ["go", "run", f"{TARGET}@latest"],
     ]
 
-    base_go = GoProject(get_gopath(), "", {})
+    base_go = GoProject(get_gopath(), Path(""), {})
     global_init_state = base_go.get_go_dir_contents()
 
     local_init_state = go_show(new_go_project)
@@ -64,7 +64,7 @@ def test_go_command_would_install_local(new_go_project):
         ["go", "install", "."],
     ]
 
-    base_go = GoProject(get_gopath(), "", {})
+    base_go = GoProject(get_gopath(), Path(""), {})
     global_init_state = base_go.get_go_dir_contents()
 
     _install_target(new_go_project)

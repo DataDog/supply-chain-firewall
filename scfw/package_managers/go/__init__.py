@@ -105,6 +105,16 @@ class Go(PackageManager):
             UnsupportedVersionError: The underlying `go` executable is of an unsupported version.
             RuntimeError: No `go.mod` file was found for the given `go` command.
         """
+        def get_inspected_subcommand(command: list[str]) -> Optional[list[str]]:
+            inspected = INSPECTED_SUBCOMMANDS
+            for i, token in enumerate(command):
+                if token in inspected:
+                    if inspected == INSPECTED_SUBCOMMANDS and token == "mod":
+                        inspected = INSPECTED_MOD_COMMANDS
+                    else:
+                        return command[i:]
+            return None
+
         def line_to_package(line: str) -> Optional[Package]:
             # All supported versions adhere to this format
             components = line.strip().split()
@@ -113,10 +123,9 @@ class Go(PackageManager):
             return None
 
         command = self._normalize_command(command)
+        inspected_subcommand = get_inspected_subcommand(command)
 
-        if not any(subcommand in command for subcommand in INSPECTED_SUBCOMMANDS):
-            return []
-        if len(command) > 2 and command[1] == "mod" and not command[2] in INSPECTED_MOD_COMMANDS:
+        if inspected_subcommand is None:
             return []
 
         self._check_version()
@@ -130,11 +139,9 @@ class Go(PackageManager):
             targets = set()
             local_packages, remote_packages = set(), set()
 
-            is_tidy = len(command) > 2 and command[1] == "mod" and command[2] == "tidy"
-
-            # TODO(ikretz): Replace `is_tidy` with `is_mod` check
-            params = [token for token in command[2 if not is_tidy else 3:] if not token.startswith("-")]
-            for param in params:
+            for param in inspected_subcommand[1:]:
+                if param.startswith("-"):
+                    continue
                 # TODO(ikretz): Handle packages with envvars?
                 if Path(param).exists() or len(param.split("/")) == 1:
                     local_packages.add(param)
@@ -149,6 +156,8 @@ class Go(PackageManager):
                     dry_run = tmp.run(["list", "-m", "all"])
                     targets.update(set(filter(None, map(line_to_package, dry_run.stdout.split('\n')))))
 
+                is_tidy = inspected_subcommand and inspected_subcommand[0] == "tidy"
+
                 if is_tidy:
                     tmp.duplicate_go_mod()
                     tmp.run(["mod", "tidy"], local=True)
@@ -161,7 +170,7 @@ class Go(PackageManager):
 
         except subprocess.CalledProcessError:
             # An erroring command does not install anything
-            _log.info("The Go command encountered an error while collecting installation targets")
+            _log.info("Encountered an error while resolving go installation targets")
             return []
 
     def list_installed_packages(self) -> list[Package]:
@@ -185,7 +194,7 @@ class Go(PackageManager):
         self._check_version()
 
         try:
-            go_list_cmd = [self._executable, "list", "-m", "all"]
+            go_list_cmd = self._normalize_command(["go", "list", "-m", "all"])
             list_cmd = subprocess.run(go_list_cmd, check=True, text=True, capture_output=True)
             return list(filter(None, map(line_to_package, list_cmd.stdout.split('\n'))))
 

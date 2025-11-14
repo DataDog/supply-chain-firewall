@@ -1,9 +1,9 @@
-blessed==1.22.0 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:1818efb7c10015478286f21a412fcdd31a3d8b94a18f6d926e733827da7a844b \
-    --hash=sha256:a1fed52d708a1aa26dfb8d3eaecf6f4714bff590e728baeefcb44f2c16c8de82
-certifi==2025.10.5 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:0f212c2744a9bb6de0c56639a6f68afe01ecd92d91f14ae897c4fe7bbeeef0de \
-    --hash=sha256:47c09d31ccf2acf0be3f701ea53595ee7e0b8fa08801c6624be771df09ae7b43
+blessed==1.23.0 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:4c432dcde0d45112372d1d096b2c4c0a6a5db1b94d546124872d0c3e64b5ea26 \
+    --hash=sha256:56591a32966f704f6131f1400af4151d9e8f5f4144133a5ca034019763dee77b
+certifi==2025.11.12 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:97de8790030bbd5c2d96b7ec782fc2f7820ef8dba6db909ccf95449f2d062d4b \
+    --hash=sha256:d8ab5478f2ecd78af242878415affce761ca6bc54a22a27e026d7c25357c3316
 charset-normalizer==3.4.4 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:027f6de494925c0ab2a55eab46ae5129951638a49a34d87f4c3eda90f696b4ad \
     --hash=sha256:077fbb858e903c73f6c9db43374fd213b0b6a778106bc7032446a8e8b5b38b93 \

@@ -47,30 +47,34 @@ class OsvVerifier(PackageVerifier):
         """
         Initialize a new `OsvVerifier`.
         """
-        def read_ignore_list(ignore_list: Path) -> set[str]:
+        def read_ignore_list() -> set[str]:
+            file_var, ignore_list = None, None
+            if (file_var := os.getenv(OSV_IGNORE_LIST_VAR)):
+                ignore_list = Path(file_var)
+            elif (home_dir := os.getenv(SCFW_HOME_VAR)):
+                ignore_list = Path(home_dir) / OSV_IGNORE_LIST_DEFAULT
+
+            if not (ignore_list and ignore_list.is_file()):
+                if file_var:
+                    raise RuntimeError(
+                        f"OSV advisory ignore list file {ignore_list} does not exist or is not a regular file"
+                    )
+                return set()
+
             with open(ignore_list) as f:
                 osv_ids = set(f.read().split())
                 ignored_osv_ids = set(filter(lambda id: not id.startswith("MAL"), osv_ids))
                 if ignored_osv_ids != osv_ids:
                     _log.warning("OSV malicious package (MAL) advisories will not be ignored")
+
+                _log.info(f"Read IDs of OSV advisories to ignore from file {ignore_list}")
                 return ignored_osv_ids
 
         self.ignored_osv_ids = set()
-
-        ignore_list = None
-        if (filepath := os.getenv(OSV_IGNORE_LIST_VAR)):
-            ignore_list = Path(filepath)
-        elif (home_dir := os.getenv(SCFW_HOME_VAR)):
-            ignore_list = Path(home_dir) / OSV_IGNORE_LIST_DEFAULT
-
-        if not (ignore_list and ignore_list.is_file()):
-            return
-
-        _log.info(f"Reading IDs of ignored OSV advisories from {ignore_list}")
         try:
-            self.ignored_osv_ids = read_ignore_list(ignore_list)
+            self.ignored_osv_ids = read_ignore_list()
         except Exception as e:
-            _log.warning(f"Failed to read OSV advisory ignore list from {ignore_list}: {e}")
+            _log.warning(f"Failed to read OSV advisory ignore list: {e}")
 
     @classmethod
     def name(cls) -> str:

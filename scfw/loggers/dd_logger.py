@@ -76,7 +76,7 @@ class DDLogFormatter(logging.Formatter):
         Args:
             record: The log record to be formatted.
         """
-        def read_log_attributes_file() -> Optional[dict[str, Any]]:
+        def read_log_attributes_file() -> dict[str, Any]:
             file_var, attributes_file = None, None
             if (file_var := os.getenv(DD_LOG_ATTRIBUTES_FILE_VAR)):
                 attributes_file = Path(file_var)
@@ -85,18 +85,16 @@ class DDLogFormatter(logging.Formatter):
 
             if not (attributes_file and attributes_file.is_file()):
                 if file_var:
-                    _log.warning(
+                    raise RuntimeError(
                         f"Custom Datadog log attributes file {attributes_file} does not exist or is not a regular file"
                     )
-                return None
+                return {}
 
             attributes = None
             with open(attributes_file) as f:
                 attributes = json.load(f)
-
             if not isinstance(attributes, dict):
-                _log.warning("Custom Datadog log attributes must be structured as a JSON mapping")
-                return None
+                raise RuntimeError("Custom Datadog log attributes must be structured as a JSON mapping")
 
             _log.info(f"Read custom Datadog log attributes from file {attributes_file}")
             return attributes
@@ -120,9 +118,11 @@ class DDLogFormatter(logging.Formatter):
             except KeyError:
                 pass
 
-        if (file_attributes := read_log_attributes_file()):
-            for attribute, value in file_attributes.items():
+        try:
+            for attribute, value in read_log_attributes_file().items():
                 log_record.setdefault(attribute, value)
+        except Exception as e:
+            _log.warning(f"Failed to read custom Datadog log attributes: {e}")
 
         return json.dumps(log_record) + '\n'
 

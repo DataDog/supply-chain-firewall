@@ -105,20 +105,15 @@ class Npm(PackageManager):
             }
             return any(alias in command for alias in install_aliases)
 
-        def is_place_dep_line(line: str) -> bool:
-            # The "placeDep" log lines describe a new dependency added to the
-            # dependency tree being constructed by an installish command
-            return "placeDep" in line
+        def is_add_target_line(line: str) -> bool:
+            # The "add" output lines note the command's installation targets
+            return line.startswith("add") and not line.startswith("added")
 
-        def line_to_dependency(line: str) -> str:
-            # Each added dependency is always the fifth token in its log line
-            return line.split()[4]
-
-        def str_to_package(s: str) -> Package:
-            name, sep, version = s.rpartition('@')
-            if version == s or (sep and not name):
-                raise ValueError("Failed to parse npm installation target")
-            return Package(ECOSYSTEM.Npm, name, version)
+        def line_to_package(line: str) -> Package:
+            # The installation target name and version are always the second
+            # and third tokens, respectively, of its "add" line
+            tokens = line.split()
+            return Package(ECOSYSTEM.Npm, name=tokens[1], version=tokens[2])
 
         command = self._normalize_command(command)
 
@@ -133,31 +128,14 @@ class Npm(PackageManager):
             return []
 
         try:
-            # Compute the set of dependencies added by the install command
-            dry_run_command = command + ["--dry-run", "--loglevel", "silly"]
+            dry_run_command = command + ["--dry-run"]
             dry_run = subprocess.run(dry_run_command, check=True, text=True, capture_output=True)
-            dependencies = map(line_to_dependency, filter(is_place_dep_line, dry_run.stderr.strip().split('\n')))
+            return list(map(line_to_package, filter(is_add_target_line, dry_run.stdout.strip().split('\n'))))
+
         except subprocess.CalledProcessError:
             # An erroring command does not install anything
             _log.info("Encountered an error while resolving npm installation targets")
             return []
-
-        try:
-            # List targets already installed in the npm environment
-            list_command = [self.executable(), "list", "--all"]
-            installed = subprocess.run(list_command, check=True, text=True, capture_output=True).stdout
-        except subprocess.CalledProcessError:
-            # If this operation fails, rather than blocking, assume nothing is installed
-            # This has the effect of treating all dependencies like installation targets
-            _log.warning(
-                "Failed to list installed npm packages: treating all dependencies as installation targets"
-            )
-            installed = ""
-
-        # The installation targets are the dependencies that are not already installed
-        targets = filter(lambda dep: dep not in installed, dependencies)
-
-        return list(map(str_to_package, targets))
 
     def list_installed_packages(self) -> list[Package]:
         """

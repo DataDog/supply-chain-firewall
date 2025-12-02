@@ -6,12 +6,14 @@ import getpass
 import json
 import logging
 import os
+from pathlib import Path
 import socket
+from typing import Any
 
 import dotenv
 
 import scfw
-from scfw.constants import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE
+from scfw.constants import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE, SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.package import Package
@@ -19,8 +21,6 @@ from scfw.report import VerificationReport
 from scfw.verifier import FindingSeverity
 
 _log = logging.getLogger(__name__)
-
-_DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
 
 # The `created` and `msg` attributes are provided by `logging.LogRecord`
 _AUDIT_ATTRIBUTES = {
@@ -43,6 +43,30 @@ _FIREWALL_ACTION_ATTRIBUTES = {
     "warned",
 }
 
+_DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
+
+DD_LOGGER_HOME = Path("dd_logger/")
+"""
+The Datadog logger home directory, realtive to `SCFW_HOME`.
+"""
+
+DD_LOG_ATTRIBUTES_FILE_DEFAULT = DD_LOGGER_HOME / "log_attributes.json"
+"""
+The default filepath where the Datadog logger looks for a custom log attributes file.
+"""
+
+DD_LOG_ATTRIBUTES_FILE_VAR = "SCFW_DD_LOG_ATTRIBUTES_FILE"
+"""
+The environment variable under which the Datadog logger looks for a filepath to a
+custom log attributes file.
+"""
+
+DD_LOG_ATTRIBUTES_VAR = "SCFW_DD_LOG_ATTRIBUTES"
+"""
+The environment variable under which the Datadog logger looks for JSON containing
+custom log attributes.
+"""
+
 
 dotenv.load_dotenv()
 
@@ -58,6 +82,43 @@ class DDLogFormatter(logging.Formatter):
         Args:
             record: The log record to be formatted.
         """
+        def parse_log_attributes(json_str: str) -> dict[str, Any]:
+            attributes = json.loads(json_str)
+            if not isinstance(attributes, dict):
+                raise RuntimeError("Custom Datadog log attributes must be structured as a single JSON object")
+
+            return attributes
+
+        def read_log_attributes_env() -> dict[str, Any]:
+            attributes_json = os.getenv(DD_LOG_ATTRIBUTES_VAR)
+            if not attributes_json:
+                return {}
+
+            attributes = parse_log_attributes(attributes_json)
+
+            _log.info("Read custom Datadog log attributes from the environment")
+            return attributes
+
+        def read_log_attributes_file() -> dict[str, Any]:
+            file_var, attributes_file = None, None
+            if (file_var := os.getenv(DD_LOG_ATTRIBUTES_FILE_VAR)):
+                attributes_file = Path(file_var)
+            elif (home_dir := os.getenv(SCFW_HOME_VAR)):
+                attributes_file = Path(home_dir) / DD_LOG_ATTRIBUTES_FILE_DEFAULT
+
+            if not (attributes_file and attributes_file.is_file()):
+                if file_var:
+                    raise RuntimeError(
+                        f"Custom Datadog log attributes file {attributes_file} does not exist or is not a regular file"
+                    )
+                return {}
+
+            with open(attributes_file) as f:
+                attributes = parse_log_attributes(f.read())
+
+            _log.info(f"Read custom Datadog log attributes from file {attributes_file}")
+            return attributes
+
         log_record = {
             "source": DD_SOURCE,
             "service": DD_SERVICE,
@@ -76,6 +137,20 @@ class DDLogFormatter(logging.Formatter):
                 log_record[key] = record.__dict__[key]
             except KeyError:
                 pass
+
+        # Read custom log attributes from the environment, if any
+        try:
+            for attribute, value in read_log_attributes_env().items():
+                log_record.setdefault(attribute, value)
+        except Exception as e:
+            _log.warning(f"Failed to read custom Datadog log attributes from the environment: {e}")
+
+        # Read custom log attributes from file, if any
+        try:
+            for attribute, value in read_log_attributes_file().items():
+                log_record.setdefault(attribute, value)
+        except Exception as e:
+            _log.warning(f"Failed to read custom Datadog log attributes from file: {e}")
 
         return json.dumps(log_record) + '\n'
 

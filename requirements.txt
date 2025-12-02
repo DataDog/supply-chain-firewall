@@ -1,9 +1,9 @@
-blessed==1.22.0 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:1818efb7c10015478286f21a412fcdd31a3d8b94a18f6d926e733827da7a844b \
-    --hash=sha256:a1fed52d708a1aa26dfb8d3eaecf6f4714bff590e728baeefcb44f2c16c8de82
-certifi==2025.10.5 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:0f212c2744a9bb6de0c56639a6f68afe01ecd92d91f14ae897c4fe7bbeeef0de \
-    --hash=sha256:47c09d31ccf2acf0be3f701ea53595ee7e0b8fa08801c6624be771df09ae7b43
+blessed==1.25.0 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:606aebfea69f85915c7ca6a96eb028e0031d30feccc5688e13fd5cec8277b28d \
+    --hash=sha256:e52b9f778b9e10c30b3f17f6b5f5d2208d1e9b53b270f1d94fc61a243fc4708f
+certifi==2025.11.12 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:97de8790030bbd5c2d96b7ec782fc2f7820ef8dba6db909ccf95449f2d062d4b \
+    --hash=sha256:d8ab5478f2ecd78af242878415affce761ca6bc54a22a27e026d7c25357c3316
 charset-normalizer==3.4.4 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:027f6de494925c0ab2a55eab46ae5129951638a49a34d87f4c3eda90f696b4ad \
     --hash=sha256:077fbb858e903c73f6c9db43374fd213b0b6a778106bc7032446a8e8b5b38b93 \
@@ -121,9 +121,9 @@ charset-normalizer==3.4.4 ; python_version >= "3.10" and python_version < "4" \
 cvss==3.6 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:e342c6ad9c7eb69d2aebbbc2768a03cabd57eb947c806e145de5b936219833ea \
     --hash=sha256:f21d18224efcd3c01b44ff1b37dec2e3208d29a6d0ce6c87a599c73c21ee1a99
-datadog-api-client==2.45.0 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:a8c1e45f5b8e5d9403659bc62b145c840e997e55aec0a2bd6d5e464e61cea799 \
-    --hash=sha256:b1d379f158f2058525dcd55b06dc110c74b81f4c6aee679d6b4640ed780beaea
+datadog-api-client==2.46.0 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:001719e8ea4968177d038b7f568e5c1f3fa5205896f2d999d082d751bb7bc7a8 \
+    --hash=sha256:1d5c03b21fdd513d0619d62080f24a525f728e0f81c748a0eba1e5b54a73002f
 editor==1.6.6 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:bb6989e872638cd119db9a4fce284cd8e13c553886a1c044c6b8d8a160c871f8 \
     --hash=sha256:e818e6913f26c2a81eadef503a2741d7cca7f235d20e217274a009ecd5a74abf

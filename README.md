@@ -142,11 +142,13 @@ Users can configure their environments so that Supply-Chain Firewall forwards lo
 
 To opt in, use the `scfw configure` command to interactively or non-interactively configure your environment for Datadog logging.  API key users can additionally set the appropriate [Datadog site parameter](https://docs.datadoghq.com/getting_started/site/#access-the-datadog-site) via the `DD_SITE` environment variable.
 
-Custom Datadog log attributes relevant to your use-case may be supplied via an environment variable or a file containing a single JSON object.  By default, SCFW looks for this file at `$SCFW_HOME/dd_logger/log_attributes.json`, or a custom filepath may be supplied via the environment variable `SCFW_DD_LOG_ATTRIBUTES_FILE`.  Otherwise, custom attributes may be provided via the environment variable `SCFW_DD_LOG_ATTRIBUTES`, with the environment variable values overriding those read from file in case of overlap.
+Custom Datadog log attributes relevant to your use-case may be supplied via an environment variable or a file containing a single JSON object.
 
 ```bash
-$ SCFW_DD_LOG_ATTRIBUTES='{"mascot_name": "Bits"}' scfw run pip install datadog-api-client
+$ SCFW_DD_LOG_ATTRIBUTES='{"mascot_name": "Bits", "location": "New York"}' scfw run pip install datadog-api-client
 ```
+
+By default, SCFW looks for this file at `$SCFW_HOME/dd_logger/log_attributes.json`, or a custom filepath may be supplied via the environment variable `SCFW_DD_LOG_ATTRIBUTES_FILE`.  Otherwise, custom attributes may be provided via the environment variable `SCFW_DD_LOG_ATTRIBUTES`, with the environment variable values overriding those read from file in case of overlap.
 
 Supply-Chain Firewall can integrate with user-supplied loggers.  A template for implementating a custom logger may be found in `examples/logger.py`. Refer to the API documentation for details.
 

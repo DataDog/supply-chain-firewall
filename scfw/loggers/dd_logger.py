@@ -6,12 +6,14 @@ import getpass
 import json
 import logging
 import os
+from pathlib import Path
 import socket
+from typing import Any, Optional
 
 import dotenv
 
 import scfw
-from scfw.constants import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE
+from scfw.constants import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE, SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.package import Package
@@ -19,8 +21,6 @@ from scfw.report import VerificationReport
 from scfw.verifier import FindingSeverity
 
 _log = logging.getLogger(__name__)
-
-_DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
 
 # The `created` and `msg` attributes are provided by `logging.LogRecord`
 _AUDIT_ATTRIBUTES = {
@@ -43,6 +43,24 @@ _FIREWALL_ACTION_ATTRIBUTES = {
     "warned",
 }
 
+_DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
+
+DD_LOGGER_HOME = Path("dd_logger/")
+"""
+The Datadog logger home directory, realtive to `SCFW_HOME`.
+"""
+
+DD_LOG_ATTRIBUTES_FILE_DEFAULT = DD_LOGGER_HOME / "log_attributes.json"
+"""
+The default filepath where the Datadog logger looks for a custom log attributes file.
+"""
+
+DD_LOG_ATTRIBUTES_FILE_VAR = "SCFW_DD_LOG_ATTRIBUTES_FILE"
+"""
+The environment variable under which the Datadog logger looks for a filepath to a
+custom log attributes file.
+"""
+
 
 dotenv.load_dotenv()
 
@@ -58,6 +76,31 @@ class DDLogFormatter(logging.Formatter):
         Args:
             record: The log record to be formatted.
         """
+        def read_log_attributes_file() -> Optional[dict[str, Any]]:
+            file_var, attributes_file = None, None
+            if (file_var := os.getenv(DD_LOG_ATTRIBUTES_FILE_VAR)):
+                attributes_file = Path(file_var)
+            elif (home_dir := os.getenv(SCFW_HOME_VAR)):
+                attributes_file = Path(home_dir) / DD_LOG_ATTRIBUTES_FILE_DEFAULT
+
+            if not (attributes_file and attributes_file.is_file()):
+                if file_var:
+                    _log.warning(
+                        f"Custom Datadog log attributes file {attributes_file} does not exist or is not a regular file"
+                    )
+                return None
+
+            attributes = None
+            with open(attributes_file) as f:
+                attributes = json.load(f)
+
+            if not isinstance(attributes, dict):
+                _log.warning("Custom Datadog log attributes must be structured as a JSON mapping")
+                return None
+
+            _log.info(f"Read custom Datadog log attributes from file {attributes_file}")
+            return attributes
+
         log_record = {
             "source": DD_SOURCE,
             "service": DD_SERVICE,
@@ -76,6 +119,10 @@ class DDLogFormatter(logging.Formatter):
                 log_record[key] = record.__dict__[key]
             except KeyError:
                 pass
+
+        if (file_attributes := read_log_attributes_file()):
+            for attribute, value in file_attributes.items():
+                log_record.setdefault(attribute, value)
 
         return json.dumps(log_record) + '\n'
 

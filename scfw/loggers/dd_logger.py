@@ -8,7 +8,7 @@ import logging
 import os
 from pathlib import Path
 import socket
-from typing import Any, Optional
+from typing import Any
 
 import dotenv
 

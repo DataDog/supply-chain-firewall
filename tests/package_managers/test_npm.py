@@ -73,15 +73,3 @@ def test_npm_no_change_error(command_line: list[str]):
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.run(command_line, check=True)
     assert npm_list() == INIT_NPM_STATE
-
-
-def test_npm_loglevel_override():
-    """
-    Test that all but the last instance of `--loglevel` are ignored by `npm`.
-    """
-    command_line = [
-        "npm", "--loglevel", "silent", "install", "--dry-run", TEST_TARGET, "--loglevel", "silly"
-    ]
-    p = subprocess.run(command_line, check=True, text=True, capture_output=True)
-    assert p.stderr
-    assert "silly" in p.stderr

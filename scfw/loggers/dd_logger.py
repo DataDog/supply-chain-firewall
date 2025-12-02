@@ -61,6 +61,12 @@ The environment variable under which the Datadog logger looks for a filepath to 
 custom log attributes file.
 """
 
+DD_LOG_ATTRIBUTES_VAR = "SCFW_DD_LOG_ATTRIBUTES"
+"""
+The environment variable under which the Datadog logger looks for JSON containing
+custom log attributes.
+"""
+
 
 dotenv.load_dotenv()
 
@@ -76,6 +82,23 @@ class DDLogFormatter(logging.Formatter):
         Args:
             record: The log record to be formatted.
         """
+        def parse_log_attributes(json_str: str) -> dict[str, Any]:
+            attributes = json.loads(json_str)
+            if not isinstance(attributes, dict):
+                raise RuntimeError("Custom Datadog log attributes must be structured as a single JSON object")
+
+            return attributes
+
+        def read_log_attributes_env() -> dict[str, Any]:
+            attributes_json = os.getenv(DD_LOG_ATTRIBUTES_VAR)
+            if not attributes_json:
+                return {}
+
+            attributes = parse_log_attributes(attributes_json)
+
+            _log.info("Read custom Datadog log attributes from the environment")
+            return attributes
+
         def read_log_attributes_file() -> dict[str, Any]:
             file_var, attributes_file = None, None
             if (file_var := os.getenv(DD_LOG_ATTRIBUTES_FILE_VAR)):
@@ -90,11 +113,8 @@ class DDLogFormatter(logging.Formatter):
                     )
                 return {}
 
-            attributes = None
             with open(attributes_file) as f:
-                attributes = json.load(f)
-            if not isinstance(attributes, dict):
-                raise RuntimeError("Custom Datadog log attributes must be structured as a JSON mapping")
+                attributes = parse_log_attributes(f.read())
 
             _log.info(f"Read custom Datadog log attributes from file {attributes_file}")
             return attributes
@@ -118,11 +138,19 @@ class DDLogFormatter(logging.Formatter):
             except KeyError:
                 pass
 
+        # Read custom log attributes from the environment, if any
+        try:
+            for attribute, value in read_log_attributes_env().items():
+                log_record.setdefault(attribute, value)
+        except Exception as e:
+            _log.warning(f"Failed to read custom Datadog log attributes from the environment: {e}")
+
+        # Read custom log attributes from file, if any
         try:
             for attribute, value in read_log_attributes_file().items():
                 log_record.setdefault(attribute, value)
         except Exception as e:
-            _log.warning(f"Failed to read custom Datadog log attributes: {e}")
+            _log.warning(f"Failed to read custom Datadog log attributes from file: {e}")
 
         return json.dumps(log_record) + '\n'
 

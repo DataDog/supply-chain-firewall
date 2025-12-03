@@ -36,7 +36,7 @@ def test_cli_incorrect_subcommand():
 
 @pytest.mark.parametrize(
         "target",
-        ["npm", "pip", "poetry"]
+        ["go", "npm", "pip", "poetry"]
 )
 def test_cli_audit_basic_usage(target: str):
     """
@@ -83,7 +83,7 @@ def test_cli_audit_unknown_package_manager():
 
 @pytest.mark.parametrize(
         "target",
-        ["npm", "pip", "poetry"]
+        ["go", "npm", "pip", "poetry"]
 )
 def test_cli_audit_all_options_package_manager(target: str):
     """
@@ -113,6 +113,7 @@ def test_cli_configure_basic_usage():
     assert args.log_level == _DEFAULT_LOG_LEVEL
 
     assert not args.remove
+    assert not args.alias_go
     assert not args.alias_npm
     assert not args.alias_pip
     assert not args.alias_poetry
@@ -125,6 +126,7 @@ def test_cli_configure_basic_usage():
 @pytest.mark.parametrize(
         "option",
         [
+            ["--alias-go"],
             ["--alias-npm"],
             ["--alias-pip"],
             ["--alias-poetry"],
@@ -146,6 +148,7 @@ def test_cli_configure_removal(option: list[str]):
 @pytest.mark.parametrize(
         "command",
         [
+            ["go", "get", "github.com/aws/aws-sdk-go-v2"],
             ["npm", "install", "react"],
             ["pip", "install", "requests"],
             ["poetry", "add", "requests"],
@@ -182,6 +185,7 @@ def test_cli_run_all_options_no_command():
 @pytest.mark.parametrize(
         "command",
         [
+            ["go", "get", "github.com/aws/aws-sdk-go-v2"],
             ["npm", "install", "react"],
             ["pip", "install", "requests"],
             ["poetry", "add", "requests"],
@@ -209,6 +213,7 @@ def test_cli_run_all_options_command(command: list[str]):
 @pytest.mark.parametrize(
         "command",
         [
+            ["go", "get", "github.com/aws/aws-sdk-go-v2"],
             ["npm", "install", "react"],
             ["pip", "install", "requests"],
             ["poetry", "install", "requests"],
@@ -235,10 +240,16 @@ def test_cli_run_package_manager_dry_run(command: list[str]):
 @pytest.mark.parametrize(
         "target,test",
         [
+            ("go", "npm"),
+            ("go", "pip"),
+            ("go", "poetry"),
+            ("npm", "go"),
             ("npm", "pip"),
             ("npm", "poetry"),
+            ("pip", "go"),
             ("pip", "npm"),
             ("pip", "poetry"),
+            ("poetry", "go"),
             ("poetry", "npm"),
             ("poetry", "pip"),
         ]

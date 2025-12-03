@@ -60,6 +60,12 @@ def _add_configure_cli(parser: ArgumentParser):
     )
 
     parser.add_argument(
+        "--alias-go",
+        action="store_true",
+        help="Add shell aliases to always run go commands through Supply-Chain Firewall"
+    )
+
+    parser.add_argument(
         "--alias-npm",
         action="store_true",
         help="Add shell aliases to always run npm commands through Supply-Chain Firewall"
@@ -309,6 +315,7 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
             args.subcommand == Subcommand.Configure
             and args.remove
             and any({
+                args.alias_go,
                 args.alias_npm,
                 args.alias_pip,
                 args.alias_poetry,

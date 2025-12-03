@@ -25,6 +25,7 @@ def remove_config() -> int:
     """
     # These options result in the firewall's configuration block being removed
     return update_config_files({
+        "alias_go": False,
         "alias_npm": False,
         "alias_pip": False,
         "alias_poetry": False,
@@ -98,6 +99,8 @@ def _format_answers(answers: dict) -> str:
     """
     config = ''
 
+    if answers.get("alias_go"):
+        config += 'alias go="scfw run go"\n'
     if answers.get("alias_npm"):
         config += 'alias npm="scfw run npm"\n'
     if answers.get("alias_pip"):

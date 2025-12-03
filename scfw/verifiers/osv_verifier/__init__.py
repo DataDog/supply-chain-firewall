@@ -92,9 +92,9 @@ class OsvVerifier(PackageVerifier):
         Return the set of package ecosystems supported by `OsvVerifier`.
 
         Returns:
-            The class' constant set of supported ecosystems: `{ECOSYSTEM.Npm, ECOSYSTEM.PyPI}`.
+            The class' constant set of supported ecosystems: `{ECOSYSTEM.Go, ECOSYSTEM.Npm, ECOSYSTEM.PyPI}`.
         """
-        return {ECOSYSTEM.Npm, ECOSYSTEM.PyPI}
+        return {ECOSYSTEM.Go, ECOSYSTEM.Npm, ECOSYSTEM.PyPI}
 
     def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
         """

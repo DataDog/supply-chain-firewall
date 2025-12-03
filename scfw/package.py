@@ -28,11 +28,12 @@ class Package:
         Returns:
             A `str` with ecosystem-specific formatting describing the `Package` name and version.
 
+            `go` packages: `"{name}@{version}"`.
             `npm` packages: `"{name}@{version}"`.
             `PyPI` packages: `"{name}-{version}"`
         """
         match self.ecosystem:
-            case ECOSYSTEM.Npm:
+            case ECOSYSTEM.Go | ECOSYSTEM.Npm:
                 return f"{self.name}@{self.version}"
             case ECOSYSTEM.PyPI:
                 return f"{self.name}-{self.version}"

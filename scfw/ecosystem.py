@@ -9,6 +9,7 @@ class ECOSYSTEM(Enum):
     """
     Package ecosystems supported by the supply-chain firewall.
     """
+    Go = "Go"
     Npm = "npm"
     PyPI = "PyPI"
 

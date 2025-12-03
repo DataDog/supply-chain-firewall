@@ -132,7 +132,7 @@ class Npm(PackageManager):
             for line in dry_run_log:
                 line_tokens = line.split()
 
-                if line_tokens[1] in {"sill", "silly"} and line_tokens[2] == "ADD":
+                if line_tokens[1] in {"sill", "silly"} and line_tokens[2] in {"ADD", "CHANGE"}:
                     target_handles.append(line_tokens[3])
 
             return target_handles

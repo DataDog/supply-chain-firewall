@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-from typing import Any, Optional
+from typing import Optional
 
 from packaging.version import InvalidVersion, Version, parse as version_parse
 

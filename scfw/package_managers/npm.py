@@ -106,24 +106,19 @@ class Npm(PackageManager):
             }
             return any(alias in command for alias in install_aliases)
 
-        def read_lockfile() -> dict[str, Any]:
+        def detect_lockfile() -> Optional[Path]:
             npm_prefix_command = self._normalize_command(["npm", "prefix"])
             npm_prefix = subprocess.run(npm_prefix_command, check=True, text=True, capture_output=True).stdout.strip()
             if not npm_prefix:
                 _log.debug("'npm prefix' command returned empty output")
-                return {}
+                return None
 
-            package_lock_path = Path(npm_prefix) / "package-lock.json"
-            if not package_lock_path.is_file():
+            lockfile_path = Path(npm_prefix) / "package-lock.json"
+            if not lockfile_path.is_file():
                 _log.debug("No package-lock.json file found in current project root")
-                return {}
+                return None
 
-            with open(package_lock_path) as f:
-                package_lock_file = json.load(f)
-            if not isinstance(package_lock_file, dict):
-                raise RuntimeError(f"Package lock file {package_lock_path} is malformed")
-
-            return package_lock_file
+            return lockfile_path
 
         def extract_target_handles(dry_run_log: list[str]) -> list[str]:
             target_handles = []
@@ -188,11 +183,14 @@ class Npm(PackageManager):
             install_targets = set()
             placed_dependencies = extract_placed_dependencies(dry_run_log)
 
+            # Read `package-lock.json`, if it exists
             lockfile = {}
             try:
-                lockfile = read_lockfile()
+                if (lockfile_path := detect_lockfile()):
+                    with open(lockfile_path) as f:
+                        lockfile = json.load(f)
             except Exception as e:
-                _log.warning(f"Failed to read package-lock.json: {e}")
+                _log.warning(f"Failed to read package lockfile: {e}")
 
             while target_handles:
                 target_handle = target_handles.pop()

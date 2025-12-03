@@ -140,6 +140,9 @@ class Npm(PackageManager):
         def extract_target_name(target_handle: str) -> str:
             return target_handle.rpartition("node_modules/")[2]
 
+        def match_to_placed_dependency(placed_dependencies: list[Package], target_name: str) -> Optional[int]:
+            return next((i for i, package in enumerate(placed_dependencies) if package.name == target_name), None)
+
         command = self._normalize_command(command)
 
         # For now, allow all non-`install` commands
@@ -166,22 +169,22 @@ class Npm(PackageManager):
             placed_dependencies = extract_placed_dependencies(dry_run_log)
 
             while target_handles:
-                placed_dependency_index = None
                 target_name = extract_target_name(target_handles.pop())
 
-                for i, dependency in enumerate(placed_dependencies):
-                    if dependency.name == target_name:
-                        placed_dependency_index = i
-                        break
+                if (match_index := match_to_placed_dependency(placed_dependencies, target_name)) is not None:
+                    placed_dependency = placed_dependencies.pop(match_index)
 
-                if placed_dependency_index is None:
-                    raise RuntimeError(f"No placed dependency for installation target '{target_name}'")
+                    _log.debug(
+                        f"Matched npm installation target '{target_name}' to placed dependency {placed_dependency}"
+                    )
+                    install_targets.add(placed_dependency)
+                    continue
 
-                install_targets.add(placed_dependencies.pop(placed_dependency_index))
+                raise RuntimeError(f"Failed to match npm installation target '{target_name}' to a placed dependency")
 
             if placed_dependencies:
                 raise RuntimeError(
-                    f"Failed to associate all placed dependencies with installation targets: {placed_dependencies}"
+                    f"Failed to match all placed dependencies to npm installation targets: {placed_dependencies}"
                 )
 
             return list(install_targets)

@@ -105,20 +105,40 @@ class Npm(PackageManager):
             }
             return any(alias in command for alias in install_aliases)
 
-        def is_place_dep_line(line: str) -> bool:
-            # The "placeDep" log lines describe a new dependency added to the
-            # dependency tree being constructed by an installish command
-            return "placeDep" in line
+        def extract_target_handles(dry_run_log: list[str]) -> list[str]:
+            target_handles = []
 
-        def line_to_dependency(line: str) -> str:
-            # Each added dependency is always the fifth token in its log line
-            return line.split()[4]
+            # TODO(ikretz): All supported npm versions adhere to this format
+            for line in dry_run_log:
+                line_tokens = line.split()
 
-        def str_to_package(s: str) -> Package:
-            name, sep, version = s.rpartition('@')
-            if version == s or (sep and not name):
-                raise ValueError("Failed to parse npm installation target")
-            return Package(ECOSYSTEM.Npm, name, version)
+                if line_tokens[1] in {"sill", "silly"} and line_tokens[2] == "ADD":
+                    target_handles.append(line_tokens[3])
+
+            return target_handles
+
+        def extract_placed_dependencies(dry_run_log: list[str]) -> list[Package]:
+            placed_dependencies = []
+
+            # All supported npm versions adhere to this format
+            for line in dry_run_log:
+                line_tokens = line.split()
+
+                if line_tokens[2] != "placeDep":
+                    continue
+                target_spec = line_tokens[4]
+
+                name, sep, version = target_spec.rpartition('@')
+                if not (name and sep):
+                    raise ValueError(f"Failed to parse npm installation target specification '{target_spec}'")
+
+                placed_dependencies.append(Package(ECOSYSTEM.Npm, name, version))
+
+            return placed_dependencies
+
+        # TODO(ikretz): Test and validate this function
+        def extract_target_name(target_handle: str) -> str:
+            return target_handle.rpartition("node_modules/")[2]
 
         command = self._normalize_command(command)
 
@@ -133,31 +153,43 @@ class Npm(PackageManager):
             return []
 
         try:
-            # Compute the set of dependencies added by the install command
             dry_run_command = command + ["--dry-run", "--loglevel", "silly"]
             dry_run = subprocess.run(dry_run_command, check=True, text=True, capture_output=True)
-            dependencies = map(line_to_dependency, filter(is_place_dep_line, dry_run.stderr.strip().split('\n')))
+            dry_run_log = dry_run.stderr.strip().split('\n')
+
+            # Each target handle corresponds to a (possibly duplicated) installation target
+            target_handles = extract_target_handles(dry_run_log)
+            if not target_handles:
+                return []
+
+            install_targets = set()
+            placed_dependencies = extract_placed_dependencies(dry_run_log)
+
+            while target_handles:
+                placed_dependency_index = None
+                target_name = extract_target_name(target_handles.pop())
+
+                for i, dependency in enumerate(placed_dependencies):
+                    if dependency.name == target_name:
+                        placed_dependency_index = i
+                        break
+
+                if placed_dependency_index is None:
+                    raise RuntimeError(f"No placed dependency for installation target '{target_name}'")
+
+                install_targets.add(placed_dependencies.pop(placed_dependency_index))
+
+            if placed_dependencies:
+                raise RuntimeError(
+                    f"Failed to associate all placed dependencies with installation targets: {placed_dependencies}"
+                )
+
+            return list(install_targets)
+
         except subprocess.CalledProcessError:
             # An erroring command does not install anything
-            _log.info("Encountered an error while resolving npm installation targets")
+            _log.info("The input npm command results in error: nothing will be installed")
             return []
-
-        try:
-            # List targets already installed in the npm environment
-            list_command = [self.executable(), "list", "--all"]
-            installed = subprocess.run(list_command, check=True, text=True, capture_output=True).stdout
-        except subprocess.CalledProcessError:
-            # If this operation fails, rather than blocking, assume nothing is installed
-            # This has the effect of treating all dependencies like installation targets
-            _log.warning(
-                "Failed to list installed npm packages: treating all dependencies as installation targets"
-            )
-            installed = ""
-
-        # The installation targets are the dependencies that are not already installed
-        targets = filter(lambda dep: dep not in installed, dependencies)
-
-        return list(map(str_to_package, targets))
 
     def list_installed_packages(self) -> list[Package]:
         """

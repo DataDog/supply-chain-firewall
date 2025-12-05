@@ -33,7 +33,10 @@ class TemporaryNpmProject:
                 npm project that should be duplicated into the temporary one.
         """
         self._tmp_dir: Optional[TemporaryDirectory] = None
-        self._tmp_dir_name: Optional[Path] = None
+        self._tmp_dir_path: Optional[Path] = None
+
+        self._package_json: Optional[Path] = None
+        self._package_lock: Optional[Path] = None
 
         self.executable = executable
         self.project_root = project_root
@@ -52,15 +55,17 @@ class TemporaryNpmProject:
         if not orig_package_json.is_file():
             raise RuntimeError(f"Project root directory {self.project_root} does not contain a package.json file")
 
-        self.package_json = self._tmp_dir_path / "package_json"
-        shutil.copy(orig_package_json, self.package_json)
+        temp_package_json = self._tmp_dir_path / "package.json"
+        shutil.copy(orig_package_json, temp_package_json)
+        self._package_json = temp_package_json
 
-        self.package_lock = None
+        self._package_lock = None
         orig_package_lock = self.project_root / "package-lock.json"
 
         if orig_package_lock.is_file():
-            self.package_lock = self._tmp_dir_path / "package-lock.json"
-            shutil.copy(orig_package_lock, self.package_lock)
+            temp_package_lock = self._tmp_dir_path / "package-lock.json"
+            shutil.copy(orig_package_lock, temp_package_lock)
+            self._package_lock = temp_package_lock
         else:
             _log.info(f"Project root directory {self.project_root} does not contain a package-lock.json file")
 
@@ -75,7 +80,9 @@ class TemporaryNpmProject:
         """
         Release the underlying `TemporaryNpmProject` resources on context manager exit.
         """
-        self._tmp_dir_name = None
+        self._package_lock = None
+        self._package_json = None
+        self._tmp_dir_path = None
 
         if self._tmp_dir is None:
             _log.warning("No handle to temporary npm project directory found on context exit")

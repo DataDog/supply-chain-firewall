@@ -106,31 +106,19 @@ class Npm(PackageManager):
             }
             return any(alias in command for alias in install_aliases)
 
-        def detect_lockfile() -> Optional[Path]:
+        def is_global_command(command: list[str]) -> bool:
+            return any(global_opt in command for global_opt in {"-g", "--global"})
+
+        def get_project_root() -> Optional[Path]:
             npm_prefix_command = self._normalize_command(["npm", "prefix"])
             npm_prefix = subprocess.run(npm_prefix_command, check=True, text=True, capture_output=True).stdout.strip()
             if not npm_prefix:
-                _log.debug("'npm prefix' command returned empty output")
                 return None
 
-            lockfile_path = Path(npm_prefix) / "package-lock.json"
-            if not lockfile_path.is_file():
-                _log.debug("No package-lock.json file found in current project root")
-                return None
+            project_root = Path(npm_prefix)
+            package_json_path = project_root / "package.json"
 
-            return lockfile_path
-
-        def extract_target_handles(dry_run_log: list[str]) -> list[str]:
-            target_handles = []
-
-            # TODO(ikretz): All supported npm versions adhere to this format
-            for line in dry_run_log:
-                line_tokens = line.split()
-
-                if line_tokens[1] in {"sill", "silly"} and line_tokens[2] in {"ADD", "CHANGE"}:
-                    target_handles.append(line_tokens[3])
-
-            return target_handles
+            return project_root if package_json_path.is_file() else None
 
         def extract_placed_dependencies(dry_run_log: list[str]) -> list[Package]:
             placed_dependencies = []
@@ -151,12 +139,17 @@ class Npm(PackageManager):
 
             return placed_dependencies
 
-        # TODO(ikretz): Test and validate this function
-        def extract_target_name(target_handle: str) -> str:
-            return target_handle.rpartition("node_modules/")[2]
+        def extract_target_handles(dry_run_log: list[str]) -> list[str]:
+            target_handles = []
 
-        def match_to_placed_dependency(placed_dependencies: list[Package], target_name: str) -> Optional[int]:
-            return next((i for i, package in enumerate(placed_dependencies) if package.name == target_name), None)
+            # TODO(ikretz): All supported npm versions adhere to this format
+            for line in dry_run_log:
+                line_tokens = line.split()
+
+                if line_tokens[1] in {"sill", "silly"} and line_tokens[2] in {"ADD", "CHANGE"}:
+                    target_handles.append(line_tokens[3])
+
+            return target_handles
 
         command = self._normalize_command(command)
 
@@ -175,58 +168,24 @@ class Npm(PackageManager):
             dry_run = subprocess.run(dry_run_command, check=True, text=True, capture_output=True)
             dry_run_log = dry_run.stderr.strip().split('\n')
 
+            # Resolve the current project root, if any
+            project_root = None
+            try:
+                project_root = get_project_root()
+            except Exception as e:
+                _log.warning(f"Failed to determine current project root (if any): {e}")
+
+            #  TODO(ikretz): Verify this reasoning
+            # We need only look at placed dependencies for commands run outside of a project scope
+            if not project_root or is_global_command(command):
+                return extract_placed_dependencies(dry_run_log)
+
             # Each target handle corresponds to a (possibly duplicated) installation target
             target_handles = extract_target_handles(dry_run_log)
             if not target_handles:
                 return []
 
-            install_targets = set()
-            placed_dependencies = extract_placed_dependencies(dry_run_log)
-
-            # Read `package-lock.json`, if it exists
-            lockfile = {}
-            try:
-                if (lockfile_path := detect_lockfile()):
-                    with open(lockfile_path) as f:
-                        lockfile = json.load(f)
-            except Exception as e:
-                _log.warning(f"Failed to read package lockfile: {e}")
-
-            while target_handles:
-                target_handle = target_handles.pop()
-                target_name = extract_target_name(target_handle)
-
-                if (match_index := match_to_placed_dependency(placed_dependencies, target_name)) is not None:
-                    placed_dependency = placed_dependencies.pop(match_index)
-
-                    _log.debug(
-                        f"Matched npm installation target '{target_name}' to placed dependency {placed_dependency}"
-                    )
-                    install_targets.add(placed_dependency)
-
-                # TODO(ikretz): Verify which package-lock.json versions fulfill this assumed structure
-                elif (lockfile_entry := lockfile.get("packages", {}).get(target_handle)):
-                    _log.debug(
-                        f"Matched npm installation target '{target_name}' to lockfile file entry '{target_handle}'"
-                    )
-
-                    target_version = lockfile_entry.get("version")
-                    if not target_version:
-                        raise RuntimeError(f"Malformed lockfile entry for npm installation target '{target_name}'")
-
-                    install_targets.add(Package(ECOSYSTEM.Npm, name=target_name, version=target_version))
-
-                else:
-                    raise RuntimeError(
-                        f"Failed to resolve npm installation target '{target_name}' to a precise target version"
-                    )
-
-            if placed_dependencies:
-                raise RuntimeError(
-                    f"Failed to match all placed dependencies to npm installation targets: {placed_dependencies}"
-                )
-
-            return list(install_targets)
+            raise RuntimeError("Unimplemented")
 
         except subprocess.CalledProcessError:
             # An erroring command does not install anything

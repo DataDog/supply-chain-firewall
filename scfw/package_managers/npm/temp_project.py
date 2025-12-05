@@ -22,12 +22,11 @@ class TemporaryNpmProject:
     needed by this class to run commands exist exist only while inside a context. Invoking
     this class' methods outside of a context will result in error.
     """
-    def __init__(self, executable: Path, project_root: Path):
+    def __init__(self, project_root: Path):
         """
         Initialize a new `TemporaryNpmProject`.
 
         Args:
-            executable: A `Path` in the local filesystem to the `npm` executable to use.
             project_root:
                 A `Path` in the local filesystem to the project root of the reference
                 npm project that should be duplicated into the temporary one.
@@ -38,7 +37,6 @@ class TemporaryNpmProject:
         self._package_json: Optional[Path] = None
         self._package_lock: Optional[Path] = None
 
-        self.executable = executable
         self.project_root = project_root
 
     def __enter__(self) -> Self:

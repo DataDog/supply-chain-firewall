@@ -15,6 +15,7 @@ from packaging.version import InvalidVersion, Version, parse as version_parse
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.package_manager import PackageManager, UnsupportedVersionError
+from scfw.package_managers.npm.temp_project import TemporaryNpmProject
 
 _log = logging.getLogger(__name__)
 
@@ -151,6 +152,10 @@ class Npm(PackageManager):
 
             return target_handles
 
+        # TODO(ikretz): All supported npm versions adhere to this format
+        def handle_to_name(target_handle: str) -> str:
+            return target_handle.rpartition("node_modules/")[2]
+
         command = self._normalize_command(command)
 
         # For now, allow all non-`install` commands
@@ -185,12 +190,35 @@ class Npm(PackageManager):
             if not target_handles:
                 return []
 
-            raise RuntimeError("Unimplemented")
+            # Get the package-lock.json file from safely running the command in a temporary project
+            with TemporaryNpmProject(project_root) as temp_project:
+                lockfile = temp_project.install_to_lockfile(command)
+            if not lockfile:
+                raise RuntimeError(
+                    "Failed to resolve npm installation targets: no package-lock.json file was written"
+                )
+
+            install_targets = set()
+
+            for target_handle in target_handles:
+                # TODO(ikretz): Improve error-handling around package-lock.json usage
+                # TODO(ikretz): Verify which package-lock.json versions have this structure
+                version = lockfile["packages"][target_handle]["version"]
+                install_targets.add(
+                    Package(ECOSYSTEM.Npm, name=handle_to_name(target_handle), version=version)
+                )
+
+            return list(install_targets)
 
         except subprocess.CalledProcessError:
             # An erroring command does not install anything
             _log.info("The input npm command results in error: nothing will be installed")
             return []
+
+        except KeyError:
+            raise RuntimeError(
+                "Failed to resolve npm installation targets: malformed package-lock.json file"
+            )
 
     def list_installed_packages(self) -> list[Package]:
         """

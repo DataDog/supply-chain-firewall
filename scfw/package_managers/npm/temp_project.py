@@ -2,12 +2,14 @@
 Provides a class for spinning up ephemeral npm projects to run commands in.
 """
 
+import json
 import logging
 from pathlib import Path
 import shutil
+import subprocess
 from tempfile import TemporaryDirectory
 from types import TracebackType
-from typing import Optional, Type
+from typing import Any, Optional, Type
 from typing_extensions import Self
 
 _log = logging.getLogger(__name__)
@@ -32,10 +34,8 @@ class TemporaryNpmProject:
                 npm project that should be duplicated into the temporary one.
         """
         self._tmp_dir: Optional[TemporaryDirectory] = None
-        self._tmp_dir_path: Optional[Path] = None
 
         self._package_json: Optional[Path] = None
-        self._package_lock: Optional[Path] = None
 
         self.project_root = project_root
 
@@ -47,23 +47,19 @@ class TemporaryNpmProject:
             The given `TemporaryNpmProject` instance, now as a context manager.
         """
         self._tmp_dir = TemporaryDirectory()
-        self._tmp_dir_path = Path(self._tmp_dir.name)
+        tmp_dir_path = Path(self._tmp_dir.name)
 
         orig_package_json = self.project_root / "package.json"
         if not orig_package_json.is_file():
             raise RuntimeError(f"Project root directory {self.project_root} does not contain a package.json file")
 
-        temp_package_json = self._tmp_dir_path / "package.json"
+        temp_package_json = tmp_dir_path / "package.json"
         shutil.copy(orig_package_json, temp_package_json)
         self._package_json = temp_package_json
 
-        self._package_lock = None
         orig_package_lock = self.project_root / "package-lock.json"
-
         if orig_package_lock.is_file():
-            temp_package_lock = self._tmp_dir_path / "package-lock.json"
-            shutil.copy(orig_package_lock, temp_package_lock)
-            self._package_lock = temp_package_lock
+            shutil.copy(orig_package_lock, tmp_dir_path / "package-lock.json")
         else:
             _log.info(f"Project root directory {self.project_root} does not contain a package-lock.json file")
 
@@ -78,9 +74,7 @@ class TemporaryNpmProject:
         """
         Release the underlying `TemporaryNpmProject` resources on context manager exit.
         """
-        self._package_lock = None
         self._package_json = None
-        self._tmp_dir_path = None
 
         if self._tmp_dir is None:
             _log.warning("No handle to temporary npm project directory found on context exit")
@@ -88,3 +82,47 @@ class TemporaryNpmProject:
 
         self._tmp_dir.cleanup()
         self._tmp_dir = None
+
+    def install_to_lockfile(self, install_command: list[str]) -> Optional[dict[str, Any]]:
+        """
+        Safely run an `npm install` command in a temporary environment and return the
+        updated `package-lock.json` file.
+
+        Args:
+            install_command:
+                The `npm install` command to run in the temporary environment. It is the
+                caller's responsibility to ensure that only install commands are passed
+                to this function.
+
+        Returns:
+            A `dict[str, Any]` containing the contents of the updated `package-lock.json`
+            file after safely running the given `npm install` command, or `None` if no
+            `package-lock.json` file was written by the command.
+
+        Raises:
+            RuntimeError:
+                The method was invoked outside of a context or failed to resolve npm
+                installation targets
+        """
+        if not (self._tmp_dir and self._package_json):
+            raise RuntimeError("Cannot run commands in a temporary npm environment outside of a context")
+
+        try:
+            tmp_dir_path = Path(self._tmp_dir.name)
+
+            # TODO(ikretz): All supported npm versions support these options
+            # Safely run the given `npm install` command to write or update the lockfile
+            install_command = (
+                install_command + ["--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"]
+            )
+            subprocess.run(install_command, check=True, text=True, capture_output=True, cwd=tmp_dir_path)
+
+            package_lock_path = tmp_dir_path / "package-lock.json"
+            if not package_lock_path.is_file():
+                return None
+
+            with open(package_lock_path) as f:
+                return json.load(f)
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to resolve npm installation targets: {e}")

@@ -222,7 +222,7 @@ class Npm(PackageManager):
             _log.info("The input npm command results in error: nothing will be installed")
             return []
 
-        except KeyError as e:
+        except Exception as e:
             raise RuntimeError(f"Failed to resolve npm installation targets: {e}")
 
     def list_installed_packages(self) -> list[Package]:

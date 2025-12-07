@@ -143,7 +143,7 @@ class Npm(PackageManager):
         def extract_target_handles(dry_run_log: list[str]) -> list[str]:
             target_handles = []
 
-            # TODO(ikretz): All supported npm versions adhere to this format
+            # All supported npm versions adhere to this format
             for line in dry_run_log:
                 line_tokens = line.split()
 
@@ -152,7 +152,7 @@ class Npm(PackageManager):
 
             return target_handles
 
-        # TODO(ikretz): All supported npm versions adhere to this format
+        # All supported npm versions adhere to this format
         def handle_to_name(target_handle: str) -> str:
             return target_handle.rpartition("node_modules/")[2]
 
@@ -180,7 +180,6 @@ class Npm(PackageManager):
             except Exception as e:
                 _log.warning(f"Failed to determine current project root (if any): {e}")
 
-            #  TODO(ikretz): Verify this reasoning
             # We need only look at placed dependencies for commands run outside of a project scope
             if not project_root or is_global_command(command):
                 return extract_placed_dependencies(dry_run_log)
@@ -201,9 +200,17 @@ class Npm(PackageManager):
             install_targets = set()
 
             for target_handle in target_handles:
-                # TODO(ikretz): Improve error-handling around package-lock.json usage
-                # TODO(ikretz): Verify which package-lock.json versions have this structure
-                version = lockfile["packages"][target_handle]["version"]
+                if not (dependencies := lockfile.get("packages")):
+                    raise KeyError("Missing dependencies data in package-lock.json")
+                if not (target_entry := dependencies.get(target_handle)):
+                    raise KeyError(
+                        f"Missing entry for installation target {target_handle} in package-lock.json"
+                    )
+                if not (version := target_entry.get("version")):
+                    raise KeyError(
+                        f"Missing version data for installation target {target_handle} in package-lock.json"
+                    )
+
                 install_targets.add(
                     Package(ECOSYSTEM.Npm, name=handle_to_name(target_handle), version=version)
                 )
@@ -215,10 +222,8 @@ class Npm(PackageManager):
             _log.info("The input npm command results in error: nothing will be installed")
             return []
 
-        except KeyError:
-            raise RuntimeError(
-                "Failed to resolve npm installation targets: malformed package-lock.json file"
-            )
+        except KeyError as e:
+            raise RuntimeError(f"Failed to resolve npm installation targets: {e}")
 
     def list_installed_packages(self) -> list[Package]:
         """

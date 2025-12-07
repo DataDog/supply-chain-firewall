@@ -2,15 +2,16 @@
 Tests of Poetry's command line behavior.
 """
 
-import packaging.version as version
 from pathlib import Path
-import pytest
 import re
-import requests
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
 from typing import Optional
+
+import packaging.version as version
+import pytest
+import requests
 
 POETRY_V2 = version.parse("2.0.0")
 
@@ -177,7 +178,10 @@ def test_poetry_sync_no_change(new_poetry_project):
     Test that certain `poetry sync` commands relied on by Supply-Chain Firewall
     not to error or modify the local installation state indeed have these properties.
     """
-    if poetry_version() < POETRY_V2:
+    version = poetry_version()
+    assert version
+
+    if version < POETRY_V2:
         return
 
     test_cases = [
@@ -288,7 +292,10 @@ def test_poetry_sync_error_no_change(new_poetry_project):
     Tests that certain `poetry sync` commands encounter an error and do not
     modify the local installation state when run in the context of a given project.
     """
-    if poetry_version() < POETRY_V2:
+    version = poetry_version()
+    assert version
+
+    if version < POETRY_V2:
         return
 
     test_cases = [

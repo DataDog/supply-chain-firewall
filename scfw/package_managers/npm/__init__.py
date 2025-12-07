@@ -165,7 +165,7 @@ class Npm(PackageManager):
         self._check_version()
 
         # On supported versions, the presence of these options prevents the command from running
-        if any(opt in command for opt in {"-h", "--help", "--dry-run"}):
+        if any(opt in command for opt in {"-h", "--help", "--dry-run", "--version"}):
             return []
 
         try:

@@ -348,7 +348,7 @@ def test_options_prevent_install_new_npm_project(new_npm_project, command_line: 
     _backend_test_no_change(new_npm_project, command_line)
 
 
-def _get_npm_project_state(path: Path) -> str:
+def get_npm_project_state(path: Path) -> str:
     """
     Return the current state of installed packages in the npm project at `path`.
     """
@@ -382,7 +382,7 @@ def _backend_test_no_change(project: Path, command_line: list[str], should_error
     Backend function for testing that running an npm command does not modify
     the project state and should or should not raise an error.
     """
-    initial_state = _get_npm_project_state(project)
+    initial_state = get_npm_project_state(project)
 
     if should_error:
         with pytest.raises(subprocess.CalledProcessError):
@@ -390,7 +390,7 @@ def _backend_test_no_change(project: Path, command_line: list[str], should_error
     else:
         subprocess.run(command_line, check=True, cwd=project)
 
-    assert _get_npm_project_state(project) == initial_state
+    assert get_npm_project_state(project) == initial_state
 
 
 def _get_silly_log_lines(project: Path, command_line: list[str]) -> list[str]:

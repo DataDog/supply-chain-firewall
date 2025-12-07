@@ -2,15 +2,17 @@
 Tests of `Npm`, the `PackageManager` subclass.
 """
 
-import pytest
+from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
+
+import pytest
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.package_managers.npm import Npm
 
-from .test_npm import INIT_NPM_STATE, TEST_TARGET, npm_list
+from .test_npm import TEST_PACKAGE, get_npm_project_state
 
 PACKAGE_MANAGER = Npm()
 """
@@ -21,28 +23,34 @@ Fixed `PackageManager` to use across all tests.
 @pytest.mark.parametrize(
         "command_line,has_targets",
         [
-            (["npm", "install", TEST_TARGET], True),
-            (["npm", "-h", "install", TEST_TARGET], False),
-            (["npm", "--help", "install", TEST_TARGET], False),
-            (["npm", "install", "-h", TEST_TARGET], False),
-            (["npm", "install", "--help", TEST_TARGET], False),
-            (["npm", "--dry-run", "install", TEST_TARGET], False),
-            (["npm", "install", "--dry-run", TEST_TARGET], False),
+            (["npm", "install", TEST_PACKAGE], True),
+            (["npm", "-h", "install", TEST_PACKAGE], False),
+            (["npm", "--help", "install", TEST_PACKAGE], False),
+            (["npm", "install", "-h", TEST_PACKAGE], False),
+            (["npm", "install", "--help", TEST_PACKAGE], False),
+            (["npm", "--dry-run", "install", TEST_PACKAGE], False),
+            (["npm", "install", "--dry-run", TEST_PACKAGE], False),
             (["npm", "--non-existent-option"], False)
         ]
 )
-def test_npm_command_resolve_install_targets(command_line: list[str], has_targets: bool):
+def test_npm_command_resolve_install_targets(monkeypatch, command_line: list[str], has_targets: bool):
     """
     Backend function for testing that an `Npm.resolve_install_targets` call
     either does or does not have install targets and does not modify the local
     npm installation state.
     """
-    targets = PACKAGE_MANAGER.resolve_install_targets(command_line)
-    if has_targets:
-        assert targets
-    else:
-        assert not targets
-    assert npm_list() == INIT_NPM_STATE
+    with TemporaryDirectory() as tmp:
+        monkeypatch.chdir(tmp)
+
+        initial_state = get_npm_project_state(Path(tmp))
+
+        targets = PACKAGE_MANAGER.resolve_install_targets(command_line)
+        if has_targets:
+            assert targets
+        else:
+            assert not targets
+
+        assert get_npm_project_state(Path(tmp)) == initial_state
 
 
 def test_npm_command_resolve_install_targets_exact():
@@ -61,8 +69,8 @@ def test_npm_command_resolve_install_targets_exact():
         )
     )
 
-    command_line = ["npm", "install", "react@18.3.1"]
-    targets = PACKAGE_MANAGER.resolve_install_targets(command_line)
+    targets = PACKAGE_MANAGER.resolve_install_targets(["npm", "install", "react@18.3.1"])
+
     assert len(targets) == len(true_targets)
     assert all(target in true_targets for target in targets)
 

@@ -110,11 +110,9 @@ class TemporaryNpmProject:
         try:
             tmp_dir_path = Path(self._tmp_dir.name)
 
-            # TODO(ikretz): All supported npm versions support these options
             # Safely run the given `npm install` command to write or update the lockfile
-            install_command = (
-                install_command + ["--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"]
-            )
+            # All supported versions of npm support these additional `install` command options
+            install_command = install_command + ["--package-lock-only", "--ignore-scripts"]
             subprocess.run(install_command, check=True, text=True, capture_output=True, cwd=tmp_dir_path)
 
             package_lock_path = tmp_dir_path / "package-lock.json"

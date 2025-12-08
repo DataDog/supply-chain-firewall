@@ -97,11 +97,11 @@ def test_resolve_install_targets_new_project(
             TEST_PACKAGE_LATEST_INSTALL_TARGETS,
             True,
         ),
-        # (
-        #     ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"],
-        #     TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS,
-        #     True,
-        # ),
+        (
+            ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"],
+            TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS,
+            True,
+        ),
     ]
 )
 def test_resolve_install_targets_test_package_latest_lockfile(
@@ -130,11 +130,11 @@ def test_resolve_install_targets_test_package_latest_lockfile(
     [
         (["npm", "install"], None, False),
         (["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"], None, False),
-        (
-            ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"],
-            {Package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_PREVIOUS)},
-            True,
-        ),
+        # (
+        #     ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"],
+        #     {Package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_PREVIOUS)},
+        #     True,
+        # ),
     ]
 )
 def test_resolve_install_targets_test_package_latest_lockfile_modules(

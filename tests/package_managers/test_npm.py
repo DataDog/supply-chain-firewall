@@ -15,9 +15,9 @@ from typing import Optional
 import packaging.version as version
 import pytest
 
-TEST_PACKAGE = "axios"
-TEST_PACKAGE_LATEST = "1.13.0"
-TEST_PACKAGE_PREVIOUS = "1.12.0"
+TEST_PACKAGE = "react"
+TEST_PACKAGE_LATEST = "18.3.0"
+TEST_PACKAGE_PREVIOUS = "18.2.0"
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ def new_npm_project():
 @pytest.fixture
 def npm_project_test_package_latest():
     """
-    Initialize an npm project with the latest version of `TEST_PACKAGE` installed.
+    Initialize an npm project with the `TEST_PACKAGE@TEST_PACKAGE_LATEST` installed.
     """
     tempdir = TemporaryDirectory()
     tempdir_path = Path(tempdir.name)
@@ -64,9 +64,49 @@ def npm_project_test_package_latest():
 
 
 @pytest.fixture
+def npm_project_test_package_latest_lockfile():
+    """
+    Initialize an npm project with `TEST_PACKAGE@TEST_PACKAGE_LATEST` installed
+    and with a `package-lock.json` file.
+    """
+    tempdir = TemporaryDirectory()
+    tempdir_path = Path(tempdir.name)
+    _init_npm_project(
+        tempdir_path,
+        dependencies=[(TEST_PACKAGE, TEST_PACKAGE_LATEST)],
+        with_lockfile=True,
+        with_node_modules=False,
+    )
+
+    yield tempdir_path
+
+    tempdir.cleanup()
+
+
+@pytest.fixture
+def npm_project_test_package_latest_lockfile_modules():
+    """
+    Initialize an npm project with `TEST_PACKAGE@TEST_PACKAGE_LATEST` installed
+    and with a `package-lock.json` file and `node_modules/` directory.
+    """
+    tempdir = TemporaryDirectory()
+    tempdir_path = Path(tempdir.name)
+    _init_npm_project(
+        tempdir_path,
+        dependencies=[(TEST_PACKAGE, TEST_PACKAGE_LATEST)],
+        with_lockfile=True,
+        with_node_modules=True,
+    )
+
+    yield tempdir_path
+
+    tempdir.cleanup()
+
+
+@pytest.fixture
 def npm_project_test_package_previous_lockfile():
     """
-    Initialize an npm project with the previous version of `TEST_PACKAGE` installed
+    Initialize an npm project with `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS` installed
     and with a `package-lock.json` file.
     """
     tempdir = TemporaryDirectory()
@@ -85,7 +125,7 @@ def npm_project_test_package_previous_lockfile():
 @pytest.fixture
 def npm_project_test_package_previous_lockfile_modules():
     """
-    Initialize an npm project with the previous version of `TEST_PACKAGE` installed
+    Initialize an npm project with `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS` installed
     and with a `package-lock.json` file and `node_modules/` directory.
     """
     tempdir = TemporaryDirectory()
@@ -242,7 +282,7 @@ def test_npm_install_package_lock_only_test_package_previous_lockfile(npm_projec
 
 def test_npm_install_ignore_scripts(npm_project_test_package_latest):
     """
-    Lorem ipsum dolor sit amet.
+    Test that the `--ignore-scripts` option works as expected.
     """
     test_script_body = "This should never execute"
     scripts = {
@@ -348,11 +388,16 @@ def test_options_prevent_install_new_npm_project(new_npm_project, command_line: 
     _backend_test_no_change(new_npm_project, command_line)
 
 
-def get_npm_project_state(path: Path) -> str:
+def get_npm_project_state(path: Path, lockfile_only: bool = False) -> str:
     """
-    Return the current state of installed packages in the npm project at `path`.
+    Return the current state of installed packages in the npm project at `path`,
+    optionally only considering what is contained in the `package-lock.json` file.
     """
-    return subprocess.run(["npm", "list", "--all"], check=True, text=True, capture_output=True).stdout
+    npm_list_command = ["npm", "list", "--all"]
+    if lockfile_only:
+        npm_list_command += ["--package-lock-only"]
+
+    return subprocess.run(npm_list_command, check=True, text=True, capture_output=True).stdout
 
 
 def _backend_test_npm_install_package_lock_only(project: Path, command_line: list[str]):
@@ -377,18 +422,14 @@ def _backend_test_npm_install_package_lock_only(project: Path, command_line: lis
     assert not node_modules_path.exists()
 
 
-def _backend_test_no_change(project: Path, command_line: list[str], should_error: bool = False):
+def _backend_test_no_change(project: Path, command_line: list[str]):
     """
     Backend function for testing that running an npm command does not modify
     the project state and should or should not raise an error.
     """
     initial_state = get_npm_project_state(project)
 
-    if should_error:
-        with pytest.raises(subprocess.CalledProcessError):
-            subprocess.run(command_line, check=True, cwd=project)
-    else:
-        subprocess.run(command_line, check=True, cwd=project)
+    subprocess.run(command_line, check=True, cwd=project)
 
     assert get_npm_project_state(project) == initial_state
 

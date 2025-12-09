@@ -222,7 +222,7 @@ class TemporaryNpmProject:
             lockfile = json.load(f)
 
         # Read the target versions for added and changed packages out of the lockfile
-        install_targets = functools.reduce(
+        install_targets: set[Package] = functools.reduce(
             lambda acc, target_handle: acc | {handle_to_package(lockfile, target_handle)},
             target_handles,
             set(),

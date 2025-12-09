@@ -3,9 +3,7 @@ Provides a `PackageManager` representation of `npm`.
 """
 
 import json
-import logging
 import os
-from pathlib import Path
 import shutil
 import subprocess
 from typing import Optional
@@ -16,8 +14,6 @@ from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.package_manager import PackageManager, UnsupportedVersionError
 from scfw.package_managers.npm.temp_project import TemporaryNpmProject
-
-_log = logging.getLogger(__name__)
 
 MIN_NPM_VERSION = version_parse("7.0.0")
 
@@ -95,9 +91,8 @@ class Npm(PackageManager):
             if `command` were run.
 
         Raises:
-            ValueError:
-                1) The given `command` is empty or not a valid `npm` command, or 2) failed to parse
-                an installation target.
+            ValueError: The given `command` is empty or not a valid `npm` command
+            RuntimeError: Failed to resolve npm installation targets (with error detail)
             UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
         def is_install_command(command: list[str]) -> bool:
@@ -107,56 +102,8 @@ class Npm(PackageManager):
             }
             return any(alias in command for alias in install_aliases)
 
-        def is_global_command(command: list[str]) -> bool:
-            return any(global_opt in command for global_opt in {"-g", "--global"})
-
-        def get_project_root() -> Optional[Path]:
-            npm_prefix_command = self._normalize_command(["npm", "prefix"])
-            npm_prefix = subprocess.run(npm_prefix_command, check=True, text=True, capture_output=True).stdout.strip()
-            if not npm_prefix:
-                return None
-
-            project_root = Path(npm_prefix)
-            package_json_path = project_root / "package.json"
-
-            return project_root if package_json_path.is_file() else None
-
-        def extract_placed_dependencies(dry_run_log: list[str]) -> list[Package]:
-            placed_dependencies = []
-
-            # All supported npm versions adhere to this format
-            for line in dry_run_log:
-                line_tokens = line.split()
-
-                if line_tokens[2] != "placeDep":
-                    continue
-                target_spec = line_tokens[4]
-
-                name, sep, version = target_spec.rpartition('@')
-                if not (name and sep):
-                    raise ValueError(f"Failed to parse npm installation target specification '{target_spec}'")
-
-                placed_dependencies.append(Package(ECOSYSTEM.Npm, name, version))
-
-            return placed_dependencies
-
-        def extract_target_handles(dry_run_log: list[str]) -> list[str]:
-            target_handles = []
-
-            # All supported npm versions adhere to this format
-            for line in dry_run_log:
-                line_tokens = line.split()
-
-                if line_tokens[1] in {"sill", "silly"} and line_tokens[2] in {"ADD", "CHANGE"}:
-                    target_handles.append(line_tokens[3])
-
-            return target_handles
-
-        # All supported npm versions adhere to this format
-        def handle_to_name(target_handle: str) -> str:
-            return target_handle.rpartition("node_modules/")[2]
-
-        command = self._normalize_command(command)
+        if not command or command[0] != self.name():
+            raise ValueError("Received empty or invalid npm command line")
 
         # For now, allow all non-`install` commands
         if not is_install_command(command):
@@ -169,58 +116,8 @@ class Npm(PackageManager):
             return []
 
         try:
-            dry_run_command = command + ["--dry-run", "--loglevel", "silly"]
-            dry_run = subprocess.run(dry_run_command, check=True, text=True, capture_output=True)
-            dry_run_log = dry_run.stderr.strip().split('\n')
-
-            # Resolve the current project root, if any
-            project_root = None
-            try:
-                project_root = get_project_root()
-            except Exception as e:
-                _log.warning(f"Failed to determine current project root (if any): {e}")
-
-            # We need only look at placed dependencies for commands run outside of a project scope
-            if not project_root or is_global_command(command):
-                return extract_placed_dependencies(dry_run_log)
-
-            # Each target handle corresponds to a (possibly duplicated) installation target
-            target_handles = extract_target_handles(dry_run_log)
-            if not target_handles:
-                return []
-
-            # Get the package-lock.json file from safely running the command in a temporary project
-            with TemporaryNpmProject(project_root) as temp_project:
-                lockfile = temp_project.install_to_lockfile(command)
-            if not lockfile:
-                raise RuntimeError(
-                    "Failed to resolve npm installation targets: no package-lock.json file was written"
-                )
-
-            install_targets = set()
-
-            for target_handle in target_handles:
-                if not (dependencies := lockfile.get("packages")):
-                    raise KeyError("Missing dependencies data in package-lock.json")
-                if not (target_entry := dependencies.get(target_handle)):
-                    raise KeyError(
-                        f"Missing entry for installation target {target_handle} in package-lock.json"
-                    )
-                if not (version := target_entry.get("version")):
-                    raise KeyError(
-                        f"Missing version data for installation target {target_handle} in package-lock.json"
-                    )
-
-                install_targets.add(
-                    Package(ECOSYSTEM.Npm, name=handle_to_name(target_handle), version=version)
-                )
-
-            return list(install_targets)
-
-        except subprocess.CalledProcessError:
-            # An erroring command does not install anything
-            _log.info("The input npm command results in error: nothing will be installed")
-            return []
+            with TemporaryNpmProject(self._executable) as temp_project:
+                return temp_project.resolve_install_command_targets(command)
 
         except Exception as e:
             raise RuntimeError(f"Failed to resolve npm installation targets: {e}")
@@ -251,7 +148,7 @@ class Npm(PackageManager):
         self._check_version()
 
         try:
-            npm_list_command = self._normalize_command(["npm", "list", "--all", "--json"])
+            npm_list_command = [self._executable, "list", "--all", "--json"]
             npm_list = subprocess.run(npm_list_command, check=True, text=True, capture_output=True)
             dependencies = json.loads(npm_list.stdout.strip()).get("dependencies")
             return list(dependencies_to_packages(dependencies)) if dependencies else []

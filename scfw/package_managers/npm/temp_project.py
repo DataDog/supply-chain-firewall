@@ -32,8 +32,8 @@ class TemporaryNpmProject:
         """
         Initialize a new `TemporaryNpmProject`.
         """
-        def get_project_root() -> Optional[Path]:
-            npm_prefix_command = self._normalize_command(["npm", "prefix"])
+        def get_project_root(executable: str) -> Optional[Path]:
+            npm_prefix_command = [executable, "prefix"]
             npm_prefix_process = subprocess.run(npm_prefix_command, check=True, text=True, capture_output=True)
 
             npm_prefix = npm_prefix_process.stdout.strip()
@@ -49,7 +49,7 @@ class TemporaryNpmProject:
         self._executable = executable
 
         try:
-            self.project_root = get_project_root()
+            self.project_root = get_project_root(executable)
         except Exception as e:
             raise RuntimeError(f"Failed to resolve npm project root: {e}")
 

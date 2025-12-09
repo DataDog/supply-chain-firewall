@@ -11,18 +11,8 @@ from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.package_managers.npm import Npm
 
-from .test_npm import (
-    TEST_PACKAGE,
-    TEST_PACKAGE_LATEST,
-    TEST_PACKAGE_PREVIOUS,
-    empty_directory,
-    get_npm_project_state,
-    new_npm_project,
-    npm_project_test_package_latest_lockfile,
-    npm_project_test_package_latest_lockfile_modules,
-    npm_project_test_package_previous_lockfile,
-    npm_project_test_package_previous_lockfile_modules,
-)
+from .npm_fixtures import *
+from .test_npm import get_npm_project_state
 
 PACKAGE_MANAGER = Npm()
 """

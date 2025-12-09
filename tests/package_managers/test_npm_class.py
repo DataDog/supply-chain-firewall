@@ -89,18 +89,16 @@ def test_resolve_install_targets_new_project(
 
 
 @pytest.mark.parametrize(
-    "command, true_targets, lockfile_only",
+    "command, true_targets",
     [
-        (["npm", "install"], TEST_PACKAGE_LATEST_INSTALL_TARGETS, True),
+        (["npm", "install"], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
         (
             ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"],
             TEST_PACKAGE_LATEST_INSTALL_TARGETS,
-            True,
         ),
         (
             ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"],
             TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS,
-            True,
         ),
     ]
 )
@@ -109,7 +107,6 @@ def test_resolve_install_targets_test_package_latest_lockfile(
     npm_project_test_package_latest_lockfile,
     command: list[str],
     true_targets: Optional[set[Package]],
-    lockfile_only: bool,
 ):
     """
     Test that `Npm` correctly resolves installation targets for `npm install` commands
@@ -121,20 +118,18 @@ def test_resolve_install_targets_test_package_latest_lockfile(
         npm_project_test_package_latest_lockfile,
         command,
         true_targets,
-        lockfile_only,
     )
 
 
 @pytest.mark.parametrize(
-    "command, true_targets, lockfile_only",
+    "command, true_targets",
     [
-        (["npm", "install"], None, False),
-        (["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"], None, False),
-        # (
-        #     ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"],
-        #     {Package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_PREVIOUS)},
-        #     True,
-        # ),
+        (["npm", "install"], None),
+        (["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"], None),
+        (
+            ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"],
+            {Package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_PREVIOUS)},
+        ),
     ]
 )
 def test_resolve_install_targets_test_package_latest_lockfile_modules(
@@ -142,7 +137,6 @@ def test_resolve_install_targets_test_package_latest_lockfile_modules(
     npm_project_test_package_latest_lockfile_modules,
     command: list[str],
     true_targets: Optional[set[Package]],
-    lockfile_only: bool,
 ):
     """
     Test that `Npm` correctly resolves installation targets for `npm install` commands
@@ -153,23 +147,20 @@ def test_resolve_install_targets_test_package_latest_lockfile_modules(
         npm_project_test_package_latest_lockfile_modules,
         command,
         true_targets,
-        lockfile_only,
     )
 
 
 @pytest.mark.parametrize(
-    "command, true_targets, lockfile_only",
+    "command, true_targets",
     [
-        (["npm", "install"], TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS, True),
+        (["npm", "install"], TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS),
         (
             ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"],
             TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS,
-            True,
         ),
         (
             ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"],
             TEST_PACKAGE_LATEST_INSTALL_TARGETS,
-            True,
         ),
     ]
 )
@@ -178,7 +169,6 @@ def test_resolve_install_targets_test_package_previous_lockfile(
     npm_project_test_package_previous_lockfile,
     command: list[str],
     true_targets: Optional[set[Package]],
-    lockfile_only: bool,
 ):
     """
     Test that `Npm` correctly resolves installation targets for `npm install` commands
@@ -190,20 +180,18 @@ def test_resolve_install_targets_test_package_previous_lockfile(
         npm_project_test_package_previous_lockfile,
         command,
         true_targets,
-        lockfile_only,
     )
 
 
 @pytest.mark.parametrize(
-    "command, true_targets, lockfile_only",
+    "command, true_targets",
     [
-        (["npm", "install"], None, False),
-        (["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"], None, False),
-        # (
-        #     ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"],
-        #     {Package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_LATEST)},
-        #     True,
-        # ),
+        (["npm", "install"], None),
+        (["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"], None),
+        (
+            ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"],
+            {Package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_LATEST)},
+        ),
     ]
 )
 def test_resolve_install_targets_test_package_previous_lockfile_modules(
@@ -211,7 +199,6 @@ def test_resolve_install_targets_test_package_previous_lockfile_modules(
     npm_project_test_package_previous_lockfile_modules,
     command: list[str],
     true_targets: Optional[set[Package]],
-    lockfile_only: bool,
 ):
     """
     Test that `Npm` correctly resolves installation targets for `npm install` commands
@@ -222,7 +209,6 @@ def test_resolve_install_targets_test_package_previous_lockfile_modules(
         npm_project_test_package_previous_lockfile_modules,
         command,
         true_targets,
-        lockfile_only,
     )
 
 
@@ -243,14 +229,13 @@ def _backend_test_resolve_install_targets(
     project: Path,
     command: list[str],
     true_targets: Optional[set[Package]],
-    lockfile_only: bool = False,
 ):
     """
     Backend function for testing that the `Npm.resolve_install_targets()` method
     correctly identifies install targets and does not modify the project state.
     """
     monkeypatch.chdir(project)
-    initial_state = get_npm_project_state(project, lockfile_only)
+    initial_state = get_npm_project_state(project)
 
     targets = PACKAGE_MANAGER.resolve_install_targets(command)
 
@@ -260,4 +245,4 @@ def _backend_test_resolve_install_targets(
         assert len(targets) == len(true_targets)
         assert set(targets) == true_targets
 
-    assert get_npm_project_state(project, lockfile_only) == initial_state
+    assert get_npm_project_state(project) == initial_state

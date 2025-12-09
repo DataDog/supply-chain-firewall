@@ -388,27 +388,27 @@ def test_options_prevent_install_new_npm_project(new_npm_project, command_line: 
     _backend_test_no_change(new_npm_project, command_line)
 
 
-def get_npm_project_state(project_path: Path, lockfile_only: bool = False) -> str:
+def get_npm_project_state(project_path: Path) -> str:
     """
-    Return the current state of installed packages in the given npm project,
-    optionally only considering what is contained in the `package-lock.json` file.
+    Return the current state of installed packages in the given npm project.
     """
-    check = True
-    npm_list_command = ["npm", "list", "--all"]
-
     lockfile_path = project_path / "package-lock.json"
     node_modules_path = project_path / "node_modules/"
 
-    if lockfile_only:
-        npm_list_command += ["--package-lock-only"]
-    if lockfile_path.is_file() and not node_modules_path.is_dir():
-        # On older versions of npm, this condition results in an error code
-        # being returned, even though the command returns useful output
-        check = False
+    # On older versions of npm, the inverse of this condition results
+    # useful output being returned with an error code, so we disable `check`
+    check = not lockfile_path.is_file() or node_modules_path.is_dir()
 
-    npm_list = subprocess.run(npm_list_command, check=check, text=True, capture_output=True, cwd=project_path)
+    npm_list_command = ["npm", "list", "--all"]
+    npm_list_process = subprocess.run(
+        npm_list_command,
+        check=check,
+        text=True,
+        capture_output=True,
+        cwd=project_path
+    )
 
-    return npm_list.stdout.strip()
+    return npm_list_process.stdout.strip()
 
 
 def _backend_test_npm_install_package_lock_only(project: Path, command_line: list[str]):

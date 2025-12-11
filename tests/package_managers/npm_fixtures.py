@@ -15,6 +15,9 @@ TEST_PACKAGE = "react"
 TEST_PACKAGE_LATEST = "18.3.0"
 TEST_PACKAGE_PREVIOUS = "18.2.0"
 
+TEST_PACKAGE_LATEST_SPEC = f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"
+TEST_PACKAGE_PREVIOUS_SPEC = f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"
+
 
 @pytest.fixture
 def empty_directory():
@@ -31,7 +34,7 @@ def empty_directory():
 @pytest.fixture
 def new_npm_project():
     """
-    Initialize a new npm project in an empty directory.
+    Initialize a new npm project with no dependencies.
     """
     tempdir = TemporaryDirectory()
     tempdir_path = Path(tempdir.name)
@@ -43,9 +46,10 @@ def new_npm_project():
 
 
 @pytest.fixture
-def npm_project_test_package_latest():
+def npm_project_dependency_latest():
     """
-    Initialize an npm project with the `TEST_PACKAGE@TEST_PACKAGE_LATEST` installed.
+    Initialize an npm project with the `TEST_PACKAGE@TEST_PACKAGE_LATEST` added
+    as a dependency but not installed.
     """
     tempdir = TemporaryDirectory()
     tempdir_path = Path(tempdir.name)
@@ -60,10 +64,10 @@ def npm_project_test_package_latest():
 
 
 @pytest.fixture
-def npm_project_test_package_latest_lockfile():
+def npm_project_dependency_latest_lockfile():
     """
-    Initialize an npm project with `TEST_PACKAGE@TEST_PACKAGE_LATEST` installed
-    and with a `package-lock.json` file.
+    Initialize an npm project with `TEST_PACKAGE@TEST_PACKAGE_LATEST` added
+    as a dependency and covered in the lockfile but not installed.
     """
     tempdir = TemporaryDirectory()
     tempdir_path = Path(tempdir.name)
@@ -80,10 +84,9 @@ def npm_project_test_package_latest_lockfile():
 
 
 @pytest.fixture
-def npm_project_test_package_latest_lockfile_modules():
+def npm_project_installed_latest():
     """
-    Initialize an npm project with `TEST_PACKAGE@TEST_PACKAGE_LATEST` installed
-    and with a `package-lock.json` file and `node_modules/` directory.
+    Initialize an npm project with `TEST_PACKAGE@TEST_PACKAGE_LATEST` installed.
     """
     tempdir = TemporaryDirectory()
     tempdir_path = Path(tempdir.name)
@@ -100,10 +103,28 @@ def npm_project_test_package_latest_lockfile_modules():
 
 
 @pytest.fixture
-def npm_project_test_package_previous_lockfile():
+def npm_project_dependency_previous():
     """
-    Initialize an npm project with `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS` installed
-    and with a `package-lock.json` file.
+    Initialize an npm project with `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS` added
+    as a dependency but not installed.
+    """
+    tempdir = TemporaryDirectory()
+    tempdir_path = Path(tempdir.name)
+    init_npm_project(
+        tempdir_path,
+        dependencies=[(TEST_PACKAGE, TEST_PACKAGE_PREVIOUS)],
+    )
+
+    yield tempdir_path
+
+    tempdir.cleanup()
+
+
+@pytest.fixture
+def npm_project_dependency_previous_lockfile():
+    """
+    Initialize an npm project with `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS` added
+    as a dependency and covered in the lockfile but not installed.
     """
     tempdir = TemporaryDirectory()
     tempdir_path = Path(tempdir.name)
@@ -119,10 +140,9 @@ def npm_project_test_package_previous_lockfile():
 
 
 @pytest.fixture
-def npm_project_test_package_previous_lockfile_modules():
+def npm_project_installed_previous():
     """
-    Initialize an npm project with `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS` installed
-    and with a `package-lock.json` file and `node_modules/` directory.
+    Initialize an npm project with `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS` installed.
     """
     tempdir = TemporaryDirectory()
     tempdir_path = Path(tempdir.name)
@@ -158,7 +178,7 @@ def init_npm_project(
 
     for package, version in dependencies:
         subprocess.run(
-            ["npm", "install", f"{package}@{version}"],
+            ["npm", "install", "--save-exact", f"{package}@{version}"],
             check=True,
             text=True,
             capture_output=True,

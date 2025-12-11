@@ -12,7 +12,6 @@ from scfw.package import Package
 from scfw.package_managers.npm import Npm
 
 from .npm_fixtures import *
-from .test_npm import get_npm_project_state
 
 PACKAGE_MANAGER = Npm()
 """
@@ -42,7 +41,7 @@ Known installation targets for `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS`.
     "command, true_targets",
     [
         (["npm", "install"], None),
-        (["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
+        (["npm", "install", TEST_PACKAGE_LATEST_SPEC], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
     ]
 )
 def test_resolve_install_targets_empty_directory(
@@ -55,14 +54,14 @@ def test_resolve_install_targets_empty_directory(
     Test that `Npm` correctly resolves installation targets for `npm install` commands
     run in an empty directory.
     """
-    _backend_test_resolve_install_targets(monkeypatch, empty_directory, command, true_targets)
+    backend_test_resolve_install_targets(monkeypatch, empty_directory, command, true_targets)
 
 
 @pytest.mark.parametrize(
     "command, true_targets",
     [
         (["npm", "install"], None),
-        (["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
+        (["npm", "install", TEST_PACKAGE_LATEST_SPEC], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
     ]
 )
 def test_resolve_install_targets_new_project(
@@ -73,9 +72,35 @@ def test_resolve_install_targets_new_project(
 ):
     """
     Test that `Npm` correctly resolves installation targets for `npm install` commands
-    run in a new, uninstalled `npm` project.
+    run in a new `npm` project with no dependencies.
     """
-    _backend_test_resolve_install_targets(monkeypatch, new_npm_project, command, true_targets)
+    backend_test_resolve_install_targets(monkeypatch, new_npm_project, command, true_targets)
+
+
+@pytest.mark.parametrize(
+    "command, true_targets",
+    [
+        (["npm", "install"], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
+        (["npm", "install", TEST_PACKAGE_LATEST_SPEC], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
+        (["npm", "install", TEST_PACKAGE_PREVIOUS_SPEC], TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS),
+    ]
+)
+def test_resolve_install_targets_dependency_latest(
+    monkeypatch,
+    npm_project_dependency_latest,
+    command: list[str],
+    true_targets: Optional[set[Package]],
+):
+    """
+    Test that `Npm` correctly resolves installation targets for `npm install` commands
+    run in an npm project with a specified dependency.
+    """
+    backend_test_resolve_install_targets(
+        monkeypatch,
+        npm_project_dependency_latest,
+        command,
+        true_targets,
+    )
 
 
 @pytest.mark.parametrize(
@@ -83,29 +108,29 @@ def test_resolve_install_targets_new_project(
     [
         (["npm", "install"], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
         (
-            ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"],
+            ["npm", "install", TEST_PACKAGE_LATEST_SPEC],
             TEST_PACKAGE_LATEST_INSTALL_TARGETS,
         ),
         (
-            ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"],
+            ["npm", "install", TEST_PACKAGE_PREVIOUS_SPEC],
             TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS,
         ),
     ]
 )
-def test_resolve_install_targets_test_package_latest_lockfile(
+def test_resolve_install_targets_dependency_latest_lockfile(
     monkeypatch,
-    npm_project_test_package_latest_lockfile,
+    npm_project_dependency_latest_lockfile,
     command: list[str],
     true_targets: Optional[set[Package]],
 ):
     """
     Test that `Npm` correctly resolves installation targets for `npm install` commands
-    run in an npm project with a `package-lock.json` file but no installed dependencies
-    and in which we can downgrade a dependency.
+    run in an npm project with a specified dependency and a lockfile but no installed
+    dependencies and in which we can downgrade a dependency.
     """
-    _backend_test_resolve_install_targets(
+    backend_test_resolve_install_targets(
         monkeypatch,
-        npm_project_test_package_latest_lockfile,
+        npm_project_dependency_latest_lockfile,
         command,
         true_targets,
     )
@@ -115,16 +140,16 @@ def test_resolve_install_targets_test_package_latest_lockfile(
     "command, true_targets",
     [
         (["npm", "install"], None),
-        (["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"], None),
+        (["npm", "install", TEST_PACKAGE_LATEST_SPEC], None),
         (
-            ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"],
+            ["npm", "install", TEST_PACKAGE_PREVIOUS_SPEC],
             {Package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_PREVIOUS)},
         ),
     ]
 )
-def test_resolve_install_targets_test_package_latest_lockfile_modules(
+def test_resolve_install_targets_installed_latest(
     monkeypatch,
-    npm_project_test_package_latest_lockfile_modules,
+    npm_project_installed_latest,
     command: list[str],
     true_targets: Optional[set[Package]],
 ):
@@ -132,9 +157,9 @@ def test_resolve_install_targets_test_package_latest_lockfile_modules(
     Test that `Npm` correctly resolves installation targets for `npm install` commands
     run in a fully installed npm project and in which we can downgrade a dependency.
     """
-    _backend_test_resolve_install_targets(
+    backend_test_resolve_install_targets(
         monkeypatch,
-        npm_project_test_package_latest_lockfile_modules,
+        npm_project_installed_latest,
         command,
         true_targets,
     )
@@ -145,29 +170,29 @@ def test_resolve_install_targets_test_package_latest_lockfile_modules(
     [
         (["npm", "install"], TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS),
         (
-            ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"],
+            ["npm", "install", TEST_PACKAGE_PREVIOUS_SPEC],
             TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS,
         ),
         (
-            ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"],
+            ["npm", "install", TEST_PACKAGE_LATEST_SPEC],
             TEST_PACKAGE_LATEST_INSTALL_TARGETS,
         ),
     ]
 )
-def test_resolve_install_targets_test_package_previous_lockfile(
+def test_resolve_install_targets_dependency_previous_lockfile(
     monkeypatch,
-    npm_project_test_package_previous_lockfile,
+    npm_project_dependency_previous_lockfile,
     command: list[str],
     true_targets: Optional[set[Package]],
 ):
     """
     Test that `Npm` correctly resolves installation targets for `npm install` commands
-    run in an npm project with a `package-lock.json` file but no installed dependencies
-    and in which we can upgrade a dependency.
+    run in an npm project with a specified dependency and a lockfile but no installed
+    dependencies and in which we can upgrade a dependency.
     """
-    _backend_test_resolve_install_targets(
+    backend_test_resolve_install_targets(
         monkeypatch,
-        npm_project_test_package_previous_lockfile,
+        npm_project_dependency_previous_lockfile,
         command,
         true_targets,
     )
@@ -177,16 +202,16 @@ def test_resolve_install_targets_test_package_previous_lockfile(
     "command, true_targets",
     [
         (["npm", "install"], None),
-        (["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"], None),
+        (["npm", "install", TEST_PACKAGE_PREVIOUS_SPEC], None),
         (
-            ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"],
+            ["npm", "install", TEST_PACKAGE_LATEST_SPEC],
             {Package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_LATEST)},
         ),
     ]
 )
-def test_resolve_install_targets_test_package_previous_lockfile_modules(
+def test_resolve_install_targets_installed_previous(
     monkeypatch,
-    npm_project_test_package_previous_lockfile_modules,
+    npm_project_installed_previous,
     command: list[str],
     true_targets: Optional[set[Package]],
 ):
@@ -194,19 +219,19 @@ def test_resolve_install_targets_test_package_previous_lockfile_modules(
     Test that `Npm` correctly resolves installation targets for `npm install` commands
     run in a fully installed npm project where we can upgrade a dependency.
     """
-    _backend_test_resolve_install_targets(
+    backend_test_resolve_install_targets(
         monkeypatch,
-        npm_project_test_package_previous_lockfile_modules,
+        npm_project_installed_previous,
         command,
         true_targets,
     )
 
 
-def test_npm_list_installed_packages(monkeypatch, npm_project_test_package_latest_lockfile_modules):
+def test_npm_list_installed_packages(monkeypatch, npm_project_installed_latest):
     """
     Test that `Npm.list_installed_packages` correctly parses `npm` output.
     """
-    monkeypatch.chdir(npm_project_test_package_latest_lockfile_modules)
+    monkeypatch.chdir(npm_project_installed_latest)
 
     installed_packages = PACKAGE_MANAGER.list_installed_packages()
 
@@ -214,7 +239,7 @@ def test_npm_list_installed_packages(monkeypatch, npm_project_test_package_lates
     assert set(installed_packages) == TEST_PACKAGE_LATEST_INSTALL_TARGETS
 
 
-def _backend_test_resolve_install_targets(
+def backend_test_resolve_install_targets(
     monkeypatch,
     project: Path,
     command: list[str],
@@ -236,3 +261,18 @@ def _backend_test_resolve_install_targets(
         assert set(targets) == true_targets
 
     assert get_npm_project_state(project) == initial_state
+
+
+def get_npm_project_state(project_path: Path) -> str:
+    """
+    Return the current state of installed packages in the given npm project.
+    """
+    npm_list_command = ["npm", "list", "--all"]
+    npm_list_process = subprocess.run(
+        npm_list_command,
+        text=True,
+        capture_output=True,
+        cwd=project_path
+    )
+
+    return npm_list_process.stdout.strip()

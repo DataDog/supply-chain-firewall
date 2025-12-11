@@ -3,6 +3,7 @@ Tests establishing the validity of Supply-Chain Firewall's assumptions about
 npm's command-line options and behavior.
 """
 
+import itertools
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,34 @@ import packaging.version as version
 import pytest
 
 from .npm_fixtures import *
+
+PREVENT_INSTALL_TEST_CASES = list(
+    itertools.product(
+        [
+            ["npm", "--version", "install", TEST_PACKAGE_LATEST_SPEC],
+            ["npm", "install", "--version", TEST_PACKAGE_LATEST_SPEC],
+            ["npm", "install", TEST_PACKAGE_LATEST_SPEC, "--version"],
+            ["npm", "--version", "install", "--version", TEST_PACKAGE_LATEST_SPEC, "--version"],
+            ["npm", "-h", "install", TEST_PACKAGE_LATEST_SPEC],
+            ["npm", "install", "-h", TEST_PACKAGE_LATEST_SPEC],
+            ["npm", "install", TEST_PACKAGE_LATEST_SPEC, "-h"],
+            ["npm", "-h", "install", "-h", TEST_PACKAGE_LATEST_SPEC, "-h"],
+            ["npm", "--help", "install", TEST_PACKAGE_LATEST_SPEC],
+            ["npm", "install", "--help", TEST_PACKAGE_LATEST_SPEC],
+            ["npm", "install", TEST_PACKAGE_LATEST_SPEC, "--help"],
+            ["npm", "--help", "install", "--help", TEST_PACKAGE_LATEST_SPEC, "--help"],
+            ["npm", "--dry-run", "install", TEST_PACKAGE_LATEST_SPEC],
+            ["npm", "install", "--dry-run", TEST_PACKAGE_LATEST_SPEC],
+            ["npm", "install", TEST_PACKAGE_LATEST_SPEC, "--dry-run"],
+            ["npm", "--dry-run", "install", "--dry-run", TEST_PACKAGE_LATEST_SPEC, "--dry-run"],
+            ["npm", "--non-existent-option", "--version", "install", TEST_PACKAGE_LATEST_SPEC],
+            ["npm", "--non-existent-option", "-h", "install", TEST_PACKAGE_LATEST_SPEC],
+            ["npm", "--non-existent-option", "--help", "install", TEST_PACKAGE_LATEST_SPEC],
+            ["npm", "--non-existent-option", "--dry-run", "install", TEST_PACKAGE_LATEST_SPEC],
+        ],
+        {TEST_PACKAGE_LATEST_SPEC},
+    )
+)
 
 
 def test_npm_version_output():
@@ -63,7 +92,7 @@ def test_npm_loglevel_override(empty_directory):
     command_line = [
         "npm", "--loglevel", "silent", "install", "--dry-run", TEST_PACKAGE, "--loglevel", "silly"
     ]
-    silly_lines = _get_silly_log_lines(empty_directory, command_line)
+    silly_lines = get_silly_log_lines(empty_directory, command_line)
 
     # We successfully overrode the `silent` log level and observe `silly` log lines
     assert silly_lines
@@ -73,11 +102,10 @@ def test_npm_log_line_format_place_dep(empty_directory):
     """
     Test that the `placeDep` log lines have the required format.
     """
-    target_spec = f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"
-    command_line = ["npm", "install", target_spec, "--dry-run", "--loglevel", "silly"]
+    command_line = ["npm", "install", TEST_PACKAGE_LATEST_SPEC, "--dry-run", "--loglevel", "silly"]
 
     # There are `silly` log lines for this command
-    silly_lines = _get_silly_log_lines(empty_directory, command_line)
+    silly_lines = get_silly_log_lines(empty_directory, command_line)
     assert silly_lines
 
     # There are `placeDep` lines among the `silly` lines
@@ -89,18 +117,17 @@ def test_npm_log_line_format_place_dep(empty_directory):
     assert all(re.fullmatch(r"@?(.+)@(.+)", line.split()[4]) for line in place_dep_lines)
 
     # One of the `placeDep` lines is for our test package
-    assert any(line.split()[4] == target_spec for line in place_dep_lines)
+    assert any(line.split()[4] == TEST_PACKAGE_LATEST_SPEC for line in place_dep_lines)
 
 
 def test_npm_log_line_format_add(empty_directory):
     """
     Test that the `ADD` log lines have the required format.
     """
-    target_spec = f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"
-    command_line = ["npm", "install", target_spec, "--dry-run", "--loglevel", "silly"]
+    command_line = ["npm", "install", TEST_PACKAGE_LATEST_SPEC, "--dry-run", "--loglevel", "silly"]
 
     # There are `silly` log lines for this command
-    silly_lines = _get_silly_log_lines(empty_directory, command_line)
+    silly_lines = get_silly_log_lines(empty_directory, command_line)
     assert silly_lines
 
     # There are `ADD` lines among the `silly` lines
@@ -115,15 +142,14 @@ def test_npm_log_line_format_add(empty_directory):
     assert any(line.split()[3] == f"node_modules/{TEST_PACKAGE}" for line in add_lines)
 
 
-def test_npm_log_line_format_change(npm_project_test_package_previous_lockfile_modules):
+def test_npm_log_line_format_change(npm_project_installed_previous):
     """
     Test that the `CHANGE` log lines have the required format.
     """
-    target_spec = f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"
-    command_line = ["npm", "install", target_spec, "--dry-run", "--loglevel", "silly"]
+    command_line = ["npm", "install", TEST_PACKAGE_LATEST_SPEC, "--dry-run", "--loglevel", "silly"]
 
     # There are `silly` log lines for this command
-    silly_lines = _get_silly_log_lines(npm_project_test_package_previous_lockfile_modules, command_line)
+    silly_lines = get_silly_log_lines(npm_project_installed_previous, command_line)
     assert silly_lines
 
     # There are `CHANGE` lines among the `silly` lines
@@ -138,26 +164,28 @@ def test_npm_log_line_format_change(npm_project_test_package_previous_lockfile_m
     assert any(line.split()[3] == f"node_modules/{TEST_PACKAGE}" for line in change_lines)
 
 
-def test_npm_install_package_lock_only_test_package_latest(npm_project_test_package_latest):
+def test_npm_install_package_lock_only_dependency_latest(npm_project_dependency_latest):
     """
     Test that the `--package-lock-only` option works as expected in an npm project
     with a specified dependency but no prior `package-lock.json` file.
     """
-    _backend_test_npm_install_package_lock_only(npm_project_test_package_latest, ["npm", "install"])
+    backend_test_npm_install_package_lock_only(npm_project_dependency_latest, ["npm", "install"])
 
 
-def test_npm_install_package_lock_only_test_package_previous_lockfile(npm_project_test_package_previous_lockfile):
+def test_npm_install_package_lock_only_dependency_previous_lockfile(
+    npm_project_dependency_previous_lockfile,
+):
     """
     Test that the `--package-lock-only` option works as expected in an npm project
     with a specified dependency and a prior `package-lock.json` file.
     """
-    _backend_test_npm_install_package_lock_only(
-        npm_project_test_package_previous_lockfile,
-        ["npm", "install", f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"]
+    backend_test_npm_install_package_lock_only(
+        npm_project_dependency_previous_lockfile,
+        ["npm", "install", TEST_PACKAGE_LATEST_SPEC]
     )
 
 
-def test_npm_install_ignore_scripts(npm_project_test_package_latest):
+def test_npm_install_ignore_scripts(npm_project_dependency_latest):
     """
     Test that the `--ignore-scripts` option works as expected.
     """
@@ -168,7 +196,7 @@ def test_npm_install_ignore_scripts(npm_project_test_package_latest):
     }
 
     # Add lifecycle scripts to the package.json file
-    package_json_path = npm_project_test_package_latest / "package.json"
+    package_json_path = npm_project_dependency_latest / "package.json"
 
     with open(package_json_path) as f:
         package_json = json.load(f)
@@ -184,7 +212,7 @@ def test_npm_install_ignore_scripts(npm_project_test_package_latest):
         check=True,
         text=True,
         capture_output=True,
-        cwd=npm_project_test_package_latest
+        cwd=npm_project_dependency_latest,
     )
     assert test_script_body in p.stdout
 
@@ -194,101 +222,83 @@ def test_npm_install_ignore_scripts(npm_project_test_package_latest):
         check=True,
         text=True,
         capture_output=True,
-        cwd=npm_project_test_package_latest
+        cwd=npm_project_dependency_latest,
     )
     assert test_script_body not in p.stdout
 
 
-@pytest.mark.parametrize(
-        "command_line",
-        [
-            ["npm", "--version", "install", TEST_PACKAGE],
-            ["npm", "install", "--version", TEST_PACKAGE],
-            ["npm", "install", TEST_PACKAGE, "--version"],
-            ["npm", "--version", "install", "--version", TEST_PACKAGE, "--version"],
-            ["npm", "-h", "install", TEST_PACKAGE],
-            ["npm", "install", "-h", TEST_PACKAGE],
-            ["npm", "install", TEST_PACKAGE, "-h"],
-            ["npm", "-h", "install", "-h", TEST_PACKAGE, "-h"],
-            ["npm", "--help", "install", TEST_PACKAGE],
-            ["npm", "install", "--help", TEST_PACKAGE],
-            ["npm", "install", TEST_PACKAGE, "--help"],
-            ["npm", "--help", "install", "--help", TEST_PACKAGE, "--help"],
-            ["npm", "--dry-run", "install", TEST_PACKAGE],
-            ["npm", "install", "--dry-run", TEST_PACKAGE],
-            ["npm", "install", TEST_PACKAGE, "--dry-run"],
-            ["npm", "--dry-run", "install", "--dry-run", TEST_PACKAGE, "--dry-run"],
-            ["npm", "--non-existent-option", "--version", "install", TEST_PACKAGE],
-            ["npm", "--non-existent-option", "-h", "install", TEST_PACKAGE],
-            ["npm", "--non-existent-option", "--help", "install", TEST_PACKAGE],
-            ["npm", "--non-existent-option", "--dry-run", "install", TEST_PACKAGE],
-        ]
-)
-def test_options_prevent_install_empty_directory(empty_directory, command_line: list[str]):
+@pytest.mark.parametrize("command_line, test_target", PREVENT_INSTALL_TEST_CASES)
+def test_options_prevent_install_empty_directory(
+    empty_directory,
+    command_line: list[str],
+    test_target: str,
+):
     """
     Test that the `-h`/`--help` and `--dry-run` options prevent an `npm install`
     command from running in an empty directory.
     """
-    _backend_test_no_change(empty_directory, command_line)
+    backend_test_no_install(empty_directory, command_line, test_target)
 
 
-@pytest.mark.parametrize(
-        "command_line",
-        [
-            ["npm", "--version", "install", TEST_PACKAGE],
-            ["npm", "install", "--version", TEST_PACKAGE],
-            ["npm", "install", TEST_PACKAGE, "--version"],
-            ["npm", "--version", "install", "--version", TEST_PACKAGE, "--version"],
-            ["npm", "-h", "install", TEST_PACKAGE],
-            ["npm", "install", "-h", TEST_PACKAGE],
-            ["npm", "install", TEST_PACKAGE, "-h"],
-            ["npm", "-h", "install", "-h", TEST_PACKAGE, "-h"],
-            ["npm", "--help", "install", TEST_PACKAGE],
-            ["npm", "install", "--help", TEST_PACKAGE],
-            ["npm", "install", TEST_PACKAGE, "--help"],
-            ["npm", "--help", "install", "--help", TEST_PACKAGE, "--help"],
-            ["npm", "--dry-run", "install", TEST_PACKAGE],
-            ["npm", "install", "--dry-run", TEST_PACKAGE],
-            ["npm", "install", TEST_PACKAGE, "--dry-run"],
-            ["npm", "--dry-run", "install", "--dry-run", TEST_PACKAGE, "--dry-run"],
-            ["npm", "--non-existent-option", "--version", "install", TEST_PACKAGE],
-            ["npm", "--non-existent-option", "-h", "install", TEST_PACKAGE],
-            ["npm", "--non-existent-option", "--help", "install", TEST_PACKAGE],
-            ["npm", "--non-existent-option", "--dry-run", "install", TEST_PACKAGE],
-        ]
-)
-def test_options_prevent_install_new_npm_project(new_npm_project, command_line: list[str]):
+@pytest.mark.parametrize("command_line, test_target", PREVENT_INSTALL_TEST_CASES)
+def test_options_prevent_install_new_npm_project(
+    new_npm_project,
+    command_line: list[str],
+    test_target: str,
+):
     """
     Test that the `-h`/`--help` and `--dry-run` options prevent an `npm install`
     command from running in a new npm project.
     """
-    _backend_test_no_change(new_npm_project, command_line)
+    backend_test_no_install(new_npm_project, command_line, test_target)
 
 
-def get_npm_project_state(project_path: Path) -> str:
+@pytest.mark.parametrize("command_line, test_target", PREVENT_INSTALL_TEST_CASES)
+def test_options_prevent_install_dependency_previous(
+    npm_project_dependency_previous,
+    command_line: list[str],
+    test_target: str,
+):
     """
-    Return the current state of installed packages in the given npm project.
+    Test that the `-h`/`--help` and `--dry-run` options prevent an `npm install`
+    command from running in an npm project with `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS`
+    specified as a dependency but not installed.
     """
-    lockfile_path = project_path / "package-lock.json"
-    node_modules_path = project_path / "node_modules/"
+    backend_test_no_install(npm_project_dependency_previous, command_line, test_target)
 
-    # On older versions of npm, the inverse of this condition results
-    # useful output being returned with an error code, so we disable `check`
-    check = not lockfile_path.is_file() or node_modules_path.is_dir()
 
-    npm_list_command = ["npm", "list", "--all"]
-    npm_list_process = subprocess.run(
-        npm_list_command,
-        check=check,
-        text=True,
-        capture_output=True,
-        cwd=project_path
+@pytest.mark.parametrize("command_line, test_target", PREVENT_INSTALL_TEST_CASES)
+def test_options_prevent_install_dependency_previous_lockfile(
+    npm_project_dependency_previous_lockfile,
+    command_line: list[str],
+    test_target: str,
+):
+    """
+    Test that the `-h`/`--help` and `--dry-run` options prevent an `npm install`
+    command from running in an npm project with `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS`
+    specified as a dependency and present in the lockfile but not installed.
+    """
+    backend_test_no_install(npm_project_dependency_previous_lockfile, command_line, test_target)
+
+
+@pytest.mark.parametrize("command_line, test_target", PREVENT_INSTALL_TEST_CASES)
+def test_options_prevent_install_installed_previous(
+    npm_project_installed_previous,
+    command_line: list[str],
+    test_target: str,
+):
+    """
+    Test that the `-h`/`--help` and `--dry-run` options prevent an `npm install` command
+    from running in an npm project with `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS` installed.
+    """
+    backend_test_no_install(
+        npm_project_installed_previous,
+        command_line,
+        test_target,
     )
 
-    return npm_list_process.stdout.strip()
 
-
-def _backend_test_npm_install_package_lock_only(project: Path, command_line: list[str]):
+def backend_test_npm_install_package_lock_only(project: Path, command_line: list[str]):
     """
     Backend function for testing that the `--package-lock-only` option of the
     `npm install` command works as expected.
@@ -310,19 +320,56 @@ def _backend_test_npm_install_package_lock_only(project: Path, command_line: lis
     assert not node_modules_path.exists()
 
 
-def _backend_test_no_change(project: Path, command_line: list[str]):
+def backend_test_no_install(
+    project: Path,
+    command_line: list[str],
+    test_target: str,
+):
     """
-    Backend function for testing that running an npm command does not modify
-    the project state and should or should not raise an error.
+    Backend function for testing that an `npm install` command does not install
+    `test_target` in `project` after being executed.
     """
-    initial_state = get_npm_project_state(project)
+    def check_lockfile(lockfile_path: Path, package_name: str, version: str):
+        with open(lockfile_path) as f:
+            lockfile = json.load(f)
+        if (entry := lockfile["packages"].get(f"node_modules/{package_name}")):
+            assert entry["version"] != version
+
+    def check_node_modules(node_modules_path: Path, package_name: str, version: str):
+        module_path = node_modules_path / package_name
+        if not module_path.is_dir():
+            return
+
+        package_json_path = module_path / "package.json"
+        with open(package_json_path) as f:
+            package_json = json.load(f)
+        assert package_json["version"] != version
+
+    package_name, sep, version = test_target.rpartition('@')
+    assert (package_name and sep)
+
+    lockfile_path = project / "package-lock.json"
+    if (has_lockfile := lockfile_path.is_file()):
+        check_lockfile(lockfile_path, package_name, version)
+
+    node_modules_path = project / "node_modules"
+    if (has_node_modules := node_modules_path.is_dir()):
+        check_node_modules(node_modules_path, package_name, version)
 
     subprocess.run(command_line, check=True, cwd=project)
 
-    assert get_npm_project_state(project) == initial_state
+    if has_lockfile:
+        check_lockfile(lockfile_path, package_name, version)
+    else:
+        assert not lockfile_path.is_file()
+
+    if has_node_modules:
+        check_node_modules(node_modules_path, package_name, version)
+    else:
+        assert not node_modules_path.is_dir()
 
 
-def _get_silly_log_lines(project: Path, command_line: list[str]) -> list[str]:
+def get_silly_log_lines(project: Path, command_line: list[str]) -> list[str]:
     """
     Return the `silly` log lines output, if any, from running the given `command_line`
     in the given `project`.

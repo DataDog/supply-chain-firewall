@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+from typing import Any
 
 import packaging.version as version
 import pytest
@@ -298,6 +299,48 @@ def test_options_prevent_install_installed_previous(
     )
 
 
+def test_npm_list_empty_directory(empty_directory):
+    """
+    Test that the `npm list` command behaves as expected in an empty directory.
+    """
+    backend_test_npm_list(empty_directory, should_fail=False, installed=None)
+
+
+def test_npm_list_new_npm_project(new_npm_project):
+    """
+    Test that the `npm list` command behaves as expected in a new npm project.
+    """
+    backend_test_npm_list(new_npm_project, should_fail=False, installed=set())
+
+
+def test_npm_list_dependency_latest(npm_project_dependency_latest):
+    """
+    Test that the `npm list` command behaves as expected in an npm project with a
+    declared but uninstalled dependency.
+    """
+    backend_test_npm_list(npm_project_dependency_latest, should_fail=True, installed=None)
+
+
+def test_npm_list_dependency_latest_lockfile(npm_project_dependency_latest_lockfile):
+    """
+    Test that the `npm list` command behaves as expected in an npm project with a
+    declared but uninstalled dependency with a lockfile.
+    """
+    backend_test_npm_list(npm_project_dependency_latest_lockfile, should_fail=True, installed=None)
+
+
+def test_npm_list_installed_latest(npm_project_installed_latest):
+    """
+    Test that the `npm list` command behaves as expected in an npm project with an
+    installed dependency.
+    """
+    backend_test_npm_list(
+        npm_project_installed_latest,
+        should_fail=False,
+        installed=TEST_PACKAGE_LATEST_DEPENDENCIES,
+    )
+
+
 def backend_test_npm_install_package_lock_only(project: Path, command_line: list[str]):
     """
     Backend function for testing that the `--package-lock-only` option of the
@@ -367,6 +410,70 @@ def backend_test_no_install(
         check_node_modules(node_modules_path, package_name, version)
     else:
         assert not node_modules_path.is_dir()
+
+
+def backend_test_npm_list(
+    project: Path,
+    should_fail: bool,
+    installed: Optional[set[tuple[str, str]]]
+):
+    """
+    Backend function for testing that an `npm list --all` command behaves
+    as expected when run in the given `project`.
+
+    Args:
+        project: A `Path` to the directory where `npm list` should be tested.
+        should_fail: A `bool` indicating whether the `npm list` command should fail.
+        installed:
+            An optional set of `tuple[str, str]` containing the names and versions
+            of packages that should be installed in the test directory.
+
+            Note that `None` and `set()` are distinct: the former indicates that
+            `npm list` should return empty output (i.e., there is no npm project),
+            while the latter indicates that an npm project has no dependencies.
+    """
+    def collect_dependencies(tree: dict[str, Any]) -> set[tuple[str, str]]:
+        dependencies = set()
+
+        for name, entry in tree.items():
+            if (subtree := entry.get("dependencies")):
+                dependencies |= collect_dependencies(subtree)
+
+            version = entry.get("version")
+            if not version:
+                raise RuntimeError(
+                    f"Missing version data in dependency tree entry for package {name}"
+                )
+
+            dependencies.add((name, version))
+
+        return dependencies
+
+    npm_list_command = ["npm", "list", "--all", "--json"]
+
+    if should_fail:
+        with pytest.raises(subprocess.CalledProcessError):
+            subprocess.run(npm_list_command, check=True, cwd=project)
+        return
+
+    npm_list_process = subprocess.run(
+        npm_list_command,
+        check=True,
+        text=True,
+        capture_output=True,
+        cwd=project
+    )
+    npm_list = json.loads(npm_list_process.stdout.strip())
+
+    if installed is None:
+        assert not npm_list
+        return
+
+    assert npm_list["name"] == project.name
+    if not installed:
+        return
+
+    assert installed == collect_dependencies(npm_list["dependencies"])
 
 
 def get_silly_log_lines(project: Path, command_line: list[str]) -> list[str]:

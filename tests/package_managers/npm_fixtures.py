@@ -18,6 +18,24 @@ TEST_PACKAGE_PREVIOUS = "18.2.0"
 TEST_PACKAGE_LATEST_SPEC = f"{TEST_PACKAGE}@{TEST_PACKAGE_LATEST}"
 TEST_PACKAGE_PREVIOUS_SPEC = f"{TEST_PACKAGE}@{TEST_PACKAGE_PREVIOUS}"
 
+TEST_PACKAGE_LATEST_DEPENDENCIES = {
+    (TEST_PACKAGE, TEST_PACKAGE_LATEST),
+    ("js-tokens", "4.0.0"),
+    ("loose-envify", "1.4.0"),
+}
+"""
+Known dependencies of `TEST_PACKAGE@TEST_PACKAGE_LATEST`.
+"""
+
+TEST_PACKAGE_PREVIOUS_DEPENDENCIES = {
+    (TEST_PACKAGE, TEST_PACKAGE_PREVIOUS),
+    ("js-tokens", "4.0.0"),
+    ("loose-envify", "1.4.0"),
+}
+"""
+Known dependencies of `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS`.
+"""
+
 
 @pytest.fixture
 def empty_directory():

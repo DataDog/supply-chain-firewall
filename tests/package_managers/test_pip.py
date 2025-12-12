@@ -3,15 +3,13 @@ Tests of pip's command line behavior.
 """
 
 import json
-import packaging.version as version
-import pytest
+import os
 import subprocess
 import sys
 import tempfile
 
-from scfw.ecosystem import ECOSYSTEM
-
-from .utils import read_top_packages, select_test_install_target
+import packaging.version as version
+import pytest
 
 PIP_COMMAND_PREFIX = [sys.executable, "-m", "pip"]
 
@@ -24,12 +22,34 @@ def pip_list() -> str:
     return subprocess.run(pip_list_command, check=True, text=True, capture_output=True).stdout.lower()
 
 
+def select_test_install_target(installed_packages: str) -> str:
+    """
+    Select a test target that is not in the given installed packages output.
+
+    This allows us to be certain when testing that nothing was installed in a dry-run.
+    """
+    def read_top_pypi_packages() -> set[str]:
+        test_dir = os.path.dirname(os.path.realpath(__file__, strict=True))
+        top_packages_file = os.path.join(test_dir, f"top_pypi_packages.txt")
+        with open(top_packages_file) as f:
+            return set(f.read().split())
+
+    try:
+        top_packages = read_top_pypi_packages()
+        while (choice := top_packages.pop()) in installed_packages:
+            pass
+        return choice
+
+    except KeyError:
+        raise RuntimeError("Unable to select a target package for testing")
+
+
 INIT_PIP_STATE = pip_list()
 """
 Caches the pip installation state before running any tests.
 """
 
-TEST_TARGET = select_test_install_target(read_top_packages(ECOSYSTEM.PyPI), INIT_PIP_STATE)
+TEST_TARGET = select_test_install_target(INIT_PIP_STATE)
 """
 A fresh (not currently installed) package target to use for testing.
 """

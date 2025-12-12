@@ -3,7 +3,6 @@ Provides a `PackageManager` representation of `npm`.
 """
 
 import json
-import logging
 import os
 import shutil
 import subprocess
@@ -14,8 +13,7 @@ from packaging.version import InvalidVersion, Version, parse as version_parse
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.package_manager import PackageManager, UnsupportedVersionError
-
-_log = logging.getLogger(__name__)
+from scfw.package_managers.npm.temp_project import TemporaryNpmProject
 
 MIN_NPM_VERSION = version_parse("7.0.0")
 
@@ -93,9 +91,8 @@ class Npm(PackageManager):
             if `command` were run.
 
         Raises:
-            ValueError:
-                1) The given `command` is empty or not a valid `npm` command, or 2) failed to parse
-                an installation target.
+            ValueError: The given `command` is empty or not a valid `npm` command
+            RuntimeError: Failed to resolve npm installation targets (with error detail)
             UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
         def is_install_command(command: list[str]) -> bool:
@@ -105,22 +102,8 @@ class Npm(PackageManager):
             }
             return any(alias in command for alias in install_aliases)
 
-        def is_place_dep_line(line: str) -> bool:
-            # The "placeDep" log lines describe a new dependency added to the
-            # dependency tree being constructed by an installish command
-            return "placeDep" in line
-
-        def line_to_dependency(line: str) -> str:
-            # Each added dependency is always the fifth token in its log line
-            return line.split()[4]
-
-        def str_to_package(s: str) -> Package:
-            name, sep, version = s.rpartition('@')
-            if version == s or (sep and not name):
-                raise ValueError("Failed to parse npm installation target")
-            return Package(ECOSYSTEM.Npm, name, version)
-
-        command = self._normalize_command(command)
+        if not command or command[0] != self.name():
+            raise ValueError("Received empty or invalid npm command line")
 
         # For now, allow all non-`install` commands
         if not is_install_command(command):
@@ -129,35 +112,15 @@ class Npm(PackageManager):
         self._check_version()
 
         # On supported versions, the presence of these options prevents the command from running
-        if any(opt in command for opt in {"-h", "--help", "--dry-run"}):
+        if any(opt in command for opt in {"-h", "--help", "--dry-run", "--version"}):
             return []
 
         try:
-            # Compute the set of dependencies added by the install command
-            dry_run_command = command + ["--dry-run", "--loglevel", "silly"]
-            dry_run = subprocess.run(dry_run_command, check=True, text=True, capture_output=True)
-            dependencies = map(line_to_dependency, filter(is_place_dep_line, dry_run.stderr.strip().split('\n')))
-        except subprocess.CalledProcessError:
-            # An erroring command does not install anything
-            _log.info("Encountered an error while resolving npm installation targets")
-            return []
+            with TemporaryNpmProject(self._executable) as temp_project:
+                return temp_project.resolve_install_command_targets(command)
 
-        try:
-            # List targets already installed in the npm environment
-            list_command = [self.executable(), "list", "--all"]
-            installed = subprocess.run(list_command, check=True, text=True, capture_output=True).stdout
-        except subprocess.CalledProcessError:
-            # If this operation fails, rather than blocking, assume nothing is installed
-            # This has the effect of treating all dependencies like installation targets
-            _log.warning(
-                "Failed to list installed npm packages: treating all dependencies as installation targets"
-            )
-            installed = ""
-
-        # The installation targets are the dependencies that are not already installed
-        targets = filter(lambda dep: dep not in installed, dependencies)
-
-        return list(map(str_to_package, targets))
+        except Exception as e:
+            raise RuntimeError(f"Failed to resolve npm installation targets: {e}")
 
     def list_installed_packages(self) -> list[Package]:
         """
@@ -185,7 +148,7 @@ class Npm(PackageManager):
         self._check_version()
 
         try:
-            npm_list_command = self._normalize_command(["npm", "list", "--all", "--json"])
+            npm_list_command = [self._executable, "list", "--all", "--json"]
             npm_list = subprocess.run(npm_list_command, check=True, text=True, capture_output=True)
             dependencies = json.loads(npm_list.stdout.strip()).get("dependencies")
             return list(dependencies_to_packages(dependencies)) if dependencies else []

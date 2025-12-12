@@ -6,13 +6,8 @@ from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.package_managers.poetry import Poetry
 
-from .test_poetry import (
-    POETRY_V2, TARGET, TARGET_LATEST, TARGET_PREVIOUS, TEST_PROJECT_NAME,
-    new_poetry_project, poetry_project_lock_latest,
-    poetry_project_target_latest, poetry_project_target_latest_lock_previous,
-    poetry_project_target_previous, poetry_project_target_previous_lock_latest,
-    poetry_show, poetry_version,
-)
+from .poetry_fixtures import *
+from .test_poetry import POETRY_V2, poetry_show, poetry_version
 
 PACKAGE_MANAGER = Poetry()
 """
@@ -107,7 +102,10 @@ def test_poetry_command_resolve_install_targets_sync(
     Tests that `Poetry.resolve_install_targets()` for a `poetry sync` command
     correctly resolves installation targets without installing anything.
     """
-    if poetry_version() < POETRY_V2:
+    version = poetry_version()
+    assert version
+
+    if version < POETRY_V2:
         return
 
     test_cases = [

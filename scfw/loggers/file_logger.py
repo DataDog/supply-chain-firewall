@@ -28,7 +28,7 @@ to write to instead of using the default file.
 
 
 # Configure a single logging handle for all `FileLogger` instances to share
-_handler = logging.NullHandler()
+_handler: logging.Handler = logging.NullHandler()
 if (log_file := os.getenv(LOG_FILE_VAR)):
     _handler = logging.FileHandler(log_file)
 elif (scfw_home := os.getenv(SCFW_HOME_VAR)):

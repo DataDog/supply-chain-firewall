@@ -4,4 +4,5 @@ datadog-api-client,PyPI,Apache-2.0,Datadog Inc.
 inquirer,PyPI,MIT,Miguel Angel Garcia
 packaging,PyPI,Apache-2.0,Donald Stufft
 python-dotenv,PyPI,BSD-3-Clause,Saurabh Kumar
+pyyaml,PyPI,MIT,Kirill Simonov
 requests,PyPI,Apache-2.0,Kenneth Reitz

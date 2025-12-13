@@ -45,7 +45,9 @@ class _DDLogHandler(logging.Handler):
             RuntimeError: Failed to forward log to Datadog Agent.
         """
         try:
-            message = self.format(record).encode()
+            # The Agent requires the newline terminator to delimit log messages
+            serialized_log = self.format(record) + '\n'
+            message = serialized_log.encode()
 
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect(("localhost", self._agent_port))

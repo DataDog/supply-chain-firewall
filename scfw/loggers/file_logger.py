@@ -7,11 +7,8 @@ import os
 from pathlib import Path
 
 from scfw.constants import SCFW_HOME_VAR
-from scfw.ecosystem import ECOSYSTEM
-from scfw.logger import FindingSeverity, FirewallAction, FirewallLogger
-from scfw.loggers.dd_logger import DDLogFormatter
-from scfw.package import Package
-from scfw.report import VerificationReport
+from scfw.logger import FirewallAction, FirewallLogger
+from scfw.loggers.dd_logger import DDLogFormatter, DDLogger
 
 _log = logging.getLogger(__name__)
 
@@ -44,7 +41,7 @@ _file_log.setLevel(logging.INFO)
 _file_log.addHandler(_handler)
 
 
-class FileLogger(FirewallLogger):
+class FileLogger(DDLogger):
     """
     An implementation of `FirewallLogger` for writing a local JSON lines log file.
     """
@@ -54,70 +51,8 @@ class FileLogger(FirewallLogger):
         """
         self._logger = _file_log
 
-    def log_firewall_action(
-        self,
-        ecosystem: ECOSYSTEM,
-        package_manager: str,
-        executable: str,
-        command: list[str],
-        targets: list[Package],
-        action: FirewallAction,
-        verified: bool,
-        warned: bool,
-    ):
-        """
-        Log the data and action taken in a completed run of Supply-Chain Firewall.
-
-        Args:
-            ecosystem: The ecosystem of the inspected package manager command.
-            package_manager: The command-line name of the package manager.
-            executable: The executable used to execute the inspected package manager command.
-            command: The package manager command line provided to the firewall.
-            targets: The installation targets relevant to firewall's action.
-            action: The action taken by the firewall.
-            verified: Indicates whether verification was performed in taking the specified `action`.
-            warned: Indicates whether the user was warned about findings and prompted for approval.
-        """
-        self._logger.info(
-            f"Command '{' '.join(command)}' was {str(action).lower()}ed",
-            extra={
-                "ecosystem": str(ecosystem),
-                "package_manager": package_manager,
-                "executable": executable,
-                "targets": list(map(str, targets)),
-                "action": str(action),
-                "verified": verified,
-                "warned": warned,
-            }
-        )
-
-    def log_audit(
-        self,
-        ecosystem: ECOSYSTEM,
-        package_manager: str,
-        executable: str,
-        reports: dict[FindingSeverity, VerificationReport],
-    ):
-        """
-        Log the results of an audit for the given ecosystem and package manager.
-
-        Args:
-            ecosystem: The ecosystem of the audited packages.
-            package_manager: The package manager that manages the audited packages.
-            executable: The package manager executable used to enumerate audited packages.
-            reports: The severity-ranked reports resulting from auditing the installed packages.
-        """
-        self._logger.info(
-            f"Successfully audited {ecosystem} packages managed by {package_manager}",
-            extra={
-                "ecosystem": str(ecosystem),
-                "package_manager": package_manager,
-                "executable": executable,
-                "reports": {
-                    str(severity): list(map(str, report.packages())) for severity, report in reports.items()
-                },
-            }
-        )
+        # Ignore the configured log level so that everything is logged to file
+        self._level = FirewallAction.ALLOW
 
 
 def load_logger() -> FirewallLogger:

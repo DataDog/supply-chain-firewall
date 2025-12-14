@@ -1,6 +1,6 @@
 """
-Provides a class for reading YAML package block lists in a fixed yet flexible format
-and parsing them into an efficiently queryable data structure for verification.
+Provides a class for reading YAML findings lists in a fixed yet flexible format and
+parsing them into an efficiently queryable data structure for package verification.
 """
 
 from typing import Any, Type
@@ -15,8 +15,8 @@ from scfw.verifier import FindingSeverity
 
 class FindingsMap:
     """
-    A class that can read YAML package block lists in a fixed yet flexible format
-    and parses them into an efficiently queryable data structure for verification.
+    A class that can read YAML findings lists in a fixed yet flexible format and
+    parse them into an efficiently queryable data structure for package verification.
     """
     def __init__(self):
         """
@@ -27,15 +27,15 @@ class FindingsMap:
     @classmethod
     def from_yaml(cls, yml: str) -> Self:
         """
-        Initialize a `FindingsMap` from a YAML block list.
+        Initialize a `FindingsMap` from a YAML findings list.
 
         Args:
             yml:
-                A YAML `str` containing the block list to be parsed. Refer to the
-                `examples/` directory for an example of the expected block list format.
+                A YAML `str` containing the findings list to be parsed. Refer to the
+                `examples/` directory for an example of the expected findings list format.
 
         Returns:
-            A `FindingsMap` initialized from the given YAML block list.
+            A `FindingsMap` initialized from the given YAML findings list.
         """
         def get_or_raise(d: dict, key: str, typ: Type) -> Any:
             if key not in d:
@@ -55,11 +55,11 @@ class FindingsMap:
 
         raw_map = {}
 
-        block_list = yaml.safe_load(yml)
-        if not isinstance(block_list, dict):
-            raise RuntimeError("Block list YAML file must contain a single top-level mapping")
+        findings_list = yaml.safe_load(yml)
+        if not isinstance(findings_list, dict):
+            raise RuntimeError("Findings list YAML file must contain a single top-level mapping")
 
-        items = get_or_raise(block_list, "items", list)
+        items = get_or_raise(findings_list, "findings", list)
         check_collection(items, dict)
 
         for item in items:
@@ -130,7 +130,7 @@ class FindingsMap:
             This list of findings contains those pertaining to the precise triple of
             ecosystem-name-version described by `package` *as well as* any declared findings
             pertaining to any version of `package` that may have been present in the
-            input block list(s) from which the `FindingsMap` was generated.
+            input findings list(s) from which the `FindingsMap` was generated.
         """
         package_findings = self._raw_map.get(package.ecosystem, {}).get(package.name, {})
         if not package_findings:

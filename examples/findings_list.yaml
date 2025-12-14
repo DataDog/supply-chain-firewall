@@ -1,4 +1,4 @@
-items:
+findings:
   - severity: CRITICAL
     finding: "This package is licensed under an incompatible open source license and must not be used"
     packages:

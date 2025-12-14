@@ -4,6 +4,7 @@ Provides a base class for package verifiers.
 
 from abc import (ABCMeta, abstractmethod)
 from enum import Enum
+from typing_extensions import Self
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
@@ -31,6 +32,27 @@ class FindingSeverity(Enum):
             A `str` representing the given `FindingSeverity` suitable for printing.
         """
         return self.name
+
+    @classmethod
+    def from_string(cls, s: str) -> Self:
+        """
+        Convert a string into a `FindingSeverity`.
+
+        Args:
+            s: The `str` to be converted.
+
+        Returns:
+            The `FindingSeverity` referred to by the given string.
+
+        Raises:
+            ValueError: The given string does not refer to a valid `FindingSeverity`.
+        """
+        mappings = {f"{severity}".lower(): severity for severity in cls}
+
+        try:
+            return mappings[s.lower()]
+        except KeyError:
+            raise ValueError(f"Invalid finding severity: '{s}'")
 
 
 class PackageVerifier(metaclass=ABCMeta):

@@ -1,0 +1,17 @@
+items:
+  - severity: CRITICAL
+    finding: "This package is licensed under an incompatible open source license and must not be used"
+    packages:
+      - ecosystem: PyPI
+        name: foo
+      - ecosystem: npm
+        name: bar
+        versions:
+          - 1.0.1
+          - 1.0.2
+
+  - severity: WARNING
+    finding: "A more optimized internal version of this package exists: please consider using it"
+    packages:
+      - ecosystem: PyPI
+        name: baz

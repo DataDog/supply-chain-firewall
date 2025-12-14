@@ -36,6 +36,7 @@ packages = [
     "scfw.package_managers",
     "scfw.package_managers.npm",
     "scfw.verifiers",
+    "scfw.verifiers.block_list_verifier",
     "scfw.verifiers.dd_verifier",
     "scfw.verifiers.osv_verifier"
 ]

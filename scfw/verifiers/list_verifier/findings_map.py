@@ -112,7 +112,8 @@ class FindingsMap:
         def merger(submerge):
             return lambda self, other: insert_or_submerge(submerge, self, other)
 
-        merge_package_map = merger(lambda self, other: self.extend(other))
+        merge_version_map = merger(lambda self, other: self.extend(other))
+        merge_package_map = merger(merge_version_map)
         merge_ecosystem_map = merger(merge_package_map)
 
         merge_ecosystem_map(self._raw_map, other._raw_map)

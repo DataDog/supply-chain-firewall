@@ -134,7 +134,7 @@ Currently, `npm` audits do not take globally installed packages into considerati
 
 ## Datadog Log Management integration
 
-By default, Supply-Chain Firewall maintains a local JSON Lines log file, by default at `$SCFW_HOME/scfw.log`.  Set environment variable `SCFW_LOG_FILE` to change where SCFW writes these logs.
+Supply-Chain Firewall can maintain a local JSON Lines log file that records all completed `run` and `audit` executions.  The environment variable `SCFW_LOG_FILE` may be used to change where SCFW writes these logs, with the default location being `$SCFW_HOME/scfw.log`.  Users are strongly encouraged to set either `SCFW_LOG_FILE` or `SCFW_HOME` in order to benefit from this local logging.
 
 Supply-Chain Firewall can also optionally send logs of blocked and successful installations to Datadog.
 

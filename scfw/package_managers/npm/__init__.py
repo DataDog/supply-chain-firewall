@@ -3,6 +3,7 @@ Provides a `PackageManager` representation of `npm`.
 """
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -14,6 +15,8 @@ from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.package_manager import PackageManager, UnsupportedVersionError
 from scfw.package_managers.npm.temp_project import TemporaryNpmProject
+
+_log = logging.getLogger(__name__)
 
 MIN_NPM_VERSION = version_parse("7.0.0")
 
@@ -141,7 +144,13 @@ class Npm(PackageManager):
             for name, package_data in dependencies.items():
                 if (package_dependencies := package_data.get("dependencies")):
                     packages |= dependencies_to_packages(package_dependencies)
-                packages.add(Package(ECOSYSTEM.Npm, name, package_data["version"]))
+
+                if (version := package_data.get("version")):
+                    packages.add(Package(ECOSYSTEM.Npm, name, version))
+                else:
+                    _log.info(
+                        f"Omitting package {name} from audit: no installed version data present in dependency tree"
+                    )
 
             return packages
 

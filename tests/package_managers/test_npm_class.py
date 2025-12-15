@@ -19,21 +19,17 @@ Fixed `PackageManager` to use across all tests.
 """
 
 TEST_PACKAGE_LATEST_INSTALL_TARGETS = {
-    Package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_LATEST),
-    Package(ECOSYSTEM.Npm, "js-tokens", "4.0.0"),
-    Package(ECOSYSTEM.Npm, "loose-envify", "1.4.0"),
+    Package(ECOSYSTEM.Npm, name, version) for name, version in TEST_PACKAGE_LATEST_DEPENDENCIES
 }
 """
-Known installation targets for `TEST_PACKAGE@TEST_PACKAGE_LATEST`.
+`Package` representations of the known dependencies of `TEST_PACKAGE@TEST_PACKAGE_LATEST`.
 """
 
 TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS = {
-    Package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_PREVIOUS),
-    Package(ECOSYSTEM.Npm, "js-tokens", "4.0.0"),
-    Package(ECOSYSTEM.Npm, "loose-envify", "1.4.0"),
+    Package(ECOSYSTEM.Npm, name, version) for name, version in TEST_PACKAGE_PREVIOUS_DEPENDENCIES
 }
 """
-Known installation targets for `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS`.
+`Package` representations of the known dependencies of `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS`.
 """
 
 
@@ -227,16 +223,71 @@ def test_resolve_install_targets_installed_previous(
     )
 
 
-def test_npm_list_installed_packages(monkeypatch, npm_project_installed_latest):
+def test_list_installed_packages_empty_directory(monkeypatch, empty_directory):
     """
-    Test that `Npm.list_installed_packages` correctly parses `npm` output.
+    Test that `Npm` correctly identifies installed packages in an empty directory.
     """
-    monkeypatch.chdir(npm_project_installed_latest)
+    backend_test_list_installed_packages(
+        monkeypatch,
+        empty_directory,
+        should_fail=False,
+        installed=set(),
+    )
 
-    installed_packages = PACKAGE_MANAGER.list_installed_packages()
 
-    assert len(installed_packages) == len(TEST_PACKAGE_LATEST_INSTALL_TARGETS)
-    assert set(installed_packages) == TEST_PACKAGE_LATEST_INSTALL_TARGETS
+def test_list_installed_packages_new_npm_project(monkeypatch, new_npm_project):
+    """
+    Test that `Npm` correctly identifies installed packages in a new npm project
+    with no dependencies.
+    """
+    backend_test_list_installed_packages(
+        monkeypatch,
+        new_npm_project,
+        should_fail=False,
+        installed=set(),
+    )
+
+
+def test_list_installed_packages_dependency_latest(monkeypatch, npm_project_dependency_latest):
+    """
+    Test that `Npm` correctly identifies installed packages in a new npm project
+    with an uninstalled dependency.
+    """
+    backend_test_list_installed_packages(
+        monkeypatch,
+        npm_project_dependency_latest,
+        should_fail=True,
+        installed=set(),
+    )
+
+
+def test_list_installed_packages_dependency_latest_lockfile(
+    monkeypatch,
+    npm_project_dependency_latest_lockfile
+):
+    """
+    Test that `Npm` correctly identifies installed packages in a new npm project
+    with an uninstalled dependency and a lockfile.
+    """
+    backend_test_list_installed_packages(
+        monkeypatch,
+        npm_project_dependency_latest_lockfile,
+        should_fail=True,
+        installed=set(),
+    )
+
+
+def test_list_installed_packages_installed_latest(monkeypatch, npm_project_installed_latest):
+    """
+    Test that `Npm` correctly identifies installed packages in an npm project
+    with an installed dependency.
+    """
+    backend_test_list_installed_packages(
+        monkeypatch,
+        npm_project_installed_latest,
+        should_fail=False,
+        installed=TEST_PACKAGE_LATEST_INSTALL_TARGETS,
+    )
 
 
 def backend_test_resolve_install_targets(
@@ -261,6 +312,34 @@ def backend_test_resolve_install_targets(
         assert set(targets) == true_targets
 
     assert get_npm_project_state(project) == initial_state
+
+
+def backend_test_list_installed_packages(
+    monkeypatch,
+    project: Path,
+    should_fail: bool,
+    installed: set[Package],
+):
+    """
+    Backend function for testing that the `Npm.list_installed_packages()` method
+    correctly identifies installed packages or fails to do so in the given `project`.
+
+    Args:
+        project: A `Path` to the directory where `npm list` should be tested.
+        should_fail: A `bool` indicating whether the `npm list` command should fail.
+        installed:
+            The (possibly empty) set of `Package` that should be installed in `project`.
+    """
+    monkeypatch.chdir(project)
+
+    if should_fail:
+        with pytest.raises(RuntimeError):
+            PACKAGE_MANAGER.list_installed_packages()
+        return
+
+    experiment = PACKAGE_MANAGER.list_installed_packages()
+    assert len(experiment) == len(installed)
+    assert set(experiment) == installed
 
 
 def get_npm_project_state(project_path: Path) -> str:

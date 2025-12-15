@@ -152,7 +152,7 @@ class DDLogFormatter(logging.Formatter):
         except Exception as e:
             _log.warning(f"Failed to read custom Datadog log attributes from file: {e}")
 
-        return json.dumps(log_record) + '\n'
+        return json.dumps(log_record)
 
 
 class DDLogger(FirewallLogger):

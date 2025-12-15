@@ -3,7 +3,7 @@ Provides a class for reading YAML findings lists in a fixed yet flexible format 
 parsing them into an efficiently queryable data structure for package verification.
 """
 
-from typing import Any, Type
+from typing import Any, Type, TypeAlias
 from typing_extensions import Self
 
 import yaml
@@ -11,6 +11,11 @@ import yaml
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.verifier import FindingSeverity
+
+RawFindingsMap: TypeAlias = dict[ECOSYSTEM, dict[str, dict[str, list[tuple[FindingSeverity, str]]]]]
+"""
+The map type underlying `FindingsMap`, which maps packages to findings.
+"""
 
 
 class FindingsMap:
@@ -53,7 +58,7 @@ class FindingsMap:
                     f"Received heterogeneous collection (expected {type(collection)}[{typ}])"
                 )
 
-        raw_map = {}
+        raw_map: RawFindingsMap = {}
 
         findings_list = yaml.safe_load(yml)
         if not isinstance(findings_list, dict):

@@ -11,14 +11,17 @@ Supply-Chain Firewall is a command-line tool for preventing the installation of 
 
 ![scfw demo usage](https://github.com/DataDog/supply-chain-firewall/blob/main/images/demo.gif?raw=true)
 
-Given a command for a supported package manager, Supply-Chain Firewall collects all package targets that would be installed by the command and checks them against reputable sources of data on open source malware and vulnerabilities.  The command is automatically blocked from running when any data source finds that any target is malicious.  In cases where a data source reports other findings for a target, they are presented to the user along with a prompt confirming intent to proceed with the installation.
+Given a command for a supported package manager, Supply-Chain Firewall collects all package targets that would be installed by the command and verifies them against reputable sources of data on open source malware and vulnerabilities.  The command is automatically blocked from running when any verifier returns critical findings for any target, generally indicating that the target in question is malicious.  In cases where a verifier reports warnings for a target, they are presented to the user along with a prompt confirming intent to proceed with the installation.
 
-Default data sources include:
+By default, Supply-Chain Firewall includes verifiers for the following data sources:
 
 - Datadog Security Research's public [malicious packages dataset](https://github.com/DataDog/malicious-software-packages-dataset)
-- [OSV.dev](https://osv.dev) advisories
+- [OSV.dev](https://osv.dev) advisories, both for malicious packages as well as vulnerabilities
+- User-provided lists of custom findings, expressed as YAML (see template in `examples/findings_list.yaml`)
 
-Users may also implement verifiers for alternative data sources. A template for implementating custom verifiers may be found in `examples/verifier.py`. Details may also be found in the API documentation.
+Refer to the API documentation for details of configuring and using these default verifiers.
+
+Users may also implement their own custom verifiers for alternative data sources. A template for implementating a custom verifier may be found in `examples/verifier.py`. Details may also be found in the API documentation.
 
 The principal goal of Supply-Chain Firewall is to block 100% of installations of known-malicious packages within the purview of its data sources.
 

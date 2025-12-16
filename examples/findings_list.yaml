@@ -1,0 +1,21 @@
+findings:
+  # CRITICAL severity findings cause Supply-Chain Firewall to block automatically
+  - severity: CRITICAL
+    finding: "This package is licensed under an incompatible open source license and must not be used"
+    packages:
+      # Any version of PyPI package `foo` has this finding
+      - ecosystem: PyPI
+        name: foo
+      # Only the listed versions of npm package `bar` have this finding
+      - ecosystem: npm
+        name: bar
+        versions:
+          - 1.0.1
+          - 1.0.2
+
+  # WARNING severity findings cause Supply-Chain Firewall to warn while providing the option to continue
+  - severity: WARNING
+    finding: "A more optimized internal version of this package exists: please consider using it"
+    packages:
+      - ecosystem: PyPI
+        name: baz

@@ -3,8 +3,10 @@ findings:
   - severity: CRITICAL
     finding: "This package is licensed under an incompatible open source license and must not be used"
     packages:
+      # Any version of PyPI package `foo` has this finding
       - ecosystem: PyPI
         name: foo
+      # Only the listed versions of npm package `bar` have this finding
       - ecosystem: npm
         name: bar
         versions:

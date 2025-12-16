@@ -66,9 +66,9 @@ class FindingsListVerifier(PackageVerifier):
         Return the set of package ecosystems supported by `FindingsListVerifier`.
 
         Returns:
-            The class' constant set of supported ecosystems: `{ECOSYSTEM.Npm, ECOSYSTEM.PyPI}`.
+            The class' set of supported ecosystems, namely all of them.
         """
-        return {ECOSYSTEM.Npm, ECOSYSTEM.PyPI}
+        return {ecosystem for ecosystem in ECOSYSTEM}
 
     def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
         """

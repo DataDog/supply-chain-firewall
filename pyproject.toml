@@ -38,7 +38,8 @@ packages = [
     "scfw.verifiers",
     "scfw.verifiers.dd_verifier",
     "scfw.verifiers.list_verifier",
-    "scfw.verifiers.osv_verifier"
+    "scfw.verifiers.osv_verifier",
+    "scfw.verifiers.recency_verifier",
 ]
 
 [tool.setuptools.dynamic]

@@ -45,7 +45,6 @@ class PackageAgeVerifier(PackageVerifier):
                 user_minimum_age = int(m)
                 if user_minimum_age < 0:
                     raise ValueError("Minimum age cannot be negative")
-
                 minimum_age = user_minimum_age
             except Exception:
                 _log.warning(

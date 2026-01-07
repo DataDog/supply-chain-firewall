@@ -17,7 +17,7 @@ By default, Supply-Chain Firewall includes verifiers for the following data sour
 
 - Datadog Security Research's public [malicious packages dataset](https://github.com/DataDog/malicious-software-packages-dataset)
 - [OSV.dev](https://osv.dev) advisories, both for malicious packages as well as vulnerabilities
-- Package registry metadata, warning when an installation target was created very recently
+- Package registry metadata, warning when an installation target was created very recently (within 24 hours by default)
 - User-provided lists of custom findings, expressed as YAML (see template in `examples/findings_list.yaml`)
 
 Refer to the API documentation for details of configuring and using these default verifiers.

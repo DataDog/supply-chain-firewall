@@ -15,16 +15,6 @@ import scfw.verifiers.recency_verifier.pypi as pypi
 
 _log = logging.getLogger(__name__)
 
-_HOURS_PER_DAY = 24
-"""
-The number of hours in one day.
-"""
-
-_SECONDS_PER_HOUR = 3600
-"""
-The number of seconds in one hour.
-"""
-
 RECENCY_TOLERANCE_DEFAULT = 24
 """
 The default recency tolerance, expressed in hours.
@@ -62,7 +52,7 @@ class PackageRecencyVerifier(PackageVerifier):
                     f"Invalid recency tolerance '{t}', using default value of {RECENCY_TOLERANCE_DEFAULT} hours"
                 )
 
-        self.tolerance = timedelta(days=tolerance // _HOURS_PER_DAY, hours=tolerance % _HOURS_PER_DAY)
+        self.tolerance = timedelta(hours=tolerance)
 
     @classmethod
     def name(cls) -> str:
@@ -104,7 +94,7 @@ class PackageRecencyVerifier(PackageVerifier):
                     creation_datetime_utc = pypi.get_creation_datetime_utc(package.name)
 
             if datetime.now(tz=timezone.utc) - creation_datetime_utc < self.tolerance:
-                tolerance_hours = int(self.tolerance.total_seconds()) // _SECONDS_PER_HOUR
+                tolerance_hours = int(self.tolerance.total_seconds()) // 3600
                 return [(
                     FindingSeverity.WARNING,
                     (

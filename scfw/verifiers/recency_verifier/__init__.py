@@ -86,6 +86,9 @@ class PackageRecencyVerifier(PackageVerifier):
             A list containing a single `WARNING` finding if `package` is deemed to have
             been created too recently, otherwise an empty list.
         """
+        if self.tolerance == timedelta(0):
+            return []
+
         try:
             match package.ecosystem:
                 case ECOSYSTEM.Npm:

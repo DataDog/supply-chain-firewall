@@ -78,7 +78,7 @@ class FindingsListVerifier(PackageVerifier):
             package: The `Package` to verify.
 
         Returns:
-            All list containing all findings for the given package present in the user-provided
+            A list containing all findings for the given package present in the user-provided
             findings list with which the `FindingsListVerifier` was initialized.
         """
         return self._findings_map.get_findings(package)

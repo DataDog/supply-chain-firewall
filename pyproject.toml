@@ -36,9 +36,10 @@ packages = [
     "scfw.package_managers",
     "scfw.package_managers.npm",
     "scfw.verifiers",
+    "scfw.verifiers.age_verifier",
     "scfw.verifiers.dd_verifier",
     "scfw.verifiers.list_verifier",
-    "scfw.verifiers.osv_verifier"
+    "scfw.verifiers.osv_verifier",
 ]
 
 [tool.setuptools.dynamic]

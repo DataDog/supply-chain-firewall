@@ -4,12 +4,12 @@
 ![Code quality](https://github.com/DataDog/supply-chain-firewall/actions/workflows/code_quality.yaml/badge.svg)
 
 <p align="center">
-  <img src="https://github.com/DataDog/supply-chain-firewall/blob/main/images/logo.png?raw=true" alt="Supply-Chain Firewall" width="300" />
+  <img src="https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/logo.png?raw=true" alt="Supply-Chain Firewall" width="300" />
 </p>
 
 Supply-Chain Firewall is a command-line tool for preventing the installation of malicious PyPI and npm packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
 
-![scfw demo usage](https://github.com/DataDog/supply-chain-firewall/blob/main/images/demo.gif?raw=true)
+![scfw demo usage](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/demo.gif?raw=true)
 
 Given a command for a supported package manager, Supply-Chain Firewall collects all package targets that would be installed by the command and verifies them against reputable sources of data on open source malware and vulnerabilities.  The command is automatically blocked from running when any verifier returns critical findings for any target, generally indicating that the target in question is malicious.  In cases where a verifier reports warnings for a target, they are presented to the user along with a prompt confirming intent to proceed with the installation.
 
@@ -142,7 +142,7 @@ Supply-Chain Firewall can maintain a local JSON Lines log file that records all 
 
 Supply-Chain Firewall can also optionally send logs of blocked and successful installations to Datadog.
 
-![scfw datadog log](https://github.com/DataDog/supply-chain-firewall/blob/main/images/datadog_log.png?raw=true)
+![scfw datadog log](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/datadog_log.png?raw=true)
 
 Users can configure their environments so that Supply-Chain Firewall forwards logs either via the Datadog HTTP API (requires an API key) or to a local Datadog Agent process.  Configuration consists of setting necessary environment variables and, for Agent log forwarding, configuring the Datadog Agent to accept logs from Supply-Chain Firewall.  Note that the Datadog Agent must already be separately [configured](https://docs.datadoghq.com/agent/logs/#activate-log-collection) for log collection in order to use this option.
 

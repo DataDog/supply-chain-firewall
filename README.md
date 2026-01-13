@@ -144,7 +144,7 @@ Supply-Chain Firewall can also optionally send logs of blocked and successful in
 
 ![scfw datadog log](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/datadog_log.png?raw=true)
 
-Users can configure their environments so that Supply-Chain Firewall forwards logs either via the Datadog HTTP API (requires an API key) or to a local Datadog Agent process over one-off TCP connections.  Configuration consists of setting necessary environment variables and, for Agent log forwarding, configuring the Datadog Agent to accept logs from Supply-Chain Firewall.  Note that the Datadog Agent must already be separately [configured](https://docs.datadoghq.com/agent/logs/#activate-log-collection) for log collection in order to use this option.
+Users can configure their environments so that Supply-Chain Firewall forwards logs either via the Datadog HTTP API (requires an API key) or to a local Datadog Agent process over ad hoc TCP connections.  Configuration consists of setting necessary environment variables and, for Agent log forwarding, configuring the Datadog Agent to accept logs from Supply-Chain Firewall.  Note that the Datadog Agent must already be separately [configured](https://docs.datadoghq.com/agent/logs/#activate-log-collection) for log collection in order to use this option.
 
 To opt in, use the `scfw configure` command to interactively or non-interactively configure your environment for Datadog logging.  API key users can additionally set the appropriate [Datadog site parameter](https://docs.datadoghq.com/getting_started/site/#access-the-datadog-site) via the `DD_SITE` environment variable.
 

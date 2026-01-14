@@ -13,14 +13,14 @@ Supply-Chain Firewall is a command-line tool for preventing the installation of 
 
 Given a command for a supported package manager, Supply-Chain Firewall collects all package targets that would be installed by the command and verifies them against reputable sources of data on open source malware and vulnerabilities.  The command is automatically blocked from running when any verifier returns critical findings for any target, generally indicating that the target in question is malicious.  In cases where a verifier reports warnings for a target, they are presented to the user along with a prompt confirming intent to proceed with the installation.
 
-By default, Supply-Chain Firewall includes verifiers for the following data sources:
+Supply-Chain Firewall includes default verifiers for the following data sources:
 
 - Datadog Security Research's public [malicious packages dataset](https://github.com/DataDog/malicious-software-packages-dataset)
 - [OSV.dev](https://osv.dev) advisories, both for malicious packages as well as vulnerabilities
 - Package registry metadata, warning when a package was created very recently (within 24 hours by default)
 - User-provided lists of custom findings, expressed as YAML (see template in `examples/findings_list.yaml`)
 
-Refer to the API documentation for details of configuring and using these default verifiers.
+Documentation specific to each default verifier and the configurable options they support may be found [here]((https://github.com/DataDog/supply-chain-firewall/tree/main/docs/verifiers/)).
 
 Users may also implement their own custom verifiers for alternative data sources. A template for implementating a custom verifier may be found in `examples/verifier.py`. Details may also be found in the API documentation.
 
@@ -116,16 +116,6 @@ Package urllib3-2.6.2:
       * [High] https://osv.dev/vulnerability/GHSA-38jv-5279-wg99
 [?] Proceed with installation? (y/N):
 The installation request was aborted. No changes have been made.
-
-$ scfw run poetry add git+https://github.com/tree-sitter/py-tree-sitter
-Updating dependencies
-Resolving dependencies... (0.1s)
-
-Package operations: 1 install, 0 updates, 0 removals
-
-  - Installing tree-sitter (0.25.2 7d67afb)
-
-Writing lock file
 ```
 
 See the `run` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands/run.md) for details and command-line options.

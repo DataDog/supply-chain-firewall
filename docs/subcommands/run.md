@@ -21,3 +21,10 @@ options:
   --error-on-block     Treat blocked commands as errors (useful for scripting)
   --executable PATH    Package manager executable to use for running commands (default: environmentally determined)
 ```
+
+Users may configure the behavior of this subcommand via the following environment variables:
+
+* `SCFW_ON_WARNING`:
+  Takes the values `ALLOW` or `BLOCK` and has the same effect as passing the command-line options `--allow-on-warning` or `--block-on-warning`, respectively.
+
+  The command-line options take precedence over this environment variable in cases where both are set.

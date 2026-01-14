@@ -1,3 +1,44 @@
 # Datadog API logger
 
-Lorem ipsum dolor sit amet.
+The Datadog API logger submits JSON logs of successful `run` and `audit` actions taken by Supply-Chain Firewall to the Datadog HTTP API.
+
+![scfw datadog log](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/datadog_log.png?raw=true)
+
+Users may configure the behavior of this logger via the following environment variables:
+
+* `DD_API_KEY`:
+    Takes a Datadog API key.  Required to enable this logger.
+
+    The `scfw configure` [subcommand](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/subcommands/configure.md) can be used to write this environment variable into the user's `~/.bashrc` and `~/.zshrc` files.
+
+* `DD_SITE`:
+    Takes a [Datadog site parameter](https://docs.datadoghq.com/getting_started/site/#access-the-datadog-site) for setting the region where the target Datadog organization is hosted.  Defaults to `US1` if not set.
+
+* `DD_ENV`:
+    Takes a string identifying the environment where Supply-Chain Firewall is running.  Defaults to `dev` if not set.
+
+* `DD_LOG_LEVEL`:
+    Takes one of the strings `ALLOW` or `BLOCK`.
+
+    This value controls which `run` actions are forwarded to Datadog as follows:
+    - `ALLOW`: Logs of all `run` actions are forwarded to Datadog
+    - `BLOCK`: Logs of only blocking `run` actions are forwarded to Datadog
+
+    In all cases, `audit` actions are forwarded to Datadog.
+
+* `SCFW_DD_LOG_ATTRIBUTES`:
+    Takes a single JSON object containing custom log attributes that should be included in the log forwarded to Datadog.
+
+    ```
+    SCFW_DD_LOG_ATTRIBUTES='{"mascot_name": "Bits", "location": "New York"}'
+    ```
+
+* `SCFW_DD_LOG_ATTRIBUTES_FILE`:
+    Takes a local filesystem path to a JSON file containing custom log attributes.
+
+    Attributes read from `SCFW_DD_LOG_ATTRIBUTES` take precendence over those read from file in case of overlap.
+
+* `SCFW_HOME`:
+    Takes the local filesystem path of the SCFW home directory.
+
+    If `SCFW_DD_LOG_ATTRIBUTES_FILE` is not set, this logger will look for custom log attributes at `$SCFW_HOME/dd_logger/log_attributes.json` by default, with `SCFW_DD_LOG_ATTRIBUTES` again taking precedence over attributes read from file.

@@ -149,27 +149,15 @@ See the `audit` command [documentation](https://github.com/DataDog/supply-chain-
 
 ## Datadog Log Management integration
 
-Supply-Chain Firewall can maintain a local JSON Lines log file that records all completed `run` and `audit` executions.  The environment variable `SCFW_LOG_FILE` may be used to change where SCFW writes these logs, with the default location being `$SCFW_HOME/scfw.log`.  Users are strongly encouraged to set either `SCFW_LOG_FILE` or `SCFW_HOME` in order to benefit from this local logging.
-
-Supply-Chain Firewall can also optionally send logs of blocked and successful installations to Datadog.
+Supply-Chain Firewall can optionally send logs of blocked and successful installations to Datadog.
 
 ![scfw datadog log](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/datadog_log.png?raw=true)
 
-Users can configure their environments so that Supply-Chain Firewall forwards logs either via the Datadog HTTP API (requires an API key) or to a local Datadog Agent process over ad hoc TCP connections.  Configuration consists of setting necessary environment variables and, for Agent log forwarding, configuring the Datadog Agent to accept logs from Supply-Chain Firewall.  Note that the Datadog Agent must already be separately [configured](https://docs.datadoghq.com/agent/logs/#activate-log-collection) for log collection in order to use this option.
+Logs may be forwarded to Datadog via the HTTP API (requires an API key) or via a local Datadog Agent process.  Documentation on how to enable and configure these loggers may be found [here](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/loggers).
 
-To opt in, use the `scfw configure` command to interactively or non-interactively configure your environment for Datadog logging.  API key users can additionally set the appropriate [Datadog site parameter](https://docs.datadoghq.com/getting_started/site/#access-the-datadog-site) via the `DD_SITE` environment variable.
+Supply-Chain Firewall can maintain a local JSON Lines log file that records all completed `run` and `audit` executions.  Users are strongly encouraged to [enable](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/loggers/file_logger.md) this logger, as having a centralized record of executed package manager commands, their outcomes, and installed packages over time can be useful in incident response scenarios.  Once file logging has been enabled, users may separately [configure](https://docs.datadoghq.com/agent/logs/?tab=tailfiles#custom-log-collection) the local Datadog Agent to tail this file and thereby ingest logs from SCFW with no additional overhead.
 
-Alternately, if local JSON Lines file logging has been enabled, users may independently [configure](https://docs.datadoghq.com/agent/logs/?tab=tailfiles#custom-log-collection) the Datadog Agent to tail this file and thereby ingest logs from SCFW.
-
-Custom Datadog log attributes relevant to your use-case may be supplied via an environment variable or a file containing a single JSON object.
-
-```bash
-$ SCFW_DD_LOG_ATTRIBUTES='{"mascot_name": "Bits", "location": "New York"}' scfw run pip install datadog-api-client
-```
-
-By default, SCFW looks for this file at `$SCFW_HOME/dd_logger/log_attributes.json`, or a custom filepath may be supplied via the environment variable `SCFW_DD_LOG_ATTRIBUTES_FILE`.  Otherwise, custom attributes may be provided via the environment variable `SCFW_DD_LOG_ATTRIBUTES`, with the environment variable values overriding those read from file in case of overlap.
-
-Supply-Chain Firewall can integrate with user-supplied loggers.  A template for implementating a custom logger may be found in `examples/logger.py`. Refer to the API documentation for details.
+Supply-Chain Firewall can also integrate with user-supplied loggers.  A template for implementating a custom logger may be found in `examples/logger.py`. Refer to the API documentation for details.
 
 ## Development
 

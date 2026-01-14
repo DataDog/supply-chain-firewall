@@ -22,4 +22,6 @@ Users may configure the behavior of this verifier via the following environment 
   ```
 
 * `SCFW_HOME`:
-  Takes the local filesystem path of the SCFW home directory.  If `SCFW_OSV_VERIFIER_IGNORE` is not set, the verifier will instead look for an ignore list file at `$SCFW_HOME/osv_verifier/ignore.txt`
+  Takes the local filesystem path of the SCFW home directory.
+
+  If `SCFW_OSV_VERIFIER_IGNORE` is not set, the verifier will instead look for an ignore list file at `$SCFW_HOME/osv_verifier/ignore.txt`

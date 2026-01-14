@@ -7,7 +7,7 @@
   <img src="https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/logo.png?raw=true" alt="Supply-Chain Firewall" width="300" />
 </p>
 
-Supply-Chain Firewall is a command-line tool for preventing the installation of malicious PyPI and npm packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
+Supply-Chain Firewall is a command-line tool for preventing the installation of malicious npm and PyPI packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
 
 ![scfw demo usage](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/demo.gif?raw=true)
 
@@ -60,6 +60,8 @@ $ scfw configure
 ...
 ```
 
+See the `configure` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands/configure.md) for details and command-line options.
+
 ### Compatibility and limitations
 
 |  Package manager  |   Supported versions  |        Inspected subcommands       |
@@ -85,27 +87,48 @@ $ scfw configure --remove
 
 ## Usage
 
+```bash
+$ scfw --help
+usage: scfw [-h] [-v] [--log-level LEVEL] {audit,configure,run} ...
+
+A tool for preventing the installation of malicious npm and PyPI packages.
+
+positional arguments:
+  {audit,configure,run}
+
+options:
+  -h, --help            show this help message and exit
+  -v, --version         show program's version number and exit
+  --log-level LEVEL     Desired logging level (default: WARNING, options: DEBUG, INFO, WARNING, ERROR)
+```
+
 ### Inspect package manager commands
 
 To use Supply-Chain Firewall to inspect a package manager command, simply prepend `scfw run` to the command you intend to run:
 
 ```
 $ scfw run npm install react
+added 1 package in 226ms
+
 $ scfw run pip install -r requirements.txt
-$ scfw run poetry add git+https://github.com/DataDog/guarddog
+Package urllib3-2.6.2:
+  - An OSV.dev advisory exists for package urllib3-2.6.2:
+      * [High] https://osv.dev/vulnerability/GHSA-38jv-5279-wg99
+[?] Proceed with installation? (y/N):
+The installation request was aborted. No changes have been made.
+
+$ scfw run poetry add git+https://github.com/tree-sitter/py-tree-sitter
+Updating dependencies
+Resolving dependencies... (0.1s)
+
+Package operations: 1 install, 0 updates, 0 removals
+
+  - Installing tree-sitter (0.25.2 7d67afb)
+
+Writing lock file
 ```
 
-For `pip install` commands, packages will be installed in the same environment (virtual or global) in which the command was run.
-
-Several command-line options of the `run` subcommand are noteworthy:
-
-* `--dry-run`: Verify any installation targets but do not run the package manager command. The exit code indicates whether there were findings of any severity
-
-* `--allow-on-warning` and `--block-on-warning`: Non-interactively allow or block commands, respectively, with only warning-level findings. Setting the environment variable `SCFW_ON_WARNING` to `"ALLOW"` or `"BLOCK"` achieves the same effect, with the CLI options taking priority over the environment variable when both are used
-
-* `--error-on-block`: Treat blocked commands as errors (useful for scripting)
-
-Run `scfw run --help` to see all available command-line options.
+See the `run` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands/run.md) for details and command-line options.
 
 ### Audit installed packages
 
@@ -132,9 +155,7 @@ Package setuptools-65.5.0:
       * https://osv.dev/vulnerability/PYSEC-2022-43012
 ```
 
-Supply-Chain Firewall audits all installed packages visible to the package manager in the invoking environment.  The user may specify the package manager executable they wish to use on the command line.  For `npm` and `poetry` audits, Supply-Chain Firewall assumes the project of interest is in the current working directory.
-
-Currently, `npm` audits do not take globally installed packages into consideration.  To audit a globally installed `npm` package, first `cd` into the package's directory (inside the global `node_modules/`) and perform a local audit there.
+See the `audit` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands/audit.md) for details and command-line options.
 
 ## Datadog Log Management integration
 

@@ -241,7 +241,7 @@ def _cli() -> ArgumentParser:
     parser = ArgumentParser(
         prog="scfw",
         exit_on_error=False,
-        description="A tool for preventing the installation of malicious PyPI and npm packages."
+        description="A tool for preventing the installation of malicious npm and PyPI packages."
     )
 
     parser.add_argument(

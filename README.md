@@ -7,20 +7,20 @@
   <img src="https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/logo.png?raw=true" alt="Supply-Chain Firewall" width="300" />
 </p>
 
-Supply-Chain Firewall is a command-line tool for preventing the installation of malicious PyPI and npm packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
+Supply-Chain Firewall is a command-line tool for preventing the installation of malicious npm and PyPI packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
 
 ![scfw demo usage](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/demo.gif?raw=true)
 
 Given a command for a supported package manager, Supply-Chain Firewall collects all package targets that would be installed by the command and verifies them against reputable sources of data on open source malware and vulnerabilities.  The command is automatically blocked from running when any verifier returns critical findings for any target, generally indicating that the target in question is malicious.  In cases where a verifier reports warnings for a target, they are presented to the user along with a prompt confirming intent to proceed with the installation.
 
-By default, Supply-Chain Firewall includes verifiers for the following data sources:
+Supply-Chain Firewall includes default verifiers for the following data sources:
 
 - Datadog Security Research's public [malicious packages dataset](https://github.com/DataDog/malicious-software-packages-dataset)
 - [OSV.dev](https://osv.dev) advisories, both for malicious packages as well as vulnerabilities
-- Package registry metadata, warning when a package was created very recently (within 24 hours by default)
-- User-provided lists of custom findings, expressed as YAML (see template in `examples/findings_list.yaml`)
+- Package registry metadata, warning when a package was created very recently
+- User-provided lists of custom findings for specific packages
 
-Refer to the API documentation for details of configuring and using these default verifiers.
+Documentation specific to each default verifier and the configurable options they support may be found [here](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/verifiers.md).
 
 Users may also implement their own custom verifiers for alternative data sources. A template for implementating a custom verifier may be found in `examples/verifier.py`. Details may also be found in the API documentation.
 
@@ -60,6 +60,8 @@ $ scfw configure
 ...
 ```
 
+See the `configure` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands.md#scfw-configure) for details and command-line options.
+
 ### Compatibility and limitations
 
 |  Package manager  |   Supported versions  |        Inspected subcommands       |
@@ -85,27 +87,38 @@ $ scfw configure --remove
 
 ## Usage
 
+```bash
+$ scfw --help
+usage: scfw [-h] [-v] [--log-level LEVEL] {audit,configure,run} ...
+
+A tool for preventing the installation of malicious npm and PyPI packages.
+
+positional arguments:
+  {audit,configure,run}
+
+options:
+  -h, --help            show this help message and exit
+  -v, --version         show program's version number and exit
+  --log-level LEVEL     Desired logging level (default: WARNING, options: DEBUG, INFO, WARNING, ERROR)
+```
+
 ### Inspect package manager commands
 
 To use Supply-Chain Firewall to inspect a package manager command, simply prepend `scfw run` to the command you intend to run:
 
 ```
 $ scfw run npm install react
+added 1 package in 226ms
+
 $ scfw run pip install -r requirements.txt
-$ scfw run poetry add git+https://github.com/DataDog/guarddog
+Package urllib3-2.6.2:
+  - An OSV.dev advisory exists for package urllib3-2.6.2:
+      * [High] https://osv.dev/vulnerability/GHSA-38jv-5279-wg99
+[?] Proceed with installation? (y/N):
+The installation request was aborted. No changes have been made.
 ```
 
-For `pip install` commands, packages will be installed in the same environment (virtual or global) in which the command was run.
-
-Several command-line options of the `run` subcommand are noteworthy:
-
-* `--dry-run`: Verify any installation targets but do not run the package manager command. The exit code indicates whether there were findings of any severity
-
-* `--allow-on-warning` and `--block-on-warning`: Non-interactively allow or block commands, respectively, with only warning-level findings. Setting the environment variable `SCFW_ON_WARNING` to `"ALLOW"` or `"BLOCK"` achieves the same effect, with the CLI options taking priority over the environment variable when both are used
-
-* `--error-on-block`: Treat blocked commands as errors (useful for scripting)
-
-Run `scfw run --help` to see all available command-line options.
+See the `run` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands.md#scfw-run) for details and command-line options.
 
 ### Audit installed packages
 
@@ -132,33 +145,19 @@ Package setuptools-65.5.0:
       * https://osv.dev/vulnerability/PYSEC-2022-43012
 ```
 
-Supply-Chain Firewall audits all installed packages visible to the package manager in the invoking environment.  The user may specify the package manager executable they wish to use on the command line.  For `npm` and `poetry` audits, Supply-Chain Firewall assumes the project of interest is in the current working directory.
-
-Currently, `npm` audits do not take globally installed packages into consideration.  To audit a globally installed `npm` package, first `cd` into the package's directory (inside the global `node_modules/`) and perform a local audit there.
+See the `audit` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands.md#scfw-audit) for details and command-line options.
 
 ## Datadog Log Management integration
 
-Supply-Chain Firewall can maintain a local JSON Lines log file that records all completed `run` and `audit` executions.  The environment variable `SCFW_LOG_FILE` may be used to change where SCFW writes these logs, with the default location being `$SCFW_HOME/scfw.log`.  Users are strongly encouraged to set either `SCFW_LOG_FILE` or `SCFW_HOME` in order to benefit from this local logging.
-
-Supply-Chain Firewall can also optionally send logs of blocked and successful installations to Datadog.
+Supply-Chain Firewall can optionally send logs of blocked and successful installations to Datadog.
 
 ![scfw datadog log](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/datadog_log.png?raw=true)
 
-Users can configure their environments so that Supply-Chain Firewall forwards logs either via the Datadog HTTP API (requires an API key) or to a local Datadog Agent process over ad hoc TCP connections.  Configuration consists of setting necessary environment variables and, for Agent log forwarding, configuring the Datadog Agent to accept logs from Supply-Chain Firewall.  Note that the Datadog Agent must already be separately [configured](https://docs.datadoghq.com/agent/logs/#activate-log-collection) for log collection in order to use this option.
+Logs may be forwarded to Datadog via the HTTP API (requires an API key) or via a local Datadog Agent process.  Documentation on how to enable and configure these loggers may be found [here](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/loggers.md).
 
-To opt in, use the `scfw configure` command to interactively or non-interactively configure your environment for Datadog logging.  API key users can additionally set the appropriate [Datadog site parameter](https://docs.datadoghq.com/getting_started/site/#access-the-datadog-site) via the `DD_SITE` environment variable.
+Supply-Chain Firewall can maintain a local JSON Lines log file that records all completed `run` and `audit` executions.  Users are strongly encouraged to [enable](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/loggers.md#local-file-logger) this logger, as having a centralized record of executed package manager commands, their outcomes, and installed packages over time can be useful in incident response scenarios.  Once file logging has been enabled, users may separately [configure](https://docs.datadoghq.com/agent/logs/?tab=tailfiles#custom-log-collection) the local Datadog Agent to tail this file and thereby ingest logs from SCFW with no additional overhead.
 
-Alternately, if local JSON Lines file logging has been enabled, users may independently [configure](https://docs.datadoghq.com/agent/logs/?tab=tailfiles#custom-log-collection) the Datadog Agent to tail this file and thereby ingest logs from SCFW.
-
-Custom Datadog log attributes relevant to your use-case may be supplied via an environment variable or a file containing a single JSON object.
-
-```bash
-$ SCFW_DD_LOG_ATTRIBUTES='{"mascot_name": "Bits", "location": "New York"}' scfw run pip install datadog-api-client
-```
-
-By default, SCFW looks for this file at `$SCFW_HOME/dd_logger/log_attributes.json`, or a custom filepath may be supplied via the environment variable `SCFW_DD_LOG_ATTRIBUTES_FILE`.  Otherwise, custom attributes may be provided via the environment variable `SCFW_DD_LOG_ATTRIBUTES`, with the environment variable values overriding those read from file in case of overlap.
-
-Supply-Chain Firewall can integrate with user-supplied loggers.  A template for implementating a custom logger may be found in `examples/logger.py`. Refer to the API documentation for details.
+Supply-Chain Firewall can also integrate with user-supplied loggers.  A template for implementating a custom logger may be found in `examples/logger.py`. Refer to the API documentation for details.
 
 ## Development
 

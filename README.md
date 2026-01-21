@@ -20,7 +20,7 @@ Supply-Chain Firewall includes default verifiers for the following data sources:
 - Package registry metadata, warning when a package was created very recently
 - User-provided lists of custom findings for specific packages
 
-Documentation specific to each default verifier and the configurable options they support may be found [here]((https://github.com/DataDog/supply-chain-firewall/tree/main/docs/verifiers)).
+Documentation specific to each default verifier and the configurable options they support may be found [here]((https://github.com/DataDog/supply-chain-firewall/tree/main/docs/verifiers.md)).
 
 Users may also implement their own custom verifiers for alternative data sources. A template for implementating a custom verifier may be found in `examples/verifier.py`. Details may also be found in the API documentation.
 
@@ -60,7 +60,7 @@ $ scfw configure
 ...
 ```
 
-See the `configure` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands/configure.md) for details and command-line options.
+See the `configure` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands.md#scfw-configure) for details and command-line options.
 
 ### Compatibility and limitations
 
@@ -118,7 +118,7 @@ Package urllib3-2.6.2:
 The installation request was aborted. No changes have been made.
 ```
 
-See the `run` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands/run.md) for details and command-line options.
+See the `run` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands.md#scfw-run) for details and command-line options.
 
 ### Audit installed packages
 
@@ -145,7 +145,7 @@ Package setuptools-65.5.0:
       * https://osv.dev/vulnerability/PYSEC-2022-43012
 ```
 
-See the `audit` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands/audit.md) for details and command-line options.
+See the `audit` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands.md#scfw-audit) for details and command-line options.
 
 ## Datadog Log Management integration
 
@@ -153,9 +153,9 @@ Supply-Chain Firewall can optionally send logs of blocked and successful install
 
 ![scfw datadog log](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/datadog_log.png?raw=true)
 
-Logs may be forwarded to Datadog via the HTTP API (requires an API key) or via a local Datadog Agent process.  Documentation on how to enable and configure these loggers may be found [here](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/loggers).
+Logs may be forwarded to Datadog via the HTTP API (requires an API key) or via a local Datadog Agent process.  Documentation on how to enable and configure these loggers may be found [here](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/loggers.md).
 
-Supply-Chain Firewall can maintain a local JSON Lines log file that records all completed `run` and `audit` executions.  Users are strongly encouraged to [enable](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/loggers/file_logger.md) this logger, as having a centralized record of executed package manager commands, their outcomes, and installed packages over time can be useful in incident response scenarios.  Once file logging has been enabled, users may separately [configure](https://docs.datadoghq.com/agent/logs/?tab=tailfiles#custom-log-collection) the local Datadog Agent to tail this file and thereby ingest logs from SCFW with no additional overhead.
+Supply-Chain Firewall can maintain a local JSON Lines log file that records all completed `run` and `audit` executions.  Users are strongly encouraged to [enable](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/loggers.md#local-file-logger) this logger, as having a centralized record of executed package manager commands, their outcomes, and installed packages over time can be useful in incident response scenarios.  Once file logging has been enabled, users may separately [configure](https://docs.datadoghq.com/agent/logs/?tab=tailfiles#custom-log-collection) the local Datadog Agent to tail this file and thereby ingest logs from SCFW with no additional overhead.
 
 Supply-Chain Firewall can also integrate with user-supplied loggers.  A template for implementating a custom logger may be found in `examples/logger.py`. Refer to the API documentation for details.
 

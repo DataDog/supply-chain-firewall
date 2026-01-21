@@ -20,7 +20,7 @@ Supply-Chain Firewall includes default verifiers for the following data sources:
 - Package registry metadata, warning when a package was created very recently
 - User-provided lists of custom findings for specific packages
 
-Documentation specific to each default verifier and the configurable options they support may be found [here]((https://github.com/DataDog/supply-chain-firewall/tree/main/docs/verifiers.md)).
+Documentation specific to each default verifier and the configurable options they support may be found [here](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/verifiers.md).
 
 Users may also implement their own custom verifiers for alternative data sources. A template for implementating a custom verifier may be found in `examples/verifier.py`. Details may also be found in the API documentation.
 

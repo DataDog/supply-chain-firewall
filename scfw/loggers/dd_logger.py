@@ -125,6 +125,7 @@ class DDLogFormatter(logging.Formatter):
             "version": scfw.__version__,
             "env": os.getenv("DD_ENV", DD_ENV),
             "hostname": socket.gethostname(),
+            "cwd": os.getcwd(),
         }
 
         try:

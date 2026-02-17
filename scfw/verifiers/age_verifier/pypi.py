@@ -6,6 +6,10 @@ from datetime import datetime, timezone
 
 import requests
 
+# PyPI releases before circa 2010 use a slightly different datetime format
+_DATETIME_FORMAT_PREVIOUS = "%Y-%m-%dT%H:%M:%SZ"
+_DATETIME_FORMAT_CURRENT = "%Y-%m-%dT%H:%M:%S.%fZ"
+
 
 def get_creation_datetime_utc(package_name: str) -> datetime:
     """
@@ -40,10 +44,12 @@ def get_creation_datetime_utc(package_name: str) -> datetime:
             if not upload_timestamp:
                 continue
 
-            upload_datetime = datetime.strptime(upload_timestamp, "%Y-%m-%dT%H:%M:%S.%fZ")
-            upload_datetime_utc = upload_datetime.replace(tzinfo=timezone.utc)
+            try:
+                upload_datetime = datetime.strptime(upload_timestamp, _DATETIME_FORMAT_CURRENT)
+            except ValueError:
+                upload_datetime = datetime.strptime(upload_timestamp, _DATETIME_FORMAT_PREVIOUS)
 
-            upload_datetimes.add(upload_datetime_utc)
+            upload_datetimes.add(upload_datetime.replace(tzinfo=timezone.utc))
 
     if not upload_datetimes:
         raise RuntimeError("No upload timestamps found in package metadata")

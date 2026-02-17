@@ -7,6 +7,7 @@ import inquirer  # type: ignore
 import logging
 import os
 import sys
+from typing import Optional
 
 from scfw.constants import ON_WARNING_VAR
 from scfw.logger import FirewallAction
@@ -33,6 +34,7 @@ def run_firewall(args: Namespace) -> int:
     """
     package_manager = None
     critical_report, warning_report = None, None
+    warning_action = _get_warning_action(args.allow_on_warning, args.block_on_warning)
 
     loggers = FirewallLoggers()
     _log.info(f"Command: '{' '.join(args.command)}'")
@@ -68,7 +70,10 @@ def run_firewall(args: Namespace) -> int:
 
             if not args.dry_run and warning_report:
                 print(warning_report)
-                if _get_warning_action(args.allow_on_warning, args.block_on_warning) == FirewallAction.BLOCK:
+                if (
+                    warning_action == FirewallAction.BLOCK
+                    or (not warning_action and inquirer.confirm("Proceed with installation?", default=False))
+                ):
                     loggers.log_firewall_action(
                         package_manager.ecosystem(),
                         package_manager.name(),
@@ -89,7 +94,7 @@ def run_firewall(args: Namespace) -> int:
             elif warning_report:
                 print(warning_report)
             print("Dry-run: exiting without running command.")
-            return 1 if (critical_report or warning_report) else 0
+            return 1 if critical_report or (warning_report and warning_action == FirewallAction.BLOCK) else 0
 
         loggers.log_firewall_action(
             package_manager.ecosystem(),
@@ -130,9 +135,10 @@ def run_firewall(args: Namespace) -> int:
         return package_manager.run_command(args.command)
 
 
-def _get_warning_action(cli_allow_choice: bool, cli_block_choice: bool) -> FirewallAction:
+def _get_warning_action(cli_allow_choice: bool, cli_block_choice: bool) -> Optional[FirewallAction]:
     """
-    Return the `FirewallAction` that should be taken for `WARNING`-level findings.
+    Return the `FirewallAction` that would be automatically taken for `WARNING`-level findings
+    based on available command-line options and environmental settings.
 
     Args:
         cli_allow_choice:
@@ -141,8 +147,9 @@ def _get_warning_action(cli_allow_choice: bool, cli_block_choice: bool) -> Firew
             A `bool` indicating whether the user selected `--block-on-warning` on the command-line.
 
     Returns:
-        The `FirewallAction` that should be taken based on the user's configured choices or, if
-        no choice has been made, on the user's runtime (interactive) decision.
+        The `FirewallAction` that would be automatically taken based on the available settings or
+        `None` if an automatic action could not be determined. In this case, the user's runtime
+        (interactive) decision determines the action taken.
     """
     if cli_block_choice:
         return FirewallAction.BLOCK
@@ -161,5 +168,4 @@ def _get_warning_action(cli_allow_choice: bool, cli_block_choice: bool) -> Firew
         )
         return FirewallAction.BLOCK
 
-    user_confirmed = inquirer.confirm("Proceed with installation?", default=False)
-    return FirewallAction.ALLOW if user_confirmed else FirewallAction.BLOCK
+    return None

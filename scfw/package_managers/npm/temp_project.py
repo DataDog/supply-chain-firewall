@@ -73,13 +73,14 @@ class TemporaryNpmProject:
                 shutil.copy(orig_resource, temp_resource)
             else:
                 resource_kind = "directory" if is_dir else "file"
-                _log.info(
+                _log.debug(
                     f"Project root directory {self.project_root} does not contain a {resource} {resource_kind}"
                 )
 
         self._temp_dir = TemporaryDirectory()
         temp_dir_path = Path(self._temp_dir.name)
 
+        copy_from_project_root(temp_dir_path, ".npmrc")
         copy_from_project_root(temp_dir_path, "package.json")
         copy_from_project_root(temp_dir_path, "package-lock.json")
         copy_from_project_root(temp_dir_path, "node_modules", is_dir=True)

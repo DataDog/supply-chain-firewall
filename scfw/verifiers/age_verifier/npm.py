@@ -2,7 +2,8 @@
 Provides utilities for querying the npm registry to discover package creation dates.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
+from dateutil import parser as datetime_parser
 
 import requests
 
@@ -21,7 +22,7 @@ def get_creation_datetime_utc(package_name: str) -> datetime:
         requests.HTTPError: Failed to query the npm registry.
         requests.exceptions.JSONDecodeError: Failed to parse query response as JSON.
         RuntimeError: Package metadata missing required fields.
-        ValueError: Creation timestamp does not have the expected format.
+        dateutil.ParserError: Failed to parse publication datetime.
     """
     r = requests.get(f"https://registry.npmjs.org/{package_name}")
     r.raise_for_status()
@@ -31,7 +32,4 @@ def get_creation_datetime_utc(package_name: str) -> datetime:
     if not creation_timestamp:
         raise RuntimeError(f"Metadata for npm package {package_name} missing required fields")
 
-    creation_datetime = datetime.strptime(creation_timestamp, "%Y-%m-%dT%H:%M:%S.%fZ")
-    creation_datetime_utc = creation_datetime.replace(tzinfo=timezone.utc)
-
-    return creation_datetime_utc
+    return datetime_parser.parse(creation_timestamp)

@@ -2,7 +2,8 @@
 Provides utilities for querying the PyPI registry to discover package creation dates.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
+from dateutil import parser as datetime_parser
 
 import requests
 
@@ -23,7 +24,7 @@ def get_creation_datetime_utc(package_name: str) -> datetime:
         RuntimeError:
             * Package metadata missing required fields.
             * No upload timestamps found in package metadata.
-        ValueError: Creation timestamp does not have the expected format.
+        dateutil.ParserError: Failed to parse publication datetime.
     """
     r = requests.get(f"https://pypi.org/pypi/{package_name}/json")
     r.raise_for_status()
@@ -40,10 +41,7 @@ def get_creation_datetime_utc(package_name: str) -> datetime:
             if not upload_timestamp:
                 continue
 
-            upload_datetime = datetime.strptime(upload_timestamp, "%Y-%m-%dT%H:%M:%S.%fZ")
-            upload_datetime_utc = upload_datetime.replace(tzinfo=timezone.utc)
-
-            upload_datetimes.add(upload_datetime_utc)
+            upload_datetimes.add(datetime_parser.parse(upload_timestamp))
 
     if not upload_datetimes:
         raise RuntimeError("No upload timestamps found in package metadata")

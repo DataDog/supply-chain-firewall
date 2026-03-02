@@ -1,6 +1,6 @@
-blessed==1.30.0 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:4061a9f10dd22798716c2548ba36385af6a29d856c897f367c6ccc927e0b3a5a \
-    --hash=sha256:4d547019d7b40fc5420ea2ba2bc180fdccc31d6715298e2b49ffa7b020d44667
+blessed==1.32.0 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:c6fdc18838491ebc7f0460234917eff4e172074934f5f80e82672417bd74be70 \
+    --hash=sha256:d4090e9908cf86bea15a5275845c8bfc69c4c34eb6d22de07c65d26f1e54a918
 certifi==2026.1.4 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:9943707519e4add1115f44c2bc244f782c0249876bf51b6599fee1ffbedd685c \
     --hash=sha256:ac726dd470482006e014ad384921ed6438c457018f4b3d204aea4281258b2120

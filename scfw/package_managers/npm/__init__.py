@@ -20,6 +20,13 @@ _log = logging.getLogger(__name__)
 
 MIN_NPM_VERSION = version_parse("7.0.0")
 
+INSPECTED_SUBCOMMANDS = {
+    # https://docs.npmjs.com/cli/v11/commands/npm-install
+    "install", "add", "i", "in", "ins", "inst", "insta", "instal", "isnt", "isnta", "isntal", "isntall",
+    # https://docs.npmjs.com/cli/v11/commands/npm-ci
+    "ci", "clean-install", "ic", "install-clean", "isntall-clean",
+}
+
 
 class Npm(PackageManager):
     """
@@ -98,18 +105,10 @@ class Npm(PackageManager):
             RuntimeError: Failed to resolve npm installation targets (with error detail)
             UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
-        def is_install_command(command: list[str]) -> bool:
-            # https://docs.npmjs.com/cli/v10/commands/npm-install
-            install_aliases = {
-                "install", "add", "i", "in", "ins", "inst", "insta", "instal", "isnt", "isnta", "isntal", "isntall"
-            }
-            return any(alias in command for alias in install_aliases)
-
         if not command or command[0] != self.name():
             raise ValueError("Received empty or invalid npm command line")
 
-        # For now, allow all non-`install` commands
-        if not is_install_command(command):
+        if not any(subcommand in command for subcommand in INSPECTED_SUBCOMMANDS):
             return []
 
         self._check_version()

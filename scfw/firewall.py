@@ -72,7 +72,7 @@ def run_firewall(args: Namespace) -> int:
                 print(warning_report)
                 if (
                     warning_action == FirewallAction.BLOCK
-                    or (not warning_action and inquirer.confirm("Proceed with installation?", default=False))
+                    or not (warning_action or inquirer.confirm("Proceed with installation?", default=False))
                 ):
                     loggers.log_firewall_action(
                         package_manager.ecosystem(),

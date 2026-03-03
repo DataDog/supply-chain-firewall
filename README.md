@@ -28,6 +28,7 @@ The principal goal of Supply-Chain Firewall is to block 100% of installations of
 
 ---
 ### Interested in SCFW for your business use-case? [Enroll](https://docs.google.com/forms/d/1Xqh5h1n3-jC7au2t30fdTq732dkTJqt_cb7C7T-AkPc/edit) as a design partner.
+### Check out the new Datadog Agent [integration](https://docs.datadoghq.com/integrations/supply-chain-firewall/) and Cloud SIEM [content pack](https://app.datadoghq.com/security/siem/content-packs?query=%22Supply-Chain%20Firewall%22) for SCFW.
 ---
 
 ## Getting started

@@ -29,8 +29,6 @@ The principal goal of Supply-Chain Firewall is to block 100% of installations of
 ---
 ### Interested in SCFW for your business use-case? [Enroll](https://docs.google.com/forms/d/1Xqh5h1n3-jC7au2t30fdTq732dkTJqt_cb7C7T-AkPc/edit) as a design partner.
 ---
-### Check out the new Datadog Agent [integration](https://docs.datadoghq.com/integrations/supply-chain-firewall/) and Cloud SIEM [content pack](https://app.datadoghq.com/security/siem/content-packs?query=%22Supply-Chain%20Firewall%22) for SCFW.
----
 
 ## Getting started
 
@@ -160,6 +158,10 @@ Logs may be forwarded to Datadog via the HTTP API (requires an API key) or via a
 Supply-Chain Firewall can maintain a local JSON Lines log file that records all completed `run` and `audit` executions.  Users are strongly encouraged to [enable](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/loggers.md#local-file-logger) this logger, as having a centralized record of executed package manager commands, their outcomes, and installed packages over time can be useful in incident response scenarios.  Once file logging has been enabled, users may separately [configure](https://docs.datadoghq.com/agent/logs/?tab=tailfiles#custom-log-collection) the local Datadog Agent to tail this file and thereby ingest logs from SCFW with no additional overhead.
 
 Supply-Chain Firewall can also integrate with user-supplied loggers.  A template for implementating a custom logger may be found in `examples/logger.py`. Refer to the API documentation for details.
+
+---
+### Check out the new Datadog Agent [integration](https://docs.datadoghq.com/integrations/supply-chain-firewall/) and Cloud SIEM [content pack](https://app.datadoghq.com/security/siem/content-packs?query=%22Supply-Chain%20Firewall%22) for SCFW.
+---
 
 ## Development
 

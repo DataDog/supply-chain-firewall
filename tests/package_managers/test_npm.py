@@ -3,6 +3,7 @@ Tests establishing the validity of Supply-Chain Firewall's assumptions about
 npm's command-line options and behavior.
 """
 
+import hashlib
 import itertools
 import json
 import os
@@ -43,6 +44,25 @@ PREVENT_INSTALL_TEST_CASES = list(
         {TEST_PACKAGE_LATEST_SPEC},
     )
 )
+
+PREVENT_CI_TEST_CASES = [
+    ["npm", "--version", "ci"],
+    ["npm", "ci", "--version"],
+    ["npm", "--version", "ci", "--version"],
+    ["npm", "-h", "ci"],
+    ["npm", "ci", "-h"],
+    ["npm", "-h", "ci", "-h"],
+    ["npm", "--help", "ci"],
+    ["npm", "ci", "--help"],
+    ["npm", "--help", "ci", "--help"],
+    ["npm", "--dry-run", "ci"],
+    ["npm", "ci", "--dry-run"],
+    ["npm", "--dry-run", "ci", "--dry-run"],
+    ["npm", "--non-existent-option", "--version", "ci"],
+    ["npm", "--non-existent-option", "--h", "ci"],
+    ["npm", "--non-existent-option", "--help", "ci"],
+    ["npm", "--non-existent-option", "--dry-run", "ci"],
+]
 
 
 def test_npm_version_output():
@@ -299,6 +319,31 @@ def test_options_prevent_install_installed_previous(
     )
 
 
+@pytest.mark.parametrize("command_line", PREVENT_CI_TEST_CASES)
+def test_options_prevent_ci_dependency_latest_lockfile(
+    npm_project_dependency_latest_lockfile,
+    command_line: list[str]
+):
+    """
+    Test that the `-h`/`--help` and `--dry-run` options prevent an `npm ci` command
+    from running in an npm project with `TEST_PACKAGE@TEST_PACKAGE_LATEST` specified
+    as a dependency and present in the lockfile but not installed.
+    """
+    backend_test_no_ci(npm_project_dependency_latest_lockfile, command_line)
+
+
+@pytest.mark.parametrize("command_line", PREVENT_CI_TEST_CASES)
+def test_options_prevent_ci_installed_latest(
+    npm_project_installed_latest,
+    command_line: list[str]
+):
+    """
+    Test that the `-h`/`--help` and `--dry-run` options prevent an `npm ci` command
+    from running in an npm project with `TEST_PACKAGE@TEST_PACKAGE_LATEST` installed.
+    """
+    backend_test_no_ci(npm_project_installed_latest, command_line)
+
+
 def test_npm_list_empty_directory(empty_directory):
     """
     Test that the `npm list` command behaves as expected in an empty directory.
@@ -408,6 +453,57 @@ def backend_test_no_install(
 
     if has_node_modules:
         check_node_modules(node_modules_path, package_name, version)
+    else:
+        assert not node_modules_path.is_dir()
+
+
+def backend_test_no_ci(
+    project: Path,
+    command_line: list[str],
+):
+    """
+    Backend function for testing that an `npm ci` command does not change the
+    lockfile or node modules in `project` after being executed.
+    """
+    def update_fingerprint(m, path: Path):
+        m.update(str(path).encode("utf-8"))
+        with open(path, 'rb') as f:
+            for block in iter(lambda: f.read(4096), b""):
+                m.update(block)
+
+    def fingerprint_file(file: Path) -> str:
+        m = hashlib.sha256()
+        update_fingerprint(m, file)
+
+        return m.hexdigest()
+
+    def fingerprint_dir(dir: Path) -> str:
+        paths = set()
+        for root, _, files in os.walk(dir):
+            paths.update(Path(root) / file for file in files)
+
+        m = hashlib.sha256()
+        for path in sorted(paths):
+            update_fingerprint(m, path)
+
+        return m.hexdigest()
+
+    lockfile_path = project / "package-lock.json"
+    assert lockfile_path.is_file()
+    lockfile_fingerprint = fingerprint_file(lockfile_path)
+
+    node_modules_fingerprint = None
+    node_modules_path = project / "node_modules"
+    if (has_node_modules := node_modules_path.is_dir()):
+        node_modules_fingerprint = fingerprint_dir(node_modules_path)
+
+    subprocess.run(command_line, check=True, cwd=project)
+
+    assert lockfile_path.is_file()
+    assert fingerprint_file(lockfile_path) == lockfile_fingerprint
+
+    if has_node_modules:
+        assert fingerprint_dir(node_modules_path) == node_modules_fingerprint
     else:
         assert not node_modules_path.is_dir()
 

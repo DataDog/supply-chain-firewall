@@ -65,7 +65,7 @@ See the `configure` command [documentation](https://github.com/DataDog/supply-ch
 
 ### Compatibility and limitations
 
-|  Package manager  |   Supported versions  |         Inspected subcommands      |
+|  Package manager  |   Supported versions  |        Inspected subcommands       |
 | :---------------: | :-------------------: | :--------------------------------: |
 | npm               | >= 7.0                | `ci`, `install`                    |
 | pip               | >= 22.2               | `install`                          |

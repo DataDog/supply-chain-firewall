@@ -1,7 +1,7 @@
 blessed==1.30.0 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:4061a9f10dd22798716c2548ba36385af6a29d856c897f367c6ccc927e0b3a5a \
     --hash=sha256:4d547019d7b40fc5420ea2ba2bc180fdccc31d6715298e2b49ffa7b020d44667
-certifi==2026.1.4 ; python_version >= "3.10" and python_version < "4" \
+certifi==2026.2.25 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:9943707519e4add1115f44c2bc244f782c0249876bf51b6599fee1ffbedd685c \
     --hash=sha256:ac726dd470482006e014ad384921ed6438c457018f4b3d204aea4281258b2120
 charset-normalizer==3.4.4 ; python_version >= "3.10" and python_version < "4" \
@@ -121,7 +121,7 @@ charset-normalizer==3.4.4 ; python_version >= "3.10" and python_version < "4" \
 cvss==3.6 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:e342c6ad9c7eb69d2aebbbc2768a03cabd57eb947c806e145de5b936219833ea \
     --hash=sha256:f21d18224efcd3c01b44ff1b37dec2e3208d29a6d0ce6c87a599c73c21ee1a99
-datadog-api-client==2.50.0 ; python_version >= "3.10" and python_version < "4" \
+datadog-api-client==2.51.0 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:0cbe681b1e66e8cddf4a29c6d76348e8f22a20c087fd5f85ccf7d55b9010c816 \
     --hash=sha256:a053c2401f850e4cd801329892c2a7347c90cb19962b1910c70dfd430baa6f23
 editor==1.7.0 ; python_version >= "3.10" and python_version < "4" \

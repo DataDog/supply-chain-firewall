@@ -117,7 +117,7 @@ iniconfig==2.3.0 ; python_version >= "3.10" and python_version < "4" \
 jinja2==3.1.6 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
-librt==0.7.8 ; python_version >= "3.10" and python_version < "4" and platform_python_implementation != "PyPy" \
+librt==0.8.1 ; python_version >= "3.10" and python_version < "4" and platform_python_implementation != "PyPy" \
     --hash=sha256:00105e7d541a8f2ee5be52caacea98a005e0478cfe78c8080fbb7b5d2b340c63 \
     --hash=sha256:0241a6ed65e6666236ea78203a73d800dbed896cf12ae25d026d75dc1fcd1dac \
     --hash=sha256:03679b9856932b8c8f674e87aa3c55ea11c9274301f76ae8dc4d281bda55cf62 \

@@ -158,12 +158,10 @@ class TemporaryNpmProject:
 
             return target_handles
 
-        def handle_to_package(lockfile: dict[str, Any], target_handle: str) -> Package:
+        def handle_to_package(dependencies: dict[str, Any], target_handle: str) -> Package:
             # All supported npm versions adhere to this format
             target_name = target_handle.rpartition("node_modules/")[2]
 
-            if not (dependencies := lockfile.get("packages")):
-                raise KeyError("Missing dependencies data in package-lock.json")
             if not (target_entry := dependencies.get(target_handle)):
                 raise KeyError(
                     f"Missing entry for installation target {target_name} in package-lock.json"
@@ -220,11 +218,12 @@ class TemporaryNpmProject:
                 "Required package lockfile was not written while resolving installation targets"
             )
         with open(lockfile_path) as f:
-            lockfile = json.load(f)
+            if not (dependencies := json.load(f).get("packages")):
+                raise KeyError("Missing dependencies data in package-lock.json")
 
         # Read the target versions for added and changed packages out of the lockfile
         install_targets: set[Package] = functools.reduce(
-            lambda acc, target_handle: acc | {handle_to_package(lockfile, target_handle)},
+            lambda acc, target_handle: acc | {handle_to_package(dependencies, target_handle)},
             target_handles,
             set(),
         )

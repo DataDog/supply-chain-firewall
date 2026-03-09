@@ -158,15 +158,25 @@ class TemporaryNpmProject:
 
             return target_handles
 
-        def handle_to_package(dependencies: dict[str, Any], target_handle: str) -> Package:
-            # All supported npm versions adhere to this format
-            target_name = target_handle.rpartition("node_modules/")[2]
+        def handle_to_package(
+            dependencies: dict[str, Any],
+            target_handle: str,
+            target_name: Optional[str] = None,
+        ) -> Package:
+            if not target_name:
+                # All supported npm versions adhere to this format
+                target_name = target_handle.rpartition("node_modules/")[2]
 
             if not (target_entry := dependencies.get(target_handle)):
                 raise KeyError(
                     f"Missing entry for installation target {target_name} in package-lock.json"
                 )
             if not (version := target_entry.get("version")):
+                # Parse recursively if this entry links to another
+                if target_entry.get("link"):
+                    resolved_handle = target_entry.get("resolved", "")
+                    return handle_to_package(dependencies, resolved_handle, target_name)
+
                 raise KeyError(
                     f"Missing version data for installation target {target_name} in package-lock.json"
                 )

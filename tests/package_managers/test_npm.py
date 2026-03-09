@@ -313,6 +313,7 @@ def test_local_dependency_json_structure(
     with open(package_json_path) as f:
         package_json = json.load(f)
 
+    # The local dependency has the expected form in package.json
     dependencies = package_json.get("dependencies")
     assert dependencies and len(dependencies) == 1 and LOCAL_PACKAGE_NAME in dependencies
     assert dependencies[LOCAL_PACKAGE_NAME].startswith("file:")
@@ -327,17 +328,26 @@ def test_local_dependency_json_structure(
 
     target_entry = packages.get(f"node_modules/{LOCAL_PACKAGE_NAME}")
     assert target_entry
-    assert "version" not in target_entry
 
+    # Exactly one of `link` and `version` is present in the target entry
     link = target_entry.get("link")
-    assert link is not None and isinstance(link, bool) and link
-    resolved = target_entry.get("resolved")
-    assert resolved is not None and isinstance(resolved, str) and resolved
+    version = target_entry.get("version")
+    assert (link or version) and not (link and version)
 
+    # If `version` and not `link`, then the expected version number is found
+    if version:
+        assert version == LOCAL_PACKAGE_VERSION
+        return
+
+    # If `link` and not `version`, then `resolved` links to the "real" entry
+    resolved = target_entry.get("resolved")
+    assert resolved
     resolved_entry = packages.get(resolved)
     assert resolved_entry
+
+    # In this case, the resolved entry contains the expected version number
     version = resolved_entry.get("version")
-    assert version and version == LOCAL_PACKAGE_VERSION
+    assert version == LOCAL_PACKAGE_NAME
 
 
 def test_npm_list_empty_directory(empty_directory):

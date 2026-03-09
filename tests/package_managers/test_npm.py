@@ -347,7 +347,7 @@ def test_local_dependency_json_structure(
 
     # In this case, the resolved entry contains the expected version number
     version = resolved_entry.get("version")
-    assert version == LOCAL_PACKAGE_NAME
+    assert version == LOCAL_PACKAGE_VERSION
 
 
 def test_npm_list_empty_directory(empty_directory):

@@ -299,6 +299,47 @@ def test_options_prevent_install_installed_previous(
     )
 
 
+def test_local_dependency_json_structure(
+    npm_project_local_dependency_installed,
+):
+    """
+    Test that the package.json and package-lock.json files for an npm project that has a
+    dependency on a local package (in a local directory) have the expected structure.
+    """
+    package_json_path = npm_project_local_dependency_installed / "package.json"
+    assert package_json_path.is_file()
+
+    package_json = None
+    with open(package_json_path) as f:
+        package_json = json.load(f)
+
+    dependencies = package_json.get("dependencies")
+    assert dependencies and len(dependencies) == 1 and LOCAL_PACKAGE_NAME in dependencies
+    assert dependencies[LOCAL_PACKAGE_NAME].startswith("file:")
+
+    lockfile_path = npm_project_local_dependency_installed / "package-lock.json"
+    assert lockfile_path.is_file()
+
+    packages = None
+    with open(lockfile_path) as f:
+        packages = json.load(f).get("packages")
+    assert packages
+
+    target_entry = packages.get(f"node_modules/{LOCAL_PACKAGE_NAME}")
+    assert target_entry
+    assert "version" not in target_entry
+
+    link = target_entry.get("link")
+    assert link is not None and isinstance(link, bool) and link
+    resolved = target_entry.get("resolved")
+    assert resolved is not None and isinstance(resolved, str) and resolved
+
+    resolved_entry = packages.get(resolved)
+    assert resolved_entry
+    version = resolved_entry.get("version")
+    assert version and version == LOCAL_PACKAGE_VERSION
+
+
 def test_npm_list_empty_directory(empty_directory):
     """
     Test that the `npm list` command behaves as expected in an empty directory.

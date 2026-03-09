@@ -11,6 +11,9 @@ from typing import Optional
 
 import pytest
 
+LOCAL_PACKAGE_NAME = "foo-local-test-package"
+LOCAL_PACKAGE_VERSION = "1.0.0"
+
 TEST_PACKAGE = "react"
 TEST_PACKAGE_LATEST = "18.3.0"
 TEST_PACKAGE_PREVIOUS = "18.2.0"
@@ -176,9 +179,35 @@ def npm_project_installed_previous():
     tempdir.cleanup()
 
 
+@pytest.fixture
+def npm_project_local_dependency_installed():
+    """
+    Initialize an npm project with a dependency on a package installed from a
+    local directory.
+    """
+    local_package_tempdir = TemporaryDirectory()
+    local_package_path = Path(local_package_tempdir.name) / LOCAL_PACKAGE_NAME
+    os.mkdir(local_package_path)
+    init_npm_project(local_package_path)
+
+    tempdir = TemporaryDirectory()
+    tempdir_path = Path(tempdir.name)
+    init_npm_project(
+        tempdir_path,
+        dependencies=[local_package_path],
+        with_lockfile=True,
+        with_node_modules=True,
+    )
+
+    yield tempdir_path
+
+    tempdir.cleanup()
+    local_package_tempdir.cleanup()
+
+
 def init_npm_project(
     path: Path,
-    dependencies: Optional[list[tuple[str, str]]] = None,
+    dependencies: Optional[list[tuple[str, str] | Path]] = None,
     with_lockfile: bool = False,
     with_node_modules: bool = False,
 ):
@@ -194,9 +223,19 @@ def init_npm_project(
     if not dependencies:
         return
 
-    for package, version in dependencies:
+    for dependency in dependencies:
+        # Dependency sourced from npm
+        if isinstance(dependency, tuple) and len(dependency) == 2:
+            package, version = dependency
+            target_spec = f"{package}@{version}"
+        # Dependency sourced from local directory
+        elif isinstance(dependency, Path):
+            target_spec = f"{dependency}"
+        else:
+            raise ValueError(f"Invalid test dependency specification: {dependency}")
+
         subprocess.run(
-            ["npm", "install", "--save-exact", f"{package}@{version}"],
+            ["npm", "install", "--save-exact", target_spec],
             check=True,
             text=True,
             capture_output=True,

@@ -68,7 +68,7 @@ class TemporaryNpmProject:
             temp_resource = temp_dir_path / resource
 
             if is_dir and orig_resource.is_dir():
-                shutil.copytree(orig_resource, temp_resource)
+                shutil.copytree(orig_resource, temp_resource, symlinks=True)
             elif not is_dir and orig_resource.is_file():
                 shutil.copy(orig_resource, temp_resource)
             else:
@@ -158,17 +158,25 @@ class TemporaryNpmProject:
 
             return target_handles
 
-        def handle_to_package(lockfile: dict[str, Any], target_handle: str) -> Package:
-            # All supported npm versions adhere to this format
-            target_name = target_handle.rpartition("node_modules/")[2]
+        def handle_to_package(
+            dependencies: dict[str, Any],
+            target_handle: str,
+            target_name: Optional[str] = None,
+        ) -> Package:
+            if not target_name:
+                # All supported npm versions adhere to this format
+                target_name = target_handle.rpartition("node_modules/")[2]
 
-            if not (dependencies := lockfile.get("packages")):
-                raise KeyError("Missing dependencies data in package-lock.json")
             if not (target_entry := dependencies.get(target_handle)):
                 raise KeyError(
                     f"Missing entry for installation target {target_name} in package-lock.json"
                 )
             if not (version := target_entry.get("version")):
+                # Parse recursively if this entry links to another
+                # All supported npm versions adhere to this format
+                if target_entry.get("link") and (resolved_handle := target_entry.get("resolved")):
+                    return handle_to_package(dependencies, resolved_handle, target_name)
+
                 raise KeyError(
                     f"Missing version data for installation target {target_name} in package-lock.json"
                 )
@@ -220,11 +228,12 @@ class TemporaryNpmProject:
                 "Required package lockfile was not written while resolving installation targets"
             )
         with open(lockfile_path) as f:
-            lockfile = json.load(f)
+            if not (dependencies := json.load(f).get("packages")):
+                raise KeyError("Missing dependencies data in package-lock.json")
 
         # Read the target versions for added and changed packages out of the lockfile
         install_targets: set[Package] = functools.reduce(
-            lambda acc, target_handle: acc | {handle_to_package(lockfile, target_handle)},
+            lambda acc, target_handle: acc | {handle_to_package(dependencies, target_handle)},
             target_handles,
             set(),
         )

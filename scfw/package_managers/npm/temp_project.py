@@ -173,6 +173,7 @@ class TemporaryNpmProject:
                 )
             if not (version := target_entry.get("version")):
                 # Parse recursively if this entry links to another
+                # All supported npm versions adhere to this format
                 if target_entry.get("link") and (resolved_handle := target_entry.get("resolved")):
                     return handle_to_package(dependencies, resolved_handle, target_name)
 

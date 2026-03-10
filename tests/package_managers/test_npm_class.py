@@ -223,6 +223,97 @@ def test_resolve_install_targets_installed_previous(
     )
 
 
+@pytest.mark.parametrize(
+    "command, true_targets",
+    [
+        (
+            ["npm", "install"],
+            {Package(ECOSYSTEM.Npm, LOCAL_PACKAGE_NAME, LOCAL_PACKAGE_VERSION)}
+        ),
+        (
+            ["npm", "install", TEST_PACKAGE_LATEST_SPEC],
+            TEST_PACKAGE_LATEST_INSTALL_TARGETS | {Package(ECOSYSTEM.Npm, LOCAL_PACKAGE_NAME, LOCAL_PACKAGE_VERSION)},
+        )
+    ]
+)
+def test_resolve_install_targets_local_dependency(
+    monkeypatch,
+    npm_project_local_dependency,
+    command,
+    true_targets,
+):
+    """
+    Test that `Npm` correctly resolves installation targets for `npm install` commands
+    run in an npm project with a dependency on a local package.
+    """
+    backend_test_resolve_install_targets(
+        monkeypatch,
+        npm_project_local_dependency,
+        command,
+        true_targets,
+    )
+
+
+@pytest.mark.parametrize(
+    "command, true_targets",
+    [
+        (
+            ["npm", "install"],
+            {Package(ECOSYSTEM.Npm, LOCAL_PACKAGE_NAME, LOCAL_PACKAGE_VERSION)}
+        ),
+        (
+            ["npm", "install", TEST_PACKAGE_LATEST_SPEC],
+            TEST_PACKAGE_LATEST_INSTALL_TARGETS | {Package(ECOSYSTEM.Npm, LOCAL_PACKAGE_NAME, LOCAL_PACKAGE_VERSION)},
+        )
+    ]
+)
+def test_resolve_install_targets_local_dependency_lockfile(
+    monkeypatch,
+    npm_project_local_dependency_lockfile,
+    command,
+    true_targets,
+):
+    """
+    Test that `Npm` correctly resolves installation targets for `npm install` commands
+    run in an npm project with a dependency on a local package specified in its lockfile
+    but not installed.
+    """
+    backend_test_resolve_install_targets(
+        monkeypatch,
+        npm_project_local_dependency_lockfile,
+        command,
+        true_targets,
+    )
+
+
+@pytest.mark.parametrize(
+    "command, true_targets",
+    [
+        (["npm", "install"], None),
+        (
+            ["npm", "install", TEST_PACKAGE_LATEST_SPEC],
+            TEST_PACKAGE_LATEST_INSTALL_TARGETS,
+        ),
+    ]
+)
+def test_resolve_install_targets_local_dependency_installed(
+    monkeypatch,
+    npm_project_local_dependency_installed,
+    command,
+    true_targets,
+):
+    """
+    Test that `Npm` correctly resolves installation targets for `npm install` commands
+    run in a fully installed npm project with a dependency on a local package.
+    """
+    backend_test_resolve_install_targets(
+        monkeypatch,
+        npm_project_local_dependency_installed,
+        command,
+        true_targets,
+    )
+
+
 def test_list_installed_packages_empty_directory(monkeypatch, empty_directory):
     """
     Test that `Npm` correctly identifies installed packages in an empty directory.

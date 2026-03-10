@@ -68,7 +68,7 @@ class TemporaryNpmProject:
             temp_resource = temp_dir_path / resource
 
             if is_dir and orig_resource.is_dir():
-                shutil.copytree(orig_resource, temp_resource)
+                shutil.copytree(orig_resource, temp_resource, symlinks=True)
             elif not is_dir and orig_resource.is_file():
                 shutil.copy(orig_resource, temp_resource)
             else:

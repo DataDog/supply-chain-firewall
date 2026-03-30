@@ -219,9 +219,9 @@ pyyaml==6.0.3 ; python_version >= "3.10" and python_version < "4" \
 readchar==4.2.1 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:91ce3faf07688de14d800592951e5575e9c7a3213738ed01d394dcc949b79adb \
     --hash=sha256:a769305cd3994bb5fa2764aa4073452dc105a4ec39068ffe6efd3c20c60acc77
-requests==2.32.5 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:2462f94637a34fd532264295e186976db0f5d453d1cdd31473c85a6a161affb6 \
-    --hash=sha256:dbba0bac56e100853db0ea71b82b4dfd5fe2bf6d3754a8893c3af500cec7d7cf
+requests==2.33.0 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:3324635456fa185245e24865e810cecec7b4caf933d7eb133dcde67d48cee69b \
+    --hash=sha256:c7ebc5e8b0f21837386ad0e1c8fe8b829fa5f544d8df3b2253bff14ef29d7652
 runs==1.3.0 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:cca304b631dbefec598c7bfbcfb50d6feace6d3a968734b67fd42d3c728f5a05 \
     --hash=sha256:e71a551cfa8da9ef882cac1d5a108bda78c9edee5b8d87e37c1003da5b6a7bed

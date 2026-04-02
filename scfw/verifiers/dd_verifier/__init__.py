@@ -46,7 +46,14 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
             if cache_dir:
                 self._manifests[ecosystem] = dataset.get_latest_manifest(cache_dir, ecosystem)
             else:
-                self._manifests[ecosystem] = dataset.download_manifest(ecosystem)
+                try:
+                    self._manifests[ecosystem] = dataset.download_manifest(ecosystem)
+                except Exception as e:
+                    _log.warning(
+                        f"Failed to download manifest for ecosystem {ecosystem}: {e}\n"
+                        f"Package verification will be skipped for this ecosystem."
+                    )
+                    self._manifests[ecosystem] = None
 
     @classmethod
     def name(cls) -> str:
@@ -64,9 +71,9 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
         Return the set of package ecosystems supported by `DatadogMaliciousPackagesVerifier`.
 
         Returns:
-            The class' constant set of supported ecosystems: `{ECOSYSTEM.Npm, ECOSYSTEM.PyPI}`.
+            The class' constant set of supported ecosystems: `{ECOSYSTEM.Npm, ECOSYSTEM.Bun, ECOSYSTEM.PyPI}`.
         """
-        return {ECOSYSTEM.Npm, ECOSYSTEM.PyPI}
+        return {ECOSYSTEM.Npm, ECOSYSTEM.Bun, ECOSYSTEM.PyPI}
 
     def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
         """

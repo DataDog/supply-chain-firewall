@@ -10,6 +10,7 @@ import os
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.verifier import FindingSeverity, PackageVerifier
+import scfw.verifiers.age_verifier.bun as bun
 import scfw.verifiers.age_verifier.npm as npm
 import scfw.verifiers.age_verifier.pypi as pypi
 
@@ -69,9 +70,9 @@ class PackageAgeVerifier(PackageVerifier):
         Return the set of package ecosystems supported by `PackageAgeVerifier`.
 
         Returns:
-            The class' constant set of supported ecosystems: `{ECOSYSTEM.Npm, ECOSYSTEM.PyPI}`.
+            The class' constant set of supported ecosystems: `{ECOSYSTEM.Npm, ECOSYSTEM.Bun, ECOSYSTEM.PyPI}`.
         """
-        return {ECOSYSTEM.Npm, ECOSYSTEM.PyPI}
+        return {ECOSYSTEM.Npm, ECOSYSTEM.Bun, ECOSYSTEM.PyPI}
 
     def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
         """
@@ -92,6 +93,8 @@ class PackageAgeVerifier(PackageVerifier):
             match package.ecosystem:
                 case ECOSYSTEM.Npm:
                     creation_datetime_utc = npm.get_creation_datetime_utc(package.name)
+                case ECOSYSTEM.Bun:
+                    creation_datetime_utc = bun.get_creation_datetime_utc(package.name)
                 case ECOSYSTEM.PyPI:
                     creation_datetime_utc = pypi.get_creation_datetime_utc(package.name)
 

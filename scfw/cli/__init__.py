@@ -292,13 +292,13 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
     help_msg = parser.format_help()
 
     try:
-        args = parser.parse_args(argv[1 : hinge + 1])
+        args = parser.parse_args(argv[1:hinge+1])
         args.subcommand = Subcommand(args.subcommand)
 
         if args.subcommand == Subcommand.Run:
             args.command = argv[hinge:]
 
-        if args.subcommand == Subcommand.Audit and argv[hinge + 1 :]:
+        if args.subcommand == Subcommand.Audit and argv[hinge+1:]:
             raise ArgumentError(None, "Received unexpected package manager command")
 
         if (

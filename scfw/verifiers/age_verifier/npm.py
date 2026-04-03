@@ -24,14 +24,12 @@ def get_creation_datetime_utc(package_name: str) -> datetime:
         RuntimeError: Package metadata missing required fields.
         dateutil.ParserError: Failed to parse publication datetime.
     """
-    r = requests.get(f"https://registry.npmjs.org/{package_name}", timeout=10)
+    r = requests.get(f"https://registry.npmjs.org/{package_name}")
     r.raise_for_status()
 
     package_metadata = r.json()
     creation_timestamp = package_metadata.get("time", {}).get("created")
     if not creation_timestamp:
-        raise RuntimeError(
-            f"Metadata for npm package {package_name} missing required fields"
-        )
+        raise RuntimeError(f"Metadata for npm package {package_name} missing required fields")
 
     return datetime_parser.parse(creation_timestamp)

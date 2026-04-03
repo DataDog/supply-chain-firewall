@@ -2,7 +2,6 @@
 Provides a `PackageManager` representation of `bun`.
 """
 
-import json
 import logging
 import os
 import shutil
@@ -324,22 +323,3 @@ def parse_package_for_version(spec: str) -> Optional[Package]:
         return None
 
     return Package(ECOSYSTEM.Bun, name, version)
-
-
-def find_package_specs(text: str) -> list[str]:
-    """
-    Find all package@version patterns in text.
-
-    Args:
-        text: Text to search in
-
-    Returns:
-        List of package@version strings found
-    """
-    import re
-
-    # Match package names and versions
-    # Package names can contain alphanumerics, hyphens, underscores, @ for scope
-    pattern = r"(@[a-zA-Z0-9_/-]+/[a-zA-Z0-9_/-]+|@?[a-zA-Z0-9_/-]+)@([0-9]+\.[0-9]+\.[0-9]+|@\w+|\^?[0-9]+\.[0-9]+\.[0-9]+)"
-    matches = re.findall(pattern, text)
-    return [f"{name}{sep}{version}" for name, sep, version in matches]

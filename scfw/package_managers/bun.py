@@ -106,7 +106,7 @@ class Bun(PackageManager):
         def is_install_command(command: list[str]) -> bool:
             # https://bun.com/docs/cli/install
             install_aliases = {"install", "i", "add", "a"}
-            return any(alias in command for alias in install_aliases)
+            return len(command) > 1 and command[1] in install_aliases
 
         if not command or command[0] != self.name():
             raise ValueError("Received empty or invalid bun command")

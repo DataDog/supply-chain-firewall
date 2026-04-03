@@ -229,6 +229,25 @@ def test_bun_resolve_install_targets_non_install_command_returns_empty(
     assert fake_bun.resolve_install_targets(command_line) == []
 
 
+def test_bun_resolve_install_targets_ignores_non_subcommand_aliases(
+    fake_bun: Bun,
+    monkeypatch,
+):
+    """
+    Test that Bun only treats install aliases as the primary subcommand.
+    """
+
+    def fake_run(*args, **kwargs):
+        raise AssertionError(
+            "subprocess.run should not be called for passthrough commands"
+        )
+
+    monkeypatch.setattr(bun_module.subprocess, "run", fake_run)
+
+    assert fake_bun.resolve_install_targets(["bun", "run", "add"]) == []
+    assert fake_bun.resolve_install_targets(["bun", "test", "install"]) == []
+
+
 def test_bun_resolve_install_targets_subprocess_failure_raises_runtime_error(
     fake_bun: Bun,
     monkeypatch,

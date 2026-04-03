@@ -140,30 +140,36 @@ def test_bun_run_command_returns_exit_code(tmp_path: Path):
 
 
 @pytest.mark.parametrize(
-    "command_line",
+    "command_line, expected_packages",
     [
-        ["bun", "add", "chalk@5.3.0"],
-        ["bun", "a", "chalk@5.3.0"],
-        ["bun", "install", "chalk@5.3.0"],
-        ["bun", "i", "chalk@5.3.0"],
+        (["bun", "add", "chalk@5.3.0"], [Package(ECOSYSTEM.Bun, "chalk", "5.3.0")]),
+        (["bun", "a", "chalk@5.3.0"], [Package(ECOSYSTEM.Bun, "chalk", "5.3.0")]),
+        (["bun", "install", "chalk@5.3.0"], [Package(ECOSYSTEM.Bun, "chalk", "5.3.0")]),
+        (["bun", "i", "chalk@5.3.0"], [Package(ECOSYSTEM.Bun, "chalk", "5.3.0")]),
+        (
+            ["bun", "add", "@types/bun@1.3.11"],
+            [Package(ECOSYSTEM.Bun, "@types/bun", "1.3.11")],
+        ),
     ],
 )
 def test_bun_resolve_install_targets_add_variants(
     fake_bun: Bun,
     monkeypatch,
     command_line: list[str],
+    expected_packages: list[Package],
 ):
     """
     Test that Bun resolves package targets for the install/add aliases it supports.
     """
-    expected_packages = [Package(ECOSYSTEM.Bun, "chalk", "5.3.0")]
 
     def fake_run(
         command, check=False, text=False, capture_output=False, cwd=None, **kwargs
     ):
         assert command[0] == fake_bun.executable()
         assert command[1:] == command_line[1:] + ["--dry-run"]
-        return _FakeCompletedProcess(stdout="installed chalk@5.3.0\n[1.00ms] done\n")
+        return _FakeCompletedProcess(
+            stdout=f"installed {command_line[-1]}\n[1.00ms] done\n"
+        )
 
     monkeypatch.setattr(bun_module.subprocess, "run", fake_run)
 
@@ -223,12 +229,12 @@ def test_bun_resolve_install_targets_non_install_command_returns_empty(
     assert fake_bun.resolve_install_targets(command_line) == []
 
 
-def test_bun_resolve_install_targets_subprocess_failure_returns_empty(
+def test_bun_resolve_install_targets_subprocess_failure_raises_runtime_error(
     fake_bun: Bun,
     monkeypatch,
 ):
     """
-    Test that Bun swallows dry-run failures and returns an empty list.
+    Test that Bun surfaces dry-run failures as runtime errors.
     """
 
     def fake_run(
@@ -238,7 +244,10 @@ def test_bun_resolve_install_targets_subprocess_failure_returns_empty(
 
     monkeypatch.setattr(bun_module.subprocess, "run", fake_run)
 
-    assert fake_bun.resolve_install_targets(["bun", "add", "chalk@5.3.0"]) == []
+    with pytest.raises(
+        RuntimeError, match="Failed to resolve bun installation targets"
+    ):
+        fake_bun.resolve_install_targets(["bun", "add", "chalk@5.3.0"])
 
 
 def test_bun_resolve_install_targets_rejects_invalid_command(fake_bun: Bun):
@@ -260,7 +269,7 @@ def test_bun_list_installed_packages_parses_tree_output(
     Test that Bun parses tree-formatted `bun list --all` output.
     """
     expected_packages = [
-        Package(ECOSYSTEM.Bun, "react", "18.3.0"),
+        Package(ECOSYSTEM.Bun, "@types/bun", "1.3.11"),
         Package(ECOSYSTEM.Bun, "js-tokens", "4.0.0"),
         Package(ECOSYSTEM.Bun, "loose-envify", "1.4.0"),
     ]
@@ -272,7 +281,7 @@ def test_bun_list_installed_packages_parses_tree_output(
         assert command[1:] == ["list", "--all"]
         return _FakeCompletedProcess(
             stdout=(
-                "react@18.3.0\n"
+                "@types/bun@1.3.11\n"
                 "├── js-tokens@4.0.0\n"
                 "└── loose-envify@1.4.0\n"
                 "[2.00ms] done\n"

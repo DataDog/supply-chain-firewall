@@ -123,8 +123,7 @@ class Bun(PackageManager):
             return self._resolve_install_targets_command(command)
 
         except Exception as e:
-            _log.info(f"Failed to resolve bun installation targets: {e}")
-            return []
+            raise RuntimeError(f"Failed to resolve bun installation targets: {e}")
 
     def list_installed_packages(self) -> list[Package]:
         """
@@ -172,7 +171,7 @@ class Bun(PackageManager):
             if "@" not in cleaned:
                 return None
 
-            name, sep, version = cleaned.partition("@")
+            name, sep, version = cleaned.rpartition("@")
             if not (name and sep and version):
                 return None
 
@@ -245,7 +244,7 @@ class Bun(PackageManager):
             List of Package objects to be installed
         """
         # Run bun with dry-run to get verbose installation list
-        dry_run_command = command + ["--dry-run"]
+        dry_run_command = self._normalize_command(command) + ["--dry-run"]
         result = subprocess.run(
             dry_run_command, check=True, text=True, capture_output=True, cwd=os.getcwd()
         )
@@ -318,7 +317,7 @@ def parse_package_for_version(spec: str) -> Optional[Package]:
     if "@" not in spec:
         return None
 
-    name, sep, version = spec.partition("@")
+    name, sep, version = spec.rpartition("@")
     if not (name and sep and version):
         return None
 

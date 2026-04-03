@@ -94,6 +94,16 @@ def test_bun_init_rejects_unsupported_version(tmp_path: Path):
         Bun(executable=str(executable))
 
 
+def test_bun_init_rejects_prerelease_version(tmp_path: Path):
+    """
+    Test that Bun rejects prerelease versions older than the minimum supported version.
+    """
+    executable = _make_fake_bun_executable(tmp_path, version_output="1.0.0-alpha.1")
+
+    with pytest.raises(UnsupportedVersionError):
+        Bun(executable=str(executable))
+
+
 def test_bun_executable_property(fake_bun: Bun):
     """
     Test that Bun.executable() returns the configured executable path.

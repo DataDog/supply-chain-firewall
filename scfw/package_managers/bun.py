@@ -219,11 +219,8 @@ class Bun(PackageManager):
                     capture_output=True,
                 )
                 # bun version format: "1.3.8+b64edcb49" or "1.3.8"
-                # Extract the base version number
                 version_str = version_output.stdout.strip()
-                # Split on '+' or '-' to get base version
-                base_version = version_str.split("+")[0].split("-")[0]
-                return version_parse(base_version)
+                return version_parse(version_str)
             except InvalidVersion:
                 return None
 

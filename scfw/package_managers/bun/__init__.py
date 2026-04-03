@@ -9,7 +9,8 @@ import shutil
 import subprocess
 from typing import Optional
 
-from packaging.version import InvalidVersion, Version, parse as version_parse
+from packaging.version import InvalidVersion, Version
+from packaging.version import parse as version_parse
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
@@ -24,6 +25,7 @@ class Bun(PackageManager):
     """
     A `PackageManager` representation of `bun`.
     """
+
     def __init__(self, executable: Optional[str] = None):
         """
         Initialize a new `Bun` instance.
@@ -38,9 +40,13 @@ class Bun(PackageManager):
         """
         executable = executable if executable else shutil.which(self.name())
         if not executable:
-            raise RuntimeError("Failed to resolve local Bun executable: is Bun installed?")
+            raise RuntimeError(
+                "Failed to resolve local Bun executable: is Bun installed?"
+            )
         if not os.path.isfile(executable):
-            raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
+            raise RuntimeError(
+                f"Path '{executable}' does not correspond to a regular file"
+            )
 
         self._executable = executable
         self._check_version()
@@ -97,11 +103,10 @@ class Bun(PackageManager):
             ValueError: The given `command` is empty or not a valid `bun` command
             UnsupportedVersionError: The underlying `bun` executable is of an unsupported version.
         """
+
         def is_install_command(command: list[str]) -> bool:
             # https://bun.com/docs/cli/install
-            install_aliases = {
-                "install", "add", "i", "in", "ins", "insta", "instal", "isnt", "isnta", "isntal", "isntall"
-            }
+            install_aliases = {"install", "i", "add", "a"}
             return any(alias in command for alias in install_aliases)
 
         if not command or command[0] != self.name():
@@ -134,6 +139,7 @@ class Bun(PackageManager):
             RuntimeError: Failed to list installed packages.
             ValueError: Encountered a malformed output format.
         """
+
         def parse_package_line(line: str) -> Optional[Package]:
             """
             Parse a single line from bun's list output.
@@ -164,10 +170,10 @@ class Bun(PackageManager):
                 return None
 
             # Parse package@version
-            if '@' not in cleaned:
+            if "@" not in cleaned:
                 return None
 
-            name, sep, version = cleaned.partition('@')
+            name, sep, version = cleaned.partition("@")
             if not (name and sep and version):
                 return None
 
@@ -181,7 +187,7 @@ class Bun(PackageManager):
                 check=True,
                 text=True,
                 capture_output=True,
-                cwd=os.getcwd()
+                cwd=os.getcwd(),
             )
             output = result.stdout.strip()
 
@@ -189,7 +195,7 @@ class Bun(PackageManager):
                 return []
 
             packages = []
-            for line in output.split('\n'):
+            for line in output.split("\n"):
                 if pkg := parse_package_line(line):
                     packages.append(pkg)
 
@@ -205,26 +211,29 @@ class Bun(PackageManager):
         Raises:
             UnsupportedVersionError: The underlying `bun` executable is of an unsupported version.
         """
+
         def get_bun_version(executable: str) -> Optional[Version]:
             try:
                 version_output = subprocess.run(
                     [executable, "--version"],
                     check=True,
                     text=True,
-                    capture_output=True
+                    capture_output=True,
                 )
                 # bun version format: "1.3.8+b64edcb49" or "1.3.8"
                 # Extract the base version number
                 version_str = version_output.stdout.strip()
                 # Split on '+' or '-' to get base version
-                base_version = version_str.split('+')[0].split('-')[0]
+                base_version = version_str.split("+")[0].split("-")[0]
                 return version_parse(base_version)
             except InvalidVersion:
                 return None
 
         bun_version = get_bun_version(self._executable)
         if not bun_version or bun_version < MIN_BUN_VERSION:
-            raise UnsupportedVersionError(f"bun before v{MIN_BUN_VERSION} is not supported")
+            raise UnsupportedVersionError(
+                f"bun before v{MIN_BUN_VERSION} is not supported"
+            )
 
     def _resolve_install_targets_command(self, command: list[str]) -> list[Package]:
         """
@@ -239,11 +248,7 @@ class Bun(PackageManager):
         # Run bun with dry-run to get verbose installation list
         dry_run_command = command + ["--dry-run"]
         result = subprocess.run(
-            dry_run_command,
-            check=True,
-            text=True,
-            capture_output=True,
-            cwd=os.getcwd()
+            dry_run_command, check=True, text=True, capture_output=True, cwd=os.getcwd()
         )
 
         # Parse bun dry-run output from stdout
@@ -256,25 +261,27 @@ class Bun(PackageManager):
         #
         # [421.00ms] done
         output = result.stdout.strip() if result.stdout else ""
-        
+
         if not output:
             return []
 
         packages = []
-        for line in output.split('\n'):
+        for line in output.split("\n"):
             line = line.strip()
 
             # Skip empty lines and completion lines
-            if not line or line.endswith('ms] done') or line.startswith('bun v'):
+            if not line or line.endswith("ms] done") or line.startswith("bun v"):
                 continue
 
             # Match "installed package@version" line (this is the target package being added)
             if line.startswith("installed "):
-                installed_part = line.split(" ", 1)[1]  # Get everything after "installed "
+                installed_part = line.split(" ", 1)[
+                    1
+                ]  # Get everything after "installed "
                 pkg = parse_package_for_version(installed_part)
                 if pkg:
                     packages.append(pkg)
-        
+
         return packages
 
     def _normalize_command(self, command: list[str]) -> list[str]:
@@ -309,10 +316,10 @@ def parse_package_for_version(spec: str) -> Optional[Package]:
     Returns:
         A Package object if parsing succeeds, None otherwise
     """
-    if '@' not in spec:
+    if "@" not in spec:
         return None
 
-    name, sep, version = spec.partition('@')
+    name, sep, version = spec.partition("@")
     if not (name and sep and version):
         return None
 
@@ -330,8 +337,9 @@ def find_package_specs(text: str) -> list[str]:
         List of package@version strings found
     """
     import re
+
     # Match package names and versions
     # Package names can contain alphanumerics, hyphens, underscores, @ for scope
-    pattern = r'(@[a-zA-Z0-9_/-]+/[a-zA-Z0-9_/-]+|@?[a-zA-Z0-9_/-]+)@([0-9]+\.[0-9]+\.[0-9]+|@\w+|\^?[0-9]+\.[0-9]+\.[0-9]+)'
+    pattern = r"(@[a-zA-Z0-9_/-]+/[a-zA-Z0-9_/-]+|@?[a-zA-Z0-9_/-]+)@([0-9]+\.[0-9]+\.[0-9]+|@\w+|\^?[0-9]+\.[0-9]+\.[0-9]+)"
     matches = re.findall(pattern, text)
     return [f"{name}{sep}{version}" for name, sep, version in matches]

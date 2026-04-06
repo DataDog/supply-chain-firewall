@@ -307,7 +307,7 @@ mccabe==0.7.0 ; python_version >= "3.10" and python_version < "4" \
 mypy-extensions==1.1.0 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505 \
     --hash=sha256:52e68efc3284861e772bbcd66823fde5ae21fd2fdb51c62a211403730b916558
-mypy==1.19.1 ; python_version >= "3.10" and python_version < "4" \
+mypy==1.20.0 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:016f2246209095e8eda7538944daa1d60e1e8134d98983b9fc1e92c1fc0cb8dd \
     --hash=sha256:022ea7279374af1a5d78dfcab853fe6a536eebfda4b59deab53cd21f6cd9f00b \
     --hash=sha256:06e6170bd5836770e8104c8fdd58e5e725cfeb309f0a6c681a811f557e97eac1 \

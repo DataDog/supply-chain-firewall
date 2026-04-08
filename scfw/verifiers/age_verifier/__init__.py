@@ -10,7 +10,6 @@ import os
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.verifier import FindingSeverity, PackageVerifier
-import scfw.verifiers.age_verifier.bun as bun
 import scfw.verifiers.age_verifier.npm as npm
 import scfw.verifiers.age_verifier.pypi as pypi
 
@@ -94,7 +93,8 @@ class PackageAgeVerifier(PackageVerifier):
                 case ECOSYSTEM.Npm:
                     creation_datetime_utc = npm.get_creation_datetime_utc(package.name)
                 case ECOSYSTEM.Bun:
-                    creation_datetime_utc = bun.get_creation_datetime_utc(package.name)
+                    # Note: Bun uses the npm registry for package metadata, so we can query npm's API
+                    creation_datetime_utc = npm.get_creation_datetime_utc(package.name)
                 case ECOSYSTEM.PyPI:
                     creation_datetime_utc = pypi.get_creation_datetime_utc(package.name)
 

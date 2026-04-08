@@ -46,14 +46,7 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
             if cache_dir:
                 self._manifests[ecosystem] = dataset.get_latest_manifest(cache_dir, ecosystem)
             else:
-                try:
-                    self._manifests[ecosystem] = dataset.download_manifest(ecosystem)
-                except Exception as e:
-                    _log.warning(
-                        f"Failed to download manifest for ecosystem {ecosystem}: {e}\n"
-                        f"Package verification will be skipped for this ecosystem."
-                    )
-                    self._manifests[ecosystem] = None
+                self._manifests[ecosystem] = dataset.download_manifest(ecosystem)
 
     @classmethod
     def name(cls) -> str:

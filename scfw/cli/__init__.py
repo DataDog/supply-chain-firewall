@@ -2,10 +2,10 @@
 Defines the supply-chain firewall's command-line interface and performs argument parsing.
 """
 
-import logging
-import sys
 from argparse import SUPPRESS, ArgumentError, Namespace
 from enum import Enum
+import logging
+import sys
 from typing import Callable, Optional
 
 import scfw
@@ -16,7 +16,7 @@ from scfw.package_managers import SUPPORTED_PACKAGE_MANAGERS
 _LOG_LEVELS = list(
     map(
         logging.getLevelName,
-        [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR],
+        [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR]
     )
 )
 _DEFAULT_LOG_LEVEL = logging.getLevelName(logging.WARNING)
@@ -170,7 +170,6 @@ class Subcommand(Enum):
     """
     The set of subcommands that comprise the supply-chain firewall's command line.
     """
-
     Audit = "audit"
     Configure = "configure"
     Run = "run"
@@ -242,10 +241,15 @@ def _cli() -> ArgumentParser:
     parser = ArgumentParser(
         prog="scfw",
         exit_on_error=False,
-        description="A tool for preventing the installation of malicious npm, Bun, and PyPI packages.",
+        description="A tool for preventing the installation of malicious npm, Bun, and PyPI packages."
     )
 
-    parser.add_argument("-v", "--version", action="version", version=scfw.__version__)
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=scfw.__version__
+    )
 
     parser.add_argument(
         "--log-level",

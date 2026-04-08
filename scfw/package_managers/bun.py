@@ -268,14 +268,17 @@ class Bun(PackageManager):
             if not line or line.endswith("ms] done") or line.startswith("bun v"):
                 continue
 
-            # Match "installed package@version" line (this is the target package being added)
+            pkg_spec = line
+
+            # Match "installed package@version" line
             if line.startswith("installed "):
-                installed_part = line.split(" ", 1)[
+                pkg_spec = line.split(" ", 1)[
                     1
                 ]  # Get everything after "installed "
-                pkg = parse_package_for_version(installed_part)
-                if pkg:
-                    packages.append(pkg)
+
+            pkg = parse_package_for_version(pkg_spec)
+            if pkg:
+                packages.append(pkg)
 
         return packages
 

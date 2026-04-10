@@ -3,9 +3,9 @@ Provides utilities for querying the npm registry to discover package creation da
 """
 
 from datetime import datetime
+from dateutil import parser as datetime_parser
 
 import requests
-from dateutil import parser as datetime_parser
 
 
 def get_creation_datetime_utc(package_name: str) -> datetime:

@@ -17,7 +17,7 @@ from scfw.package_manager import PackageManager, UnsupportedVersionError
 
 _log = logging.getLogger(__name__)
 
-MIN_BUN_VERSION = version_parse("1.0.0")
+MIN_BUN_VERSION = version_parse("1.3.0")
 
 
 class Bun(PackageManager):

@@ -69,9 +69,9 @@ class PackageAgeVerifier(PackageVerifier):
         Return the set of package ecosystems supported by `PackageAgeVerifier`.
 
         Returns:
-            The class' constant set of supported ecosystems: `{ECOSYSTEM.Npm, ECOSYSTEM.Bun, ECOSYSTEM.PyPI}`.
+            The class' constant set of supported ecosystems: `{ECOSYSTEM.Npm, ECOSYSTEM.PyPI}`.
         """
-        return {ECOSYSTEM.Npm, ECOSYSTEM.Bun, ECOSYSTEM.PyPI}
+        return {ECOSYSTEM.Npm, ECOSYSTEM.PyPI}
 
     def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
         """
@@ -91,9 +91,6 @@ class PackageAgeVerifier(PackageVerifier):
         try:
             match package.ecosystem:
                 case ECOSYSTEM.Npm:
-                    creation_datetime_utc = npm.get_creation_datetime_utc(package.name)
-                case ECOSYSTEM.Bun:
-                    # Note: Bun uses the npm registry for package metadata, so we can query npm's API
                     creation_datetime_utc = npm.get_creation_datetime_utc(package.name)
                 case ECOSYSTEM.PyPI:
                     creation_datetime_utc = pypi.get_creation_datetime_utc(package.name)

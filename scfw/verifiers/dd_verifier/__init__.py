@@ -64,9 +64,9 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
         Return the set of package ecosystems supported by `DatadogMaliciousPackagesVerifier`.
 
         Returns:
-            The class' constant set of supported ecosystems: `{ECOSYSTEM.Npm, ECOSYSTEM.Bun, ECOSYSTEM.PyPI}`.
+            The class' constant set of supported ecosystems: `{ECOSYSTEM.Npm, ECOSYSTEM.PyPI}`.
         """
-        return {ECOSYSTEM.Npm, ECOSYSTEM.Bun, ECOSYSTEM.PyPI}
+        return {ECOSYSTEM.Npm, ECOSYSTEM.PyPI}
 
     def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
         """

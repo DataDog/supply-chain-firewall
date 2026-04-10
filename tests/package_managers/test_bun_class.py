@@ -61,7 +61,7 @@ def test_bun_name_and_ecosystem():
     Test Bun identity metadata.
     """
     assert Bun.name() == "bun"
-    assert Bun.ecosystem() == ECOSYSTEM.Bun
+    assert Bun.ecosystem() == ECOSYSTEM.Npm
 
 
 def test_get_package_manager_returns_bun(tmp_path: Path):
@@ -73,7 +73,7 @@ def test_get_package_manager_returns_bun(tmp_path: Path):
 
     assert isinstance(package_manager, Bun)
     assert package_manager.name() == "bun"
-    assert package_manager.ecosystem() == ECOSYSTEM.Bun
+    assert package_manager.ecosystem() == ECOSYSTEM.Npm
 
 
 def test_bun_init_rejects_missing_executable(tmp_path: Path):
@@ -152,13 +152,13 @@ def test_bun_run_command_returns_exit_code(tmp_path: Path):
 @pytest.mark.parametrize(
     "command_line, expected_packages",
     [
-        (["bun", "add", "chalk@5.3.0"], [Package(ECOSYSTEM.Bun, "chalk", "5.3.0")]),
-        (["bun", "a", "chalk@5.3.0"], [Package(ECOSYSTEM.Bun, "chalk", "5.3.0")]),
-        (["bun", "install", "chalk@5.3.0"], [Package(ECOSYSTEM.Bun, "chalk", "5.3.0")]),
-        (["bun", "i", "chalk@5.3.0"], [Package(ECOSYSTEM.Bun, "chalk", "5.3.0")]),
+        (["bun", "add", "chalk@5.3.0"], [Package(ECOSYSTEM.Npm, "chalk", "5.3.0")]),
+        (["bun", "a", "chalk@5.3.0"], [Package(ECOSYSTEM.Npm, "chalk", "5.3.0")]),
+        (["bun", "install", "chalk@5.3.0"], [Package(ECOSYSTEM.Npm, "chalk", "5.3.0")]),
+        (["bun", "i", "chalk@5.3.0"], [Package(ECOSYSTEM.Npm, "chalk", "5.3.0")]),
         (
             ["bun", "add", "@types/bun@1.3.11"],
-            [Package(ECOSYSTEM.Bun, "@types/bun", "1.3.11")],
+            [Package(ECOSYSTEM.Npm, "@types/bun", "1.3.11")],
         ),
     ],
 )
@@ -298,9 +298,9 @@ def test_bun_list_installed_packages_parses_tree_output(
     Test that Bun parses tree-formatted `bun list --all` output.
     """
     expected_packages = [
-        Package(ECOSYSTEM.Bun, "@types/bun", "1.3.11"),
-        Package(ECOSYSTEM.Bun, "js-tokens", "4.0.0"),
-        Package(ECOSYSTEM.Bun, "loose-envify", "1.4.0"),
+        Package(ECOSYSTEM.Npm, "@types/bun", "1.3.11"),
+        Package(ECOSYSTEM.Npm, "js-tokens", "4.0.0"),
+        Package(ECOSYSTEM.Npm, "loose-envify", "1.4.0"),
     ]
 
     def fake_run(
@@ -330,8 +330,8 @@ def test_bun_list_installed_packages_parses_flat_output(
     Test that Bun parses flat `bun list --all` output.
     """
     expected_packages = [
-        Package(ECOSYSTEM.Bun, "left-pad", "1.3.0"),
-        Package(ECOSYSTEM.Bun, "is-number", "7.0.0"),
+        Package(ECOSYSTEM.Npm, "left-pad", "1.3.0"),
+        Package(ECOSYSTEM.Npm, "is-number", "7.0.0"),
     ]
 
     def fake_run(

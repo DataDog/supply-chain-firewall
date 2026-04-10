@@ -62,7 +62,7 @@ class Bun(PackageManager):
         """
         Return the ecosystem of packages managed by `bun`.
         """
-        return ECOSYSTEM.Bun
+        return ECOSYSTEM.Npm
 
     def executable(self) -> str:
         """
@@ -157,12 +157,8 @@ class Bun(PackageManager):
             if not cleaned:
                 return None
 
-            # Remove ASCII tree characters: ├─, └─, ─, │
-            cleaned = cleaned.replace("├──", "").replace("└──", "").strip()
-            cleaned = cleaned.replace("│", "").strip()
-
             # Remove any remaining leading/trailing whitespace
-            cleaned = cleaned.strip()
+            cleaned = cleaned.split(" ")[-1].strip()
 
             if not cleaned:
                 return None
@@ -175,7 +171,7 @@ class Bun(PackageManager):
             if not (name and sep and version):
                 return None
 
-            return Package(ECOSYSTEM.Bun, name, version)
+            return Package(ECOSYSTEM.Npm, name, version)
 
         try:
             list_command = [self._executable, "list", "--all"]
@@ -321,4 +317,4 @@ def parse_package_for_version(spec: str) -> Optional[Package]:
     if not (name and sep and version):
         return None
 
-    return Package(ECOSYSTEM.Bun, name, version)
+    return Package(ECOSYSTEM.Npm, name, version)

@@ -31,9 +31,9 @@ def test_bun_name(bun):
 
 def test_bun_ecosystem(bun):
     """
-    Test that Bun.ecosystem() returns ECOSYSTEM.Bun.
+    Test that Bun.ecosystem() returns ECOSYSTEM.Npm.
     """
-    assert bun.ecosystem() == ECOSYSTEM.Bun
+    assert bun.ecosystem() == ECOSYSTEM.Npm
 
 
 def test_bun_executable(bun):
@@ -52,26 +52,26 @@ def test_bun_list_installed_packages(bun):
     # Create a temporary bun project with a dependency
     with TemporaryDirectory() as tempdir:
         tmppath = Path(tempdir)
-        
+
         # Initialize bun project
         subprocess.run(["bun", "init", "-y"], check=True, cwd=tmppath)
-        
+
         # Add a dependency
         subprocess.run(["bun", "add", "react@18.3.0"], check=True, cwd=tmppath)
-        
+
         # Run list_installed_packages in this directory
         original_cwd = os.getcwd()
         try:
             os.chdir(tmppath)
             packages = bun.list_installed_packages()
-            
+
             assert isinstance(packages, list)
             assert len(packages) > 0
 
             # Verify package structure
             for pkg in packages:
                 assert isinstance(pkg, Package)
-                assert pkg.ecosystem == ECOSYSTEM.Bun
+                assert pkg.ecosystem == ECOSYSTEM.Npm
                 assert pkg.name
                 assert pkg.version
 
@@ -86,10 +86,10 @@ def test_bun_resolve_install_targets_dry_run(bun):
     # Create a temporary bun project
     with TemporaryDirectory() as tempdir:
         tmppath = Path(tempdir)
-        
+
         # Initialize bun project
         subprocess.run(["bun", "init", "-y"], check=True, cwd=tmppath)
-        
+
         # Run resolve_install_targets in this directory
         original_cwd = os.getcwd()
         try:

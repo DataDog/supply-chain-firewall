@@ -35,7 +35,5 @@ class Package:
         match self.ecosystem:
             case ECOSYSTEM.Npm:
                 return f"{self.name}@{self.version}"
-            case ECOSYSTEM.Bun:
-                return f"{self.name}@{self.version}"
             case ECOSYSTEM.PyPI:
                 return f"{self.name}-{self.version}"

@@ -11,7 +11,6 @@ class ECOSYSTEM(Enum):
     Package ecosystems supported by the supply-chain firewall.
     """
     Npm = "npm"
-    Bun = "bun"
     PyPI = "PyPI"
 
     def __str__(self) -> str:

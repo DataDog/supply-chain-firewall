@@ -92,9 +92,9 @@ class OsvVerifier(PackageVerifier):
         Return the set of package ecosystems supported by `OsvVerifier`.
 
         Returns:
-            The class' constant set of supported ecosystems: `{ECOSYSTEM.Npm, ECOSYSTEM.Bun, ECOSYSTEM.PyPI}`.
+            The class' constant set of supported ecosystems: `{ECOSYSTEM.Npm, ECOSYSTEM.PyPI}`.
         """
-        return {ECOSYSTEM.Npm, ECOSYSTEM.Bun, ECOSYSTEM.PyPI}
+        return {ECOSYSTEM.Npm, ECOSYSTEM.PyPI}
 
     def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
         """
@@ -135,13 +135,11 @@ class OsvVerifier(PackageVerifier):
             return [(FindingSeverity.WARNING, f"Package ecosystem {package.ecosystem} is not supported")]
 
         vulns = []
-        # Bun packages use the npm registry, so query OSV with npm ecosystem
-        osv_ecosystem = "npm" if package.ecosystem == ECOSYSTEM.Bun else str(package.ecosystem)
         query = {
             "version": package.version,
             "package": {
                 "name": package.name,
-                "ecosystem": osv_ecosystem
+                "ecosystem": str(package.ecosystem)
             }
         }
 

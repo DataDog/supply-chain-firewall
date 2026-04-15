@@ -17,7 +17,7 @@ Supply-Chain Firewall includes default verifiers for the following data sources:
 
 - Datadog Security Research's public [malicious packages dataset](https://github.com/DataDog/malicious-software-packages-dataset)
 - [OSV.dev](https://osv.dev) advisories, both for malicious packages as well as vulnerabilities
-- Package registry metadata, warning when a package was created very recently
+- Package registry metadata, warning when a package was published very recently
 - User-provided lists of custom findings for specific packages
 
 Documentation specific to each default verifier and the configurable options they support may be found [here](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/verifiers.md).

@@ -1,6 +1,6 @@
 """
-Defines a package verifier for warning on packages that were created too recently
-based on a user-configurable minimum age.
+Defines a package verifier for warning on packages that were published too recently based on
+a user-configurable minimum age.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -30,9 +30,9 @@ which a warning is warranted.
 
 class PackageAgeVerifier(PackageVerifier):
     """
-    A package verifier for warning on packages that were created too recently based on
-    a user-configurable minimum age, expressed as a positive integer representing the
-    number of hours below which a warning is warranted.
+    A package verifier for warning on packages that were published too recently based on a
+    user-configurable minimum age, expressed as a positive integer representing the number
+    of hours below which a warning is warranted.
     """
     def __init__(self):
         """
@@ -75,7 +75,7 @@ class PackageAgeVerifier(PackageVerifier):
 
     def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
         """
-        Determine how recently a given package was created and warn if this is deemed
+        Determine how recently a given package was published and warn if this is deemed
         too recent based on a user-configurable minimum age.
 
         Args:
@@ -83,7 +83,7 @@ class PackageAgeVerifier(PackageVerifier):
 
         Returns:
             A list containing a single `WARNING` finding if `package` is deemed to have
-            been created too recently, otherwise an empty list.
+            been published too recently, otherwise an empty list.
         """
         if self.minimum_age == timedelta(0):
             return []
@@ -91,22 +91,22 @@ class PackageAgeVerifier(PackageVerifier):
         try:
             match package.ecosystem:
                 case ECOSYSTEM.Npm:
-                    creation_datetime_utc = npm.get_creation_datetime_utc(package.name)
+                    release_datetime_utc = npm.get_release_datetime_utc(package.name, package.version)
                 case ECOSYSTEM.PyPI:
-                    creation_datetime_utc = pypi.get_creation_datetime_utc(package.name)
+                    release_datetime_utc = pypi.get_release_datetime_utc(package.name, package.version)
 
-            if datetime.now(tz=timezone.utc) - creation_datetime_utc < self.minimum_age:
+            if datetime.now(tz=timezone.utc) - release_datetime_utc < self.minimum_age:
                 minimum_age_hours = int(self.minimum_age.total_seconds()) // 3600
                 return [(
                     FindingSeverity.WARNING,
                     (
-                        f"Package {package.name} was created less than {minimum_age_hours} hours ago"
-                        ": treat new packages with caution"
+                        f"Package {package} was published less than {minimum_age_hours} hours ago"
+                        ": treat new releases with caution"
                     ),
                 )]
 
         except Exception as e:
-            _log.warning(f"Failed to determine creation datetime for package {package.name}: {e}")
+            _log.warning(f"Failed to determine publication datetime for package {package}: {e}")
 
         return []
 

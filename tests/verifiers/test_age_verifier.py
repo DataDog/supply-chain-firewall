@@ -11,10 +11,9 @@ from scfw.package import Package
 from scfw.verifier import FindingSeverity
 from scfw.verifiers.age_verifier import PackageAgeVerifier
 
-# Version numbers are irrelevant for this verifier, so we use dummy values
 TEST_PACKAGES = [
-    Package(ECOSYSTEM.Npm, "axios", "foo"),
-    Package(ECOSYSTEM.PyPI, "requests", "foo"),
+    Package(ECOSYSTEM.Npm, "axios", "1.14.0"),
+    Package(ECOSYSTEM.PyPI, "requests", "2.32.3"),
 ]
 
 

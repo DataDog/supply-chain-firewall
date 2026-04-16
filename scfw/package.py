@@ -74,6 +74,8 @@ class Package:
         if isinstance(self.source, LocalPackageSource):
             return self.source
 
+        return None
+
     def get_remote_source(self) -> Optional[RemotePackageSource]:
         """
         Return the package's `source` if it is remote.
@@ -84,3 +86,5 @@ class Package:
         """
         if isinstance(self.source, RemotePackageSource):
             return self.source
+
+        return None

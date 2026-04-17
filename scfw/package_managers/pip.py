@@ -119,7 +119,7 @@ class Pip(PackageManager):
             if not (version := metadata.get("version")):
                 raise ValueError("Missing version for pip installation target")
 
-            if not (download_info := metadata.get("download_info")) or not (url := download_info.get("url")):
+            if not (download_info := install_report.get("download_info")) or not (url := download_info.get("url")):
                 return Package(ECOSYSTEM.PyPI, name, version)
 
             source: Optional[LocalPackageSource | RemotePackageSource] = None

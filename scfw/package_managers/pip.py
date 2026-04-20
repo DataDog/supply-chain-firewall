@@ -5,6 +5,7 @@ Provides a `PackageManager` representation of `pip`.
 import json
 import logging
 import os
+from pathlib import Path
 import shutil
 import subprocess
 from typing import Optional
@@ -12,10 +13,12 @@ from typing import Optional
 from packaging.version import InvalidVersion, Version, parse as version_parse
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.package import Package
+from scfw.package import LocalPackageSource, Package, RemotePackageSource
 from scfw.package_manager import PackageManager, UnsupportedVersionError
 
 _log = logging.getLogger(__name__)
+
+_LOCAL_PACKAGE_SOURCE_PREFIX = "file://"
 
 MIN_PIP_VERSION = version_parse("22.2")
 
@@ -117,7 +120,17 @@ class Pip(PackageManager):
                 raise ValueError("Missing name for pip installation target")
             if not (version := metadata.get("version")):
                 raise ValueError("Missing version for pip installation target")
-            return Package(ECOSYSTEM.PyPI, name, version)
+
+            if not (download_info := install_report.get("download_info")) or not (url := download_info.get("url")):
+                return Package(ECOSYSTEM.PyPI, name, version)
+
+            source: Optional[LocalPackageSource | RemotePackageSource] = None
+            if url.startswith("http"):
+                source = RemotePackageSource(url)
+            if url.startswith(_LOCAL_PACKAGE_SOURCE_PREFIX):
+                source = LocalPackageSource(Path(url[len(_LOCAL_PACKAGE_SOURCE_PREFIX):]))
+
+            return Package(ECOSYSTEM.PyPI, name, version, source=source)
 
         command = self._normalize_command(command)
 

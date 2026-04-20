@@ -7,9 +7,12 @@ import os
 import subprocess
 import sys
 import tempfile
+from typing import Optional
 
 import packaging.version as version
 import pytest
+
+from .pip_fixtures import *
 
 PIP_COMMAND_PREFIX = [sys.executable, "-m", "pip"]
 
@@ -150,3 +153,66 @@ def test_pip_install_report_override():
         assert report.get("install")
         # Nothing was written to the temporary file
         assert tmpfile.read() == b''
+
+
+def test_pip_install_report_format_local(local_python_package):
+    """
+    Test that the dry-run report has the expected format for a local package target.
+    """
+    _test_pip_install_report_format(
+        str(local_python_package),
+        LOCAL_PACKAGE_NAME,
+        LOCAL_PACKAGE_VERSION,
+        local_python_package
+    )
+
+
+def test_pip_install_report_format_remote():
+    """
+    Test that the dry-run report has the expected format for a remote package target.
+    """
+    package_name = "tree-sitter"
+    package_version = "0.24.0"
+
+    _test_pip_install_report_format(
+        f"{package_name}=={package_version}",
+        package_name,
+        package_version,
+        None,
+    )
+
+
+def _test_pip_install_report_format(
+    target_spec: str,
+    package_name: str,
+    package_version: str,
+    local_package_source: Optional[Path],
+):
+    """
+    Backend function for testing that the dry-run report has the expected format.
+    """
+    command_line = (
+        PIP_COMMAND_PREFIX +
+        ["install", target_spec, "--dry-run", "-qqqqq", "--report", "-"]
+    )
+    p = subprocess.run(command_line, check=True, text=True, capture_output=True)
+    install_reports = json.loads(p.stdout).get("install", [])
+
+    assert len(install_reports) == 1
+    install_report = install_reports[0]
+
+    metadata = install_report.get("metadata")
+    assert metadata
+    name = metadata.get("name")
+    assert name == package_name
+    version = metadata.get("version")
+    assert version == package_version
+
+    download_info = install_report.get("download_info")
+    assert download_info
+    url = download_info.get("url")
+
+    if local_package_source:
+        assert url == f"file://{local_package_source}"
+    else:
+        assert url.startswith("https://files.pythonhosted.org")

@@ -18,6 +18,8 @@ from scfw.package_manager import PackageManager, UnsupportedVersionError
 
 _log = logging.getLogger(__name__)
 
+_LOCAL_PACKAGE_SOURCE_PREFIX = "file://"
+
 MIN_PIP_VERSION = version_parse("22.2")
 
 
@@ -125,8 +127,8 @@ class Pip(PackageManager):
             source: Optional[LocalPackageSource | RemotePackageSource] = None
             if url.startswith("http"):
                 source = RemotePackageSource(url)
-            if url.startswith("file://"):
-                source = LocalPackageSource(Path(url[len("file://"):]))
+            if url.startswith(_LOCAL_PACKAGE_SOURCE_PREFIX):
+                source = LocalPackageSource(Path(url[len(_LOCAL_PACKAGE_SOURCE_PREFIX):]))
 
             return Package(ECOSYSTEM.PyPI, name, version, source=source)
 

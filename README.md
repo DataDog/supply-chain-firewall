@@ -7,7 +7,7 @@
   <img src="https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/logo.png?raw=true" alt="Supply-Chain Firewall" width="300" />
 </p>
 
-Supply-Chain Firewall is a command-line tool for preventing the installation of malicious npm and PyPI packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
+Supply-Chain Firewall is a command-line tool for preventing the installation of malicious npm, Bun, and PyPI packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
 
 ![scfw demo usage](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/demo.gif?raw=true)
 
@@ -68,6 +68,7 @@ See the `configure` command [documentation](https://github.com/DataDog/supply-ch
 |  Package manager  |   Supported versions  |        Inspected subcommands       |
 | :---------------: | :-------------------: | :--------------------------------: |
 | npm               | >= 7.0                | `install` (including aliases)      |
+| bun               | >= 1.0                | `add`, `a`, `install`, `i`         |
 | pip               | >= 22.2               | `install`                          |
 | poetry            | >= 1.7                | `add`, `install`, `sync`, `update` |
 
@@ -92,7 +93,7 @@ $ scfw configure --remove
 $ scfw --help
 usage: scfw [-h] [-v] [--log-level LEVEL] {audit,configure,run} ...
 
-A tool for preventing the installation of malicious npm and PyPI packages.
+A tool for preventing the installation of malicious npm, Bun, and PyPI packages.
 
 positional arguments:
   {audit,configure,run}

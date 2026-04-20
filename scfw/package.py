@@ -55,6 +55,7 @@ class Package:
             A `str` with ecosystem-specific formatting describing the `Package` name and version.
 
             `npm` packages: `"{name}@{version}"`.
+            `bun` packages: `"{name}@{version}"`.
             `PyPI` packages: `"{name}-{version}"`
         """
         match self.ecosystem:

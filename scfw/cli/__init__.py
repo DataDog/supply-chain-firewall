@@ -2,7 +2,7 @@
 Defines the supply-chain firewall's command-line interface and performs argument parsing.
 """
 
-from argparse import ArgumentError, Namespace, SUPPRESS
+from argparse import SUPPRESS, ArgumentError, Namespace
 from enum import Enum
 import logging
 import sys
@@ -241,7 +241,7 @@ def _cli() -> ArgumentParser:
     parser = ArgumentParser(
         prog="scfw",
         exit_on_error=False,
-        description="A tool for preventing the installation of malicious npm and PyPI packages."
+        description="A tool for preventing the installation of malicious npm, Bun, and PyPI packages."
     )
 
     parser.add_argument(

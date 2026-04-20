@@ -14,7 +14,7 @@ from scfw.logger import FirewallAction
 
 GREETING = (
     "Thank you for using scfw, the Supply-Chain Firewall by Datadog!\n\n"
-    "Supply-Chain Firewall is a tool for preventing the installation of malicious npm and PyPI packages.\n\n"
+    "Supply-Chain Firewall is a tool for preventing the installation of malicious npm, Bun, and PyPI packages.\n\n"
     "This script will walk you through setting up your environment to get the most out of scfw.\n"
     "You can rerun this script at any time to update your configuration settings.\n"
 )

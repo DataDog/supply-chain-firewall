@@ -127,7 +127,7 @@ class Pip(PackageManager):
             source: Optional[LocalPackageSource | RemotePackageSource] = None
             if url.startswith("http"):
                 source = RemotePackageSource(url)
-            if url.startswith(_LOCAL_PACKAGE_SOURCE_PREFIX):
+            elif url.startswith(_LOCAL_PACKAGE_SOURCE_PREFIX):
                 source = LocalPackageSource(Path(url[len(_LOCAL_PACKAGE_SOURCE_PREFIX):]))
 
             return Package(ECOSYSTEM.PyPI, name, version, source=source)

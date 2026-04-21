@@ -14,6 +14,7 @@ from packaging.version import InvalidVersion, Version, parse as version_parse
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.package_manager import PackageManager, UnsupportedVersionError
+import scfw.package_managers.npm.common as npm_common
 from scfw.package_managers.npm.temp_project import TemporaryNpmProject
 
 _log = logging.getLogger(__name__)
@@ -135,41 +136,18 @@ class Npm(PackageManager):
 
         Raises:
             RuntimeError: Failed to list installed packages or decode report JSON.
-            ValueError: Encountered a malformed report for an installed package.
             UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
-        def dependencies_to_packages(dependencies: dict[str, dict]) -> set[Package]:
-            packages = set()
-
-            for name, package_data in dependencies.items():
-                if (package_dependencies := package_data.get("dependencies")):
-                    packages |= dependencies_to_packages(package_dependencies)
-
-                if (version := package_data.get("version")):
-                    packages.add(Package(ECOSYSTEM.Npm, name, version))
-                else:
-                    _log.info(
-                        f"Omitting package {name} from audit: no installed version data present in dependency tree"
-                    )
-
-            return packages
-
         self._check_version()
 
         try:
-            npm_list_command = [self._executable, "list", "--all", "--json"]
-            npm_list = subprocess.run(npm_list_command, check=True, text=True, capture_output=True)
-            dependencies = json.loads(npm_list.stdout.strip()).get("dependencies")
-            return list(dependencies_to_packages(dependencies)) if dependencies else []
+            return list(npm_common.get_installed_packages(self.executable()))
 
         except subprocess.CalledProcessError:
             raise RuntimeError("Failed to list npm installed packages")
 
         except json.JSONDecodeError:
             raise RuntimeError("Failed to decode installed package report JSON")
-
-        except KeyError:
-            raise ValueError("Malformed installed package report")
 
     def _check_version(self):
         """

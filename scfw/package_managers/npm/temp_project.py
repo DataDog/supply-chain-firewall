@@ -15,6 +15,7 @@ from typing_extensions import Self
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
+import scfw.package_managers.npm.common as npm_common
 
 _log = logging.getLogger(__name__)
 
@@ -158,11 +159,11 @@ class TemporaryNpmProject:
 
             return target_handles
 
-        def handle_to_package(
+        def handle_to_install_target(
             dependencies: dict[str, Any],
             target_handle: str,
             target_name: Optional[str] = None,
-        ) -> Package:
+        ) -> tuple[str, str]:
             if not target_name:
                 # All supported npm versions adhere to this format
                 target_name = target_handle.rpartition("node_modules/")[2]
@@ -175,13 +176,13 @@ class TemporaryNpmProject:
                 # Parse recursively if this entry links to another
                 # All supported npm versions adhere to this format
                 if target_entry.get("link") and (resolved_handle := target_entry.get("resolved")):
-                    return handle_to_package(dependencies, resolved_handle, target_name)
+                    return handle_to_install_target(dependencies, resolved_handle, target_name)
 
                 raise KeyError(
                     f"Missing version data for installation target {target_name} in package-lock.json"
                 )
 
-            return Package(ECOSYSTEM.Npm, name=target_name, version=version)
+            return target_name, version
 
         if not self._temp_dir:
             raise RuntimeError("Cannot run commands in a temporary npm environment outside of a context")
@@ -207,6 +208,7 @@ class TemporaryNpmProject:
 
         dry_run_log = dry_run_process.stderr.strip().split('\n')
 
+        # TODO(ikretz): Remove this, coerce global commands to local ones
         # We need only look at placed dependencies for commands run outside of a project scope
         if not self.project_root or is_global_command(install_command):
             return extract_placed_dependencies(dry_run_log)
@@ -216,10 +218,13 @@ class TemporaryNpmProject:
         if not target_handles:
             return []
 
-        # Safely run the given `npm install` command to write or update the lockfile
-        # All supported versions of npm support these additional `install` command options
-        install_command = install_command + ["--package-lock-only", "--ignore-scripts"]
+        # Safely run the given `npm install` command in the temporary project
+        # All supported versions of npm support the `--ignore-scripts` option
+        install_command = install_command + ["--ignore-scripts"]
         subprocess.run(install_command, check=True, text=True, capture_output=True, cwd=temp_dir_path)
+
+        # Collect everything that the command installed into the temporary project
+        installed_packages = npm_common.get_installed_packages(executable=self._executable, project_dir=temp_dir_path)
 
         # Parse the updated lockfile JSON
         lockfile_path = temp_dir_path / "package-lock.json"
@@ -231,14 +236,18 @@ class TemporaryNpmProject:
             if not (dependencies := json.load(f).get("packages")):
                 raise KeyError("Missing dependencies data in package-lock.json")
 
-        # Read the target versions for added and changed packages out of the lockfile
-        install_targets: set[Package] = functools.reduce(
-            lambda acc, target_handle: acc | {handle_to_package(dependencies, target_handle)},
+        # Read the names and versions for added and changed packages out of the lockfile
+        install_targets: set[tuple[str, str]] = functools.reduce(
+            lambda acc, target_handle: acc | {handle_to_install_target(dependencies, target_handle)},
             target_handles,
             set(),
         )
 
-        return list(install_targets)
+        # Return only the installed packages that are also installation targets
+        return [
+            package for package in installed_packages
+            if any(package.name == target[0] and package.version == target[1] for target in install_targets)
+        ]
 
     def _normalize_command(self, command: list[str]) -> list[str]:
         """

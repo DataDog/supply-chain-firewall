@@ -151,7 +151,14 @@ def test_resolve_install_targets_dependency_latest_lockfile(
         (["npm", "install", TEST_PACKAGE_LATEST_SPEC], None),
         (
             ["npm", "install", TEST_PACKAGE_PREVIOUS_SPEC],
-            {Package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_PREVIOUS)},
+            {
+                Package(
+                    ECOSYSTEM.Npm,
+                    TEST_PACKAGE,
+                    TEST_PACKAGE_PREVIOUS,
+                    RemotePackageSource(build_npm_tarball_url(TEST_PACKAGE, TEST_PACKAGE_PREVIOUS)),
+                ),
+            },
         ),
     ]
 )
@@ -213,7 +220,14 @@ def test_resolve_install_targets_dependency_previous_lockfile(
         (["npm", "install", TEST_PACKAGE_PREVIOUS_SPEC], None),
         (
             ["npm", "install", TEST_PACKAGE_LATEST_SPEC],
-            {Package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_LATEST)},
+            {
+                Package(
+                    ECOSYSTEM.Npm,
+                    TEST_PACKAGE,
+                    TEST_PACKAGE_LATEST,
+                    RemotePackageSource(build_npm_tarball_url(TEST_PACKAGE, TEST_PACKAGE_LATEST)),
+                ),
+            },
         ),
     ]
 )

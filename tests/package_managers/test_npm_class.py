@@ -8,7 +8,7 @@ from typing import Optional
 import pytest
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.package import Package
+from scfw.package import Package, RemotePackageSource
 from scfw.package_managers.npm import Npm
 
 from .npm_fixtures import *
@@ -19,14 +19,26 @@ Fixed `PackageManager` to use across all tests.
 """
 
 TEST_PACKAGE_LATEST_INSTALL_TARGETS = {
-    Package(ECOSYSTEM.Npm, name, version) for name, version in TEST_PACKAGE_LATEST_DEPENDENCIES
+    Package(
+        ECOSYSTEM.Npm,
+        name,
+        version,
+        RemotePackageSource(build_npm_tarball_url(name, version)),
+    )
+    for name, version in TEST_PACKAGE_LATEST_DEPENDENCIES
 }
 """
 `Package` representations of the known dependencies of `TEST_PACKAGE@TEST_PACKAGE_LATEST`.
 """
 
 TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS = {
-    Package(ECOSYSTEM.Npm, name, version) for name, version in TEST_PACKAGE_PREVIOUS_DEPENDENCIES
+    Package(
+        ECOSYSTEM.Npm,
+        name,
+        version,
+        RemotePackageSource(build_npm_tarball_url(name, version)),
+    )
+    for name, version in TEST_PACKAGE_PREVIOUS_DEPENDENCIES
 }
 """
 `Package` representations of the known dependencies of `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS`.

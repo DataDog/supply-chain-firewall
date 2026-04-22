@@ -45,7 +45,8 @@ def get_installed_packages(executable: Optional[str] = None, project_dir: Option
                 if (package_dependencies := package_data.get("dependencies")):
                     packages |= dependencies_to_packages(package_dependencies)
 
-                version = package_data["version"]
+                if not (version := package_data.get("version")):
+                    raise ValueError("Missing version data")
 
                 if not (resolved := package_data.get("resolved")):
                     _log.info(f"No artifact source data found for installed dependency {name}")

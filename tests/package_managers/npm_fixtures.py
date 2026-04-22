@@ -295,3 +295,10 @@ def init_npm_project(
 
     if not with_lockfile:
         os.remove(path / "package-lock.json")
+
+
+def build_npm_tarball_url(package_name: str, package_version: str) -> str:
+    """
+    Return the npm URL for the package tarball specified by the given name and version.
+    """
+    return f"https://registry.npmjs.org/{package_name}/-/{package_name}-{package_version}.tgz"

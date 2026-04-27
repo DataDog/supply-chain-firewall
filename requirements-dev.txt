@@ -352,9 +352,9 @@ mypy==1.20.1 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:f5b84a79070586e0d353ee07b719d9d0a4aa7c8ee90c0ea97747e98cbe193019 \
     --hash=sha256:f8e945b872a05f4fbefabe2249c0b07b6b194e5e11a86ebee9edf855de09806c \
     --hash=sha256:fba3fb0968a7b48806b0c90f38d39296f10766885a94c83bd21399de1e14eb28
-packaging==26.1 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:5d9c0669c6285e491e0ced2eee587eaf67b670d94a19e94e3984a481aba6802f \
-    --hash=sha256:f042152b681c4bfac5cae2742a55e103d27ab2ec0f3d88037136b6bfe7c9c5de
+packaging==26.2 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e \
+    --hash=sha256:ff452ff5a3e828ce110190feff1178bb1f2ea2281fa2075aadb987c2fb221661
 pathspec==1.0.4 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:0210e2ae8a21a9137c0d470578cb0e595af87edaa6ebf12ff176f14a02e0e645 \
     --hash=sha256:fb6ae2fd4e7c921a165808a552060e722767cfa526f99ca5156ed2ce45a5c723

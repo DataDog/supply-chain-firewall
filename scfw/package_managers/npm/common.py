@@ -13,7 +13,7 @@ from scfw.package import LocalPackageSource, Package, RemotePackageSource
 
 _log = logging.getLogger(__name__)
 
-_LOCAL_PACKAGE_SOURCE_PREFIX = "file:../"
+_LOCAL_PACKAGE_SOURCE_SCHEME = "file:"
 
 
 def get_installed_packages(executable: Optional[str] = None, project_dir: Optional[Path] = None) -> set[Package]:
@@ -40,6 +40,9 @@ def get_installed_packages(executable: Optional[str] = None, project_dir: Option
     def dependencies_to_packages(dependencies: dict[str, dict]) -> set[Package]:
         packages = set()
 
+        # `file:` dependencies reported by `npm list` are relative to `node_modules/`
+        node_modules_dir = (project_dir if project_dir is not None else Path.cwd()) / "node_modules"
+
         for name, package_data in dependencies.items():
             try:
                 if (package_dependencies := package_data.get("dependencies")):
@@ -56,10 +59,9 @@ def get_installed_packages(executable: Optional[str] = None, project_dir: Option
                 source: Optional[LocalPackageSource | RemotePackageSource] = None
                 if resolved.startswith("http"):
                     source = RemotePackageSource(resolved)
-                elif resolved.startswith(_LOCAL_PACKAGE_SOURCE_PREFIX):
-                    source = LocalPackageSource(
-                        Path(resolved[len(_LOCAL_PACKAGE_SOURCE_PREFIX):]).resolve(strict=True)
-                    )
+                elif resolved.startswith(_LOCAL_PACKAGE_SOURCE_SCHEME):
+                    relative = resolved[len(_LOCAL_PACKAGE_SOURCE_SCHEME):]
+                    source = LocalPackageSource((node_modules_dir / relative).resolve(strict=True))
 
                 packages.add(Package(ECOSYSTEM.Npm, name, version, source=source))
 

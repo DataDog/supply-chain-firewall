@@ -184,22 +184,22 @@ def npm_project_local_dependency():
     """
     Initialize an npm project with a dependency on a local package.
     """
-    local_package_tempdir = TemporaryDirectory()
-    local_package_path = Path(local_package_tempdir.name) / LOCAL_PACKAGE_NAME
+    tempdir = TemporaryDirectory()
+
+    local_package_path = Path(tempdir.name) / LOCAL_PACKAGE_NAME
     os.mkdir(local_package_path)
     init_npm_project(local_package_path)
 
-    tempdir = TemporaryDirectory()
-    tempdir_path = Path(tempdir.name)
+    test_package_path = Path(tempdir.name) / "foo"
+    os.mkdir(test_package_path)
     init_npm_project(
-        tempdir_path,
+        test_package_path,
         dependencies=[local_package_path],
     )
 
-    yield tempdir_path
+    yield test_package_path
 
     tempdir.cleanup()
-    local_package_tempdir.cleanup()
 
 
 @pytest.fixture
@@ -208,23 +208,23 @@ def npm_project_local_dependency_lockfile():
     Initialize an npm project with a dependency on a local package (sourced from
     a local directory) covered in the lockfile but not installed.
     """
-    local_package_tempdir = TemporaryDirectory()
-    local_package_path = Path(local_package_tempdir.name) / LOCAL_PACKAGE_NAME
+    tempdir = TemporaryDirectory()
+
+    local_package_path = Path(tempdir.name) / LOCAL_PACKAGE_NAME
     os.mkdir(local_package_path)
     init_npm_project(local_package_path)
 
-    tempdir = TemporaryDirectory()
-    tempdir_path = Path(tempdir.name)
+    test_package_path = Path(tempdir.name) / "foo"
+    os.mkdir(test_package_path)
     init_npm_project(
-        tempdir_path,
+        test_package_path,
         dependencies=[local_package_path],
         with_lockfile=True,
     )
 
-    yield tempdir_path
+    yield test_package_path
 
     tempdir.cleanup()
-    local_package_tempdir.cleanup()
 
 
 @pytest.fixture
@@ -233,24 +233,24 @@ def npm_project_local_dependency_installed():
     Initialize an npm project with a dependency on a package installed from a
     local directory.
     """
-    local_package_tempdir = TemporaryDirectory()
-    local_package_path = Path(local_package_tempdir.name) / LOCAL_PACKAGE_NAME
+    tempdir = TemporaryDirectory()
+
+    local_package_path = Path(tempdir.name) / LOCAL_PACKAGE_NAME
     os.mkdir(local_package_path)
     init_npm_project(local_package_path)
 
-    tempdir = TemporaryDirectory()
-    tempdir_path = Path(tempdir.name)
+    test_package_path = Path(tempdir.name) / "foo"
+    os.mkdir(test_package_path)
     init_npm_project(
-        tempdir_path,
+        test_package_path,
         dependencies=[local_package_path],
         with_lockfile=True,
         with_node_modules=True,
     )
 
-    yield tempdir_path
+    yield test_package_path
 
     tempdir.cleanup()
-    local_package_tempdir.cleanup()
 
 
 def init_npm_project(

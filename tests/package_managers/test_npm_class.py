@@ -8,7 +8,7 @@ from typing import Optional
 import pytest
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.package import Package, RemotePackageSource
+from scfw.package import Package, LocalPackageSource, RemotePackageSource
 from scfw.package_managers.npm import Npm
 
 from .npm_fixtures import *
@@ -276,7 +276,7 @@ def test_resolve_install_targets_local_dependency(
         monkeypatch,
         npm_project_local_dependency,
         command,
-        true_targets,
+        patch_local_dependency_targets(npm_project_local_dependency, true_targets),
     )
 
 
@@ -308,7 +308,7 @@ def test_resolve_install_targets_local_dependency_lockfile(
         monkeypatch,
         npm_project_local_dependency_lockfile,
         command,
-        true_targets,
+        patch_local_dependency_targets(npm_project_local_dependency_lockfile, true_targets),
     )
 
 
@@ -472,3 +472,22 @@ def get_npm_project_state(project_path: Path) -> str:
     )
 
     return npm_list_process.stdout.strip()
+
+def patch_local_dependency_targets(test_project: Path, targets: set[Package]) -> set[Package]:
+    """
+    Lorem ipsum dolor sit amet.
+    """
+    patched_targets = list(targets)
+
+    for i, target in enumerate(patched_targets):
+        if target.name == LOCAL_PACKAGE_NAME:
+            patched_targets[i] = Package(
+                ecosystem=target.ecosystem,
+                name=target.name,
+                version=target.version,
+                source=LocalPackageSource(
+                    (test_project.parent / LOCAL_PACKAGE_NAME).resolve(strict=True)
+                ),
+            )
+
+    return set(patched_targets)

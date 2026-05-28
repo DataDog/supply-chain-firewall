@@ -5,6 +5,7 @@ Provides a class for spinning up ephemeral npm projects to run commands in.
 import functools
 import json
 import logging
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -18,6 +19,9 @@ from scfw.package import Package
 import scfw.package_managers.npm.common as npm_common
 
 _log = logging.getLogger(__name__)
+
+# URI scheme for npm local package dependencies
+_LOCAL_DEPENDENCY_PREFIX = "file:"
 
 
 class TemporaryNpmProject:
@@ -61,30 +65,124 @@ class TemporaryNpmProject:
         Returns:
             The given `TemporaryNpmProject` instance, now as a context manager.
         """
-        def copy_from_project_root(temp_dir_path: Path, resource: str, is_dir: bool = False):
-            if not self.project_root:
+        def rewrite_relative_path(relative_path: str, project_root: Path, temp_dir_path: Path) -> str:
+            absolute_path = (project_root / relative_path).resolve()
+            return os.path.relpath(absolute_path, temp_dir_path.resolve())
+
+        def copy_package_json(project_root: Path, temp_dir_path: Path):
+            orig_package_json = project_root / "package.json"
+            if not orig_package_json.is_file():
                 return
 
-            orig_resource = self.project_root / resource
-            temp_resource = temp_dir_path / resource
+            with open(orig_package_json) as f:
+                temp_content = json.load(f)
 
-            if is_dir and orig_resource.is_dir():
-                shutil.copytree(orig_resource, temp_resource, symlinks=True)
-            elif not is_dir and orig_resource.is_file():
-                shutil.copy(orig_resource, temp_resource)
-            else:
-                resource_kind = "directory" if is_dir else "file"
-                _log.debug(
-                    f"Project root directory {self.project_root} does not contain a {resource} {resource_kind}"
-                )
+            # Re-relativize local dependency paths to the temporary project directory
+            for section in {"dependencies", "devDependencies", "optionalDependencies", "peerDependencies"}:
+                dependencies = temp_content.get(section)
+                if not isinstance(dependencies, dict):
+                    continue
+
+                for name, spec in dependencies.items():
+                    if isinstance(spec, str) and spec.startswith(_LOCAL_DEPENDENCY_PREFIX):
+                        relative_target = rewrite_relative_path(
+                            spec[len(_LOCAL_DEPENDENCY_PREFIX):],
+                            project_root,
+                            temp_dir_path,
+                        )
+                        dependencies[name] = f"{_LOCAL_DEPENDENCY_PREFIX}{relative_target}"
+
+            with open(temp_dir_path / "package.json", 'w') as f:
+                json.dump(temp_content, f)
+
+        def copy_lockfile(project_root: Path, temp_dir_path: Path):
+            temp_lockfile = temp_dir_path / "package-lock.json"
+
+            orig_lockfile = project_root / "package-lock.json"
+            if not orig_lockfile.is_file():
+                return
+
+            with open(orig_lockfile) as f:
+                temp_content = json.load(f)
+
+            packages = temp_content.get("packages")
+            if not isinstance(packages, dict):
+                shutil.copy(orig_lockfile, temp_lockfile)
+                return
+
+            # External entry keys (anything other than "" or a `node_modules/...` path)
+            # are paths to linked sources, relative to the original project root
+            for old_key in list(packages.keys()):
+                if old_key == "" or old_key.startswith("node_modules/"):
+                    continue
+                packages[rewrite_relative_path(old_key, project_root, temp_dir_path)] = packages.pop(old_key)
+
+            # `resolved` fields on link entries are bare relative paths from the project root
+            # `dependencies.<name>` values may carry `file:` specs in the same form
+            for entry in packages.values():
+                if not isinstance(entry, dict):
+                    continue
+                resolved = entry.get("resolved")
+                if isinstance(resolved, str) and resolved.startswith(("./", "../")):
+                    entry["resolved"] = rewrite_relative_path(resolved, project_root, temp_dir_path)
+                dependencies = entry.get("dependencies")
+                if isinstance(dependencies, dict):
+                    for name, spec in dependencies.items():
+                        if isinstance(spec, str) and spec.startswith(_LOCAL_DEPENDENCY_PREFIX):
+                            relative_target = rewrite_relative_path(
+                                spec[len(_LOCAL_DEPENDENCY_PREFIX):],
+                                project_root,
+                                temp_dir_path,
+                            )
+                            dependencies[name] = f"{_LOCAL_DEPENDENCY_PREFIX}{relative_target}"
+
+            with open(temp_lockfile, 'w') as f:
+                json.dump(temp_content, f)
+
+        def copy_node_modules(project_root: Path, temp_dir_path: Path):
+            orig_node_modules = project_root / "node_modules"
+            if not orig_node_modules.is_dir():
+                return
+
+            temp_node_modules = temp_dir_path / "node_modules"
+            shutil.copytree(orig_node_modules, temp_node_modules, symlinks=True)
+
+            # Re-relativize relative symlinks to the temporary project directory
+            for root, dirs, files in os.walk(temp_node_modules, followlinks=False):
+                for name in dirs + files:
+                    entry = Path(root) / name
+                    if not entry.is_symlink():
+                        continue
+
+                    target = os.readlink(entry)
+                    if os.path.isabs(target):
+                        continue
+
+                    orig_entry = orig_node_modules / entry.relative_to(temp_node_modules)
+                    absolute_target = (orig_entry.parent / target).resolve()
+                    entry.unlink()
+                    os.symlink(absolute_target, entry)
+
+        def copy_from_project_root(project_root: Path, temp_dir_path: Path, file: str):
+            orig_file = project_root / file
+            if not orig_file.is_file():
+                return
+
+            shutil.copy(orig_file, temp_dir_path / file)
 
         self._temp_dir = TemporaryDirectory()
+        if not self.project_root:
+            return self
+
         temp_dir_path = Path(self._temp_dir.name)
 
-        copy_from_project_root(temp_dir_path, ".npmrc")
-        copy_from_project_root(temp_dir_path, "package.json")
-        copy_from_project_root(temp_dir_path, "package-lock.json")
-        copy_from_project_root(temp_dir_path, "node_modules", is_dir=True)
+        copy_package_json(self.project_root, temp_dir_path)
+        copy_lockfile(self.project_root, temp_dir_path)
+        copy_node_modules(self.project_root, temp_dir_path)
+
+        # Copy any other relevant files that may be present in the project root
+        for file in {".npmrc"}:
+            copy_from_project_root(self.project_root, temp_dir_path, file)
 
         return self
 

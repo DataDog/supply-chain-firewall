@@ -307,8 +307,8 @@ class TemporaryNpmProject:
         dry_run_log = dry_run_process.stderr.strip().split('\n')
 
         # TODO(ikretz): Remove this, coerce global commands to local ones
-        # We need only look at placed dependencies for commands run outside of a project scope
-        if not self.project_root or is_global_command(install_command):
+        # Global commands install outside the temp project; we can only see what dry-run placed
+        if is_global_command(install_command):
             return extract_placed_dependencies(dry_run_log)
 
         # Each target handle corresponds to a (possibly duplicated) installation target

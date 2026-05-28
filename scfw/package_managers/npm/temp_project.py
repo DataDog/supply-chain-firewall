@@ -221,30 +221,8 @@ class TemporaryNpmProject:
               * This method was invoked outside of a context (i.e., with no backing resources)
               * Required `package-lock.json` file was not written while resolving installation targets
             KeyError: The `package-lock.json` file is malformed or missing data for installation targets
-            ValueError: Failed to parse installation target specification (malformed verbose log output)
+            ValueError: The given `install_command` is empty or not a valid `npm` command.
         """
-        def is_global_command(command: list[str]) -> bool:
-            return any(global_opt in command for global_opt in {"-g", "--global"})
-
-        def extract_placed_dependencies(dry_run_log: list[str]) -> list[Package]:
-            placed_dependencies = []
-
-            # All supported npm versions adhere to this format
-            for line in dry_run_log:
-                line_tokens = line.split()
-
-                if line_tokens[2] != "placeDep":
-                    continue
-                target_spec = line_tokens[4]
-
-                name, sep, version = target_spec.rpartition('@')
-                if not (name and sep):
-                    raise ValueError(f"Failed to parse npm installation target specification '{target_spec}'")
-
-                placed_dependencies.append(Package(ECOSYSTEM.Npm, name, version))
-
-            return placed_dependencies
-
         def extract_target_handles(dry_run_log: list[str]) -> list[str]:
             target_handles = []
 
@@ -288,7 +266,9 @@ class TemporaryNpmProject:
         temp_dir_path = Path(self._temp_dir.name)
 
         # Validate and normalize `command` with respect to the given npm executable
+        # Coerce global commands into local ones so they resolve into the temp project
         install_command = self._normalize_command(install_command)
+        install_command = [token for token in install_command if token not in {"-g", "--global"}]
 
         # First, perform a dry-run of the installation and collect the verbose log output
         try:
@@ -305,11 +285,6 @@ class TemporaryNpmProject:
             return []
 
         dry_run_log = dry_run_process.stderr.strip().split('\n')
-
-        # TODO(ikretz): Remove this, coerce global commands to local ones
-        # Global commands install outside the temp project; we can only see what dry-run placed
-        if is_global_command(install_command):
-            return extract_placed_dependencies(dry_run_log)
 
         # Each target handle corresponds to a (possibly duplicated) installation target
         target_handles = extract_target_handles(dry_run_log)

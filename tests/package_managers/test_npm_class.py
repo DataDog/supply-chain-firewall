@@ -50,6 +50,7 @@ TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS = {
     [
         (["npm", "install"], None),
         (["npm", "install", TEST_PACKAGE_LATEST_SPEC], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
+        (["npm", "install", "-g", TEST_PACKAGE_LATEST_SPEC], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
     ]
 )
 def test_resolve_install_targets_empty_directory(
@@ -70,6 +71,7 @@ def test_resolve_install_targets_empty_directory(
     [
         (["npm", "install"], None),
         (["npm", "install", TEST_PACKAGE_LATEST_SPEC], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
+        (["npm", "install", "-g", TEST_PACKAGE_LATEST_SPEC], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
     ]
 )
 def test_resolve_install_targets_new_project(
@@ -475,7 +477,7 @@ def get_npm_project_state(project_path: Path) -> str:
 
 def patch_local_dependency_targets(test_project: Path, targets: set[Package]) -> set[Package]:
     """
-    Lorem ipsum dolor sit amet.
+    Add local package source data for local test dependencies.
     """
     patched_targets = list(targets)
 

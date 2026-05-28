@@ -2,7 +2,6 @@
 Provides a class for spinning up ephemeral npm projects to run commands in.
 """
 
-import functools
 import json
 import logging
 import os
@@ -11,7 +10,7 @@ import shutil
 import subprocess
 from tempfile import TemporaryDirectory
 from types import TracebackType
-from typing import Any, Optional, Type
+from typing import Any, Optional
 from typing_extensions import Self
 
 from scfw.ecosystem import ECOSYSTEM
@@ -190,19 +189,25 @@ class TemporaryNpmProject:
 
         temp_dir_path = Path(self._temp_dir.name)
 
-        copy_package_json(self.project_root, temp_dir_path)
-        copy_lockfile(self.project_root, temp_dir_path)
-        copy_node_modules(self.project_root, temp_dir_path)
+        try:
+            copy_package_json(self.project_root, temp_dir_path)
+            copy_lockfile(self.project_root, temp_dir_path)
+            copy_node_modules(self.project_root, temp_dir_path)
 
-        # Copy any other relevant files that may be present in the project root
-        for file in {".npmrc"}:
-            copy_from_project_root(self.project_root, temp_dir_path, file)
+            # Copy any other relevant files that may be present in the project root
+            copy_from_project_root(self.project_root, temp_dir_path, ".npmrc")
+
+        except Exception:
+            self._temp_dir.cleanup()
+            self._temp_dir = None
+
+            raise
 
         return self
 
     def __exit__(
         self,
-        exc_type: Optional[Type[BaseException]],
+        exc_type: Optional[type[BaseException]],
         exc_val: Optional[BaseException],
         exc_tb: Optional[TracebackType],
     ):
@@ -234,10 +239,11 @@ class TemporaryNpmProject:
             RuntimeError:
               * This method was invoked outside of a context (i.e., with no backing resources)
               * Required `package-lock.json` file was not written while resolving installation targets
+            json.JSONDecodeError: Failed to read malformed lockfile JSON.
             KeyError: The `package-lock.json` file is malformed or missing data for installation targets
             ValueError: The given `install_command` is empty or not a valid `npm` command.
         """
-        def extract_target_handles(dry_run_log: list[str]) -> list[str]:
+        def extract_target_handles(dry_run_log: list[str], temp_dir_path: Path) -> list[str]:
             target_handles = []
 
             # All supported npm versions adhere to this format
@@ -251,7 +257,22 @@ class TemporaryNpmProject:
                 ):
                     target_handles.append(line_tokens[3])
 
-            return target_handles
+            lockfile_path = temp_dir_path / "package-lock.json"
+            if not lockfile_path.is_file():
+                return target_handles
+            with open(lockfile_path) as f:
+                pre_install_packages = json.load(f).get("packages", {})
+
+            # Some versions of npm report CHANGE for local dependencies already present in
+            # `node_modules` when the resolved path is re-relativized for the temp project
+            # Since they are not being freshly downloaded or installed, they may be excluded
+            return [
+                handle for handle in target_handles
+                if not (
+                    pre_install_packages.get(handle, {}).get("resolved", "").startswith(_LOCAL_DEPENDENCY_PREFIX)
+                    and (temp_dir_path / handle).exists()
+                )
+            ]
 
         def handle_to_install_target(
             dependencies: dict[str, Any],
@@ -333,7 +354,7 @@ class TemporaryNpmProject:
         dry_run_log = dry_run_process.stderr.strip().split('\n')
 
         # Each target handle corresponds to a (possibly duplicated) installation target
-        target_handles = extract_target_handles(dry_run_log)
+        target_handles = extract_target_handles(dry_run_log, temp_dir_path)
         if not target_handles:
             return []
 
@@ -353,13 +374,7 @@ class TemporaryNpmProject:
                 raise KeyError("Missing dependencies data in package-lock.json")
 
         # Read added and changed packages out of the lockfile
-        install_targets: set[Package] = functools.reduce(
-            lambda acc, target_handle: acc | {handle_to_install_target(dependencies, target_handle)},
-            target_handles,
-            set(),
-        )
-
-        return list(install_targets)
+        return list({handle_to_install_target(dependencies, handle) for handle in target_handles})
 
     def _normalize_command(self, command: list[str]) -> list[str]:
         """

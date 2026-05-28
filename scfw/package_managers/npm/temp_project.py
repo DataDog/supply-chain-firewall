@@ -15,8 +15,7 @@ from typing import Any, Optional, Type
 from typing_extensions import Self
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.package import Package
-import scfw.package_managers.npm.common as npm_common
+from scfw.package import LocalPackageSource, Package, RemotePackageSource
 
 _log = logging.getLogger(__name__)
 
@@ -117,24 +116,35 @@ class TemporaryNpmProject:
                     continue
                 packages[rewrite_relative_path(old_key, project_root, temp_dir_path)] = packages.pop(old_key)
 
-            # `resolved` fields on link entries are bare relative paths from the project root
-            # `dependencies.<name>` values may carry `file:` specs in the same form
+            # `resolved` fields on link entries are relative paths from the project root,
+            # usually bare (`./` or `../` prefixed) but occasionally `file:`-prefixed.
+            # `dependencies.<name>` values may carry `file:` specs in the same form.
             for entry in packages.values():
                 if not isinstance(entry, dict):
                     continue
+
                 resolved = entry.get("resolved")
-                if isinstance(resolved, str) and resolved.startswith(("./", "../")):
-                    entry["resolved"] = rewrite_relative_path(resolved, project_root, temp_dir_path)
+                if isinstance(resolved, str):
+                    if resolved.startswith(_LOCAL_DEPENDENCY_PREFIX):
+                        resolved = rewrite_relative_path(
+                            resolved[len(_LOCAL_DEPENDENCY_PREFIX):],
+                            project_root,
+                            temp_dir_path,
+                        )
+                        entry["resolved"] = f"{_LOCAL_DEPENDENCY_PREFIX}{resolved}"
+                    elif resolved.startswith(("./", "../")):
+                        entry["resolved"] = rewrite_relative_path(resolved, project_root, temp_dir_path)
+
                 dependencies = entry.get("dependencies")
                 if isinstance(dependencies, dict):
                     for name, spec in dependencies.items():
                         if isinstance(spec, str) and spec.startswith(_LOCAL_DEPENDENCY_PREFIX):
-                            relative_target = rewrite_relative_path(
+                            spec = rewrite_relative_path(
                                 spec[len(_LOCAL_DEPENDENCY_PREFIX):],
                                 project_root,
                                 temp_dir_path,
                             )
-                            dependencies[name] = f"{_LOCAL_DEPENDENCY_PREFIX}{relative_target}"
+                            dependencies[name] = f"{_LOCAL_DEPENDENCY_PREFIX}{spec}"
 
             with open(temp_lockfile, 'w') as f:
                 json.dump(temp_content, f)
@@ -239,7 +249,8 @@ class TemporaryNpmProject:
             dependencies: dict[str, Any],
             target_handle: str,
             target_name: Optional[str] = None,
-        ) -> tuple[str, str]:
+            target_source: Optional[LocalPackageSource | RemotePackageSource] = None,
+        ) -> Package:
             if not target_name:
                 # All supported npm versions adhere to this format
                 target_name = target_handle.rpartition("node_modules/")[2]
@@ -252,13 +263,29 @@ class TemporaryNpmProject:
                 # Parse recursively if this entry links to another
                 # All supported npm versions adhere to this format
                 if target_entry.get("link") and (resolved_handle := target_entry.get("resolved")):
-                    return handle_to_install_target(dependencies, resolved_handle, target_name)
+                    # Some versions of npm prefix the link target with `file:`; the linked
+                    # entry's key is the bare path, so normalize before lookup
+                    if resolved_handle.startswith(_LOCAL_DEPENDENCY_PREFIX):
+                        resolved_handle = resolved_handle[len(_LOCAL_DEPENDENCY_PREFIX):]
+                    # `copy_lockfile` rewrites link keys so that `temp_dir_path / resolved_handle`
+                    # resolves back to the original local package on the user's filesystem
+                    link_source = LocalPackageSource((temp_dir_path / resolved_handle).resolve())
+                    return handle_to_install_target(dependencies, resolved_handle, target_name, link_source)
 
                 raise KeyError(
                     f"Missing version data for installation target {target_name} in package-lock.json"
                 )
 
-            return target_name, version
+            # Derive source from this entry's `resolved` field unless a caller already supplied one
+            if target_source is None and (resolved := target_entry.get("resolved")):
+                if resolved.startswith("http"):
+                    target_source = RemotePackageSource(resolved)
+                elif resolved.startswith(_LOCAL_DEPENDENCY_PREFIX):
+                    target_source = LocalPackageSource(
+                        (temp_dir_path / resolved[len(_LOCAL_DEPENDENCY_PREFIX):]).resolve()
+                    )
+
+            return Package(ECOSYSTEM.Npm, target_name, version, source=target_source)
 
         if not self._temp_dir:
             raise RuntimeError("Cannot run commands in a temporary npm environment outside of a context")
@@ -291,13 +318,10 @@ class TemporaryNpmProject:
         if not target_handles:
             return []
 
-        # Safely run the given `npm install` command in the temporary project
-        # All supported versions of npm support the `--ignore-scripts` option
-        install_command = install_command + ["--ignore-scripts"]
+        # Safely run the given `npm install` command to write or update the lockfile
+        # All supported versions of npm support these additional `install` command options
+        install_command = install_command + ["--package-lock-only", "--ignore-scripts"]
         subprocess.run(install_command, check=True, text=True, capture_output=True, cwd=temp_dir_path)
-
-        # Collect everything that the command installed into the temporary project
-        installed_packages = npm_common.get_installed_packages(executable=self._executable, project_dir=temp_dir_path)
 
         # Parse the updated lockfile JSON
         lockfile_path = temp_dir_path / "package-lock.json"
@@ -309,18 +333,14 @@ class TemporaryNpmProject:
             if not (dependencies := json.load(f).get("packages")):
                 raise KeyError("Missing dependencies data in package-lock.json")
 
-        # Read the names and versions for added and changed packages out of the lockfile
-        install_targets: set[tuple[str, str]] = functools.reduce(
+        # Read added and changed packages out of the lockfile
+        install_targets: set[Package] = functools.reduce(
             lambda acc, target_handle: acc | {handle_to_install_target(dependencies, target_handle)},
             target_handles,
             set(),
         )
 
-        # Return only the installed packages that are also installation targets
-        return [
-            package for package in installed_packages
-            if any(package.name == target[0] and package.version == target[1] for target in install_targets)
-        ]
+        return list(install_targets)
 
     def _normalize_command(self, command: list[str]) -> list[str]:
         """

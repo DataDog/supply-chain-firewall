@@ -85,6 +85,25 @@ def test_npm_prefix_output(new_npm_project):
     assert os.path.realpath(get_npm_prefix(subdirectory)) == os.path.realpath(subdirectory)
 
 
+def test_npm_prefix_output_empty_directory(empty_directory):
+    """
+    Test that `npm prefix` in a non-npm-project directory returns the directory
+    itself, with no `package.json` present there. The implementation uses this
+    behavior to detect that no npm project is active at the current working directory.
+    """
+    npm_prefix = subprocess.run(
+        ["npm", "prefix"],
+        check=True,
+        text=True,
+        capture_output=True,
+        cwd=empty_directory,
+    )
+    prefix_path = Path(npm_prefix.stdout.strip())
+
+    assert os.path.realpath(prefix_path) == os.path.realpath(empty_directory)
+    assert not (prefix_path / "package.json").is_file()
+
+
 def test_npm_loglevel_override(empty_directory):
     """
     Test that we can override the log level setting included in an npm command,
@@ -143,6 +162,29 @@ def test_npm_log_line_format_add(empty_directory):
     assert any(line.split()[3] == f"node_modules/{TEST_PACKAGE}" for line in add_lines)
 
 
+def test_npm_log_line_format_add_local_dependency(npm_project_local_dependency):
+    """
+    Test that the `ADD` log lines appear and have the required format when a
+    local package dependency is being installed.
+    """
+    command_line = ["npm", "install", "--dry-run", "--loglevel", "silly"]
+
+    # There are `silly` log lines for this command
+    silly_lines = get_silly_log_lines(npm_project_local_dependency, command_line)
+    assert silly_lines
+
+    # There are `ADD` lines among the `silly` lines
+    add_lines = list(filter(lambda l: "ADD" in l, silly_lines))
+    assert add_lines
+
+    # The `ADD` lines have the required format
+    assert all(line.split()[2] == "ADD" for line in add_lines)
+    assert all(line.split()[3].startswith("node_modules/") for line in add_lines)
+
+    # One of the `ADD` lines is for our local test package
+    assert any(line.split()[3] == f"node_modules/{LOCAL_PACKAGE_NAME}" for line in add_lines)
+
+
 def test_npm_log_line_format_change(npm_project_installed_previous):
     """
     Test that the `CHANGE` log lines have the required format.
@@ -184,6 +226,35 @@ def test_npm_install_package_lock_only_dependency_previous_lockfile(
         npm_project_dependency_previous_lockfile,
         ["npm", "install", TEST_PACKAGE_LATEST_SPEC]
     )
+
+
+def test_npm_install_package_lock_only_ignore_scripts(npm_project_dependency_latest):
+    """
+    Test that `--package-lock-only` and `--ignore-scripts` can be used together,
+    which is how the implementation runs installs in the temporary project. The
+    combination must write a lockfile without creating `node_modules/` and without
+    executing lifecycle scripts.
+    """
+    test_script_body = "This should never execute"
+
+    package_json_path = npm_project_dependency_latest / "package.json"
+    with open(package_json_path) as f:
+        package_json = json.load(f)
+    package_json["scripts"] = {"preinstall": f"echo \"{test_script_body}\""}
+    with open(package_json_path, 'w') as f:
+        json.dump(package_json, f, indent=4)
+
+    p = subprocess.run(
+        ["npm", "install", "--package-lock-only", "--ignore-scripts"],
+        check=True,
+        text=True,
+        capture_output=True,
+        cwd=npm_project_dependency_latest,
+    )
+
+    assert (npm_project_dependency_latest / "package-lock.json").is_file()
+    assert not (npm_project_dependency_latest / "node_modules").exists()
+    assert test_script_body not in p.stdout
 
 
 def test_npm_install_ignore_scripts(npm_project_dependency_latest):
@@ -390,6 +461,78 @@ def test_npm_list_installed_latest(npm_project_installed_latest):
         should_fail=False,
         installed=TEST_PACKAGE_LATEST_DEPENDENCIES,
     )
+
+
+def test_npm_list_installed_remote_resolved(npm_project_installed_latest):
+    """
+    Test that `npm list --all --json` includes a `resolved` field starting with
+    `http` for remotely installed packages. The implementation uses this to
+    identify remote package sources.
+    """
+    npm_list_process = subprocess.run(
+        ["npm", "list", "--all", "--json"],
+        check=True,
+        text=True,
+        capture_output=True,
+        cwd=npm_project_installed_latest,
+    )
+    dependencies = json.loads(npm_list_process.stdout.strip()).get("dependencies")
+    assert dependencies and TEST_PACKAGE in dependencies
+
+    resolved = dependencies[TEST_PACKAGE].get("resolved")
+    assert resolved and resolved.startswith("http")
+
+
+def test_npm_list_installed_local_dependency(npm_project_local_dependency_installed):
+    """
+    Test that `npm list --all --json` includes a `resolved` field starting with
+    `file:` for locally installed packages, and that the path after `file:` is
+    relative to `node_modules/` (not the project root). The implementation depends
+    on both of these properties to resolve the local source path.
+    """
+    npm_list_process = subprocess.run(
+        ["npm", "list", "--all", "--json"],
+        check=True,
+        text=True,
+        capture_output=True,
+        cwd=npm_project_local_dependency_installed,
+    )
+    dependencies = json.loads(npm_list_process.stdout.strip()).get("dependencies")
+    assert dependencies and LOCAL_PACKAGE_NAME in dependencies
+
+    resolved = dependencies[LOCAL_PACKAGE_NAME].get("resolved")
+    assert resolved and resolved.startswith("file:")
+
+    # The path is relative to `node_modules/`, so resolving from there must yield
+    # the actual local package directory
+    relative = resolved[len("file:"):]
+    node_modules_dir = npm_project_local_dependency_installed / "node_modules"
+    assert (node_modules_dir / relative).resolve().is_dir()
+
+
+def test_npm_lockfile_resolved_field_remote(npm_project_dependency_latest):
+    """
+    Test that the `resolved` field in `package-lock.json` starts with `http` for
+    remote packages after `npm install --package-lock-only`. The implementation
+    reads this field to assign a `RemotePackageSource` to installation targets.
+    """
+    subprocess.run(
+        ["npm", "install", "--package-lock-only"],
+        check=True,
+        text=True,
+        capture_output=True,
+        cwd=npm_project_dependency_latest,
+    )
+
+    with open(npm_project_dependency_latest / "package-lock.json") as f:
+        packages = json.load(f).get("packages")
+    assert packages
+
+    target_entry = packages.get(f"node_modules/{TEST_PACKAGE}")
+    assert target_entry
+
+    resolved = target_entry.get("resolved")
+    assert resolved and resolved.startswith("http")
 
 
 def backend_test_npm_install_package_lock_only(project: Path, command_line: list[str]):

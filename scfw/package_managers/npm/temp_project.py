@@ -269,7 +269,13 @@ class TemporaryNpmProject:
                         resolved_handle = resolved_handle[len(_LOCAL_DEPENDENCY_PREFIX):]
                     # `copy_lockfile` rewrites link keys so that `temp_dir_path / resolved_handle`
                     # resolves back to the original local package on the user's filesystem
-                    link_source = LocalPackageSource((temp_dir_path / resolved_handle).resolve())
+                    link_source = None
+                    try:
+                        link_source = LocalPackageSource((temp_dir_path / resolved_handle).resolve(strict=True))
+                    except (OSError, RuntimeError) as e:
+                        _log.warning(
+                            f"Could not resolve local source path for installation target {target_name}: {e}"
+                        )
                     return handle_to_install_target(dependencies, resolved_handle, target_name, link_source)
 
                 raise KeyError(
@@ -281,9 +287,14 @@ class TemporaryNpmProject:
                 if resolved.startswith("http"):
                     target_source = RemotePackageSource(resolved)
                 elif resolved.startswith(_LOCAL_DEPENDENCY_PREFIX):
-                    target_source = LocalPackageSource(
-                        (temp_dir_path / resolved[len(_LOCAL_DEPENDENCY_PREFIX):]).resolve()
-                    )
+                    try:
+                        target_source = LocalPackageSource(
+                            (temp_dir_path / resolved[len(_LOCAL_DEPENDENCY_PREFIX):]).resolve(strict=True)
+                        )
+                    except (OSError, RuntimeError) as e:
+                        _log.warning(
+                            f"Could not resolve local source path for installation target {target_name}: {e}"
+                        )
 
             return Package(ECOSYSTEM.Npm, target_name, version, source=target_source)
 

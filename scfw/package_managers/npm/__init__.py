@@ -214,7 +214,7 @@ def _get_installed_packages(executable: Optional[str] = None, project_dir: Optio
         subprocess.CalledProcessError: Failed to list dependencies with `npm`.
         json.JSONDecodeError: Failed to decode installed packages report JSON.
     """
-    def dependencies_to_packages(dependencies: dict[str, dict]) -> set[Package]:
+    def dependencies_to_packages(project_dir: Optional[Path], dependencies: dict[str, dict]) -> set[Package]:
         packages = set()
 
         # `file:` dependencies reported by `npm list` are relative to `node_modules/`
@@ -223,7 +223,7 @@ def _get_installed_packages(executable: Optional[str] = None, project_dir: Optio
         for name, package_data in dependencies.items():
             try:
                 if (package_dependencies := package_data.get("dependencies")):
-                    packages |= dependencies_to_packages(package_dependencies)
+                    packages |= dependencies_to_packages(project_dir, package_dependencies)
 
                 if not (version := package_data.get("version")):
                     raise ValueError("Missing version data")
@@ -257,4 +257,4 @@ def _get_installed_packages(executable: Optional[str] = None, project_dir: Optio
     npm_list = subprocess.run(npm_list_command, check=True, text=True, capture_output=True, cwd=project_dir)
     dependencies = json.loads(npm_list.stdout.strip()).get("dependencies")
 
-    return dependencies_to_packages(dependencies) if dependencies else set()
+    return dependencies_to_packages(project_dir, dependencies) if dependencies else set()

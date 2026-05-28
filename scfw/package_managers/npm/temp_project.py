@@ -22,6 +22,9 @@ _log = logging.getLogger(__name__)
 # URI scheme for npm local package dependencies
 _LOCAL_DEPENDENCY_PREFIX = "file:"
 
+# Dependency sections present in npm package.json and package-lock.json files
+_DEPENDENCY_SECTIONS = {"dependencies", "devDependencies", "optionalDependencies", "peerDependencies"}
+
 
 class TemporaryNpmProject:
     """
@@ -29,8 +32,8 @@ class TemporaryNpmProject:
     `npm` commands in the context of that project safely and without affecting the original.
 
     This class implements the context manager protocol, and indeed, the temporary resources
-    needed by this class to run commands exist exist only while inside a context. Invoking
-    this class' methods outside of a context will result in error.
+    needed by this class to run commands exist only while inside a context. Invoking this
+    class' methods outside of a context will result in error.
     """
     def __init__(self, executable: str):
         """
@@ -77,7 +80,7 @@ class TemporaryNpmProject:
                 temp_content = json.load(f)
 
             # Re-relativize local dependency paths to the temporary project directory
-            for section in {"dependencies", "devDependencies", "optionalDependencies", "peerDependencies"}:
+            for section in _DEPENDENCY_SECTIONS:
                 dependencies = temp_content.get(section)
                 if not isinstance(dependencies, dict):
                     continue
@@ -135,16 +138,17 @@ class TemporaryNpmProject:
                     elif resolved.startswith(("./", "../")):
                         entry["resolved"] = rewrite_relative_path(resolved, project_root, temp_dir_path)
 
-                dependencies = entry.get("dependencies")
-                if isinstance(dependencies, dict):
-                    for name, spec in dependencies.items():
-                        if isinstance(spec, str) and spec.startswith(_LOCAL_DEPENDENCY_PREFIX):
-                            spec = rewrite_relative_path(
-                                spec[len(_LOCAL_DEPENDENCY_PREFIX):],
-                                project_root,
-                                temp_dir_path,
-                            )
-                            dependencies[name] = f"{_LOCAL_DEPENDENCY_PREFIX}{spec}"
+                for section in _DEPENDENCY_SECTIONS:
+                    dependencies = entry.get(section)
+                    if isinstance(dependencies, dict):
+                        for name, spec in dependencies.items():
+                            if isinstance(spec, str) and spec.startswith(_LOCAL_DEPENDENCY_PREFIX):
+                                spec = rewrite_relative_path(
+                                    spec[len(_LOCAL_DEPENDENCY_PREFIX):],
+                                    project_root,
+                                    temp_dir_path,
+                                )
+                                dependencies[name] = f"{_LOCAL_DEPENDENCY_PREFIX}{spec}"
 
             with open(temp_lockfile, 'w') as f:
                 json.dump(temp_content, f)
@@ -240,7 +244,11 @@ class TemporaryNpmProject:
             for line in dry_run_log:
                 line_tokens = line.split()
 
-                if line_tokens[1] in {"sill", "silly"} and line_tokens[2] in {"ADD", "CHANGE"}:
+                if (
+                    len(line_tokens) >= 4
+                    and line_tokens[1] in {"sill", "silly"}
+                    and line_tokens[2] in {"ADD", "CHANGE"}
+                ):
                     target_handles.append(line_tokens[3])
 
             return target_handles

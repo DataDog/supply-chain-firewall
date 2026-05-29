@@ -9,7 +9,7 @@ checks: typecheck lint test
 
 coverage: test coverage-report
 
-test: test-cli test-configure test-python-executable test-pip test-pip-class test-poetry test-poetry-class test-npm test-npm-class test-verifiers
+test: test-cli test-configure test-pip-executable test-pip test-pip-class test-poetry test-poetry-class test-npm test-npm-class test-verifiers
 
 typecheck:
 	mypy --install-types --non-interactive scfw
@@ -23,8 +23,8 @@ test-cli:
 test-configure:
 	COVERAGE_FILE=.coverage.configure coverage run -m pytest tests/test_configure.py
 
-test-python-executable:
-	COVERAGE_FILE=.coverage.python.executable coverage run -m pytest tests/package_managers/test_pip_class.py -k test_executable
+test-pip-executable:
+	COVERAGE_FILE=.coverage.pip.executable coverage run -m pytest tests/package_managers/test_pip_class.py -k test_executable
 
 test-pip:
 	COVERAGE_FILE=.coverage.pip coverage run -m pytest tests/package_managers/test_pip.py
@@ -49,7 +49,7 @@ test-verifiers:
 
 coverage-report:
 	coverage combine .coverage.cli .coverage.configure \
-	.coverage.python.executable .coverage.pip .coverage.pip.class \
+	.coverage.pip.executable .coverage.pip .coverage.pip.class \
 	.coverage.poetry .coverage.poetry.class \
 	.coverage.npm .coverage.npm.class \
 	.coverage.verifiers

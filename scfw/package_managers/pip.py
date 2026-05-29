@@ -33,27 +33,24 @@ class Pip(PackageManager):
 
         Args:
             executable:
-                An optional path in the local filesystem to the Python executable
-                to use for running `pip` as a module. If not provided, this value
+                An optional path in the local filesystem to the `pip` executable
+                to use for running `pip` commands. If not provided, this value
                 is determined by the current environment.
 
         Raises:
             RuntimeError: A valid executable could not be resolved.
         """
-        def get_python_executable() -> Optional[str]:
+        def get_pip_executable() -> Optional[str]:
             # Explicitly checking whether we are in a venv circumvents issues
             # caused by pyenv shims stomping the PATH with its own directories
             venv_path = None
             if (venv := os.environ.get("VIRTUAL_ENV")):
                 venv_path = os.path.join(venv, "bin")
-            for bin in ["python3", "python"]:
-                if (executable := shutil.which(bin, path=venv_path)):
-                    return executable
-            return None
+            return shutil.which("pip", path=venv_path)
 
-        executable = executable if executable else get_python_executable()
+        executable = executable if executable else get_pip_executable()
         if not executable:
-            raise RuntimeError("Failed to resolve local Python executable: is Python installed?")
+            raise RuntimeError("Failed to resolve local pip executable: is pip installed?")
         if not os.path.isfile(executable):
             raise RuntimeError(f"Path '{executable}' does not correspond to a regular file")
 
@@ -75,7 +72,7 @@ class Pip(PackageManager):
 
     def executable(self) -> str:
         """
-        Return the local filesystem path to the underlying `pip` executable.
+        Return the local filesystem path to the `pip` executable.
         """
         return self._executable
 
@@ -200,7 +197,7 @@ class Pip(PackageManager):
         def get_pip_version(executable: str) -> Optional[Version]:
             try:
                 pip_version = subprocess.run(
-                    [executable, "-m", "pip", "--version"],
+                    [executable, "--version"],
                     check=True,
                     text=True,
                     capture_output=True
@@ -227,8 +224,8 @@ class Pip(PackageManager):
                 that starts with `"pip"`)
 
         Returns:
-            The equivalent but normalized form of `command` permitting Python
-            module invocation of `pip`.
+            The equivalent but normalized form of `command` with the `pip` token
+            replaced by the local filesystem path to `self.executable()`.
 
         Raises:
             ValueError: The given `command` is empty or not a valid `pip` command.
@@ -238,4 +235,4 @@ class Pip(PackageManager):
         if command[0] != self.name():
             raise ValueError("Received invalid pip command line")
 
-        return [self._executable, "-m"] + command
+        return [self._executable] + command[1:]

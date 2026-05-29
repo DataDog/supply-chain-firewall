@@ -49,7 +49,7 @@ jobs:
       - name: Test firewall configure script
         run: make test-configure
 
-  python-executable:
+  pip-executable:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -64,13 +64,13 @@ jobs:
           pip install -r requirements-dev.txt
       - name: Install Supply-Chain Firewall
         run: pip install .
-      - name: Test Python executable in the global environment
-        run: make test-python-executable
-      - name: Test Python executable in a virtual environment
+      - name: Test pip executable in the global environment
+        run: make test-pip-executable
+      - name: Test pip executable in a virtual environment
         run: |
           python -m venv venv
           source venv/bin/activate
-          make test-python-executable
+          make test-pip-executable
 
   pip-integration:
     runs-on: ubuntu-latest

@@ -23,11 +23,11 @@ Fixed `PackageManager` to use across all tests.
 
 def test_executable():
     """
-    Test whether `Pip` correctly discovers the Python executable active in the
+    Test whether `Pip` correctly discovers the pip executable active in the
     current environment.
     """
-    python = shutil.which("python3")
-    assert python and PACKAGE_MANAGER.executable() == python
+    pip = shutil.which("pip3") or shutil.which("pip")
+    assert pip and PACKAGE_MANAGER.executable() == pip
 
 
 @pytest.mark.parametrize(
@@ -124,8 +124,8 @@ def test_pip_list_installed_packages(monkeypatch):
     with TemporaryDirectory() as tmp:
         monkeypatch.chdir(tmp)
 
-        venv_python = "venv/bin/python"
+        venv_pip = "venv/bin/pip"
         subprocess.run([sys.executable, "-m", "venv", "venv"], check=True)
-        subprocess.run([venv_python, "-m", "pip", "install", f"{target.name}=={target.version}"], check=True)
+        subprocess.run([venv_pip, "install", f"{target.name}=={target.version}"], check=True)
 
-        assert target in Pip(executable=venv_python).list_installed_packages()
+        assert target in Pip(executable=venv_pip).list_installed_packages()

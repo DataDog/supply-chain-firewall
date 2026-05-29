@@ -2,14 +2,17 @@
 Tests of `Npm`, the `PackageManager` subclass.
 """
 
+import json
 from pathlib import Path
+import subprocess
 from typing import Optional
 
 import pytest
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.package import Package
+from scfw.package import Package, LocalPackageSource, RemotePackageSource
 from scfw.package_managers.npm import Npm
+import scfw.package_managers.npm as npm
 
 from .npm_fixtures import *
 
@@ -19,14 +22,26 @@ Fixed `PackageManager` to use across all tests.
 """
 
 TEST_PACKAGE_LATEST_INSTALL_TARGETS = {
-    Package(ECOSYSTEM.Npm, name, version) for name, version in TEST_PACKAGE_LATEST_DEPENDENCIES
+    Package(
+        ECOSYSTEM.Npm,
+        name,
+        version,
+        RemotePackageSource(build_npm_tarball_url(name, version)),
+    )
+    for name, version in TEST_PACKAGE_LATEST_DEPENDENCIES
 }
 """
 `Package` representations of the known dependencies of `TEST_PACKAGE@TEST_PACKAGE_LATEST`.
 """
 
 TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS = {
-    Package(ECOSYSTEM.Npm, name, version) for name, version in TEST_PACKAGE_PREVIOUS_DEPENDENCIES
+    Package(
+        ECOSYSTEM.Npm,
+        name,
+        version,
+        RemotePackageSource(build_npm_tarball_url(name, version)),
+    )
+    for name, version in TEST_PACKAGE_PREVIOUS_DEPENDENCIES
 }
 """
 `Package` representations of the known dependencies of `TEST_PACKAGE@TEST_PACKAGE_PREVIOUS`.
@@ -38,6 +53,8 @@ TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS = {
     [
         (["npm", "install"], None),
         (["npm", "install", TEST_PACKAGE_LATEST_SPEC], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
+        (["npm", "install", "-g", TEST_PACKAGE_LATEST_SPEC], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
+        (["npm", "install", "--global", TEST_PACKAGE_LATEST_SPEC], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
     ]
 )
 def test_resolve_install_targets_empty_directory(
@@ -58,6 +75,8 @@ def test_resolve_install_targets_empty_directory(
     [
         (["npm", "install"], None),
         (["npm", "install", TEST_PACKAGE_LATEST_SPEC], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
+        (["npm", "install", "-g", TEST_PACKAGE_LATEST_SPEC], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
+        (["npm", "install", "--global", TEST_PACKAGE_LATEST_SPEC], TEST_PACKAGE_LATEST_INSTALL_TARGETS),
     ]
 )
 def test_resolve_install_targets_new_project(
@@ -139,7 +158,14 @@ def test_resolve_install_targets_dependency_latest_lockfile(
         (["npm", "install", TEST_PACKAGE_LATEST_SPEC], None),
         (
             ["npm", "install", TEST_PACKAGE_PREVIOUS_SPEC],
-            {Package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_PREVIOUS)},
+            {
+                Package(
+                    ECOSYSTEM.Npm,
+                    TEST_PACKAGE,
+                    TEST_PACKAGE_PREVIOUS,
+                    RemotePackageSource(build_npm_tarball_url(TEST_PACKAGE, TEST_PACKAGE_PREVIOUS)),
+                ),
+            },
         ),
     ]
 )
@@ -201,7 +227,14 @@ def test_resolve_install_targets_dependency_previous_lockfile(
         (["npm", "install", TEST_PACKAGE_PREVIOUS_SPEC], None),
         (
             ["npm", "install", TEST_PACKAGE_LATEST_SPEC],
-            {Package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_LATEST)},
+            {
+                Package(
+                    ECOSYSTEM.Npm,
+                    TEST_PACKAGE,
+                    TEST_PACKAGE_LATEST,
+                    RemotePackageSource(build_npm_tarball_url(TEST_PACKAGE, TEST_PACKAGE_LATEST)),
+                ),
+            },
         ),
     ]
 )
@@ -250,7 +283,7 @@ def test_resolve_install_targets_local_dependency(
         monkeypatch,
         npm_project_local_dependency,
         command,
-        true_targets,
+        patch_local_dependency_targets(npm_project_local_dependency, true_targets),
     )
 
 
@@ -282,7 +315,7 @@ def test_resolve_install_targets_local_dependency_lockfile(
         monkeypatch,
         npm_project_local_dependency_lockfile,
         command,
-        true_targets,
+        patch_local_dependency_targets(npm_project_local_dependency_lockfile, true_targets),
     )
 
 
@@ -381,6 +414,94 @@ def test_list_installed_packages_installed_latest(monkeypatch, npm_project_insta
     )
 
 
+def test_list_installed_packages_local_dependency_installed(
+    monkeypatch,
+    npm_project_local_dependency_installed,
+):
+    """
+    Test that `Npm.list_installed_packages` reports an installed local file:
+    dependency with its `LocalPackageSource` populated to the original source path.
+    """
+    expected_source = (
+        npm_project_local_dependency_installed.parent / LOCAL_PACKAGE_NAME
+    ).resolve(strict=True)
+
+    backend_test_list_installed_packages(
+        monkeypatch,
+        npm_project_local_dependency_installed,
+        should_fail=False,
+        installed={
+            Package(
+                ECOSYSTEM.Npm,
+                LOCAL_PACKAGE_NAME,
+                LOCAL_PACKAGE_VERSION,
+                source=LocalPackageSource(expected_source),
+            ),
+        },
+    )
+
+
+def test_list_installed_packages_keeps_dep_with_missing_local_source(monkeypatch, tmp_path):
+    """
+    Regression test: when `npm list` reports a `file:` dep whose target does
+    not exist on disk, `list_installed_packages` should still return the
+    package (without source data) instead of silently dropping it.
+    """
+    npm_list_output = json.dumps({
+        "dependencies": {
+            "ghost-package": {
+                "version": "1.0.0",
+                "resolved": "file:./does-not-exist-XYZ",
+            },
+        },
+    })
+
+    class FakeCompletedProcess:
+        stdout = npm_list_output
+
+    monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
+    monkeypatch.chdir(tmp_path)
+
+    packages = PACKAGE_MANAGER.list_installed_packages()
+
+    assert set(packages) == {Package(ECOSYSTEM.Npm, "ghost-package", "1.0.0")}
+
+
+def test_list_installed_packages_skips_malformed_entries(monkeypatch, tmp_path):
+    """
+    Malformed entries (e.g., missing `version`, or a non-dict in place of an
+    entry) are dropped with a warning, but well-formed sibling entries are
+    still returned.
+    """
+    good_url = "https://registry.npmjs.org/good-package/-/good-package-1.2.3.tgz"
+    npm_list_output = json.dumps({
+        "dependencies": {
+            "good-package": {
+                "version": "1.2.3",
+                "resolved": good_url,
+            },
+            "no-version": {
+                "resolved": "https://registry.npmjs.org/no-version/-/no-version-1.0.0.tgz",
+            },
+            "not-a-dict": "this should have been an object",
+        },
+    })
+
+    class FakeCompletedProcess:
+        stdout = npm_list_output
+
+    monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
+    monkeypatch.chdir(tmp_path)
+
+    packages = PACKAGE_MANAGER.list_installed_packages()
+
+    assert set(packages) == {
+        Package(ECOSYSTEM.Npm, "good-package", "1.2.3", source=RemotePackageSource(good_url)),
+    }
+
+
 def backend_test_resolve_install_targets(
     monkeypatch,
     project: Path,
@@ -446,3 +567,23 @@ def get_npm_project_state(project_path: Path) -> str:
     )
 
     return npm_list_process.stdout.strip()
+
+
+def patch_local_dependency_targets(test_project: Path, targets: set[Package]) -> set[Package]:
+    """
+    Add local package source data for local test dependencies.
+    """
+    patched_targets = list(targets)
+
+    for i, target in enumerate(patched_targets):
+        if target.name == LOCAL_PACKAGE_NAME:
+            patched_targets[i] = Package(
+                ecosystem=target.ecosystem,
+                name=target.name,
+                version=target.version,
+                source=LocalPackageSource(
+                    (test_project.parent / LOCAL_PACKAGE_NAME).resolve(strict=True)
+                ),
+            )
+
+    return set(patched_targets)

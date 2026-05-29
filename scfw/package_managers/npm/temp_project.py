@@ -2,21 +2,27 @@
 Provides a class for spinning up ephemeral npm projects to run commands in.
 """
 
-import functools
 import json
 import logging
+import os
 from pathlib import Path
 import shutil
 import subprocess
 from tempfile import TemporaryDirectory
 from types import TracebackType
-from typing import Any, Optional, Type
+from typing import Any, Optional
 from typing_extensions import Self
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.package import Package
+from scfw.package import LocalPackageSource, Package, RemotePackageSource
 
 _log = logging.getLogger(__name__)
+
+# URI scheme for npm local package dependencies
+FILE_URI_PREFIX = "file:"
+
+# Dependency sections present in npm package.json and package-lock.json files
+_DEPENDENCY_SECTIONS = {"dependencies", "devDependencies", "optionalDependencies", "peerDependencies"}
 
 
 class TemporaryNpmProject:
@@ -25,8 +31,8 @@ class TemporaryNpmProject:
     `npm` commands in the context of that project safely and without affecting the original.
 
     This class implements the context manager protocol, and indeed, the temporary resources
-    needed by this class to run commands exist exist only while inside a context. Invoking
-    this class' methods outside of a context will result in error.
+    needed by this class to run commands exist only while inside a context. Invoking this
+    class' methods outside of a context will result in error.
     """
     def __init__(self, executable: str):
         """
@@ -60,36 +66,148 @@ class TemporaryNpmProject:
         Returns:
             The given `TemporaryNpmProject` instance, now as a context manager.
         """
-        def copy_from_project_root(temp_dir_path: Path, resource: str, is_dir: bool = False):
-            if not self.project_root:
+        def rewrite_relative_path(relative_path: str, project_root: Path, temp_dir_path: Path) -> str:
+            absolute_path = (project_root / relative_path).resolve()
+            return os.path.relpath(absolute_path, temp_dir_path.resolve())
+
+        def copy_package_json(project_root: Path, temp_dir_path: Path):
+            orig_package_json = project_root / "package.json"
+            if not orig_package_json.is_file():
                 return
 
-            orig_resource = self.project_root / resource
-            temp_resource = temp_dir_path / resource
+            with open(orig_package_json) as f:
+                temp_content = json.load(f)
 
-            if is_dir and orig_resource.is_dir():
-                shutil.copytree(orig_resource, temp_resource, symlinks=True)
-            elif not is_dir and orig_resource.is_file():
-                shutil.copy(orig_resource, temp_resource)
-            else:
-                resource_kind = "directory" if is_dir else "file"
-                _log.debug(
-                    f"Project root directory {self.project_root} does not contain a {resource} {resource_kind}"
-                )
+            # Re-relativize local dependency paths to the temporary project directory
+            for section in _DEPENDENCY_SECTIONS:
+                dependencies = temp_content.get(section)
+                if not isinstance(dependencies, dict):
+                    continue
+
+                for name, spec in dependencies.items():
+                    if isinstance(spec, str) and spec.startswith(FILE_URI_PREFIX):
+                        relative_target = rewrite_relative_path(
+                            spec[len(FILE_URI_PREFIX):],
+                            project_root,
+                            temp_dir_path,
+                        )
+                        dependencies[name] = f"{FILE_URI_PREFIX}{relative_target}"
+
+            with open(temp_dir_path / "package.json", 'w') as f:
+                json.dump(temp_content, f)
+
+        def copy_lockfile(project_root: Path, temp_dir_path: Path):
+            temp_lockfile = temp_dir_path / "package-lock.json"
+
+            orig_lockfile = project_root / "package-lock.json"
+            if not orig_lockfile.is_file():
+                return
+
+            with open(orig_lockfile) as f:
+                temp_content = json.load(f)
+
+            packages = temp_content.get("packages")
+            if not isinstance(packages, dict):
+                shutil.copy(orig_lockfile, temp_lockfile)
+                return
+
+            # External entry keys (anything other than "" or a `node_modules/...` path)
+            # are paths to linked sources, relative to the original project root
+            for old_key in list(packages.keys()):
+                if old_key == "" or old_key.startswith("node_modules/"):
+                    continue
+                packages[rewrite_relative_path(old_key, project_root, temp_dir_path)] = packages.pop(old_key)
+
+            # `resolved` fields on link entries are relative paths from the project root,
+            # usually bare (`./` or `../` prefixed) but occasionally `file:`-prefixed.
+            # `dependencies.<name>` values may carry `file:` specs in the same form.
+            for entry in packages.values():
+                if not isinstance(entry, dict):
+                    continue
+
+                resolved = entry.get("resolved")
+                if isinstance(resolved, str):
+                    if resolved.startswith(FILE_URI_PREFIX):
+                        resolved = rewrite_relative_path(
+                            resolved[len(FILE_URI_PREFIX):],
+                            project_root,
+                            temp_dir_path,
+                        )
+                        entry["resolved"] = f"{FILE_URI_PREFIX}{resolved}"
+                    elif resolved.startswith(("./", "../")):
+                        entry["resolved"] = rewrite_relative_path(resolved, project_root, temp_dir_path)
+
+                for section in _DEPENDENCY_SECTIONS:
+                    dependencies = entry.get(section)
+                    if isinstance(dependencies, dict):
+                        for name, spec in dependencies.items():
+                            if isinstance(spec, str) and spec.startswith(FILE_URI_PREFIX):
+                                spec = rewrite_relative_path(
+                                    spec[len(FILE_URI_PREFIX):],
+                                    project_root,
+                                    temp_dir_path,
+                                )
+                                dependencies[name] = f"{FILE_URI_PREFIX}{spec}"
+
+            with open(temp_lockfile, 'w') as f:
+                json.dump(temp_content, f)
+
+        def copy_node_modules(project_root: Path, temp_dir_path: Path):
+            orig_node_modules = project_root / "node_modules"
+            if not orig_node_modules.is_dir():
+                return
+
+            temp_node_modules = temp_dir_path / "node_modules"
+            shutil.copytree(orig_node_modules, temp_node_modules, symlinks=True)
+
+            # Re-relativize relative symlinks to the temporary project directory
+            for root, dirs, files in os.walk(temp_node_modules, followlinks=False):
+                for name in dirs + files:
+                    entry = Path(root) / name
+                    if not entry.is_symlink():
+                        continue
+
+                    target = os.readlink(entry)
+                    if os.path.isabs(target):
+                        continue
+
+                    orig_entry = orig_node_modules / entry.relative_to(temp_node_modules)
+                    absolute_target = (orig_entry.parent / target).resolve()
+                    entry.unlink()
+                    os.symlink(absolute_target, entry)
+
+        def copy_from_project_root(project_root: Path, temp_dir_path: Path, file: str):
+            orig_file = project_root / file
+            if not orig_file.is_file():
+                return
+
+            shutil.copy(orig_file, temp_dir_path / file)
 
         self._temp_dir = TemporaryDirectory()
+        if not self.project_root:
+            return self
+
         temp_dir_path = Path(self._temp_dir.name)
 
-        copy_from_project_root(temp_dir_path, ".npmrc")
-        copy_from_project_root(temp_dir_path, "package.json")
-        copy_from_project_root(temp_dir_path, "package-lock.json")
-        copy_from_project_root(temp_dir_path, "node_modules", is_dir=True)
+        try:
+            copy_package_json(self.project_root, temp_dir_path)
+            copy_lockfile(self.project_root, temp_dir_path)
+            copy_node_modules(self.project_root, temp_dir_path)
+
+            # Copy any other relevant files that may be present in the project root
+            copy_from_project_root(self.project_root, temp_dir_path, ".npmrc")
+
+        except Exception:
+            self._temp_dir.cleanup()
+            self._temp_dir = None
+
+            raise
 
         return self
 
     def __exit__(
         self,
-        exc_type: Optional[Type[BaseException]],
+        exc_type: Optional[type[BaseException]],
         exc_val: Optional[BaseException],
         exc_tb: Optional[TracebackType],
     ):
@@ -121,47 +239,54 @@ class TemporaryNpmProject:
             RuntimeError:
               * This method was invoked outside of a context (i.e., with no backing resources)
               * Required `package-lock.json` file was not written while resolving installation targets
-            KeyError: The `package-lock.json` file is malformed or missing data for installation targets
-            ValueError: Failed to parse installation target specification (malformed verbose log output)
+            json.JSONDecodeError: Failed to read malformed lockfile JSON.
+            KeyError: The `package-lock.json` file is malformed or missing data for installation targets.
+            ValueError: The given `install_command` is empty or not a valid `npm` command.
         """
-        def is_global_command(command: list[str]) -> bool:
-            return any(global_opt in command for global_opt in {"-g", "--global"})
-
-        def extract_placed_dependencies(dry_run_log: list[str]) -> list[Package]:
-            placed_dependencies = []
-
-            # All supported npm versions adhere to this format
-            for line in dry_run_log:
-                line_tokens = line.split()
-
-                if line_tokens[2] != "placeDep":
-                    continue
-                target_spec = line_tokens[4]
-
-                name, sep, version = target_spec.rpartition('@')
-                if not (name and sep):
-                    raise ValueError(f"Failed to parse npm installation target specification '{target_spec}'")
-
-                placed_dependencies.append(Package(ECOSYSTEM.Npm, name, version))
-
-            return placed_dependencies
-
-        def extract_target_handles(dry_run_log: list[str]) -> list[str]:
+        def extract_target_handles(dry_run_log: list[str], temp_dir_path: Path) -> list[str]:
             target_handles = []
 
             # All supported npm versions adhere to this format
             for line in dry_run_log:
                 line_tokens = line.split()
 
-                if line_tokens[1] in {"sill", "silly"} and line_tokens[2] in {"ADD", "CHANGE"}:
+                if (
+                    len(line_tokens) >= 4
+                    and line_tokens[1] in {"sill", "silly"}
+                    and line_tokens[2] in {"ADD", "CHANGE"}
+                ):
                     target_handles.append(line_tokens[3])
 
-            return target_handles
+            lockfile_path = temp_dir_path / "package-lock.json"
+            if not lockfile_path.is_file():
+                return target_handles
+            with open(lockfile_path) as f:
+                pre_install_packages = json.load(f).get("packages", {})
 
-        def handle_to_package(
+            # Some versions of npm report CHANGE for local dependencies already present in
+            # `node_modules` when the resolved path is re-relativized for the temp project
+            # Since they are not being freshly downloaded or installed, they can be excluded
+            return [
+                handle for handle in target_handles
+                if not (
+                    (
+                        # Handles two disjoint lockfile representations of local dependencies:
+                        #   1. `link: true` with a bare relative `resolved` path (workspaces / symlink-based
+                        #       installs), which are not `file:`-prefixed
+                        #   2. `resolved` starting with `file:` and no `link` field (copy-based installs,
+                        #       as in certain 9.x versions), which have no `link` key
+                        pre_install_packages.get(handle, {}).get("link")
+                        or pre_install_packages.get(handle, {}).get("resolved", "").startswith(FILE_URI_PREFIX)
+                    )
+                    and (temp_dir_path / handle).exists()
+                )
+            ]
+
+        def handle_to_install_target(
             dependencies: dict[str, Any],
             target_handle: str,
             target_name: Optional[str] = None,
+            target_source: Optional[LocalPackageSource | RemotePackageSource] = None,
         ) -> Package:
             if not target_name:
                 # All supported npm versions adhere to this format
@@ -175,13 +300,40 @@ class TemporaryNpmProject:
                 # Parse recursively if this entry links to another
                 # All supported npm versions adhere to this format
                 if target_entry.get("link") and (resolved_handle := target_entry.get("resolved")):
-                    return handle_to_package(dependencies, resolved_handle, target_name)
+                    # Some versions of npm prefix the link target with `file:`; the linked
+                    # entry's key is the bare path, so normalize before lookup
+                    if resolved_handle.startswith(FILE_URI_PREFIX):
+                        resolved_handle = resolved_handle[len(FILE_URI_PREFIX):]
+                    # `copy_lockfile` rewrites link keys so that `temp_dir_path / resolved_handle`
+                    # resolves back to the original local package on the user's filesystem
+                    link_source = None
+                    try:
+                        link_source = LocalPackageSource((temp_dir_path / resolved_handle).resolve(strict=True))
+                    except (OSError, RuntimeError) as e:
+                        _log.warning(
+                            f"Could not resolve local source path for installation target {target_name}: {e}"
+                        )
+                    return handle_to_install_target(dependencies, resolved_handle, target_name, link_source)
 
                 raise KeyError(
                     f"Missing version data for installation target {target_name} in package-lock.json"
                 )
 
-            return Package(ECOSYSTEM.Npm, name=target_name, version=version)
+            # Derive source from this entry's `resolved` field unless a caller already supplied one
+            if target_source is None and (resolved := target_entry.get("resolved")):
+                if resolved.startswith("http"):
+                    target_source = RemotePackageSource(resolved)
+                elif resolved.startswith(FILE_URI_PREFIX):
+                    try:
+                        target_source = LocalPackageSource(
+                            (temp_dir_path / resolved[len(FILE_URI_PREFIX):]).resolve(strict=True)
+                        )
+                    except (OSError, RuntimeError) as e:
+                        _log.warning(
+                            f"Could not resolve local source path for installation target {target_name}: {e}"
+                        )
+
+            return Package(ECOSYSTEM.Npm, target_name, version, source=target_source)
 
         if not self._temp_dir:
             raise RuntimeError("Cannot run commands in a temporary npm environment outside of a context")
@@ -189,7 +341,9 @@ class TemporaryNpmProject:
         temp_dir_path = Path(self._temp_dir.name)
 
         # Validate and normalize `command` with respect to the given npm executable
+        # Coerce global commands into local ones so they resolve into the temp project
         install_command = self._normalize_command(install_command)
+        install_command = [token for token in install_command if token not in {"-g", "--global"}]
 
         # First, perform a dry-run of the installation and collect the verbose log output
         try:
@@ -207,12 +361,8 @@ class TemporaryNpmProject:
 
         dry_run_log = dry_run_process.stderr.strip().split('\n')
 
-        # We need only look at placed dependencies for commands run outside of a project scope
-        if not self.project_root or is_global_command(install_command):
-            return extract_placed_dependencies(dry_run_log)
-
         # Each target handle corresponds to a (possibly duplicated) installation target
-        target_handles = extract_target_handles(dry_run_log)
+        target_handles = extract_target_handles(dry_run_log, temp_dir_path)
         if not target_handles:
             return []
 
@@ -228,17 +378,12 @@ class TemporaryNpmProject:
                 "Required package lockfile was not written while resolving installation targets"
             )
         with open(lockfile_path) as f:
-            if not (dependencies := json.load(f).get("packages")):
-                raise KeyError("Missing dependencies data in package-lock.json")
+            dependencies = json.load(f).get("packages", {})
+            if not isinstance(dependencies, dict):
+                raise KeyError("Malformed dependencies data in package-lock.json")
 
-        # Read the target versions for added and changed packages out of the lockfile
-        install_targets: set[Package] = functools.reduce(
-            lambda acc, target_handle: acc | {handle_to_package(dependencies, target_handle)},
-            target_handles,
-            set(),
-        )
-
-        return list(install_targets)
+        # Read added and changed packages out of the lockfile
+        return list({handle_to_install_target(dependencies, handle) for handle in target_handles})
 
     def _normalize_command(self, command: list[str]) -> list[str]:
         """

@@ -184,22 +184,22 @@ def npm_project_local_dependency():
     """
     Initialize an npm project with a dependency on a local package.
     """
-    local_package_tempdir = TemporaryDirectory()
-    local_package_path = Path(local_package_tempdir.name) / LOCAL_PACKAGE_NAME
+    tempdir = TemporaryDirectory()
+
+    local_package_path = Path(tempdir.name) / LOCAL_PACKAGE_NAME
     os.mkdir(local_package_path)
     init_npm_project(local_package_path)
 
-    tempdir = TemporaryDirectory()
-    tempdir_path = Path(tempdir.name)
+    test_package_path = Path(tempdir.name) / "foo"
+    os.mkdir(test_package_path)
     init_npm_project(
-        tempdir_path,
+        test_package_path,
         dependencies=[local_package_path],
     )
 
-    yield tempdir_path
+    yield test_package_path
 
     tempdir.cleanup()
-    local_package_tempdir.cleanup()
 
 
 @pytest.fixture
@@ -208,23 +208,23 @@ def npm_project_local_dependency_lockfile():
     Initialize an npm project with a dependency on a local package (sourced from
     a local directory) covered in the lockfile but not installed.
     """
-    local_package_tempdir = TemporaryDirectory()
-    local_package_path = Path(local_package_tempdir.name) / LOCAL_PACKAGE_NAME
+    tempdir = TemporaryDirectory()
+
+    local_package_path = Path(tempdir.name) / LOCAL_PACKAGE_NAME
     os.mkdir(local_package_path)
     init_npm_project(local_package_path)
 
-    tempdir = TemporaryDirectory()
-    tempdir_path = Path(tempdir.name)
+    test_package_path = Path(tempdir.name) / "foo"
+    os.mkdir(test_package_path)
     init_npm_project(
-        tempdir_path,
+        test_package_path,
         dependencies=[local_package_path],
         with_lockfile=True,
     )
 
-    yield tempdir_path
+    yield test_package_path
 
     tempdir.cleanup()
-    local_package_tempdir.cleanup()
 
 
 @pytest.fixture
@@ -233,24 +233,24 @@ def npm_project_local_dependency_installed():
     Initialize an npm project with a dependency on a package installed from a
     local directory.
     """
-    local_package_tempdir = TemporaryDirectory()
-    local_package_path = Path(local_package_tempdir.name) / LOCAL_PACKAGE_NAME
+    tempdir = TemporaryDirectory()
+
+    local_package_path = Path(tempdir.name) / LOCAL_PACKAGE_NAME
     os.mkdir(local_package_path)
     init_npm_project(local_package_path)
 
-    tempdir = TemporaryDirectory()
-    tempdir_path = Path(tempdir.name)
+    test_package_path = Path(tempdir.name) / "foo"
+    os.mkdir(test_package_path)
     init_npm_project(
-        tempdir_path,
+        test_package_path,
         dependencies=[local_package_path],
         with_lockfile=True,
         with_node_modules=True,
     )
 
-    yield tempdir_path
+    yield test_package_path
 
     tempdir.cleanup()
-    local_package_tempdir.cleanup()
 
 
 def init_npm_project(
@@ -295,3 +295,11 @@ def init_npm_project(
 
     if not with_lockfile:
         os.remove(path / "package-lock.json")
+
+
+def build_npm_tarball_url(package_name: str, package_version: str) -> str:
+    """
+    Return the npm URL for the package tarball specified by the given name and version.
+    """
+    unscoped_name = package_name.split("/")[-1]
+    return f"https://registry.npmjs.org/{package_name}/-/{unscoped_name}-{package_version}.tgz"

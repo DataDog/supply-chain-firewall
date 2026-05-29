@@ -5,6 +5,7 @@ Provides a `PackageManager` representation of `npm`.
 import json
 import logging
 import os
+from pathlib import Path
 import shutil
 import subprocess
 from typing import Optional
@@ -12,9 +13,9 @@ from typing import Optional
 from packaging.version import InvalidVersion, Version, parse as version_parse
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.package import Package
+from scfw.package import LocalPackageSource, Package, RemotePackageSource
 from scfw.package_manager import PackageManager, UnsupportedVersionError
-from scfw.package_managers.npm.temp_project import TemporaryNpmProject
+from scfw.package_managers.npm.temp_project import FILE_URI_PREFIX, TemporaryNpmProject
 
 _log = logging.getLogger(__name__)
 
@@ -135,41 +136,64 @@ class Npm(PackageManager):
 
         Raises:
             RuntimeError: Failed to list installed packages or decode report JSON.
-            ValueError: Encountered a malformed report for an installed package.
             UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
         def dependencies_to_packages(dependencies: dict[str, dict]) -> set[Package]:
             packages = set()
 
             for name, package_data in dependencies.items():
-                if (package_dependencies := package_data.get("dependencies")):
-                    packages |= dependencies_to_packages(package_dependencies)
+                try:
+                    if (nested := package_data.get("dependencies")):
+                        packages |= dependencies_to_packages(nested)
 
-                if (version := package_data.get("version")):
-                    packages.add(Package(ECOSYSTEM.Npm, name, version))
-                else:
-                    _log.info(
-                        f"Omitting package {name} from audit: no installed version data present in dependency tree"
-                    )
+                    if not (version := package_data.get("version")):
+                        raise ValueError("Missing version data")
+
+                    resolved = package_data.get("resolved", "")
+                    if not resolved:
+                        _log.info(f"No artifact source data found for installed dependency {name}")
+
+                    source: Optional[LocalPackageSource | RemotePackageSource] = None
+                    if resolved.startswith("http"):
+                        source = RemotePackageSource(resolved)
+                    elif resolved.startswith(FILE_URI_PREFIX):
+                        try:
+                            # `file:` dependencies reported by `npm list` are relative to `node_modules/`
+                            node_modules_dir = Path.cwd() / "node_modules"
+                            source = LocalPackageSource(
+                                (node_modules_dir / resolved[len(FILE_URI_PREFIX):]).resolve(strict=True)
+                            )
+                        except (OSError, RuntimeError) as e:
+                            _log.warning(
+                                f"Could not resolve local source path for installed dependency {name}: {e}"
+                            )
+
+                    packages.add(Package(ECOSYSTEM.Npm, name, version, source=source))
+
+                except (AttributeError, TypeError, ValueError) as e:
+                    _log.warning(f"Failed to resolve installed dependency {name}: {e}")
 
             return packages
 
         self._check_version()
 
         try:
-            npm_list_command = [self._executable, "list", "--all", "--json"]
-            npm_list = subprocess.run(npm_list_command, check=True, text=True, capture_output=True)
-            dependencies = json.loads(npm_list.stdout.strip()).get("dependencies")
-            return list(dependencies_to_packages(dependencies)) if dependencies else []
+            npm_list = subprocess.run(
+                [self.executable() or "npm", "list", "--all", "--json"],
+                check=True, text=True, capture_output=True,
+            )
+
+            dependencies = json.loads(npm_list.stdout.strip()).get("dependencies", {})
+            if not isinstance(dependencies, dict):
+                raise RuntimeError("Received malformed dependencies data from npm")
+
+            return list(dependencies_to_packages(dependencies))
 
         except subprocess.CalledProcessError:
             raise RuntimeError("Failed to list npm installed packages")
 
         except json.JSONDecodeError:
             raise RuntimeError("Failed to decode installed package report JSON")
-
-        except KeyError:
-            raise ValueError("Malformed installed package report")
 
     def _check_version(self):
         """

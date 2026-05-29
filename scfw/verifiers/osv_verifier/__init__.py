@@ -135,7 +135,7 @@ class OsvVerifier(PackageVerifier):
             return [(FindingSeverity.WARNING, f"Package ecosystem {package.ecosystem} is not supported")]
 
         vulns = []
-        query: dict[str, str | dict[str, str]] = {
+        query: dict[str, str | dict[str, str] | None] = {
             "version": package.version,
             "package": {
                 "name": package.name,

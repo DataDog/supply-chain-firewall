@@ -265,11 +265,11 @@ class TemporaryNpmProject:
 
             # Some versions of npm report CHANGE for local dependencies already present in
             # `node_modules` when the resolved path is re-relativized for the temp project
-            # Since they are not being freshly downloaded or installed, they may be excluded
+            # Since they are not being freshly downloaded or installed, they can be excluded
             return [
                 handle for handle in target_handles
                 if not (
-                    pre_install_packages.get(handle, {}).get("resolved", "").startswith(_LOCAL_DEPENDENCY_PREFIX)
+                    pre_install_packages.get(handle, {}).get("link")
                     and (temp_dir_path / handle).exists()
                 )
             ]

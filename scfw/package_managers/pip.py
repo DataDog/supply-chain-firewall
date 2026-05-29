@@ -41,12 +41,15 @@ class Pip(PackageManager):
             RuntimeError: A valid executable could not be resolved.
         """
         def get_pip_executable() -> Optional[str]:
-            # Explicitly checking whether we are in a venv circumvents issues
-            # caused by pyenv shims stomping the PATH with its own directories
+            # When in a venv, restrict the search to the venv's bin directory
+            # to ensure we use the pip belonging to the active environment
             venv_path = None
             if (venv := os.environ.get("VIRTUAL_ENV")):
                 venv_path = os.path.join(venv, "bin")
-            return shutil.which("pip", path=venv_path)
+            for bin in ["pip3", "pip"]:
+                if (executable := shutil.which(bin, path=venv_path)):
+                    return executable
+            return None
 
         executable = executable if executable else get_pip_executable()
         if not executable:

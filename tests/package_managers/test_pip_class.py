@@ -26,7 +26,7 @@ def test_executable():
     Test whether `Pip` correctly discovers the pip executable active in the
     current environment.
     """
-    pip = shutil.which("pip")
+    pip = shutil.which("pip3") or shutil.which("pip")
     assert pip and PACKAGE_MANAGER.executable() == pip
 
 

@@ -15,14 +15,11 @@ from packaging.version import InvalidVersion, Version, parse as version_parse
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import LocalPackageSource, Package, RemotePackageSource
 from scfw.package_manager import PackageManager, UnsupportedVersionError
-from scfw.package_managers.npm.temp_project import TemporaryNpmProject
+from scfw.package_managers.npm.temp_project import FILE_URI_PREFIX, TemporaryNpmProject
 
 _log = logging.getLogger(__name__)
 
 MIN_NPM_VERSION = version_parse("7.0.0")
-
-# URI scheme reported by `npm list` for local file: dependencies
-_LOCAL_PACKAGE_SOURCE_SCHEME = "file:"
 
 
 class Npm(PackageManager):
@@ -141,10 +138,56 @@ class Npm(PackageManager):
             RuntimeError: Failed to list installed packages or decode report JSON.
             UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
+        def dependencies_to_packages(dependencies: dict[str, dict]) -> set[Package]:
+            packages = set()
+
+            for name, package_data in dependencies.items():
+                try:
+                    if (nested := package_data.get("dependencies")):
+                        packages |= dependencies_to_packages(nested)
+
+                    if not (version := package_data.get("version")):
+                        raise ValueError("Missing version data")
+
+                    resolved = package_data.get("resolved", "")
+                    if not resolved:
+                        _log.info(f"No artifact source data found for installed dependency {name}")
+
+                    source: Optional[LocalPackageSource | RemotePackageSource] = None
+                    if resolved.startswith("http"):
+                        source = RemotePackageSource(resolved)
+                    elif resolved.startswith(FILE_URI_PREFIX):
+                        try:
+                            # `file:` dependencies reported by `npm list` are relative to `node_modules/`
+                            node_modules_dir = Path.cwd() / "node_modules"
+                            source = LocalPackageSource(
+                                (node_modules_dir / resolved[len(FILE_URI_PREFIX):]).resolve(strict=True)
+                            )
+                        except (OSError, RuntimeError) as e:
+                            _log.warning(
+                                f"Could not resolve local source path for installed dependency {name}: {e}"
+                            )
+
+                    packages.add(Package(ECOSYSTEM.Npm, name, version, source=source))
+
+                except (AttributeError, TypeError, ValueError) as e:
+                    _log.warning(f"Failed to resolve installed dependency {name}: {e}")
+
+            return packages
+
         self._check_version()
 
         try:
-            return list(_get_installed_packages(self.executable()))
+            npm_list = subprocess.run(
+                [self.executable() or "npm", "list", "--all", "--json"],
+                check=True, text=True, capture_output=True,
+            )
+
+            dependencies = json.loads(npm_list.stdout.strip()).get("dependencies", {})
+            if not isinstance(dependencies, dict):
+                raise RuntimeError("Received malformed dependencies data from npm")
+
+            return list(dependencies_to_packages(dependencies))
 
         except subprocess.CalledProcessError:
             raise RuntimeError("Failed to list npm installed packages")
@@ -191,70 +234,3 @@ class Npm(PackageManager):
             raise ValueError("Received invalid npm command line")
 
         return [self._executable] + command[1:]
-
-
-def _get_installed_packages(executable: Optional[str] = None, project_dir: Optional[Path] = None) -> set[Package]:
-    """
-    Return the set of packages installed as dependencies in a given `npm` project.
-
-    Args:
-        executable:
-            An `Optional[str]` specifying the `npm` executable to use. If not provided,
-            the executable is determined by the environment. The caller is responsible
-            for ensuring that `executable` refers to a supported version of `npm`.
-        project_dir:
-            An `Optional[Path]` specifying the target `npm` project directory. If not
-            provided, the current working directory is used.
-
-    Returns:
-        A `set[Package]` representing unique packages installed as dependencies
-        in the given `npm` project.
-
-    Raises:
-        subprocess.CalledProcessError: Failed to list dependencies with `npm`.
-        json.JSONDecodeError: Failed to decode installed packages report JSON.
-    """
-    def dependencies_to_packages(project_dir: Optional[Path], dependencies: dict[str, dict]) -> set[Package]:
-        packages = set()
-
-        # `file:` dependencies reported by `npm list` are relative to `node_modules/`
-        node_modules_dir = (project_dir if project_dir is not None else Path.cwd()) / "node_modules"
-
-        for name, package_data in dependencies.items():
-            try:
-                if (package_dependencies := package_data.get("dependencies")):
-                    packages |= dependencies_to_packages(project_dir, package_dependencies)
-
-                if not (version := package_data.get("version")):
-                    raise ValueError("Missing version data")
-
-                if not (resolved := package_data.get("resolved")):
-                    _log.info(f"No artifact source data found for installed dependency {name}")
-                    packages.add(Package(ECOSYSTEM.Npm, name, version))
-                    continue
-
-                source: Optional[LocalPackageSource | RemotePackageSource] = None
-                if resolved.startswith("http"):
-                    source = RemotePackageSource(resolved)
-                elif resolved.startswith(_LOCAL_PACKAGE_SOURCE_SCHEME):
-                    relative = resolved[len(_LOCAL_PACKAGE_SOURCE_SCHEME):]
-                    try:
-                        source = LocalPackageSource((node_modules_dir / relative).resolve(strict=True))
-                    except (OSError, RuntimeError) as e:
-                        _log.warning(
-                            f"Could not resolve local source path for installed dependency {name}: {e}"
-                        )
-
-                packages.add(Package(ECOSYSTEM.Npm, name, version, source=source))
-
-            except (AttributeError, TypeError, ValueError) as e:
-                _log.warning(f"Failed to resolve installed dependency {name}: {e}")
-
-        return packages
-
-    npm_list_command = [executable if executable else "npm", "list", "--all", "--json"]
-
-    npm_list = subprocess.run(npm_list_command, check=True, text=True, capture_output=True, cwd=project_dir)
-    dependencies = json.loads(npm_list.stdout.strip()).get("dependencies")
-
-    return dependencies_to_packages(project_dir, dependencies) if dependencies else set()

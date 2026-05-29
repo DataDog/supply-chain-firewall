@@ -425,6 +425,7 @@ def test_list_installed_packages_local_dependency_installed(
     expected_source = (
         npm_project_local_dependency_installed.parent / LOCAL_PACKAGE_NAME
     ).resolve(strict=True)
+
     backend_test_list_installed_packages(
         monkeypatch,
         npm_project_local_dependency_installed,
@@ -440,10 +441,10 @@ def test_list_installed_packages_local_dependency_installed(
     )
 
 
-def test_get_installed_packages_keeps_dep_with_missing_local_source(monkeypatch, tmp_path):
+def test_list_installed_packages_keeps_dep_with_missing_local_source(monkeypatch, tmp_path):
     """
     Regression test: when `npm list` reports a `file:` dep whose target does
-    not exist on disk, `get_installed_packages` should still return the
+    not exist on disk, `list_installed_packages` should still return the
     package (without source data) instead of silently dropping it.
     """
     npm_list_output = json.dumps({
@@ -458,23 +459,20 @@ def test_get_installed_packages_keeps_dep_with_missing_local_source(monkeypatch,
     class FakeCompletedProcess:
         stdout = npm_list_output
 
-    monkeypatch.setattr(
-        npm.subprocess,
-        "run",
-        lambda *args, **kwargs: FakeCompletedProcess(),
-    )
+    monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
+    monkeypatch.chdir(tmp_path)
 
-    packages = npm._get_installed_packages(project_dir=tmp_path)
+    packages = PACKAGE_MANAGER.list_installed_packages()
 
-    assert packages == {Package(ECOSYSTEM.Npm, "ghost-package", "1.0.0")}
+    assert set(packages) == {Package(ECOSYSTEM.Npm, "ghost-package", "1.0.0")}
 
 
-def test_get_installed_packages_skips_malformed_entries(monkeypatch, tmp_path):
+def test_list_installed_packages_skips_malformed_entries(monkeypatch, tmp_path):
     """
     Malformed entries (e.g., missing `version`, or a non-dict in place of an
     entry) are dropped with a warning, but well-formed sibling entries are
-    still returned. Verifies that narrowing the exception handler around the
-    per-entry processing didn't regress its defensive behavior.
+    still returned.
     """
     good_url = "https://registry.npmjs.org/good-package/-/good-package-1.2.3.tgz"
     npm_list_output = json.dumps({
@@ -493,15 +491,13 @@ def test_get_installed_packages_skips_malformed_entries(monkeypatch, tmp_path):
     class FakeCompletedProcess:
         stdout = npm_list_output
 
-    monkeypatch.setattr(
-        npm.subprocess,
-        "run",
-        lambda *args, **kwargs: FakeCompletedProcess(),
-    )
+    monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
+    monkeypatch.chdir(tmp_path)
 
-    packages = npm._get_installed_packages(project_dir=tmp_path)
+    packages = PACKAGE_MANAGER.list_installed_packages()
 
-    assert packages == {
+    assert set(packages) == {
         Package(ECOSYSTEM.Npm, "good-package", "1.2.3", source=RemotePackageSource(good_url)),
     }
 

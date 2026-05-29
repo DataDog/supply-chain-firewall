@@ -240,7 +240,7 @@ class TemporaryNpmProject:
               * This method was invoked outside of a context (i.e., with no backing resources)
               * Required `package-lock.json` file was not written while resolving installation targets
             json.JSONDecodeError: Failed to read malformed lockfile JSON.
-            KeyError: The `package-lock.json` file is malformed or missing data for installation targets
+            KeyError: The `package-lock.json` file is malformed or missing data for installation targets.
             ValueError: The given `install_command` is empty or not a valid `npm` command.
         """
         def extract_target_handles(dry_run_log: list[str], temp_dir_path: Path) -> list[str]:
@@ -378,8 +378,9 @@ class TemporaryNpmProject:
                 "Required package lockfile was not written while resolving installation targets"
             )
         with open(lockfile_path) as f:
-            if not (dependencies := json.load(f).get("packages")):
-                raise KeyError("Missing dependencies data in package-lock.json")
+            dependencies = json.load(f).get("packages", {})
+            if not isinstance(dependencies, dict):
+                raise KeyError("Malformed dependencies data in package-lock.json")
 
         # Read added and changed packages out of the lockfile
         return list({handle_to_install_target(dependencies, handle) for handle in target_handles})

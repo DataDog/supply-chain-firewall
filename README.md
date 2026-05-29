@@ -129,7 +129,7 @@ Supply-Chain Firewall can also use its verifiers to audit installed packages:
 $ scfw audit npm
 No issues found.
 
-$ scfw audit --executable venv/bin/python pip
+$ scfw audit --executable venv/bin/pip pip
 Package pip-23.0.1:
   - An OSV.dev advisory exists for package pip-23.0.1:
       * [Medium] https://osv.dev/vulnerability/GHSA-mq26-g339-26xf

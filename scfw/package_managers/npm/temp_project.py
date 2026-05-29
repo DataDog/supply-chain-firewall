@@ -19,7 +19,7 @@ from scfw.package import LocalPackageSource, Package, RemotePackageSource
 _log = logging.getLogger(__name__)
 
 # URI scheme for npm local package dependencies
-_LOCAL_DEPENDENCY_PREFIX = "file:"
+_FILE_URI_PREFIX = "file:"
 
 # Dependency sections present in npm package.json and package-lock.json files
 _DEPENDENCY_SECTIONS = {"dependencies", "devDependencies", "optionalDependencies", "peerDependencies"}
@@ -85,13 +85,13 @@ class TemporaryNpmProject:
                     continue
 
                 for name, spec in dependencies.items():
-                    if isinstance(spec, str) and spec.startswith(_LOCAL_DEPENDENCY_PREFIX):
+                    if isinstance(spec, str) and spec.startswith(_FILE_URI_PREFIX):
                         relative_target = rewrite_relative_path(
-                            spec[len(_LOCAL_DEPENDENCY_PREFIX):],
+                            spec[len(_FILE_URI_PREFIX):],
                             project_root,
                             temp_dir_path,
                         )
-                        dependencies[name] = f"{_LOCAL_DEPENDENCY_PREFIX}{relative_target}"
+                        dependencies[name] = f"{_FILE_URI_PREFIX}{relative_target}"
 
             with open(temp_dir_path / "package.json", 'w') as f:
                 json.dump(temp_content, f)
@@ -127,13 +127,13 @@ class TemporaryNpmProject:
 
                 resolved = entry.get("resolved")
                 if isinstance(resolved, str):
-                    if resolved.startswith(_LOCAL_DEPENDENCY_PREFIX):
+                    if resolved.startswith(_FILE_URI_PREFIX):
                         resolved = rewrite_relative_path(
-                            resolved[len(_LOCAL_DEPENDENCY_PREFIX):],
+                            resolved[len(_FILE_URI_PREFIX):],
                             project_root,
                             temp_dir_path,
                         )
-                        entry["resolved"] = f"{_LOCAL_DEPENDENCY_PREFIX}{resolved}"
+                        entry["resolved"] = f"{_FILE_URI_PREFIX}{resolved}"
                     elif resolved.startswith(("./", "../")):
                         entry["resolved"] = rewrite_relative_path(resolved, project_root, temp_dir_path)
 
@@ -141,13 +141,13 @@ class TemporaryNpmProject:
                     dependencies = entry.get(section)
                     if isinstance(dependencies, dict):
                         for name, spec in dependencies.items():
-                            if isinstance(spec, str) and spec.startswith(_LOCAL_DEPENDENCY_PREFIX):
+                            if isinstance(spec, str) and spec.startswith(_FILE_URI_PREFIX):
                                 spec = rewrite_relative_path(
-                                    spec[len(_LOCAL_DEPENDENCY_PREFIX):],
+                                    spec[len(_FILE_URI_PREFIX):],
                                     project_root,
                                     temp_dir_path,
                                 )
-                                dependencies[name] = f"{_LOCAL_DEPENDENCY_PREFIX}{spec}"
+                                dependencies[name] = f"{_FILE_URI_PREFIX}{spec}"
 
             with open(temp_lockfile, 'w') as f:
                 json.dump(temp_content, f)
@@ -269,7 +269,15 @@ class TemporaryNpmProject:
             return [
                 handle for handle in target_handles
                 if not (
-                    pre_install_packages.get(handle, {}).get("link")
+                    (
+                        # Handles two disjoint lockfile representations of local dependencies:
+                        #   1. `link: true` with a bare relative `resolved` path (workspaces / symlink-based
+                        #       installs), which are not `file:`-prefixed
+                        #   2. `resolved` starting with `file:` and no `link` field (copy-based installs,
+                        #       as in certain 9.x versions), which have no `link` key
+                        pre_install_packages.get(handle, {}).get("link")
+                        or pre_install_packages.get(handle, {}).get("resolved", "").startswith(_FILE_URI_PREFIX)
+                    )
                     and (temp_dir_path / handle).exists()
                 )
             ]
@@ -294,8 +302,8 @@ class TemporaryNpmProject:
                 if target_entry.get("link") and (resolved_handle := target_entry.get("resolved")):
                     # Some versions of npm prefix the link target with `file:`; the linked
                     # entry's key is the bare path, so normalize before lookup
-                    if resolved_handle.startswith(_LOCAL_DEPENDENCY_PREFIX):
-                        resolved_handle = resolved_handle[len(_LOCAL_DEPENDENCY_PREFIX):]
+                    if resolved_handle.startswith(_FILE_URI_PREFIX):
+                        resolved_handle = resolved_handle[len(_FILE_URI_PREFIX):]
                     # `copy_lockfile` rewrites link keys so that `temp_dir_path / resolved_handle`
                     # resolves back to the original local package on the user's filesystem
                     link_source = None
@@ -315,10 +323,10 @@ class TemporaryNpmProject:
             if target_source is None and (resolved := target_entry.get("resolved")):
                 if resolved.startswith("http"):
                     target_source = RemotePackageSource(resolved)
-                elif resolved.startswith(_LOCAL_DEPENDENCY_PREFIX):
+                elif resolved.startswith(_FILE_URI_PREFIX):
                     try:
                         target_source = LocalPackageSource(
-                            (temp_dir_path / resolved[len(_LOCAL_DEPENDENCY_PREFIX):]).resolve(strict=True)
+                            (temp_dir_path / resolved[len(_FILE_URI_PREFIX):]).resolve(strict=True)
                         )
                     except (OSError, RuntimeError) as e:
                         _log.warning(

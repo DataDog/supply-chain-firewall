@@ -42,3 +42,22 @@ class ECOSYSTEM(Enum):
             return mappings[s.lower()]
         except KeyError:
             raise ValueError(f"Invalid package ecosystem: '{s}'")
+
+    def registry_domains(self) -> set[str]:
+        """
+        Return the URL domains associated with the main package registry for
+        a given `ECOSYSTEM`.
+
+        Returns:
+            A `set[str]` containing the URL domains for the given package ecosystem,
+            those from which package artifacts are known to be sourced.
+        """
+        match self:
+            case ECOSYSTEM.Npm:
+                return {
+                    "registry.npmjs.org",
+                }
+            case ECOSYSTEM.PyPI:
+                return {
+                    "files.pythonhosted.org",
+                }

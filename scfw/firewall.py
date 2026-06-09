@@ -53,6 +53,12 @@ def run_firewall(args: Namespace) -> int:
             critical_report = report.get_findings_report(FindingSeverity.CRITICAL)
             warning_report = report.get_findings_report(FindingSeverity.WARNING)
 
+            # Treat unverified packages as warning-level findings
+            if warning_report is not None:
+                warning_report.extend(report.unverified_packages)
+            else:
+                warning_report = report.unverified_packages
+
             if not args.dry_run and critical_report:
                 loggers.log_firewall_action(
                     package_manager.ecosystem(),

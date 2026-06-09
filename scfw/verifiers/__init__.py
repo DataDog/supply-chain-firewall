@@ -30,7 +30,7 @@ import pkgutil
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.report import FindingsReport, VerificationReport
-from scfw.verifier import FindingSeverity
+from scfw.verifier import FindingSeverity, UnverifiedPackage
 
 _log = logging.getLogger(__name__)
 
@@ -81,6 +81,7 @@ class FirewallVerifiers:
             discovered verifiers.
         """
         findings_reports: dict[FindingSeverity, FindingsReport] = {}
+        unverified_packages = FindingsReport()
 
         with cf.ThreadPoolExecutor() as executor:
             task_results = {
@@ -89,14 +90,21 @@ class FirewallVerifiers:
             }
             for future in cf.as_completed(task_results):
                 verifier, package = task_results[future]
-                if (findings := future.result()):
-                    _log.info(f"Verifier {verifier} had findings for package {package}")
-                    for severity, finding in findings:
-                        if severity not in findings_reports:
-                            findings_reports[severity] = FindingsReport()
-                        findings_reports[severity].insert(package, finding)
-                else:
-                    _log.info(f"Verifier {verifier} had no findings for package {package}")
+                try:
+                    if (findings := future.result()):
+                        _log.info(f"Verifier {verifier} had findings for package {package}")
+                        for severity, finding in findings:
+                            if severity not in findings_reports:
+                                findings_reports[severity] = FindingsReport()
+                            findings_reports[severity].insert(package, finding)
+                    else:
+                        _log.info(f"Verifier {verifier} had no findings for package {package}")
+
+                except UnverifiedPackage as e:
+                    unverified_packages.insert(
+                        package,
+                        f"Verifier {verifier} was unable to verify package {package}: {e}",
+                    )
 
         _log.info("Verification of packages complete")
-        return VerificationReport(findings_reports)
+        return VerificationReport(findings_reports, unverified_packages)

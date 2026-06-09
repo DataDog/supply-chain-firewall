@@ -103,3 +103,20 @@ class PackageVerifier(metaclass=ABCMeta):
             for the benefit of the user.
         """
         pass
+
+
+class UnverifiedPackage(Exception):
+    """
+    An exception that occurs when a verifier is unable to verify a given package.
+    This is to be distinguished from a verification failure, i.e., when errors occur
+    in the course of verifying a package.
+
+    The canonical use-case for this exception occurs when a package is not within the
+    purview of a verifier's backing data source. For instance, a package sourced from
+    a private package registry would not be within the purview of a verifier that only
+    covers packages sourced from an ecosystem's main public registry.
+
+    Supply-Chain Firewall handles this exception gracefully by separately collecting,
+    logging and reporting any packages that were unable to be verified.
+    """
+    pass

@@ -49,9 +49,9 @@ def run_firewall(args: Namespace) -> int:
             verifiers = FirewallVerifiers(package_manager.ecosystem())
             _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
 
-            reports = verifiers.verify_packages(targets)
-            critical_report = reports.get(FindingSeverity.CRITICAL)
-            warning_report = reports.get(FindingSeverity.WARNING)
+            report = verifiers.verify_packages(targets)
+            critical_report = report.get_findings_report(FindingSeverity.CRITICAL)
+            warning_report = report.get_findings_report(FindingSeverity.WARNING)
 
             if not args.dry_run and critical_report:
                 loggers.log_firewall_action(

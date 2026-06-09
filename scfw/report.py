@@ -1,21 +1,23 @@
 """
-A class for structuring and displaying the results of package verification.
+Classes for structuring and displaying the results of package verification.
 """
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Optional
 from typing_extensions import Self
 
 from scfw.package import Package
+from scfw.verifier import FindingSeverity
 
 
-class VerificationReport:
+class FindingsReport:
     """
-    A structured report containing findings resulting from package verification.
+    A structured report containing verification findings for a set of `Package`.
     """
     def __init__(self) -> None:
         """
-        Initialize a new, empty `VerificationReport`.
+        Initialize a new, empty `FindingsReport`.
         """
         self._report: dict[Package, list[str]] = {}
 
@@ -27,10 +29,10 @@ class VerificationReport:
 
     def __str__(self) -> str:
         """
-        Return a human-readable version of a verification report.
+        Return a human-readable version of a findings report.
 
         Returns:
-            A `str` containing the formatted verification report.
+            A `str` containing the formatted findings report.
         """
         def show_line(linenum: int, line: str) -> str:
             return (f"  - {line}" if linenum == 0 else f"    {line}")
@@ -74,10 +76,10 @@ class VerificationReport:
 
     def extend(self, other: Self) -> None:
         """
-        Extend a `VerificationReport` with additional findings from another.
+        Extend a `FindingsReport` with additional findings from another.
 
         Args:
-            other: The `VerificationReport` whose findings will be extended into `self`.
+            other: The `FindingsReport` whose findings will be extended into `self`.
         """
         for package, findings in other._report.items():
             if package in self._report:
@@ -90,3 +92,21 @@ class VerificationReport:
         Return an iterator over `Package` mentioned in the report.
         """
         return (package for package in self._report)
+
+
+@dataclass(eq=True, frozen=True)
+class VerificationReport:
+    """
+    A structured report containing the results of verifying a set of `Package`.
+    """
+    findings_reports: dict[FindingSeverity, FindingsReport]
+
+    def get_findings_report(self, severity: FindingSeverity) -> Optional[FindingsReport]:
+        """
+        Return the reported `FindingsReport` of the given severity level if one exists.
+
+        Returns:
+            The `FindingsReport` of the given `FindingSeverity` contained in the given
+            verification report's set of severity-ranked finding reports.
+        """
+        return self.findings_reports.get(severity)

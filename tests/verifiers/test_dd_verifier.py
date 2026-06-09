@@ -48,9 +48,9 @@ def test_dd_verifier_malicious(ecosystem: ECOSYSTEM, kind: str):
     verifier = FirewallVerifiers(ecosystem)
     verifier._verifiers = [DD_VERIFIER]
 
-    reports = verifier.verify_packages(test_set)
-    assert (critical_report := reports.get(FindingSeverity.CRITICAL))
-    assert not reports.get(FindingSeverity.WARNING)
+    report = verifier.verify_packages(test_set)
+    assert (critical_report := report.get_findings_report(FindingSeverity.CRITICAL))
+    assert not report.get_findings_report(FindingSeverity.WARNING)
 
     for package in test_set:
         assert critical_report.get(package)

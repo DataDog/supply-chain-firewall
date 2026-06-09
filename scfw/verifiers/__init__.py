@@ -29,7 +29,7 @@ import pkgutil
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.report import VerificationReport
+from scfw.report import FindingsReport, VerificationReport
 from scfw.verifier import FindingSeverity
 
 _log = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ class FirewallVerifiers:
         """
         return [verifier.name() for verifier in self._verifiers]
 
-    def verify_packages(self, packages: list[Package]) -> dict[FindingSeverity, VerificationReport]:
+    def verify_packages(self, packages: list[Package]) -> VerificationReport:
         """
         Verify a set of packages against all discovered verifiers.
 
@@ -77,10 +77,10 @@ class FirewallVerifiers:
             packages: The set of `Package` to verify.
 
         Returns:
-            A set of severity-ranked verification reports resulting from verifying
-            `packages` against all discovered verifiers.
+            A `VerificationReport` resulting from verifying `packages` against all
+            discovered verifiers.
         """
-        reports: dict[FindingSeverity, VerificationReport] = {}
+        findings_reports: dict[FindingSeverity, FindingsReport] = {}
 
         with cf.ThreadPoolExecutor() as executor:
             task_results = {
@@ -92,11 +92,11 @@ class FirewallVerifiers:
                 if (findings := future.result()):
                     _log.info(f"Verifier {verifier} had findings for package {package}")
                     for severity, finding in findings:
-                        if severity not in reports:
-                            reports[severity] = VerificationReport()
-                        reports[severity].insert(package, finding)
+                        if severity not in findings_reports:
+                            findings_reports[severity] = FindingsReport()
+                        findings_reports[severity].insert(package, finding)
                 else:
                     _log.info(f"Verifier {verifier} had no findings for package {package}")
 
         _log.info("Verification of packages complete")
-        return reports
+        return VerificationReport(findings_reports)

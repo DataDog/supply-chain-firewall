@@ -13,7 +13,7 @@ import requests
 from scfw.constants import SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity, PackageVerifier
+from scfw.verifier import FindingSeverity, PackageVerifier, UnverifiedPackage
 from scfw.verifiers.osv_verifier.osv_advisory import OsvAdvisory
 
 _log = logging.getLogger(__name__)
@@ -112,6 +112,9 @@ class OsvVerifier(PackageVerifier):
             **not all** OSV.dev malicious package advisories have `MAL` IDs.*
 
         Raises:
+            UnverifiedPackage:
+                The given package is from an unsupported ecosystem or has an artifact source
+                other than the ecosystem's main registry.
             requests.HTTPError:
                 An error occurred while querying a package against the OSV.dev API.
         """
@@ -132,7 +135,9 @@ class OsvVerifier(PackageVerifier):
             )
 
         if package.ecosystem not in self.supported_ecosystems():
-            return [(FindingSeverity.WARNING, f"Package ecosystem {package.ecosystem} is not supported")]
+            raise UnverifiedPackage(f"Package ecosystem {package.ecosystem} is not supported")
+        if not package.has_registry_source():
+            raise UnverifiedPackage(f"Cannot verify package {package} with non-{package.ecosystem} artifact source")
 
         vulns = []
         query: dict[str, str | dict[str, str] | None] = {

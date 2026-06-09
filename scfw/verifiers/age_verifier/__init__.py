@@ -9,7 +9,7 @@ import os
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity, PackageVerifier
+from scfw.verifier import FindingSeverity, PackageVerifier, UnverifiedPackage
 import scfw.verifiers.age_verifier.npm as npm
 import scfw.verifiers.age_verifier.pypi as pypi
 
@@ -84,7 +84,17 @@ class PackageAgeVerifier(PackageVerifier):
         Returns:
             A list containing a single `WARNING` finding if `package` is deemed to have
             been published too recently, otherwise an empty list.
+
+        Raises:
+            UnverifiedPackage:
+                The given package is from an unsupported ecosystem or has an artifact source
+                other than the ecosystem's main registry.
         """
+        if package.ecosystem not in self.supported_ecosystems():
+            raise UnverifiedPackage(f"Package ecosystem {package.ecosystem} is not supported")
+        if not package.has_registry_source():
+            raise UnverifiedPackage(f"Cannot verify package {package} with non-{package.ecosystem} artifact source")
+
         if self.minimum_age == timedelta(0):
             return []
 

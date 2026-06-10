@@ -29,7 +29,7 @@ _AUDIT_ATTRIBUTES = {
     "msg",
     "package_manager",
     "reports",
-    "unverified",
+    "unverifiable",
 }
 _FIREWALL_ACTION_ATTRIBUTES = {
     "action",
@@ -242,6 +242,6 @@ class DDLogger(FirewallLogger):
                     str(severity): list(map(str, report.packages()))
                     for severity, report in report.findings_reports.items()
                 },
-                "unverified": list(map(str, report.unverified_packages.packages())),
+                "unverifiable": list(map(str, report.unverifiable.packages())),
             }
         )

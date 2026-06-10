@@ -9,7 +9,7 @@ from pathlib import Path
 from scfw.constants import SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity, PackageVerifier, UnverifiedPackage
+from scfw.verifier import FindingSeverity, PackageVerifier, UnverifiablePackage
 import scfw.verifiers.dd_verifier.dataset as dataset
 
 _log = logging.getLogger(__name__)
@@ -81,16 +81,16 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
             is present in this case.
 
         Raises:
-            UnverifiedPackage:
+            UnverifiablePackage:
                 The given package is from an unsupported ecosystem or has a known artifact
                 source other than the ecosystem's main registry.
         """
         manifest = self._manifests.get(package.ecosystem)
         if not manifest:
-            raise UnverifiedPackage(f"Package ecosystem {package.ecosystem} is not supported")
+            raise UnverifiablePackage(f"Package ecosystem {package.ecosystem} is not supported")
 
         if package.source is not None and not package.has_registry_source():
-            raise UnverifiedPackage(f"Cannot verify package with non-{package.ecosystem} registry source")
+            raise UnverifiablePackage(f"Cannot verify package with non-{package.ecosystem} registry source")
         if package.source is None:
             _log.warning(
                 f"{self.name()}: Unknown source for package {package}: assuming {package.ecosystem} registry source"

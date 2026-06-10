@@ -100,7 +100,7 @@ class VerificationReport:
     A structured report containing the results of verifying a set of `Package`.
     """
     findings_reports: dict[FindingSeverity, FindingsReport]
-    unverified_packages: FindingsReport
+    unverifiable: FindingsReport
 
     def get_findings_report(self, severity: FindingSeverity) -> Optional[FindingsReport]:
         """

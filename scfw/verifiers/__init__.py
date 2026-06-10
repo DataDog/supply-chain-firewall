@@ -30,7 +30,7 @@ import pkgutil
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.report import FindingsReport, VerificationReport
-from scfw.verifier import FindingSeverity, UnverifiedPackage
+from scfw.verifier import FindingSeverity, UnverifiablePackage
 
 _log = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ class FirewallVerifiers:
             discovered verifiers.
         """
         findings_reports: dict[FindingSeverity, FindingsReport] = {}
-        unverified_packages = FindingsReport()
+        unverifiable = FindingsReport()
 
         with cf.ThreadPoolExecutor() as executor:
             task_results = {
@@ -100,11 +100,11 @@ class FirewallVerifiers:
                     else:
                         _log.info(f"Verifier {verifier} had no findings for package {package}")
 
-                except UnverifiedPackage as e:
-                    unverified_packages.insert(
+                except UnverifiablePackage as e:
+                    unverifiable.insert(
                         package,
                         f"Verifier {verifier} was unable to verify package {package}: {e}",
                     )
 
         _log.info("Verification of packages complete")
-        return VerificationReport(findings_reports, unverified_packages)
+        return VerificationReport(findings_reports, unverifiable)

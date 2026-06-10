@@ -105,7 +105,7 @@ class PackageVerifier(metaclass=ABCMeta):
         pass
 
 
-class UnverifiedPackage(Exception):
+class UnverifiablePackage(Exception):
     """
     An exception that occurs when a verifier is unable to verify a given package.
     This is to be distinguished from a verification failure, i.e., when errors occur

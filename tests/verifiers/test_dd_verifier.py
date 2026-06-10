@@ -11,7 +11,7 @@ from typing import Callable
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity, UnverifiedPackage
+from scfw.verifier import FindingSeverity, UnverifiablePackage
 from scfw.verifiers.dd_verifier import DatadogMaliciousPackagesVerifier
 import scfw.verifiers.dd_verifier.dataset as dataset
 
@@ -64,7 +64,7 @@ def test_dd_verifier_malicious(
 
     if unverifiable:
         for package in test_set:
-            with pytest.raises(UnverifiedPackage):
+            with pytest.raises(UnverifiablePackage):
                 _ = dd_verifier.verify(package)
         return
 

@@ -8,7 +8,7 @@ import pytest
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity, UnverifiedPackage
+from scfw.verifier import FindingSeverity, UnverifiablePackage
 from scfw.verifiers.age_verifier import PackageAgeVerifier
 
 from .. import utils
@@ -39,7 +39,7 @@ def test_warn_on_recent_package(test_package: Package, unverifiable: bool):
     recency_verifier.minimum_age = timedelta(days=365*1000000)
 
     if unverifiable:
-        with pytest.raises(UnverifiedPackage):
+        with pytest.raises(UnverifiablePackage):
             recency_verifier.verify(test_package)
         return
 
@@ -58,7 +58,7 @@ def test_no_warn_on_non_recent_package(test_package: Package, unverifiable: bool
     recency_verifier = PackageAgeVerifier()
 
     if unverifiable:
-        with pytest.raises(UnverifiedPackage):
+        with pytest.raises(UnverifiablePackage):
             recency_verifier.verify(test_package)
         return
 

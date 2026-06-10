@@ -7,7 +7,7 @@ from typing import Callable
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity, UnverifiedPackage
+from scfw.verifier import FindingSeverity, UnverifiablePackage
 from scfw.verifiers.osv_verifier import OsvVerifier
 
 from .. import utils
@@ -256,7 +256,7 @@ def test_osv_verifier_malicious(
 
     if unverifiable:
         for package, _, _ in test_set:
-            with pytest.raises(UnverifiedPackage):
+            with pytest.raises(UnverifiablePackage):
                 _ = osv_verifier.verify(package)
         return
 

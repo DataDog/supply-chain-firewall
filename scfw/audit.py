@@ -46,7 +46,7 @@ def run_audit(args: Namespace) -> int:
             if (severity_report := report.get_findings_report(severity)):
                 merged_report.extend(severity_report)
 
-        merged_report.extend(report.unverified_packages)
+        merged_report.extend(report.unverifiable)
 
     if merged_report:
         print(merged_report)

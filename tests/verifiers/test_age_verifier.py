@@ -11,7 +11,7 @@ from scfw.package import Package
 from scfw.verifier import FindingSeverity, UnverifiedPackage
 from scfw.verifiers.age_verifier import PackageAgeVerifier
 
-from . import utils
+from .. import utils
 
 NPM_TEST_PACKAGE = ("axios", "1.14.0")
 PYPI_TEST_PACKAGE = ("requests", "2.32.2")
@@ -23,8 +23,8 @@ TEST_CASES = [
     (utils.build_remote_non_registry_package(ECOSYSTEM.PyPI, PYPI_TEST_PACKAGE[0], PYPI_TEST_PACKAGE[1]), True),
     (utils.build_local_package(ECOSYSTEM.Npm, NPM_TEST_PACKAGE[0], NPM_TEST_PACKAGE[1]), True),
     (utils.build_local_package(ECOSYSTEM.PyPI, PYPI_TEST_PACKAGE[0], PYPI_TEST_PACKAGE[1]), True),
-    (Package(ECOSYSTEM.Npm, NPM_TEST_PACKAGE[0], NPM_TEST_PACKAGE[1], source=None), True),
-    (Package(ECOSYSTEM.PyPI, PYPI_TEST_PACKAGE[0], PYPI_TEST_PACKAGE[1], source=None), True),
+    (Package(ECOSYSTEM.Npm, NPM_TEST_PACKAGE[0], NPM_TEST_PACKAGE[1], source=None), False),
+    (Package(ECOSYSTEM.PyPI, PYPI_TEST_PACKAGE[0], PYPI_TEST_PACKAGE[1], source=None), False),
 ]
 
 

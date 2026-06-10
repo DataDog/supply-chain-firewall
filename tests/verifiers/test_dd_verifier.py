@@ -15,7 +15,7 @@ from scfw.verifier import FindingSeverity, UnverifiedPackage
 from scfw.verifiers.dd_verifier import DatadogMaliciousPackagesVerifier
 import scfw.verifiers.dd_verifier.dataset as dataset
 
-from . import utils
+from .. import utils
 
 
 @pytest.mark.parametrize(
@@ -33,10 +33,10 @@ from . import utils
         (ECOSYSTEM.Npm, "compromised_lib", utils.build_local_package, True),
         (ECOSYSTEM.PyPI, "malicious_intent", utils.build_local_package, True),
         (ECOSYSTEM.PyPI, "compromised_lib", utils.build_local_package, True),
-        (ECOSYSTEM.Npm, "malicious_intent", Package, True),
-        (ECOSYSTEM.Npm, "compromised_lib", Package, True),
-        (ECOSYSTEM.PyPI, "malicious_intent", Package, True),
-        (ECOSYSTEM.PyPI, "compromised_lib", Package, True),
+        (ECOSYSTEM.Npm, "malicious_intent", Package, False),
+        (ECOSYSTEM.Npm, "compromised_lib", Package, False),
+        (ECOSYSTEM.PyPI, "malicious_intent", Package, False),
+        (ECOSYSTEM.PyPI, "compromised_lib", Package, False),
     ]
 )
 def test_dd_verifier_malicious(

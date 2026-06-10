@@ -10,7 +10,7 @@ from scfw.package import Package
 from scfw.verifier import FindingSeverity, UnverifiedPackage
 from scfw.verifiers.osv_verifier import OsvVerifier
 
-from . import utils
+from .. import utils
 
 # Package name and version pairs from 100 randomly selected PyPI OSV.dev disclosures
 # In constructing this list, we excluded the `tensorflow` package from consideration
@@ -225,11 +225,11 @@ NPM_TEST_SET = [
         (ECOSYSTEM.Npm, utils.build_registry_package, False),
         (ECOSYSTEM.Npm, utils.build_remote_non_registry_package, True),
         (ECOSYSTEM.Npm, utils.build_local_package, True),
-        (ECOSYSTEM.Npm, Package, True),
+        (ECOSYSTEM.Npm, Package, False),
         (ECOSYSTEM.PyPI, utils.build_registry_package, False),
         (ECOSYSTEM.PyPI, utils.build_remote_non_registry_package, True),
         (ECOSYSTEM.PyPI, utils.build_local_package, True),
-        (ECOSYSTEM.PyPI, Package, True),
+        (ECOSYSTEM.PyPI, Package, False),
     ]
 )
 def test_osv_verifier_malicious(

@@ -102,7 +102,7 @@ class Package:
             return False
 
         patterns = {
-            r'^https?://' + re.escape(domain) for domain in self.ecosystem.registry_domains()
+            r'^https?://' + re.escape(domain) + r'(?:/|$)' for domain in self.ecosystem.registry_domains()
         }
 
         return any(re.match(pattern, remote_source.remote_source) is not None for pattern in patterns)

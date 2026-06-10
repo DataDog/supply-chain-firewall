@@ -20,7 +20,6 @@ from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.package import Package
 from scfw.report import VerificationReport
-from scfw.verifier import FindingSeverity
 
 
 class CustomFirewallLogger(FirewallLogger):
@@ -42,7 +41,7 @@ class CustomFirewallLogger(FirewallLogger):
         ecosystem: ECOSYSTEM,
         package_manager: str,
         executable: str,
-        reports: dict[FindingSeverity, VerificationReport],
+        report: VerificationReport,
     ):
         return
 

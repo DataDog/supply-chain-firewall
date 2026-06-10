@@ -87,13 +87,18 @@ class PackageAgeVerifier(PackageVerifier):
 
         Raises:
             UnverifiedPackage:
-                The given package is from an unsupported ecosystem or has an artifact source
-                other than the ecosystem's main registry.
+                The given package is from an unsupported ecosystem or has a known artifact
+                source other than the ecosystem's main registry.
         """
         if package.ecosystem not in self.supported_ecosystems():
             raise UnverifiedPackage(f"Package ecosystem {package.ecosystem} is not supported")
-        if not package.has_registry_source():
-            raise UnverifiedPackage(f"Cannot verify package {package} with non-{package.ecosystem} artifact source")
+
+        if package.source is not None and not package.has_registry_source():
+            raise UnverifiedPackage(f"Cannot verify package with non-{package.ecosystem} registry source")
+        if package.source is None:
+            _log.warning(
+                f"{self.name()}: Unknown source for package {package}: assuming {package.ecosystem} registry source"
+            )
 
         if self.minimum_age == timedelta(0):
             return []

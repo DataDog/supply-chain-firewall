@@ -10,6 +10,8 @@ from scfw.verifier import FindingSeverity
 from scfw.verifiers import FirewallVerifiers
 from scfw.verifiers.osv_verifier import OsvVerifier
 
+from . import utils
+
 # Package name and version pairs from 100 randomly selected PyPI OSV.dev disclosures
 # In constructing this list, we excluded the `tensorflow` package from consideration
 # because it has many OSV.dev disclosures, which cause the test to run very slowly
@@ -230,7 +232,7 @@ def test_osv_verifier_malicious(ecosystem: ECOSYSTEM):
             test_set = PYPI_TEST_SET
 
     test_set = [
-        (Package(ecosystem, name, version), has_critical, has_warning)
+        (utils.build_registry_sourced_package(ecosystem, name, version), has_critical, has_warning)
         for name, version, has_critical, has_warning in test_set
     ]
 

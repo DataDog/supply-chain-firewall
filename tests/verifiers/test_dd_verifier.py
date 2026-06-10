@@ -15,6 +15,8 @@ from scfw.verifiers import FirewallVerifiers
 from scfw.verifiers.dd_verifier import DatadogMaliciousPackagesVerifier
 import scfw.verifiers.dd_verifier.dataset as dataset
 
+from . import utils
+
 # Create a single Datadog malicious packages verifier to use for testing
 DD_VERIFIER = DatadogMaliciousPackagesVerifier()
 
@@ -39,9 +41,11 @@ def test_dd_verifier_malicious(ecosystem: ECOSYSTEM, kind: str):
     for name, versions in manifest.items():
         if kind == "malicious_intent" and not versions:
             # Version is not checked in this case, so use a dummy version string
-            test_set.append(Package(ecosystem, name, "dummy_version"))
+            test_set.append(utils.build_registry_sourced_package(ecosystem, name, "dummy_version"))
         elif kind == "compromised_lib" and versions:
-            test_set.extend([Package(ecosystem, name, version) for version in versions])
+            test_set.extend(
+                [utils.build_registry_sourced_package(ecosystem, name, version) for version in versions]
+            )
     assert test_set
 
     # Create a modified `FirewallVerifiers` only containing the Datadog verifier

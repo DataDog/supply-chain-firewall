@@ -2,15 +2,13 @@
 Common verifier testing utilities.
 """
 
+from pathlib import Path
+
 from scfw.ecosystem import ECOSYSTEM
-from scfw.package import Package, RemotePackageSource
+from scfw.package import Package, LocalPackageSource, RemotePackageSource
 
 
-def build_registry_sourced_package(
-    ecosystem: ECOSYSTEM,
-    package_name: str,
-    package_version: str
-) -> Package:
+def build_registry_package(ecosystem: ECOSYSTEM, package_name: str, package_version: str) -> Package:
     """
     Return a `Package` with the given parameters and the ecosystem's main registry as
     its artifact source.
@@ -26,6 +24,25 @@ def build_registry_sourced_package(
         package_name,
         package_version,
         RemotePackageSource(source_url),
+    )
+
+
+def build_remote_non_registry_package(ecosystem: ECOSYSTEM, package_name: str, package_version: str) -> Package:
+    """
+    Lorem ipsum dolor sit amet.
+    """
+    return Package(ecosystem, package_name, package_version, RemotePackageSource("https://example.com"))
+
+
+def build_local_package(ecosystem: ECOSYSTEM, package_name: str, package_version: str) -> Package:
+    """
+    Lorem ipsum dolor sit amet.
+    """
+    return Package(
+        ecosystem,
+        package_name,
+        package_version,
+        LocalPackageSource(Path(f"/tmp/{package_name}_v{package_version}")),
     )
 
 

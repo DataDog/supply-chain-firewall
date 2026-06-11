@@ -4,6 +4,7 @@ A representation of software packages in supported ecosystems.
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Optional
 
 from scfw.ecosystem import ECOSYSTEM
@@ -88,3 +89,20 @@ class Package:
             return self.source
 
         return None
+
+    def has_registry_source(self) -> bool:
+        """
+        Check whether a `Package` is sourced from its ecosystem's main registry.
+
+        Returns:
+            A `bool` indicating whether the `Package` is known to be sourced from its
+            ecosystem's main package registry, based on its `source` attribute.
+        """
+        if not (remote_source := self.get_remote_source()):
+            return False
+
+        patterns = {
+            r'^https?://' + re.escape(domain) + r'(?:/|$)' for domain in self.ecosystem.registry_domains()
+        }
+
+        return any(re.match(pattern, remote_source.remote_source) is not None for pattern in patterns)

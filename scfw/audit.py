@@ -7,7 +7,7 @@ import logging
 
 from scfw.loggers import FirewallLoggers
 import scfw.package_managers as package_managers
-from scfw.report import VerificationReport
+from scfw.report import FindingsReport
 from scfw.verifier import FindingSeverity
 from scfw.verifiers import FirewallVerifiers
 
@@ -24,7 +24,7 @@ def run_audit(args: Namespace) -> int:
     Returns:
         An integer status code indicating normal exit.
     """
-    merged_report = VerificationReport()
+    merged_report = FindingsReport()
 
     package_manager = package_managers.get_package_manager(args.package_manager, executable=args.executable)
 
@@ -34,17 +34,19 @@ def run_audit(args: Namespace) -> int:
         verifiers = FirewallVerifiers(package_manager.ecosystem())
         _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
 
-        reports = verifiers.verify_packages(packages)
+        report = verifiers.verify_packages(packages)
         FirewallLoggers().log_audit(
             package_manager.ecosystem(),
             package_manager.name(),
             package_manager.executable(),
-            reports,
+            report,
         )
 
         for severity in FindingSeverity:
-            if (severity_report := reports.get(severity)):
+            if (severity_report := report.get_findings_report(severity)):
                 merged_report.extend(severity_report)
+
+        merged_report.extend(report.unverifiable)
 
     if merged_report:
         print(merged_report)

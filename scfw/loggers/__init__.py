@@ -30,7 +30,6 @@ from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.package import Package
 from scfw.report import VerificationReport
-from scfw.verifier import FindingSeverity
 
 _log = logging.getLogger(__name__)
 
@@ -94,13 +93,13 @@ class FirewallLoggers(FirewallLogger):
         ecosystem: ECOSYSTEM,
         package_manager: str,
         executable: str,
-        reports: dict[FindingSeverity, VerificationReport],
+        report: VerificationReport,
     ):
         """
         Log the results of an audit to all client loggers.
         """
         for logger in self._loggers:
             try:
-                logger.log_audit(ecosystem, package_manager, executable, reports)
+                logger.log_audit(ecosystem, package_manager, executable, report)
             except Exception as e:
                 _log.warning(f"Failed to log audit: {e}")

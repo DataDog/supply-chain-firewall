@@ -15,6 +15,7 @@ from scfw.package_managers.npm import Npm
 import scfw.package_managers.npm as npm
 
 from .npm_fixtures import *
+from .. import utils
 
 PACKAGE_MANAGER = Npm()
 """
@@ -22,12 +23,7 @@ Fixed `PackageManager` to use across all tests.
 """
 
 TEST_PACKAGE_LATEST_INSTALL_TARGETS = {
-    Package(
-        ECOSYSTEM.Npm,
-        name,
-        version,
-        RemotePackageSource(build_npm_tarball_url(name, version)),
-    )
+    utils.build_registry_package(ECOSYSTEM.Npm, name, version)
     for name, version in TEST_PACKAGE_LATEST_DEPENDENCIES
 }
 """
@@ -35,12 +31,7 @@ TEST_PACKAGE_LATEST_INSTALL_TARGETS = {
 """
 
 TEST_PACKAGE_PREVIOUS_INSTALL_TARGETS = {
-    Package(
-        ECOSYSTEM.Npm,
-        name,
-        version,
-        RemotePackageSource(build_npm_tarball_url(name, version)),
-    )
+    utils.build_registry_package(ECOSYSTEM.Npm, name, version)
     for name, version in TEST_PACKAGE_PREVIOUS_DEPENDENCIES
 }
 """
@@ -158,14 +149,7 @@ def test_resolve_install_targets_dependency_latest_lockfile(
         (["npm", "install", TEST_PACKAGE_LATEST_SPEC], None),
         (
             ["npm", "install", TEST_PACKAGE_PREVIOUS_SPEC],
-            {
-                Package(
-                    ECOSYSTEM.Npm,
-                    TEST_PACKAGE,
-                    TEST_PACKAGE_PREVIOUS,
-                    RemotePackageSource(build_npm_tarball_url(TEST_PACKAGE, TEST_PACKAGE_PREVIOUS)),
-                ),
-            },
+            {utils.build_registry_package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_PREVIOUS)},
         ),
     ]
 )
@@ -227,14 +211,7 @@ def test_resolve_install_targets_dependency_previous_lockfile(
         (["npm", "install", TEST_PACKAGE_PREVIOUS_SPEC], None),
         (
             ["npm", "install", TEST_PACKAGE_LATEST_SPEC],
-            {
-                Package(
-                    ECOSYSTEM.Npm,
-                    TEST_PACKAGE,
-                    TEST_PACKAGE_LATEST,
-                    RemotePackageSource(build_npm_tarball_url(TEST_PACKAGE, TEST_PACKAGE_LATEST)),
-                ),
-            },
+            {utils.build_registry_package(ECOSYSTEM.Npm, TEST_PACKAGE, TEST_PACKAGE_LATEST)},
         ),
     ]
 )

@@ -3,12 +3,14 @@ Tests of `OsvVerifier`.
 """
 
 import pytest
+from typing import Callable
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity
-from scfw.verifiers import FirewallVerifiers
+from scfw.verifier import FindingSeverity, UnverifiablePackage
 from scfw.verifiers.osv_verifier import OsvVerifier
+
+from .. import utils
 
 # Package name and version pairs from 100 randomly selected PyPI OSV.dev disclosures
 # In constructing this list, we excluded the `tensorflow` package from consideration
@@ -217,12 +219,30 @@ NPM_TEST_SET = [
 ]
 
 
-@pytest.mark.parametrize("ecosystem", [ECOSYSTEM.Npm, ECOSYSTEM.PyPI])
-def test_osv_verifier_malicious(ecosystem: ECOSYSTEM):
+@pytest.mark.parametrize(
+    "ecosystem,package_builder,unverifiable",
+    [
+        (ECOSYSTEM.Npm, utils.build_registry_package, False),
+        (ECOSYSTEM.Npm, utils.build_remote_non_registry_package, True),
+        (ECOSYSTEM.Npm, utils.build_local_package, True),
+        (ECOSYSTEM.Npm, Package, False),
+        (ECOSYSTEM.PyPI, utils.build_registry_package, False),
+        (ECOSYSTEM.PyPI, utils.build_remote_non_registry_package, True),
+        (ECOSYSTEM.PyPI, utils.build_local_package, True),
+        (ECOSYSTEM.PyPI, Package, False),
+    ]
+)
+def test_osv_verifier_malicious(
+    ecosystem: ECOSYSTEM,
+    package_builder: Callable[[ECOSYSTEM, str, str], Package],
+    unverifiable: bool
+):
     """
     Run a test of the `OsvVerifier` against the list of selected packages
     corresponding to the given ecosystem.
     """
+    osv_verifier = OsvVerifier()
+
     match ecosystem:
         case ECOSYSTEM.Npm:
             test_set = NPM_TEST_SET
@@ -230,29 +250,29 @@ def test_osv_verifier_malicious(ecosystem: ECOSYSTEM):
             test_set = PYPI_TEST_SET
 
     test_set = [
-        (Package(ecosystem, name, version), has_critical, has_warning)
+        (package_builder(ecosystem, name, version), has_critical, has_warning)
         for name, version, has_critical, has_warning in test_set
     ]
 
-    # Create a modified `FirewallVerifiers` only containing the OSV.dev verifier
-    verifier = FirewallVerifiers(ecosystem)
-    verifier._verifiers = [OsvVerifier()]
-
-    reports = verifier.verify_packages([test[0] for test in test_set])
-    critical_report = reports.get(FindingSeverity.CRITICAL)
-    warning_report = reports.get(FindingSeverity.WARNING)
+    if unverifiable:
+        for package, _, _ in test_set:
+            with pytest.raises(UnverifiablePackage):
+                _ = osv_verifier.verify(package)
+        return
 
     for package, has_critical, has_warning in test_set:
+        findings = osv_verifier.verify(package)
+        assert findings
+
+        any_critical = any(finding[0] == FindingSeverity.CRITICAL for finding in findings)
+        any_warning = any(finding[0] == FindingSeverity.WARNING for finding in findings)
+
         if has_critical:
-            assert (critical_report and critical_report.get(package))
+            assert any_critical
         else:
-            assert (
-                not (critical_report and critical_report.get(package))
-            )
+            assert not any_critical
 
         if has_warning:
-            assert (warning_report and warning_report.get(package))
+            assert any_warning
         else:
-            assert (
-                not (warning_report and warning_report.get(package))
-            )
+            assert not any_warning

@@ -10,7 +10,7 @@ from pathlib import Path
 from scfw.constants import SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity, PackageVerifier
+from scfw.verifier import FindingSeverity, PackageVerifier, UnverifiablePackage
 from scfw.verifiers.list_verifier.findings_map import FindingsMap
 
 _log = logging.getLogger(__name__)
@@ -80,7 +80,22 @@ class FindingsListVerifier(PackageVerifier):
         Returns:
             A list containing all findings for the given package present in the user-provided
             findings list with which the `FindingsListVerifier` was initialized.
+
+        Raises:
+            UnverifiablePackage:
+                The given package is from an unsupported ecosystem or has a known artifact
+                source other than the ecosystem's main registry.
         """
+        if package.ecosystem not in self.supported_ecosystems():
+            raise UnverifiablePackage(f"Package ecosystem {package.ecosystem} is not supported")
+
+        if package.source is not None and not package.has_registry_source():
+            raise UnverifiablePackage(f"Cannot verify package with non-{package.ecosystem} registry source")
+        if package.source is None:
+            _log.warning(
+                f"{self.name()}: Unknown source for package {package}: assuming {package.ecosystem} registry source"
+            )
+
         return self._findings_map.get_findings(package)
 
 

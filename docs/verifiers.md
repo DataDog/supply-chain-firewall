@@ -2,13 +2,15 @@
 
 ## Package minimum age verifier
 
-The minimum package age verifier checks whether a given package (specified by an ecosystem-name-version triple) has a certain minimum age, defined to be the number of hours elapsed since the time of its publication to the ecosystem's package registry.  If a given package does not have the required minimum age, a single `WARNING`-level finding is returned.
+The minimum package age verifier checks whether a given package (specified by an ecosystem-name-version triple) has a certain minimum age, defined to be the number of hours elapsed since the time of its publication to the ecosystem's main package registry.  If a given package does not have the required minimum age, a single `WARNING`-level finding is returned.
 
 ```bash
 scfw run pip install foo
 Package foo-1.0.1:
   - Package foo was published less than 24 hours ago: treat new releases with caution
 ```
+
+Packages with a known artifact source other than the ecosystem's main registry are out of scope for this verifier.  Packages with unknown artifact source are treated as if they were sourced from the main registry.
 
 This verifier provides an additional level of protection to SCFW users against supply-chain attacks via package takeover or library compromise.  All things being equal, very recent releases have less vetting than older ones and should be treated with a greater deal of initial skepticism before being installed.
 
@@ -26,6 +28,8 @@ $ scfw run npm install basementio
 Package basementio@0.0.1-security:
   - Datadog Security Research has determined that package basementio@0.0.1-security is malicious
 ```
+
+Packages with a known artifact source other than the ecosystem's main registry are out of scope for this verifier.  Packages with unknown artifact source are treated as if they were sourced from the main registry.
 
 Users may configure the behavior of this verifier via the following environment variables:
 
@@ -46,6 +50,8 @@ Package pynamodb-6.1.0:
 The installation request was blocked. No changes have been made.
 ```
 
+This verifier assumes that all findings pertain to packages from the ecosystem's main package registry.  As such, packages with a known artifact source other than the ecosystem's main registry are out of scope for this verifier.  Packages with unknown artifact source are treated as if they were sourced from the main registry.
+
 Findings lists are expressed in YAML.  A simple example of the expected format may be found [here](https://github.com/DataDog/supply-chain-firewall/blob/main/examples/findings_list.yaml).
 
 Users may configure the behavior of this verifier via the following environment variables:
@@ -65,6 +71,8 @@ Package basementio@0.0.1-security:
   - An OSV.dev malicious package advisory exists for package basementio@0.0.1-security:
       * https://osv.dev/vulnerability/MAL-2024-7874
 ```
+
+Packages with a known artifact source other than the ecosystem's main registry are out of scope for this verifier.  Packages with unknown artifact source are treated as if they were sourced from the main registry.
 
 Users may configure the behavior of this verifier via the following environment variables:
 

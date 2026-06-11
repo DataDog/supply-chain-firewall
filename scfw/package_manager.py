@@ -23,11 +23,6 @@ class PackageManager(metaclass=ABCMeta):
                 An optional local filesystem path to the underlying package manager executable
                 that should be used for running commands. If none is provided, the executable
                 is determined by the current environment.
-
-        Raises:
-            UnsupportedVersionError:
-                Implementors should raise this error when the underlying executable has an
-                unsupported version.
         """
         pass
 
@@ -97,9 +92,9 @@ class PackageManager(metaclass=ABCMeta):
 class UnsupportedVersionError(Exception):
     """
     An exception that occurs when an attempt is made to initialize a `PackageManager`
-    with an unsupported version of the underlying executable. Supply-Chain Firewall
-    handles this exception gracefully by alerting the user to the issue. In firewall
-    mode, the user can optionally disable verification and run commands with
-    unsupported versions of supported package managers.
+    or execute one of its key methods with an unsupported version of the underlying
+    executable. Supply-Chain Firewall handles this exception gracefully by alerting
+    the user to the issue. In firewall mode, the user can optionally disable verification
+    and run commands with unsupported versions of supported package managers.
     """
     pass

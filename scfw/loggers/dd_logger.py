@@ -18,7 +18,6 @@ from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.package import Package
 from scfw.report import VerificationReport
-from scfw.verifier import FindingSeverity
 
 _log = logging.getLogger(__name__)
 
@@ -30,6 +29,7 @@ _AUDIT_ATTRIBUTES = {
     "msg",
     "package_manager",
     "reports",
+    "unverifiable",
 }
 _FIREWALL_ACTION_ATTRIBUTES = {
     "action",
@@ -221,7 +221,7 @@ class DDLogger(FirewallLogger):
         ecosystem: ECOSYSTEM,
         package_manager: str,
         executable: str,
-        reports: dict[FindingSeverity, VerificationReport],
+        report: VerificationReport,
     ):
         """
         Log the results of an audit for the given ecosystem and package manager.
@@ -230,7 +230,7 @@ class DDLogger(FirewallLogger):
             ecosystem: The ecosystem of the audited packages.
             package_manager: The package manager that manages the audited packages.
             executable: The package manager executable used to enumerate audited packages.
-            reports: The severity-ranked reports resulting from auditing the installed packages.
+            report: The `VerificationReport` resulting from auditing the installed packages.
         """
         self._logger.info(
             f"Successfully audited {ecosystem} packages managed by {package_manager}",
@@ -239,7 +239,9 @@ class DDLogger(FirewallLogger):
                 "package_manager": package_manager,
                 "executable": executable,
                 "reports": {
-                    str(severity): list(map(str, report.packages())) for severity, report in reports.items()
+                    str(severity): list(map(str, findings_report.packages()))
+                    for severity, findings_report in report.findings_reports.items()
                 },
+                "unverifiable": list(map(str, report.unverifiable.packages())),
             }
         )

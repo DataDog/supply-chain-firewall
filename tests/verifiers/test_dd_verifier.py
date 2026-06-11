@@ -7,53 +7,74 @@ import json
 from pathlib import Path
 import pytest
 from tempfile import TemporaryDirectory
+from typing import Callable
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity
-from scfw.verifiers import FirewallVerifiers
+from scfw.verifier import FindingSeverity, UnverifiablePackage
 from scfw.verifiers.dd_verifier import DatadogMaliciousPackagesVerifier
 import scfw.verifiers.dd_verifier.dataset as dataset
 
-# Create a single Datadog malicious packages verifier to use for testing
-DD_VERIFIER = DatadogMaliciousPackagesVerifier()
+from .. import utils
 
 
 @pytest.mark.parametrize(
-    "ecosystem,kind",
+    "ecosystem,kind,package_builder,unverifiable",
     [
-        (ECOSYSTEM.Npm, "malicious_intent"),
-        (ECOSYSTEM.Npm, "compromised_lib"),
-        (ECOSYSTEM.PyPI, "malicious_intent"),
-        (ECOSYSTEM.PyPI, "compromised_lib"),
+        (ECOSYSTEM.Npm, "malicious_intent", utils.build_registry_package, False),
+        (ECOSYSTEM.Npm, "compromised_lib", utils.build_registry_package, False),
+        (ECOSYSTEM.PyPI, "malicious_intent", utils.build_registry_package, False),
+        (ECOSYSTEM.PyPI, "compromised_lib", utils.build_registry_package, False),
+        (ECOSYSTEM.Npm, "malicious_intent", utils.build_remote_non_registry_package, True),
+        (ECOSYSTEM.Npm, "compromised_lib", utils.build_remote_non_registry_package, True),
+        (ECOSYSTEM.PyPI, "malicious_intent", utils.build_remote_non_registry_package, True),
+        (ECOSYSTEM.PyPI, "compromised_lib", utils.build_remote_non_registry_package, True),
+        (ECOSYSTEM.Npm, "malicious_intent", utils.build_local_package, True),
+        (ECOSYSTEM.Npm, "compromised_lib", utils.build_local_package, True),
+        (ECOSYSTEM.PyPI, "malicious_intent", utils.build_local_package, True),
+        (ECOSYSTEM.PyPI, "compromised_lib", utils.build_local_package, True),
+        (ECOSYSTEM.Npm, "malicious_intent", Package, False),
+        (ECOSYSTEM.Npm, "compromised_lib", Package, False),
+        (ECOSYSTEM.PyPI, "malicious_intent", Package, False),
+        (ECOSYSTEM.PyPI, "compromised_lib", Package, False),
     ]
 )
-def test_dd_verifier_malicious(ecosystem: ECOSYSTEM, kind: str):
+def test_dd_verifier_malicious(
+    ecosystem: ECOSYSTEM,
+    kind: str,
+    package_builder: Callable[[ECOSYSTEM, str, str], Package],
+    unverifiable: bool,
+):
     """
     Run a test of the `DatadogMaliciousPackagesVerifier` against all samples
     of the given ecosystem and kind.
     """
-    manifest = DD_VERIFIER._manifests[ecosystem]
+    dd_verifier = DatadogMaliciousPackagesVerifier()
 
     test_set = []
-    for name, versions in manifest.items():
+    for name, versions in dd_verifier._manifests[ecosystem].items():
         if kind == "malicious_intent" and not versions:
             # Version is not checked in this case, so use a dummy version string
-            test_set.append(Package(ecosystem, name, "dummy_version"))
+            test_set.append(package_builder(ecosystem, name, "dummy_version"))
         elif kind == "compromised_lib" and versions:
-            test_set.extend([Package(ecosystem, name, version) for version in versions])
+            test_set.extend(
+                [package_builder(ecosystem, name, version) for version in versions]
+            )
     assert test_set
 
-    # Create a modified `FirewallVerifiers` only containing the Datadog verifier
-    verifier = FirewallVerifiers(ecosystem)
-    verifier._verifiers = [DD_VERIFIER]
-
-    reports = verifier.verify_packages(test_set)
-    assert (critical_report := reports.get(FindingSeverity.CRITICAL))
-    assert not reports.get(FindingSeverity.WARNING)
+    if unverifiable:
+        for package in test_set:
+            with pytest.raises(UnverifiablePackage):
+                _ = dd_verifier.verify(package)
+        return
 
     for package in test_set:
-        assert critical_report.get(package)
+        findings = dd_verifier.verify(package)
+        assert len(findings) == 1
+
+        severity, finding = findings[0]
+        assert severity == FindingSeverity.CRITICAL
+        assert finding
 
 
 @pytest.mark.parametrize("ecosystem", [ECOSYSTEM.Npm, ECOSYSTEM.PyPI])

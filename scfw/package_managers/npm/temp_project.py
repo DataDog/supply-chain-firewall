@@ -21,6 +21,9 @@ _log = logging.getLogger(__name__)
 # URI scheme for npm local package dependencies
 FILE_URI_PREFIX = "file:"
 
+# Prefix for all installed-package entries in package-lock.json
+NODE_MODULES_PREFIX = "node_modules/"
+
 # Dependency sections present in npm package.json and package-lock.json files
 _DEPENDENCY_SECTIONS = {"dependencies", "devDependencies", "optionalDependencies", "peerDependencies"}
 
@@ -70,6 +73,9 @@ class TemporaryNpmProject:
             absolute_path = (project_root / relative_path).resolve()
             return os.path.relpath(absolute_path, temp_dir_path.resolve())
 
+        def rewrite_file_uri(uri: str, project_root: Path, temp_dir_path: Path) -> str:
+            return f"{FILE_URI_PREFIX}{rewrite_relative_path(uri[len(FILE_URI_PREFIX):], project_root, temp_dir_path)}"
+
         def copy_package_json(project_root: Path, temp_dir_path: Path):
             orig_package_json = project_root / "package.json"
             if not orig_package_json.is_file():
@@ -86,12 +92,7 @@ class TemporaryNpmProject:
 
                 for name, spec in dependencies.items():
                     if isinstance(spec, str) and spec.startswith(FILE_URI_PREFIX):
-                        relative_target = rewrite_relative_path(
-                            spec[len(FILE_URI_PREFIX):],
-                            project_root,
-                            temp_dir_path,
-                        )
-                        dependencies[name] = f"{FILE_URI_PREFIX}{relative_target}"
+                        dependencies[name] = rewrite_file_uri(spec, project_root, temp_dir_path)
 
             with open(temp_dir_path / "package.json", 'w') as f:
                 json.dump(temp_content, f)
@@ -114,7 +115,7 @@ class TemporaryNpmProject:
             # External entry keys (anything other than "" or a `node_modules/...` path)
             # are paths to linked sources, relative to the original project root
             for old_key in list(packages.keys()):
-                if old_key == "" or old_key.startswith("node_modules/"):
+                if old_key == "" or old_key.startswith(NODE_MODULES_PREFIX):
                     continue
                 packages[rewrite_relative_path(old_key, project_root, temp_dir_path)] = packages.pop(old_key)
 
@@ -128,12 +129,7 @@ class TemporaryNpmProject:
                 resolved = entry.get("resolved")
                 if isinstance(resolved, str):
                     if resolved.startswith(FILE_URI_PREFIX):
-                        resolved = rewrite_relative_path(
-                            resolved[len(FILE_URI_PREFIX):],
-                            project_root,
-                            temp_dir_path,
-                        )
-                        entry["resolved"] = f"{FILE_URI_PREFIX}{resolved}"
+                        entry["resolved"] = rewrite_file_uri(resolved, project_root, temp_dir_path)
                     elif resolved.startswith(("./", "../")):
                         entry["resolved"] = rewrite_relative_path(resolved, project_root, temp_dir_path)
 
@@ -142,12 +138,7 @@ class TemporaryNpmProject:
                     if isinstance(dependencies, dict):
                         for name, spec in dependencies.items():
                             if isinstance(spec, str) and spec.startswith(FILE_URI_PREFIX):
-                                spec = rewrite_relative_path(
-                                    spec[len(FILE_URI_PREFIX):],
-                                    project_root,
-                                    temp_dir_path,
-                                )
-                                dependencies[name] = f"{FILE_URI_PREFIX}{spec}"
+                                dependencies[name] = rewrite_file_uri(spec, project_root, temp_dir_path)
 
             with open(temp_lockfile, 'w') as f:
                 json.dump(temp_content, f)
@@ -290,7 +281,16 @@ class TemporaryNpmProject:
         ) -> Package:
             if not target_name:
                 # All supported npm versions adhere to this format
-                target_name = target_handle.rpartition("node_modules/")[2]
+                target_name = target_handle.rpartition(NODE_MODULES_PREFIX)[2]
+
+            def resolve_local_source(rel: str) -> Optional[LocalPackageSource]:
+                try:
+                    return LocalPackageSource((temp_dir_path / rel).resolve(strict=True))
+                except (OSError, RuntimeError) as e:
+                    _log.warning(
+                        f"Could not resolve local source path for installation target {target_name}: {e}"
+                    )
+                    return None
 
             if not (target_entry := dependencies.get(target_handle)):
                 raise KeyError(
@@ -306,14 +306,9 @@ class TemporaryNpmProject:
                         resolved_handle = resolved_handle[len(FILE_URI_PREFIX):]
                     # `copy_lockfile` rewrites link keys so that `temp_dir_path / resolved_handle`
                     # resolves back to the original local package on the user's filesystem
-                    link_source = None
-                    try:
-                        link_source = LocalPackageSource((temp_dir_path / resolved_handle).resolve(strict=True))
-                    except (OSError, RuntimeError) as e:
-                        _log.warning(
-                            f"Could not resolve local source path for installation target {target_name}: {e}"
-                        )
-                    return handle_to_install_target(dependencies, resolved_handle, target_name, link_source)
+                    return handle_to_install_target(
+                        dependencies, resolved_handle, target_name, resolve_local_source(resolved_handle)
+                    )
 
                 raise KeyError(
                     f"Missing version data for installation target {target_name} in package-lock.json"
@@ -324,14 +319,7 @@ class TemporaryNpmProject:
                 if resolved.startswith("http"):
                     target_source = RemotePackageSource(resolved)
                 elif resolved.startswith(FILE_URI_PREFIX):
-                    try:
-                        target_source = LocalPackageSource(
-                            (temp_dir_path / resolved[len(FILE_URI_PREFIX):]).resolve(strict=True)
-                        )
-                    except (OSError, RuntimeError) as e:
-                        _log.warning(
-                            f"Could not resolve local source path for installation target {target_name}: {e}"
-                        )
+                    target_source = resolve_local_source(resolved[len(FILE_URI_PREFIX):])
 
             return Package(ECOSYSTEM.Npm, target_name, version, source=target_source)
 

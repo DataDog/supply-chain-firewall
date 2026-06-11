@@ -10,18 +10,21 @@ import shutil
 import subprocess
 from typing import Optional
 
-from packaging.version import InvalidVersion, Version, parse as version_parse
+from packaging.version import InvalidVersion, parse as version_parse
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import LocalPackageSource, Package, RemotePackageSource
 from scfw.package_manager import PackageManager, UnsupportedVersionError
-from scfw.package_managers.npm.temp_project import FILE_URI_PREFIX, TemporaryNpmProject
+from scfw.package_managers.npm.temp_project import FILE_URI_PREFIX, NODE_MODULES_PREFIX, TemporaryNpmProject
 
 _log = logging.getLogger(__name__)
 
 MIN_NPM_VERSION = version_parse("7.0.0")
 
-_LOCK_FILE_NODE_MODULES_PREFIX = "node_modules/"
+# https://docs.npmjs.com/cli/v10/commands/npm-install
+_INSTALL_COMMAND_ALIASES = {
+    "install", "add", "i", "in", "ins", "inst", "insta", "instal", "isnt", "isnta", "isntal", "isntall"
+}
 
 
 class Npm(PackageManager):
@@ -101,18 +104,11 @@ class Npm(PackageManager):
             RuntimeError: Failed to resolve npm installation targets (with error detail)
             UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
-        def is_install_command(command: list[str]) -> bool:
-            # https://docs.npmjs.com/cli/v10/commands/npm-install
-            install_aliases = {
-                "install", "add", "i", "in", "ins", "inst", "insta", "instal", "isnt", "isnta", "isntal", "isntall"
-            }
-            return any(alias in command for alias in install_aliases)
-
         if not command or command[0] != self.name():
             raise ValueError("Received empty or invalid npm command line")
 
         # For now, allow all non-`install` commands
-        if not is_install_command(command):
+        if not any(alias in command for alias in _INSTALL_COMMAND_ALIASES):
             return []
 
         self._check_version()
@@ -157,14 +153,14 @@ class Npm(PackageManager):
 
             result = {}
             for key, pkg_data in data.get("packages", {}).items():
-                if key.startswith(_LOCK_FILE_NODE_MODULES_PREFIX):
+                if key.startswith(NODE_MODULES_PREFIX):
                     resolved = pkg_data.get("resolved", "")
                     version = pkg_data.get("version", "")
                     if resolved and version:
                         # Nested (non-hoisted) entries look like
                         # `node_modules/<parent>/node_modules/<child>` — take
                         # the segment after the last `node_modules/` boundary.
-                        name = key.rpartition(_LOCK_FILE_NODE_MODULES_PREFIX)[2]
+                        name = key.rpartition(NODE_MODULES_PREFIX)[2]
                         result[(name, version)] = resolved
             return result
 
@@ -173,6 +169,8 @@ class Npm(PackageManager):
             resolved_fallback: dict[tuple[str, str], str],
         ) -> set[Package]:
             packages = set()
+
+            node_modules_path = Path.cwd() / "node_modules"
 
             for name, package_data in dependencies.items():
                 try:
@@ -186,7 +184,7 @@ class Npm(PackageManager):
 
                     # `file:` dependencies reported by `npm list` are relative to `node_modules/`
                     local_path = (
-                        (Path.cwd() / "node_modules" / resolved[len(FILE_URI_PREFIX):]).resolve()
+                        (node_modules_path / resolved[len(FILE_URI_PREFIX):]).resolve()
                         if resolved.startswith(FILE_URI_PREFIX) else None
                     )
 
@@ -227,7 +225,7 @@ class Npm(PackageManager):
 
         try:
             npm_list = subprocess.run(
-                [self.executable() or "npm", "list", "--all", "--json"],
+                [self.executable(), "list", "--all", "--json"],
                 check=True, text=True, capture_output=True,
             )
 
@@ -252,16 +250,13 @@ class Npm(PackageManager):
         Raises:
             UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
-        def get_npm_version(executable: str) -> Optional[Version]:
-            try:
-                # All supported versions adhere to this format
-                npm_version = subprocess.run([executable, "--version"], check=True, text=True, capture_output=True)
-                return version_parse(npm_version.stdout.strip())
-            except InvalidVersion:
-                return None
+        try:
+            # All supported versions adhere to this format
+            p = subprocess.run([self._executable, "--version"], check=True, text=True, capture_output=True)
+            if version_parse(p.stdout.strip()) < MIN_NPM_VERSION:
+                raise InvalidVersion
 
-        npm_version = get_npm_version(self._executable)
-        if not npm_version or npm_version < MIN_NPM_VERSION:
+        except InvalidVersion:
             raise UnsupportedVersionError(f"npm before v{MIN_NPM_VERSION} is not supported")
 
     def _normalize_command(self, command: list[str]) -> list[str]:

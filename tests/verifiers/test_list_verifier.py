@@ -3,11 +3,14 @@ Tests of `FindingsListVerifier`.
 """
 
 import pytest
+from typing import Optional
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity
+from scfw.verifier import FindingSeverity, UnverifiablePackage
 from scfw.verifiers.list_verifier import FindingsListVerifier, FindingsMap
+
+from .. import utils
 
 # Test findings list YAML
 FINDINGS_LIST_1 = """\
@@ -160,30 +163,26 @@ def test_findings_map_merge():
 
 
 @pytest.mark.parametrize(
-    "ecosystem, name, version, findings",
+    "package,unverifiable,findings",
     [
         (
-            ECOSYSTEM.Npm,
-            "react",
-            "18.2.0",
+            utils.build_registry_package(ECOSYSTEM.Npm, "react", "18.2.0"),
+            False,
             [(FindingSeverity.CRITICAL, "This is a critical finding in the second test findings list")],
         ),
         (
-            ECOSYSTEM.Npm,
-            "react",
-            "18.3.0",
+            utils.build_registry_package(ECOSYSTEM.Npm, "react", "18.3.0"),
+            False,
             [(FindingSeverity.CRITICAL, "This is a critical finding in the first test findings list")],
         ),
         (
-            ECOSYSTEM.PyPI,
-            "numpy",
-            "foo",
+            utils.build_registry_package(ECOSYSTEM.PyPI, "numpy", "foo"),
+            False,
             [(FindingSeverity.WARNING, "This is a warning finding in the first test findings list")],
         ),
         (
-            ECOSYSTEM.PyPI,
-            "numpy",
-            "2.3.5",
+            utils.build_registry_package(ECOSYSTEM.PyPI, "numpy", "2.3.5"),
+            False,
             [
                 (FindingSeverity.WARNING, "This is a warning finding in the first test findings list"),
                 (FindingSeverity.CRITICAL, "This is another critical finding in the second test findings list"),
@@ -191,46 +190,83 @@ def test_findings_map_merge():
             ],
         ),
         (
-            ECOSYSTEM.PyPI,
-            "pynamodb",
-            "foo",
+            utils.build_registry_package(ECOSYSTEM.PyPI, "pynamodb", "foo"),
+            False,
             [(FindingSeverity.CRITICAL, "This is a critical finding in the first test findings list")],
         ),
+        (
+            Package(ECOSYSTEM.Npm, "react", "18.2.0"),
+            False,
+            [(FindingSeverity.CRITICAL, "This is a critical finding in the second test findings list")],
+        ),
+        (
+            Package(ECOSYSTEM.Npm, "react", "18.3.0"),
+            False,
+            [(FindingSeverity.CRITICAL, "This is a critical finding in the first test findings list")],
+        ),
+        (
+            Package(ECOSYSTEM.PyPI, "numpy", "foo"),
+            False,
+            [(FindingSeverity.WARNING, "This is a warning finding in the first test findings list")],
+        ),
+        (
+            Package(ECOSYSTEM.PyPI, "numpy", "2.3.5"),
+            False,
+            [
+                (FindingSeverity.WARNING, "This is a warning finding in the first test findings list"),
+                (FindingSeverity.CRITICAL, "This is another critical finding in the second test findings list"),
+                (FindingSeverity.WARNING, "This is a warning finding in the second test findings list"),
+            ],
+        ),
+        (
+            Package(ECOSYSTEM.PyPI, "pynamodb", "foo"),
+            False,
+            [(FindingSeverity.CRITICAL, "This is a critical finding in the first test findings list")],
+        ),
+        (utils.build_remote_non_registry_package(ECOSYSTEM.Npm, "react", "18.2.0"), True, None),
+        (utils.build_remote_non_registry_package(ECOSYSTEM.Npm, "react", "18.3.0"), True, None),
+        (utils.build_remote_non_registry_package(ECOSYSTEM.PyPI, "numpy", "foo"), True, None),
+        (utils.build_remote_non_registry_package(ECOSYSTEM.PyPI, "numpy", "2.3.5"), True, None),
+        (utils.build_remote_non_registry_package(ECOSYSTEM.PyPI, "pynamodb", "foo"), True, None),
+        (utils.build_local_package(ECOSYSTEM.Npm, "react", "18.2.0"), True, None),
+        (utils.build_local_package(ECOSYSTEM.Npm, "react", "18.3.0"), True, None),
+        (utils.build_local_package(ECOSYSTEM.PyPI, "numpy", "foo"), True, None),
+        (utils.build_local_package(ECOSYSTEM.PyPI, "numpy", "2.3.5"), True, None),
+        (utils.build_local_package(ECOSYSTEM.PyPI, "pynamodb", "foo"), True, None),
+
     ]
 )
 def test_verify_positive_result(
-    ecosystem: ECOSYSTEM,
-    name: str,
-    version: str,
-    findings: list[tuple[FindingSeverity, str]],
+    package: Package,
+    unverifiable: bool,
+    findings: Optional[list[tuple[FindingSeverity, str]]],
 ):
     """
     Test that `FindingsListVerifier.verify()` returns the expected findings.
     """
-    backend_test_verify(ecosystem, name, version, findings)
+    backend_test_verify(package, unverifiable, findings)
 
 
 @pytest.mark.parametrize(
-    "ecosystem, name, version",
+    "package",
     [
-        (ECOSYSTEM.Npm, "react", "18.0.0"),
-        (ECOSYSTEM.Npm, "axios", "foo"),
-        (ECOSYSTEM.PyPI, "packaging", "foo"),
+        Package(ECOSYSTEM.Npm, "react", "18.0.0"),
+        Package(ECOSYSTEM.Npm, "axios", "foo"),
+        Package(ECOSYSTEM.PyPI, "packaging", "foo"),
     ]
 )
-def test_verify_negative_result(ecosystem: ECOSYSTEM, name: str, version: str):
+def test_verify_negative_result(package: Package):
     """
     Test that `FindingsListVerifier.verify()` does not return any findings
     when there are none that match.
     """
-    backend_test_verify(ecosystem, name, version)
+    backend_test_verify(package, False, [])
 
 
 def backend_test_verify(
-    ecosystem: ECOSYSTEM,
-    name: str,
-    version: str,
-    findings: list[tuple[FindingSeverity, str]] = [],
+    package: Package,
+    unverifiable: bool,
+    findings: Optional[list[tuple[FindingSeverity, str]]] = None,
 ):
     """
     Backend testing function for `FindingsListVerifier.verify()`.
@@ -242,4 +278,11 @@ def backend_test_verify(
     list_verifier = FindingsListVerifier()
     list_verifier._findings_map = findings_map
 
-    assert list_verifier.verify(Package(ecosystem, name, version)) == findings
+    if unverifiable:
+        assert findings is None
+        with pytest.raises(UnverifiablePackage):
+            _ = list_verifier.verify(package)
+        return
+
+    assert findings is not None
+    assert list_verifier.verify(package) == findings

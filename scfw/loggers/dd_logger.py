@@ -239,8 +239,8 @@ class DDLogger(FirewallLogger):
                 "package_manager": package_manager,
                 "executable": executable,
                 "reports": {
-                    str(severity): list(map(str, report.packages()))
-                    for severity, report in report.findings_reports.items()
+                    str(severity): list(map(str, findings_report.packages()))
+                    for severity, findings_report in report.findings_reports.items()
                 },
                 "unverifiable": list(map(str, report.unverifiable.packages())),
             }

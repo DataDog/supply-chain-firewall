@@ -29,14 +29,15 @@ def build_registry_package(ecosystem: ECOSYSTEM, package_name: str, package_vers
 
 def build_remote_non_registry_package(ecosystem: ECOSYSTEM, package_name: str, package_version: str) -> Package:
     """
-    Lorem ipsum dolor sit amet.
+    Return a `Package` with the given parameters and a `RemotePackageSource` different
+    from the ecosystems' main registry.
     """
     return Package(ecosystem, package_name, package_version, RemotePackageSource("https://example.com"))
 
 
 def build_local_package(ecosystem: ECOSYSTEM, package_name: str, package_version: str) -> Package:
     """
-    Lorem ipsum dolor sit amet.
+    Return a `Package` with the given parameters and a local package artifact source.
     """
     return Package(
         ecosystem,
@@ -56,6 +57,6 @@ def _build_npm_tarball_url(package_name: str, package_version: str) -> str:
 
 def _build_pypi_whl_url(package_name: str, package_version: str) -> str:
     """
-    Return the PyPI URL for the package wheel file specified by the given name and version.
+    Return a URL resembling that of the PyPI wheel file for the given package and version.
     """
     return f"https://files.pythonhosted.org/packages/00/00/000000000000000000000000000000000000000000000000000000000000/{package_name}-{package_version}-py3-none-any.whl"

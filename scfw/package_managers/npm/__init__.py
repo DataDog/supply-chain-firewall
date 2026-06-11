@@ -21,6 +21,8 @@ _log = logging.getLogger(__name__)
 
 MIN_NPM_VERSION = version_parse("7.0.0")
 
+_LOCK_FILE_NODE_MODULES_PREFIX = "node_modules/"
+
 
 class Npm(PackageManager):
     """
@@ -138,34 +140,80 @@ class Npm(PackageManager):
             RuntimeError: Failed to list installed packages or decode report JSON.
             UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
-        def dependencies_to_packages(dependencies: dict[str, dict]) -> set[Package]:
+        def load_lock_file_resolved_map(lock_file: Path) -> dict[tuple[str, str], str]:
+            """
+            Build a (name, version) -> resolved-URL map from a package-lock.json.
+
+            Only entries under node_modules/ that carry both resolved and version
+            fields are included. Keying by (name, version) keeps multiple versions
+            of the same package distinct (e.g., a hoisted and a non-hoisted copy).
+            Returns an empty dict if the file is missing or malformed.
+            """
+            try:
+                data = json.loads(lock_file.read_text())
+            except (OSError, json.JSONDecodeError) as e:
+                _log.debug(f"Could not read lock file {lock_file}: {e}")
+                return {}
+
+            result = {}
+            for key, pkg_data in data.get("packages", {}).items():
+                if key.startswith(_LOCK_FILE_NODE_MODULES_PREFIX):
+                    resolved = pkg_data.get("resolved", "")
+                    version = pkg_data.get("version", "")
+                    if resolved and version:
+                        # Nested (non-hoisted) entries look like
+                        # `node_modules/<parent>/node_modules/<child>` — take
+                        # the segment after the last `node_modules/` boundary.
+                        name = key.rpartition(_LOCK_FILE_NODE_MODULES_PREFIX)[2]
+                        result[(name, version)] = resolved
+            return result
+
+        def dependencies_to_packages(
+            dependencies: dict[str, dict],
+            resolved_fallback: dict[tuple[str, str], str],
+        ) -> set[Package]:
             packages = set()
 
             for name, package_data in dependencies.items():
                 try:
-                    if (nested := package_data.get("dependencies")):
-                        packages |= dependencies_to_packages(nested)
-
                     if not (version := package_data.get("version")):
-                        raise ValueError("Missing version data")
+                        # Skip the whole entry, including any `dependencies` subtree:
+                        # npm list does not report children under an uninstalled parent.
+                        _log.debug(f"Skipping dependency {name}: not installed")
+                        continue
 
-                    resolved = package_data.get("resolved", "")
+                    resolved = package_data.get("resolved", "") or resolved_fallback.get((name, version), "")
+
+                    # `file:` dependencies reported by `npm list` are relative to `node_modules/`
+                    local_path = (
+                        (Path.cwd() / "node_modules" / resolved[len(FILE_URI_PREFIX):]).resolve()
+                        if resolved.startswith(FILE_URI_PREFIX) else None
+                    )
+
+                    if (nested := package_data.get("dependencies")):
+                        nested_fallback = resolved_fallback
+                        if local_path is not None:
+                            lock_file = local_path / "package-lock.json"
+                            if lock_file.is_file():
+                                nested_fallback = {
+                                    **resolved_fallback,
+                                    **load_lock_file_resolved_map(lock_file),
+                                }
+                        packages |= dependencies_to_packages(nested, nested_fallback)
+
                     if not resolved:
                         _log.info(f"No artifact source data found for installed dependency {name}")
 
                     source: Optional[LocalPackageSource | RemotePackageSource] = None
                     if resolved.startswith("http"):
                         source = RemotePackageSource(resolved)
-                    elif resolved.startswith(FILE_URI_PREFIX):
-                        try:
-                            # `file:` dependencies reported by `npm list` are relative to `node_modules/`
-                            node_modules_dir = Path.cwd() / "node_modules"
-                            source = LocalPackageSource(
-                                (node_modules_dir / resolved[len(FILE_URI_PREFIX):]).resolve(strict=True)
-                            )
-                        except (OSError, RuntimeError) as e:
+                    elif local_path is not None:
+                        if local_path.exists():
+                            source = LocalPackageSource(local_path)
+                        else:
                             _log.warning(
-                                f"Could not resolve local source path for installed dependency {name}: {e}"
+                                f"Could not resolve local source path for installed dependency {name}: "
+                                f"{local_path} does not exist"
                             )
 
                     packages.add(Package(ECOSYSTEM.Npm, name, version, source=source))
@@ -187,7 +235,9 @@ class Npm(PackageManager):
             if not isinstance(dependencies, dict):
                 raise RuntimeError("Received malformed dependencies data from npm")
 
-            return list(dependencies_to_packages(dependencies))
+            resolved_fallback = load_lock_file_resolved_map(Path.cwd() / "package-lock.json")
+
+            return list(dependencies_to_packages(dependencies, resolved_fallback))
 
         except subprocess.CalledProcessError:
             raise RuntimeError("Failed to list npm installed packages")

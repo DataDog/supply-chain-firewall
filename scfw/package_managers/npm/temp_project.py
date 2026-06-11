@@ -15,14 +15,9 @@ from typing_extensions import Self
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import LocalPackageSource, Package, RemotePackageSource
+from scfw.package_managers.npm.common import FILE_URI_PREFIX, NODE_MODULES_PREFIX
 
 _log = logging.getLogger(__name__)
-
-# URI scheme for npm local package dependencies
-FILE_URI_PREFIX = "file:"
-
-# Prefix for all installed-package entries in package-lock.json
-NODE_MODULES_PREFIX = "node_modules/"
 
 # Dependency sections present in npm package.json and package-lock.json files
 _DEPENDENCY_SECTIONS = {"dependencies", "devDependencies", "optionalDependencies", "peerDependencies"}

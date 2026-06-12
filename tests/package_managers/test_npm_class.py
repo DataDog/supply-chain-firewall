@@ -453,7 +453,7 @@ def test_list_installed_packages_uses_root_lockfile_for_missing_resolved(monkeyp
         stderr = ""
         returncode = 0
 
-    monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(npm.installed.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
     monkeypatch.chdir(tmp_path)
 
@@ -502,7 +502,7 @@ def test_list_installed_packages_uses_root_lockfile_for_non_hoisted_packages(mon
         stderr = ""
         returncode = 0
 
-    monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(npm.installed.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
     monkeypatch.chdir(tmp_path)
 
@@ -551,7 +551,7 @@ def test_list_installed_packages_uses_local_dep_lockfile_for_transitive_packages
         stderr = ""
         returncode = 0
 
-    monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(npm.installed.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
     monkeypatch.chdir(tmp_path)
 
@@ -580,7 +580,7 @@ def test_list_installed_packages_silently_skips_uninstalled_deps(monkeypatch, tm
         stderr = ""
         returncode = 0
 
-    monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(npm.installed.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
     monkeypatch.chdir(tmp_path)
 
@@ -611,7 +611,7 @@ def test_list_installed_packages_keeps_dep_with_missing_local_source(monkeypatch
         stderr = ""
         returncode = 0
 
-    monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(npm.installed.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
     monkeypatch.chdir(tmp_path)
 
@@ -645,7 +645,7 @@ def test_list_installed_packages_skips_malformed_entries(monkeypatch, tmp_path):
         stderr = ""
         returncode = 0
 
-    monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(npm.installed.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
     monkeypatch.chdir(tmp_path)
 

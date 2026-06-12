@@ -76,7 +76,7 @@ def _dependencies_to_packages(
                 if resolved.startswith(FILE_URI_PREFIX) else None
             )
 
-            if (nested := package_data.get("dependencies")):
+            if (nested := package_data.get("dependencies", {})) and isinstance(nested, dict):
                 nested_fallback = resolved_fallback
                 if local_path is not None:
                     lock_file = local_path / "package-lock.json"
@@ -86,6 +86,9 @@ def _dependencies_to_packages(
                             **_load_lock_file_resolved_map(lock_file),
                         }
                 packages |= _dependencies_to_packages(nested, nested_fallback)
+
+            elif not isinstance(nested, dict):
+                _log.warning(f"Skipping malformed dependencies data for installed dependency {name}")
 
             if not resolved:
                 _log.info(f"No artifact source data found for installed dependency {name}")
@@ -117,9 +120,17 @@ def _load_lock_file_resolved_map(lock_file: Path) -> dict[tuple[str, str], str]:
         _log.debug(f"Could not read lock file {lock_file}: {e}")
         return {}
 
+    packages = data.get("packages", {})
+    if not isinstance(packages, dict):
+        _log.warning(f"Malformed packages data in lock file {lock_file}")
+        return {}
+
     result = {}
 
-    for key, pkg_data in data.get("packages", {}).items():
+    for key, pkg_data in packages.items():
+        if not isinstance(pkg_data, dict):
+            _log.warning(f"Malformed entry for {key!r} in lock file {lock_file}")
+            continue
         if key.startswith(NODE_MODULES_PREFIX):
             resolved = pkg_data.get("resolved", "")
             version = pkg_data.get("version", "")

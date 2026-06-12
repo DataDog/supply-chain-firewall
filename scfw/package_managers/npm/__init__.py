@@ -141,11 +141,8 @@ class Npm(PackageManager):
         try:
             return installed.list_installed_packages(self.executable())
 
-        except subprocess.CalledProcessError:
-            raise RuntimeError("Failed to list npm installed packages")
-
-        except json.JSONDecodeError:
-            raise RuntimeError("Failed to decode installed package report JSON")
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Failed to decode installed package report JSON: {e}")
 
     def _check_version(self):
         """

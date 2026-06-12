@@ -26,16 +26,24 @@ def list_installed_packages(executable: str) -> list[Package]:
         A `list[Package]` representing all npm packages installed in the active environment.
 
     Raises:
-        RuntimeError: Received malformed dependencies data from npm.
-        subprocess.CalledProcessError: Failed to run `npm list`.
+        RuntimeError:
+            npm produced no parseable output or its output contained malformed data.
         json.JSONDecodeError: Failed to decode the package report JSON.
     """
-    npm_list = subprocess.run(
-        [executable, "list", "--all", "--json"],
-        check=True, text=True, capture_output=True,
-    )
+    # `npm list` exits non-zero for non-fatal conditions like `ELSPROBLEMS`, e.g.,
+    # a dependency declared in `package.json` is not present in `node_modules/`.
+    # In these cases, however, a JSON report is still produced, and we attempt to
+    # use it in spite of non-zero exit codes.
+    p = subprocess.run([executable, "list", "--all", "--json"], check=False, text=True, capture_output=True)
+    output = p.stdout.strip()
 
-    dependencies = json.loads(npm_list.stdout.strip()).get("dependencies", {})
+    # Raise only when `npm list` produces no usable output
+    if not output:
+        raise RuntimeError("npm returned no output during installed package discovery")
+    if p.returncode != 0:
+        _log.info("npm returned non-zero exit code during installed package discovery")
+
+    dependencies = json.loads(output).get("dependencies", {})
     if not isinstance(dependencies, dict):
         raise RuntimeError("Received malformed dependencies data from npm")
 

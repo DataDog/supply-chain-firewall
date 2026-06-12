@@ -353,12 +353,14 @@ def test_list_installed_packages_new_npm_project(monkeypatch, new_npm_project):
 def test_list_installed_packages_dependency_latest(monkeypatch, npm_project_dependency_latest):
     """
     Test that `Npm` correctly identifies installed packages in a new npm project
-    with an uninstalled dependency.
+    with an uninstalled dependency. `npm list` exits non-zero with ELSPROBLEMS in
+    this case, but the JSON report it writes to stdout is still consumed, and the
+    declared-but-uninstalled dependency is reported as not installed.
     """
     backend_test_list_installed_packages(
         monkeypatch,
         npm_project_dependency_latest,
-        should_fail=True,
+        should_fail=False,
         installed=set(),
     )
 
@@ -369,12 +371,13 @@ def test_list_installed_packages_dependency_latest_lockfile(
 ):
     """
     Test that `Npm` correctly identifies installed packages in a new npm project
-    with an uninstalled dependency and a lockfile.
+    with an uninstalled dependency and a lockfile. As above, `npm list` exits
+    non-zero but its JSON report is still consumed.
     """
     backend_test_list_installed_packages(
         monkeypatch,
         npm_project_dependency_latest_lockfile,
-        should_fail=True,
+        should_fail=False,
         installed=set(),
     )
 
@@ -447,6 +450,8 @@ def test_list_installed_packages_uses_root_lockfile_for_missing_resolved(monkeyp
 
     class FakeCompletedProcess:
         stdout = npm_list_output
+        stderr = ""
+        returncode = 0
 
     monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
@@ -494,6 +499,8 @@ def test_list_installed_packages_uses_root_lockfile_for_non_hoisted_packages(mon
 
     class FakeCompletedProcess:
         stdout = npm_list_output
+        stderr = ""
+        returncode = 0
 
     monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
@@ -541,6 +548,8 @@ def test_list_installed_packages_uses_local_dep_lockfile_for_transitive_packages
 
     class FakeCompletedProcess:
         stdout = npm_list_output
+        stderr = ""
+        returncode = 0
 
     monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
@@ -568,6 +577,8 @@ def test_list_installed_packages_silently_skips_uninstalled_deps(monkeypatch, tm
 
     class FakeCompletedProcess:
         stdout = npm_list_output
+        stderr = ""
+        returncode = 0
 
     monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
@@ -597,6 +608,8 @@ def test_list_installed_packages_keeps_dep_with_missing_local_source(monkeypatch
 
     class FakeCompletedProcess:
         stdout = npm_list_output
+        stderr = ""
+        returncode = 0
 
     monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
@@ -629,6 +642,8 @@ def test_list_installed_packages_skips_malformed_entries(monkeypatch, tmp_path):
 
     class FakeCompletedProcess:
         stdout = npm_list_output
+        stderr = ""
+        returncode = 0
 
     monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)

@@ -149,16 +149,20 @@ class Npm(PackageManager):
         Check whether the underlying `npm` executable is of a supported version.
 
         Raises:
+            RuntimeError: Failed to determine or parse `npm` version.
             UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
         try:
             # All supported versions adhere to this format
             p = subprocess.run([self._executable, "--version"], check=True, text=True, capture_output=True)
             if version_parse(p.stdout.strip()) < MIN_NPM_VERSION:
-                raise InvalidVersion
+                raise UnsupportedVersionError(f"npm before v{MIN_NPM_VERSION} is not supported")
+
+        except subprocess.CalledProcessError:
+            raise RuntimeError("Failed to determine npm version")
 
         except InvalidVersion:
-            raise UnsupportedVersionError(f"npm before v{MIN_NPM_VERSION} is not supported")
+            raise RuntimeError("Failed to parse npm version")
 
     def _normalize_command(self, command: list[str]) -> list[str]:
         """

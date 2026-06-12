@@ -311,7 +311,7 @@ class TemporaryNpmProject:
 
             # Derive source from this entry's `resolved` field unless a caller already supplied one
             if target_source is None and (resolved := target_entry.get("resolved")):
-                if resolved.startswith("http"):
+                if resolved.startswith(("http", "git")):
                     target_source = RemotePackageSource(resolved)
                 elif resolved.startswith(FILE_URI_PREFIX):
                     target_source = resolve_local_source(resolved[len(FILE_URI_PREFIX):])

@@ -43,7 +43,7 @@ def list_installed_packages(executable: str) -> list[Package]:
     if p.returncode != 0:
         _log.info("npm returned non-zero exit code during installed package discovery")
 
-    dependencies = json.loads(output).get("dependencies", {})
+    dependencies = json.loads(output).get("dependencies") or {}
     if not isinstance(dependencies, dict):
         raise RuntimeError("Received malformed dependencies data from npm")
 
@@ -91,7 +91,7 @@ def _dependencies_to_packages(
                 _log.info(f"No artifact source data found for installed dependency {name}")
 
             source: Optional[LocalPackageSource | RemotePackageSource] = None
-            if resolved.startswith("http"):
+            if resolved.startswith(("http", "git")):
                 source = RemotePackageSource(resolved)
             elif local_path is not None:
                 if local_path.exists():
@@ -128,6 +128,10 @@ def _load_lock_file_resolved_map(lock_file: Path) -> dict[tuple[str, str], str]:
             # Take the segment after the last `node_modules/` boundary
             if resolved and version:
                 name = key.rpartition(NODE_MODULES_PREFIX)[2]
+                # If the same (name, version) appears at multiple nesting depths with different
+                # resolved URLs (e.g. the same version on two registries), last write wins.
+                # This is unlikely in practice and not reliably fixable without physical path
+                # information that npm list --json does not expose.
                 result[(name, version)] = resolved
 
     return result

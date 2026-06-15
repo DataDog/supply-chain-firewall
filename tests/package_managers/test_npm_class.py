@@ -3,6 +3,7 @@ Tests of `Npm`, the `PackageManager` subclass.
 """
 
 import json
+import logging
 from pathlib import Path
 import subprocess
 from typing import Optional
@@ -352,12 +353,14 @@ def test_list_installed_packages_new_npm_project(monkeypatch, new_npm_project):
 def test_list_installed_packages_dependency_latest(monkeypatch, npm_project_dependency_latest):
     """
     Test that `Npm` correctly identifies installed packages in a new npm project
-    with an uninstalled dependency.
+    with an uninstalled dependency. `npm list` exits non-zero with ELSPROBLEMS in
+    this case, but the JSON report it writes to stdout is still consumed, and the
+    declared-but-uninstalled dependency is reported as not installed.
     """
     backend_test_list_installed_packages(
         monkeypatch,
         npm_project_dependency_latest,
-        should_fail=True,
+        should_fail=False,
         installed=set(),
     )
 
@@ -368,12 +371,13 @@ def test_list_installed_packages_dependency_latest_lockfile(
 ):
     """
     Test that `Npm` correctly identifies installed packages in a new npm project
-    with an uninstalled dependency and a lockfile.
+    with an uninstalled dependency and a lockfile. As above, `npm list` exits
+    non-zero but its JSON report is still consumed.
     """
     backend_test_list_installed_packages(
         monkeypatch,
         npm_project_dependency_latest_lockfile,
-        should_fail=True,
+        should_fail=False,
         installed=set(),
     )
 
@@ -418,6 +422,175 @@ def test_list_installed_packages_local_dependency_installed(
     )
 
 
+def test_list_installed_packages_uses_root_lockfile_for_missing_resolved(monkeypatch, tmp_path):
+    """
+    When `npm list` omits `resolved` for a deduped package but the root
+    package-lock.json has it, list_installed_packages populates source from
+    the lock file instead of leaving it None.
+    """
+    resolved_url = "https://registry.npmjs.org/deduped-pkg/-/deduped-pkg-1.0.0.tgz"
+    npm_list_output = json.dumps({
+        "dependencies": {
+            "parent-pkg": {
+                "version": "2.0.0",
+                "resolved": "https://registry.npmjs.org/parent-pkg/-/parent-pkg-2.0.0.tgz",
+                "dependencies": {
+                    "deduped-pkg": {"version": "1.0.0"},
+                },
+            },
+        },
+    })
+    lock_file_content = json.dumps({
+        "lockfileVersion": 3,
+        "packages": {
+            "node_modules/deduped-pkg": {"version": "1.0.0", "resolved": resolved_url},
+        },
+    })
+    (tmp_path / "package-lock.json").write_text(lock_file_content)
+
+    class FakeCompletedProcess:
+        stdout = npm_list_output
+        stderr = ""
+        returncode = 0
+
+    monkeypatch.setattr(npm.installed.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
+    monkeypatch.chdir(tmp_path)
+
+    packages = PACKAGE_MANAGER.list_installed_packages()
+
+    assert Package(
+        ECOSYSTEM.Npm, "deduped-pkg", "1.0.0", source=RemotePackageSource(resolved_url)
+    ) in set(packages)
+
+
+def test_list_installed_packages_uses_root_lockfile_for_non_hoisted_packages(monkeypatch, tmp_path):
+    """
+    When a transitive dep can't be hoisted (version conflict with a top-level dep),
+    the lock file records it under `node_modules/<parent>/node_modules/<child>`.
+    The fallback map must still resolve `<child>` from such an entry.
+    """
+    nested_url = "https://registry.npmjs.org/conflict-pkg/-/conflict-pkg-2.0.0.tgz"
+    npm_list_output = json.dumps({
+        "dependencies": {
+            "parent-pkg": {
+                "version": "1.0.0",
+                "resolved": "https://registry.npmjs.org/parent-pkg/-/parent-pkg-1.0.0.tgz",
+                "dependencies": {
+                    "conflict-pkg": {"version": "2.0.0"},
+                },
+            },
+        },
+    })
+    lock_file_content = json.dumps({
+        "lockfileVersion": 3,
+        "packages": {
+            "node_modules/conflict-pkg": {
+                "version": "1.0.0",
+                "resolved": "https://registry.npmjs.org/conflict-pkg/-/conflict-pkg-1.0.0.tgz",
+            },
+            "node_modules/parent-pkg/node_modules/conflict-pkg": {
+                "version": "2.0.0",
+                "resolved": nested_url,
+            },
+        },
+    })
+    (tmp_path / "package-lock.json").write_text(lock_file_content)
+
+    class FakeCompletedProcess:
+        stdout = npm_list_output
+        stderr = ""
+        returncode = 0
+
+    monkeypatch.setattr(npm.installed.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
+    monkeypatch.chdir(tmp_path)
+
+    packages = PACKAGE_MANAGER.list_installed_packages()
+
+    assert Package(
+        ECOSYSTEM.Npm, "conflict-pkg", "2.0.0", source=RemotePackageSource(nested_url)
+    ) in set(packages)
+
+
+def test_list_installed_packages_uses_local_dep_lockfile_for_transitive_packages(
+    monkeypatch, tmp_path
+):
+    """
+    When a local file: dependency's transitive packages lack `resolved` in
+    `npm list` output, list_installed_packages uses the local package's own
+    package-lock.json to populate source.
+    """
+    transitive_url = "https://registry.npmjs.org/transitive-pkg/-/transitive-pkg-3.0.0.tgz"
+
+    node_modules_dir = tmp_path / "node_modules"
+    node_modules_dir.mkdir()
+    local_pkg_dir = tmp_path / "my-local-pkg"
+    local_pkg_dir.mkdir()
+    (local_pkg_dir / "package-lock.json").write_text(json.dumps({
+        "lockfileVersion": 3,
+        "packages": {
+            "node_modules/transitive-pkg": {"version": "3.0.0", "resolved": transitive_url},
+        },
+    }))
+
+    npm_list_output = json.dumps({
+        "dependencies": {
+            "my-local-pkg": {
+                "version": "1.0.0",
+                "resolved": "file:../my-local-pkg",
+                "dependencies": {
+                    "transitive-pkg": {"version": "3.0.0"},
+                },
+            },
+        },
+    })
+
+    class FakeCompletedProcess:
+        stdout = npm_list_output
+        stderr = ""
+        returncode = 0
+
+    monkeypatch.setattr(npm.installed.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
+    monkeypatch.chdir(tmp_path)
+
+    packages = PACKAGE_MANAGER.list_installed_packages()
+
+    assert Package(
+        ECOSYSTEM.Npm, "transitive-pkg", "3.0.0", source=RemotePackageSource(transitive_url)
+    ) in set(packages)
+
+
+def test_list_installed_packages_silently_skips_uninstalled_deps(monkeypatch, tmp_path, caplog):
+    """
+    Dependencies that appear in `npm list` with no version field (e.g. uninstalled
+    optional peer deps) are silently skipped — no WARNING is emitted.
+    """
+    good_url = "https://registry.npmjs.org/good-package/-/good-package-1.2.3.tgz"
+    npm_list_output = json.dumps({
+        "dependencies": {
+            "good-package": {"version": "1.2.3", "resolved": good_url},
+            "uninstalled-peer": {},
+        },
+    })
+
+    class FakeCompletedProcess:
+        stdout = npm_list_output
+        stderr = ""
+        returncode = 0
+
+    monkeypatch.setattr(npm.installed.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
+    monkeypatch.chdir(tmp_path)
+
+    with caplog.at_level(logging.WARNING, logger="scfw.package_managers.npm"):
+        packages = PACKAGE_MANAGER.list_installed_packages()
+
+    assert set(packages) == {Package(ECOSYSTEM.Npm, "good-package", "1.2.3", source=RemotePackageSource(good_url))}
+    assert not any("uninstalled-peer" in r.message for r in caplog.records if r.levelno >= logging.WARNING)
+
+
 def test_list_installed_packages_keeps_dep_with_missing_local_source(monkeypatch, tmp_path):
     """
     Regression test: when `npm list` reports a `file:` dep whose target does
@@ -435,8 +608,10 @@ def test_list_installed_packages_keeps_dep_with_missing_local_source(monkeypatch
 
     class FakeCompletedProcess:
         stdout = npm_list_output
+        stderr = ""
+        returncode = 0
 
-    monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(npm.installed.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
     monkeypatch.chdir(tmp_path)
 
@@ -467,8 +642,10 @@ def test_list_installed_packages_skips_malformed_entries(monkeypatch, tmp_path):
 
     class FakeCompletedProcess:
         stdout = npm_list_output
+        stderr = ""
+        returncode = 0
 
-    monkeypatch.setattr(npm.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(npm.installed.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
     monkeypatch.chdir(tmp_path)
 

@@ -125,13 +125,7 @@ class Pip(PackageManager):
             if not (download_info := install_report.get("download_info")) or not (url := download_info.get("url")):
                 return Package(ECOSYSTEM.PyPI, name, version)
 
-            source: Optional[LocalPackageSource | RemotePackageSource] = None
-            if url.startswith("http"):
-                source = RemotePackageSource(url)
-            elif url.startswith(_LOCAL_PACKAGE_SOURCE_PREFIX):
-                source = LocalPackageSource(Path(url[len(_LOCAL_PACKAGE_SOURCE_PREFIX):]))
-
-            return Package(ECOSYSTEM.PyPI, name, version, source=source)
+            return Package(ECOSYSTEM.PyPI, name, version, source=_url_to_package_source(url))
 
         command = self._normalize_command(command)
 
@@ -181,19 +175,18 @@ class Pip(PackageManager):
             # present for non-PyPI installs (local directories, direct URLs, VCS) and absent for
             # PyPI installs. It is also absent for locally-installed packages on pip < 23.1 whose
             # projects do not define a `pyproject.toml`, as those are installed via the legacy
-            # `setup.py install` path that predates PEP 610. We return `source=None` in this case.
+            # `setup.py install` path that predates PEP 610. We cannot distinguish these two cases,
+            # so we treat both as PyPI registry installs.
             source: Optional[LocalPackageSource | RemotePackageSource] = None
             if direct_url := entry.get("direct_url"):
-                url = direct_url.get("url", "")
-                if url.startswith("http"):
-                    source = RemotePackageSource(url)
-                elif url.startswith(_LOCAL_PACKAGE_SOURCE_PREFIX):
-                    source = LocalPackageSource(Path(url[len(_LOCAL_PACKAGE_SOURCE_PREFIX):]))
+                source = _url_to_package_source(direct_url.get("url", ""))
             else:
-                # PyPI registry installs lack a direct_url entry (PEP 610). We use the
-                # canonical project page URL as a stand-in for the registry source. This
-                # URL resolves to a human-readable page, not a downloadable artifact, so
-                # callers must not treat it as a direct artifact link.
+                # Both standard PyPI registry installs and legacy `setup.py install` packages
+                # (pip < 23.1, no pyproject.toml) lack a direct_url entry and are indistinguishable
+                # here. We use the canonical project page URL as a stand-in. This URL resolves to a
+                # human-readable page, not a downloadable artifact, so callers must not treat it as
+                # a direct artifact link.
+                _log.debug(f"No direct_url for {name}=={version}; assuming PyPI registry install")
                 source = RemotePackageSource(f"{_PYPI_PROJECT_BASE_URL}/{name}/{version}/")
 
             return Package(ECOSYSTEM.PyPI, name, version, source=source)
@@ -263,3 +256,13 @@ class Pip(PackageManager):
             raise ValueError("Received invalid pip command line")
 
         return [self._executable] + command[1:]
+
+
+def _url_to_package_source(url: str) -> Optional[LocalPackageSource | RemotePackageSource]:
+    if url.startswith(("http", "git")):
+        return RemotePackageSource(url)
+
+    if url.startswith(_LOCAL_PACKAGE_SOURCE_PREFIX):
+        return LocalPackageSource(Path(url[len(_LOCAL_PACKAGE_SOURCE_PREFIX):]))
+
+    return None

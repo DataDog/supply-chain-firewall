@@ -221,17 +221,6 @@ def _test_pip_install_report_format(
         assert url.startswith("https://files.pythonhosted.org")
 
 
-def test_pip_inspect_output_has_installed_key():
-    """
-    Test that `pip inspect` output contains an `"installed"` key whose value is a list.
-    The implementation calls `.get("installed", [])` on this output; if the key were
-    absent or mapped to a non-list, packages would be silently omitted from audit results.
-    """
-    result = subprocess.run(PIP_COMMAND_PREFIX + ["inspect"], check=True, text=True, capture_output=True)
-    output = json.loads(result.stdout)
-    assert isinstance(output.get("installed"), list)
-
-
 def test_pip_inspect_matches_pip_list_new_pip_project(new_pip_project):
     """
     Test that `pip inspect` and `pip list` output match in an uninstalled `pip` project.

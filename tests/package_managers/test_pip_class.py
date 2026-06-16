@@ -160,7 +160,7 @@ def test_pip_list_installed_packages_remote_source(monkeypatch):
         assert target in Pip(executable=venv_pip).list_installed_packages()
 
 
-def test_pip_list_installed_packages_local_source(monkeypatch, new_pip_project):
+def test_pip_list_installed_packages_local_source(new_pip_project_installed):
     """
     Test that `Pip.list_installed_packages` returns a `Package` with a `LocalPackageSource`
     for a package installed from a local directory.
@@ -169,14 +169,8 @@ def test_pip_list_installed_packages_local_source(monkeypatch, new_pip_project):
         ECOSYSTEM.PyPI,
         TEST_PACKAGE_NAME,
         TEST_PACKAGE_VERSION,
-        source=LocalPackageSource(new_pip_project),
+        source=LocalPackageSource(new_pip_project_installed),
     )
 
-    with TemporaryDirectory() as tmp:
-        monkeypatch.chdir(tmp)
-
-        venv_pip = "venv/bin/pip"
-        subprocess.run([sys.executable, "-m", "venv", "venv"], check=True)
-        subprocess.run([venv_pip, "install", str(new_pip_project)], check=True)
-
-        assert target in Pip(executable=venv_pip).list_installed_packages()
+    venv_pip = new_pip_project_installed / "venv" / "bin" / "pip"
+    assert target in Pip(executable=venv_pip).list_installed_packages()

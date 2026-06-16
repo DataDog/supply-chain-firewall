@@ -168,17 +168,39 @@ class Pip(PackageManager):
 
         Raises:
             RuntimeError: Failed to list installed packages or decode report JSON.
-            ValueError: Encountered a malformed report for an installed package.
             UnsupportedVersionError: The underlying `pip` executable is of an unsupported version.
         """
+        def inspect_entry_to_package(entry: dict) -> Optional[Package]:
+            metadata = entry.get("metadata", {})
+            if not (name := metadata.get("name")) or not (version := metadata.get("version")):
+                _log.warning("Skipping installed package with missing name or version")
+                return None
+
+            # The `direct_url` field (PEP 610) used to discover package artifact source data is
+            # present for non-PyPI installs (local directories, direct URLs, VCS) and absent for
+            # PyPI installs. It is also absent for locally-installed packages on pip < 23.1 whose
+            # projects do not define a `pyproject.toml`, as those are installed via the legacy
+            # `setup.py install` path that predates PEP 610. We return `source=None` in this case.
+            source: Optional[LocalPackageSource | RemotePackageSource] = None
+            if direct_url := entry.get("direct_url"):
+                url = direct_url.get("url", "")
+                if url.startswith("http"):
+                    source = RemotePackageSource(url)
+                elif url.startswith(_LOCAL_PACKAGE_SOURCE_PREFIX):
+                    source = LocalPackageSource(Path(url[len(_LOCAL_PACKAGE_SOURCE_PREFIX):]))
+            else:
+                _log.info(f"No artifact source data found for installed package {name}")
+
+            return Package(ECOSYSTEM.PyPI, name, version, source=source)
+
         self._check_version()
 
         try:
-            pip_list_command = self._normalize_command(["pip", "list", "--format", "json"])
-            pip_list = subprocess.run(pip_list_command, check=True, text=True, capture_output=True)
+            pip_inspect_command = self._normalize_command(["pip", "inspect"])
+            pip_inspect = subprocess.run(pip_inspect_command, check=True, text=True, capture_output=True)
             return [
-                Package(ECOSYSTEM.PyPI, package["name"], package["version"])
-                for package in json.loads(pip_list.stdout.strip())
+                p for entry in json.loads(pip_inspect.stdout).get("installed", [])
+                if (p := inspect_entry_to_package(entry)) is not None
             ]
 
         except subprocess.CalledProcessError:
@@ -186,9 +208,6 @@ class Pip(PackageManager):
 
         except json.JSONDecodeError:
             raise RuntimeError("Failed to decode installed package report JSON")
-
-        except KeyError:
-            raise ValueError("Malformed installed package report")
 
     def _check_version(self):
         """

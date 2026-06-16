@@ -19,6 +19,7 @@ from scfw.package_manager import PackageManager, UnsupportedVersionError
 _log = logging.getLogger(__name__)
 
 _LOCAL_PACKAGE_SOURCE_PREFIX = "file://"
+_PYPI_PROJECT_BASE_URL = "https://pypi.org/project"
 
 MIN_PIP_VERSION = version_parse("22.2")
 
@@ -189,7 +190,11 @@ class Pip(PackageManager):
                 elif url.startswith(_LOCAL_PACKAGE_SOURCE_PREFIX):
                     source = LocalPackageSource(Path(url[len(_LOCAL_PACKAGE_SOURCE_PREFIX):]))
             else:
-                _log.info(f"No artifact source data found for installed package {name}")
+                # PyPI registry installs lack a direct_url entry (PEP 610). We use the
+                # canonical project page URL as a stand-in for the registry source. This
+                # URL resolves to a human-readable page, not a downloadable artifact, so
+                # callers must not treat it as a direct artifact link.
+                source = RemotePackageSource(f"{_PYPI_PROJECT_BASE_URL}/{name}/{version}/")
 
             return Package(ECOSYSTEM.PyPI, name, version, source=source)
 

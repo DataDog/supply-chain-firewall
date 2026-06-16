@@ -118,10 +118,15 @@ def test_pip_command_resolve_install_targets_exact():
 
 def test_pip_list_installed_packages(monkeypatch):
     """
-    Test that `Pip.list_installed_packages` correctly parses `pip` output for a
-    registry-installed package (no `direct_url`, so `source=None`).
+    Test that `Pip.list_installed_packages` returns a `Package` with a canonical PyPI
+    project page `RemotePackageSource` for a registry-installed package (no `direct_url`).
     """
-    target = Package(ECOSYSTEM.PyPI, "tree-sitter", "0.24.0")
+    target = Package(
+        ECOSYSTEM.PyPI,
+        "tree-sitter",
+        "0.24.0",
+        source=RemotePackageSource("https://pypi.org/project/tree-sitter/0.24.0/"),
+    )
 
     with TemporaryDirectory() as tmp:
         monkeypatch.chdir(tmp)

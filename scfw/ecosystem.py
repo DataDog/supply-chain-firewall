@@ -60,4 +60,5 @@ class ECOSYSTEM(Enum):
             case ECOSYSTEM.PyPI:
                 return {
                     "files.pythonhosted.org",
+                    "pypi.org",
                 }

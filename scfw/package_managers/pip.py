@@ -186,7 +186,7 @@ class Pip(PackageManager):
                 # here. We use the canonical project page URL as a stand-in. This URL resolves to a
                 # human-readable page, not a downloadable artifact, so callers must not treat it as
                 # a direct artifact link.
-                _log.debug(f"No direct_url for {name}=={version}; assuming PyPI registry install")
+                _log.info(f"No artifact source data available for {name}-{version}: assuming PyPI source")
                 source = RemotePackageSource(f"{_PYPI_PROJECT_BASE_URL}/{name}/{version}/")
 
             return Package(ECOSYSTEM.PyPI, name, version, source=source)

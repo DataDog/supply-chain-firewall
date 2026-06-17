@@ -50,7 +50,7 @@ class ECOSYSTEM(Enum):
 
         Returns:
             A `set[str]` containing the URL domains for the given package ecosystem,
-            those from which package artifacts are known to be sourced.
+            those associated with the ecosystem's main package registry.
         """
         match self:
             case ECOSYSTEM.Npm:
@@ -60,4 +60,5 @@ class ECOSYSTEM(Enum):
             case ECOSYSTEM.PyPI:
                 return {
                     "files.pythonhosted.org",
+                    "pypi.org",
                 }

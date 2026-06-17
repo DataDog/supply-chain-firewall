@@ -10,9 +10,10 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.package import Package, RemotePackageSource
+from scfw.package import LocalPackageSource, Package, RemotePackageSource
 from scfw.package_managers.pip import Pip
 
+from .pip_fixtures import *
 from .test_pip import INIT_PIP_STATE, TEST_TARGET, pip_list
 
 PACKAGE_MANAGER = Pip()
@@ -117,9 +118,15 @@ def test_pip_command_resolve_install_targets_exact():
 
 def test_pip_list_installed_packages(monkeypatch):
     """
-    Test that `Pip.list_installed_packages` correctly parses `pip` output.
+    Test that `Pip.list_installed_packages` returns a `Package` with a canonical PyPI
+    project page `RemotePackageSource` for a registry-installed package (no `direct_url`).
     """
-    target = Package(ECOSYSTEM.PyPI, "tree-sitter", "0.24.0")
+    target = Package(
+        ECOSYSTEM.PyPI,
+        "tree-sitter",
+        "0.24.0",
+        source=RemotePackageSource("https://pypi.org/project/tree-sitter/0.24.0/"),
+    )
 
     with TemporaryDirectory() as tmp:
         monkeypatch.chdir(tmp)
@@ -129,3 +136,41 @@ def test_pip_list_installed_packages(monkeypatch):
         subprocess.run([venv_pip, "install", f"{target.name}=={target.version}"], check=True)
 
         assert target in Pip(executable=venv_pip).list_installed_packages()
+
+
+def test_pip_list_installed_packages_remote_source(monkeypatch):
+    """
+    Test that `Pip.list_installed_packages` returns a `Package` with a `RemotePackageSource`
+    for a package installed from a direct remote URL (not via the index).
+    """
+    jmespath_url = (
+        "https://files.pythonhosted.org/packages/07/cb/"
+        "5f001272b6faeb23c1c9e0acc04d48eaaf5c862c17709d20e3469c6e0139/"
+        "jmespath-0.10.0-py2.py3-none-any.whl"
+    )
+    target = Package(ECOSYSTEM.PyPI, "jmespath", "0.10.0", source=RemotePackageSource(jmespath_url))
+
+    with TemporaryDirectory() as tmp:
+        monkeypatch.chdir(tmp)
+
+        venv_pip = "venv/bin/pip"
+        subprocess.run([sys.executable, "-m", "venv", "venv"], check=True)
+        subprocess.run([venv_pip, "install", jmespath_url], check=True)
+
+        assert target in Pip(executable=venv_pip).list_installed_packages()
+
+
+def test_pip_list_installed_packages_local_source(new_pip_project_installed):
+    """
+    Test that `Pip.list_installed_packages` returns a `Package` with a `LocalPackageSource`
+    for a package installed from a local directory.
+    """
+    target = Package(
+        ECOSYSTEM.PyPI,
+        TEST_PACKAGE_NAME,
+        TEST_PACKAGE_VERSION,
+        source=LocalPackageSource(new_pip_project_installed),
+    )
+
+    venv_pip = new_pip_project_installed / "venv" / "bin" / "pip"
+    assert target in Pip(executable=venv_pip).list_installed_packages()

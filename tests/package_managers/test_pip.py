@@ -155,15 +155,15 @@ def test_pip_install_report_override():
         assert tmpfile.read() == b''
 
 
-def test_pip_install_report_format_local(local_python_package):
+def test_pip_install_report_format_local(new_pip_project):
     """
     Test that the dry-run report has the expected format for a local package target.
     """
     _test_pip_install_report_format(
-        str(local_python_package),
-        LOCAL_PACKAGE_NAME,
-        LOCAL_PACKAGE_VERSION,
-        local_python_package
+        str(new_pip_project),
+        TEST_PACKAGE_NAME,
+        TEST_PACKAGE_VERSION,
+        new_pip_project,
     )
 
 
@@ -216,3 +216,133 @@ def _test_pip_install_report_format(
         assert url == f"file://{local_package_source}"
     else:
         assert url.startswith("https://files.pythonhosted.org")
+
+
+def test_pip_inspect_matches_pip_list_new_pip_project(new_pip_project):
+    """
+    Test that `pip inspect` and `pip list` output match in an uninstalled `pip` project.
+    """
+    backend_test_pip_inspect_matches_pip_list(new_pip_project)
+
+
+def test_pip_inspect_matches_pip_list_new_pip_project_installed(new_pip_project_installed):
+    """
+    Test that `pip inspect` and `pip list` output match in an installed `pip` project.
+    """
+    backend_test_pip_inspect_matches_pip_list(new_pip_project_installed)
+
+
+def test_pip_inspect_matches_pip_list_pip_project_remote_dependency(pip_project_remote_dependency):
+    """
+    Test that `pip inspect` and `pip list` output match in an uninstalled `pip` project
+    with a remote dependency from PyPI.
+    """
+    backend_test_pip_inspect_matches_pip_list(pip_project_remote_dependency)
+
+
+def test_pip_inspect_matches_pip_list_pip_project_remote_dependency_installed(pip_project_remote_dependency_installed):
+    """
+    Test that `pip inspect` and `pip list` output match in an installed `pip` project
+    with a remote dependency from PyPI.
+    """
+    backend_test_pip_inspect_matches_pip_list(pip_project_remote_dependency_installed)
+
+
+def test_pip_inspect_matches_pip_list_pip_project_local_dependency(pip_project_local_dependency):
+    """
+    Test that `pip inspect` and `pip list` output match in an uninstalled `pip` project
+    with a local dependency.
+    """
+    backend_test_pip_inspect_matches_pip_list(pip_project_local_dependency)
+
+
+def test_pip_inspect_matches_pip_list_pip_project_local_dependency_installed(pip_project_local_dependency_installed):
+    """
+    Test that `pip inspect` and `pip list` output match in an installed `pip` project
+    with a local dependency.
+    """
+    backend_test_pip_inspect_matches_pip_list(pip_project_local_dependency_installed)
+
+
+def test_pip_inspect_registry_package_no_direct_url(pip_project_remote_dependency_installed):
+    """
+    Test that a package installed from the PyPI registry has no `direct_url` entry in
+    `pip inspect` output. When `direct_url` is absent, `Pip.list_installed_packages`
+    treats this as a registry install and uses the canonical PyPI project page URL as a
+    stand-in `RemotePackageSource`.
+    """
+    venv_pip = pip_project_remote_dependency_installed / "venv" / "bin" / "pip"
+
+    result = subprocess.run([venv_pip, "inspect"], check=True, text=True, capture_output=True)
+    installed = json.loads(result.stdout).get("installed", [])
+
+    matching = [
+        e for e in installed
+        if e.get("metadata", {}).get("name", "").lower() == REMOTE_PACKAGE_NAME
+    ]
+    assert len(matching) == 1
+    assert "direct_url" not in matching[0]
+
+
+def test_pip_inspect_local_package_direct_url_format(pip_project_local_dependency_installed):
+    """
+    Test that a locally-installed package has a `direct_url` entry in `pip inspect`
+    output whose `url` field uses the `file://` scheme with an absolute path (PEP 610).
+    The implementation strips the `file://` prefix and passes the remainder to `Path()`,
+    relying on this path being absolute so that `LocalPackageSource` resolves correctly.
+    """
+    venv_pip = pip_project_local_dependency_installed / "venv" / "bin" / "pip"
+
+    result = subprocess.run([venv_pip, "inspect"], check=True, text=True, capture_output=True)
+    installed = json.loads(result.stdout).get("installed", [])
+
+    matching = [
+        e for e in installed
+        if e.get("metadata", {}).get("name", "").lower() == LOCAL_PACKAGE_NAME
+    ]
+    assert len(matching) == 1
+
+    direct_url = matching[0].get("direct_url")
+    assert direct_url is not None
+
+    url = direct_url.get("url", "")
+    assert url.startswith("file://")
+    assert Path(url[len("file://"):]).is_absolute()
+
+
+def backend_test_pip_inspect_matches_pip_list(project_dir: Path):
+    """
+    Backend function for testing that `pip inspect` and `pip list` output match.
+    """
+    venv_pip = project_dir / "venv" / "bin" / "pip"
+
+    pip_inspect = subprocess.run(
+        [venv_pip, "inspect"], check=True, text=True, capture_output=True
+    )
+    inspect_packages = {
+        (e["metadata"]["name"], e["metadata"]["version"])
+        for e in json.loads(pip_inspect.stdout.strip()).get("installed", [])
+    }
+
+    pip_list = subprocess.run(
+        [venv_pip, "list", "--format", "json"], check=True, text=True, capture_output=True
+    )
+
+    # pip v22.2 prints non-JSON to stdout...
+    report = None
+    for line in pip_list.stdout.strip().split('\n'):
+        try:
+            maybe_report = json.loads(line)
+            if report is None:
+                report = maybe_report
+            else:
+                raise RuntimeError("Multiple JSON output lines detected")
+
+        except json.JSONDecodeError:
+            pass
+
+    assert report is not None, "Malformed `pip list` output: no JSON report detected"
+
+    list_packages = {(pkg["name"], pkg["version"]) for pkg in report}
+
+    assert inspect_packages == list_packages

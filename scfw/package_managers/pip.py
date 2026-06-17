@@ -19,6 +19,7 @@ from scfw.package_manager import PackageManager, UnsupportedVersionError
 _log = logging.getLogger(__name__)
 
 _LOCAL_PACKAGE_SOURCE_PREFIX = "file://"
+_PYPI_PROJECT_BASE_URL = "https://pypi.org/project"
 
 MIN_PIP_VERSION = version_parse("22.2")
 
@@ -124,13 +125,7 @@ class Pip(PackageManager):
             if not (download_info := install_report.get("download_info")) or not (url := download_info.get("url")):
                 return Package(ECOSYSTEM.PyPI, name, version)
 
-            source: Optional[LocalPackageSource | RemotePackageSource] = None
-            if url.startswith("http"):
-                source = RemotePackageSource(url)
-            elif url.startswith(_LOCAL_PACKAGE_SOURCE_PREFIX):
-                source = LocalPackageSource(Path(url[len(_LOCAL_PACKAGE_SOURCE_PREFIX):]))
-
-            return Package(ECOSYSTEM.PyPI, name, version, source=source)
+            return Package(ECOSYSTEM.PyPI, name, version, source=_url_to_package_source(url))
 
         command = self._normalize_command(command)
 
@@ -168,17 +163,47 @@ class Pip(PackageManager):
 
         Raises:
             RuntimeError: Failed to list installed packages or decode report JSON.
-            ValueError: Encountered a malformed report for an installed package.
             UnsupportedVersionError: The underlying `pip` executable is of an unsupported version.
         """
+        def inspect_entry_to_package(entry: dict) -> Optional[Package]:
+            metadata = entry.get("metadata", {})
+            if not (name := metadata.get("name")) or not (version := metadata.get("version")):
+                _log.warning("Skipping installed package with missing name or version")
+                return None
+
+            # The `direct_url` field (PEP 610) used to discover package artifact source data is
+            # present for non-PyPI installs (local directories, direct URLs, VCS) and absent for
+            # PyPI installs. It is also absent for locally-installed packages on pip < 23.1 whose
+            # projects do not define a `pyproject.toml`, as those are installed via the legacy
+            # `setup.py install` path that predates PEP 610. We cannot distinguish these two cases,
+            # so we treat both as PyPI registry installs.
+            source: Optional[LocalPackageSource | RemotePackageSource] = None
+            if direct_url := entry.get("direct_url"):
+                source = _url_to_package_source(direct_url.get("url", ""))
+                if source is None:
+                    _log.warning(
+                        f"Missing or unrecognized URL in artifact source entry for {name}-{version}"
+                    )
+            else:
+                # In the case of a PyPI install, reconstructing the precise artifact download link
+                # is not possible with the locally available data and would therefore require at
+                # least one network request and some complicated logic related to identifying wheels.
+                # Instead, we use the canonical project page URL as a stand-in. This URL resolves to a
+                # human-readable page, not a downloadable artifact, so callers must not treat it as
+                # a direct artifact link.
+                _log.debug(f"No artifact source data available for {name}-{version}: assuming PyPI source")
+                source = RemotePackageSource(f"{_PYPI_PROJECT_BASE_URL}/{name}/{version}/")
+
+            return Package(ECOSYSTEM.PyPI, name, version, source=source)
+
         self._check_version()
 
         try:
-            pip_list_command = self._normalize_command(["pip", "list", "--format", "json"])
-            pip_list = subprocess.run(pip_list_command, check=True, text=True, capture_output=True)
+            pip_inspect_command = self._normalize_command(["pip", "inspect"])
+            pip_inspect = subprocess.run(pip_inspect_command, check=True, text=True, capture_output=True)
             return [
-                Package(ECOSYSTEM.PyPI, package["name"], package["version"])
-                for package in json.loads(pip_list.stdout.strip())
+                p for entry in json.loads(pip_inspect.stdout).get("installed", [])
+                if (p := inspect_entry_to_package(entry)) is not None
             ]
 
         except subprocess.CalledProcessError:
@@ -186,9 +211,6 @@ class Pip(PackageManager):
 
         except json.JSONDecodeError:
             raise RuntimeError("Failed to decode installed package report JSON")
-
-        except KeyError:
-            raise ValueError("Malformed installed package report")
 
     def _check_version(self):
         """
@@ -239,3 +261,13 @@ class Pip(PackageManager):
             raise ValueError("Received invalid pip command line")
 
         return [self._executable] + command[1:]
+
+
+def _url_to_package_source(url: str) -> Optional[LocalPackageSource | RemotePackageSource]:
+    if url.startswith(_LOCAL_PACKAGE_SOURCE_PREFIX):
+        return LocalPackageSource(Path(url[len(_LOCAL_PACKAGE_SOURCE_PREFIX):]))
+
+    if url:
+        return RemotePackageSource(url)
+
+    return None

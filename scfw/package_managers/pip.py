@@ -185,9 +185,10 @@ class Pip(PackageManager):
                         f"Missing or unrecognized URL in artifact source entry for {name}-{version}"
                     )
             else:
-                # Both standard PyPI registry installs and legacy `setup.py install` packages
-                # (pip < 23.1, no pyproject.toml) lack a direct_url entry and are indistinguishable
-                # here. We use the canonical project page URL as a stand-in. This URL resolves to a
+                # In the case of a PyPI install, reconstructing the precise artifact download link
+                # is not possible with the locally available data and would therefore require at
+                # least one network request and some complicated logic related to identifying wheels.
+                # Instead, we use the canonical project page URL as a stand-in. This URL resolves to a
                 # human-readable page, not a downloadable artifact, so callers must not treat it as
                 # a direct artifact link.
                 _log.debug(f"No artifact source data available for {name}-{version}: assuming PyPI source")

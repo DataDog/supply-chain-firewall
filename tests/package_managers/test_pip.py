@@ -320,16 +320,29 @@ def backend_test_pip_inspect_matches_pip_list(project_dir: Path):
         [venv_pip, "inspect"], check=True, text=True, capture_output=True
     )
     inspect_packages = {
-        (e["metadata"]["name"].lower(), e["metadata"]["version"])
+        (e["metadata"]["name"], e["metadata"]["version"])
         for e in json.loads(pip_inspect.stdout.strip()).get("installed", [])
     }
 
     pip_list = subprocess.run(
         [venv_pip, "list", "--format", "json"], check=True, text=True, capture_output=True
     )
-    list_packages = {
-        (pkg["name"].lower(), pkg["version"])
-        for pkg in json.loads(pip_list.stdout.strip())
-    }
+
+    # pip v22.2 prints non-JSON to stdout...
+    report = None
+    for line in pip_list.stdout.strip().split('\n'):
+        try:
+            maybe_report = json.loads(line)
+            if report is None:
+                report = maybe_report
+            else:
+                raise RuntimeError("Multiple JSON output lines detected")
+
+        except json.JSONDecodeError:
+            pass
+
+    assert report is not None, "Malformed `pip list` output: no JSON report detected"
+
+    list_packages = {(pkg["name"], pkg["version"]) for pkg in report}
 
     assert inspect_packages == list_packages

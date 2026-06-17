@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
+import textwrap
 from typing import Optional
 
 import pytest
@@ -153,9 +154,6 @@ def init_pip_project(
     project_dir = parent / package_name
     project_dir.mkdir()
 
-    venv_dir = project_dir / "venv"
-    subprocess.run([sys.executable, "-m", "venv", venv_dir], check=True)
-
     source_dir = project_dir / package_name
     source_dir.mkdir()
     (source_dir / "__init__.py").touch()
@@ -164,8 +162,16 @@ def init_pip_project(
     with open(pyproject_path, 'w') as f:
         f.write(generate_pyproject_toml(package_name, package_version, dependencies))
 
+    venv_dir = project_dir / "venv"
+    subprocess.run([sys.executable, "-m", "venv", venv_dir], check=True)
+
+    # Ensure the venv pip is the same version as the system pip
+    venv_pip = venv_dir / "bin" / "pip"
+    subprocess.run(
+        [venv_pip, "install", f"pip=={get_system_pip_version()}"], check=True,
+    )
+
     if installed:
-        venv_pip = venv_dir / "bin" / "pip"
         subprocess.run([venv_pip, "install", project_dir], check=True)
 
     return project_dir
@@ -199,13 +205,27 @@ def generate_pyproject_toml(
 
     dependencies_toml = f"dependencies = [{', '.join(dependency_specs)}]" if dependency_specs else ""
 
-    return f"""\
-    [build-system]
-    requires = ["setuptools"]
-    build-backend = "setuptools.build_meta"
+    return textwrap.dedent(
+        f"""\
+            [build-system]
+            requires = ["setuptools"]
+            build-backend = "setuptools.build_meta"
 
-    [project]
-    name = "{package_name}"
-    version = "{package_version}"
-    {dependencies_toml}\
-    """
+            [project]
+            name = "{package_name}"
+            version = "{package_version}"
+            {dependencies_toml}\
+        """
+    )
+
+
+def get_system_pip_version() -> str:
+    p = subprocess.run(
+        [sys.executable, "-m", "pip", "--version"],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    # All supported versions adhere to this format
+    return p.stdout.strip().split()[1]

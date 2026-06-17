@@ -180,13 +180,17 @@ class Pip(PackageManager):
             source: Optional[LocalPackageSource | RemotePackageSource] = None
             if direct_url := entry.get("direct_url"):
                 source = _url_to_package_source(direct_url.get("url", ""))
+                if source is None:
+                    _log.warning(
+                        f"Missing or unrecognized URL in artifact source entry for {name}-{version}"
+                    )
             else:
                 # Both standard PyPI registry installs and legacy `setup.py install` packages
                 # (pip < 23.1, no pyproject.toml) lack a direct_url entry and are indistinguishable
                 # here. We use the canonical project page URL as a stand-in. This URL resolves to a
                 # human-readable page, not a downloadable artifact, so callers must not treat it as
                 # a direct artifact link.
-                _log.info(f"No artifact source data available for {name}-{version}: assuming PyPI source")
+                _log.debug(f"No artifact source data available for {name}-{version}: assuming PyPI source")
                 source = RemotePackageSource(f"{_PYPI_PROJECT_BASE_URL}/{name}/{version}/")
 
             return Package(ECOSYSTEM.PyPI, name, version, source=source)
@@ -259,10 +263,10 @@ class Pip(PackageManager):
 
 
 def _url_to_package_source(url: str) -> Optional[LocalPackageSource | RemotePackageSource]:
-    if url.startswith(("http", "git")):
-        return RemotePackageSource(url)
-
     if url.startswith(_LOCAL_PACKAGE_SOURCE_PREFIX):
         return LocalPackageSource(Path(url[len(_LOCAL_PACKAGE_SOURCE_PREFIX):]))
+
+    if url:
+        return RemotePackageSource(url)
 
     return None

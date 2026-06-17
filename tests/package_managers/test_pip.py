@@ -14,9 +14,6 @@ import pytest
 
 from .pip_fixtures import *
 
-_INSPECT_PACKAGE_NAME = "tree-sitter"
-_INSPECT_PACKAGE_VERSION = "0.24.0"
-
 PIP_COMMAND_PREFIX = [sys.executable, "-m", "pip"]
 
 
@@ -270,10 +267,9 @@ def test_pip_inspect_matches_pip_list_pip_project_local_dependency_installed(pip
 def test_pip_inspect_registry_package_no_direct_url(pip_project_remote_dependency_installed):
     """
     Test that a package installed from the PyPI registry has no `direct_url` entry in
-    `pip inspect` output. The implementation logs "No artifact source data found" and
-    sets `source=None` when `direct_url` is absent, treating absence as a registry install.
-    This also covers the case of packages installed by non-pip tools, which similarly
-    lack `direct_url`.
+    `pip inspect` output. When `direct_url` is absent, `Pip.list_installed_packages`
+    treats this as a registry install and uses the canonical PyPI project page URL as a
+    stand-in `RemotePackageSource`.
     """
     venv_pip = pip_project_remote_dependency_installed / "venv" / "bin" / "pip"
 

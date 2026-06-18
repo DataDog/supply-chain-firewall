@@ -130,6 +130,13 @@ class VerificationReport:
     findings_reports: dict[FindingSeverity, FindingsReport]
     unverifiable: FindingsReport
 
+    @classmethod
+    def empty(cls) -> Self:
+        """
+        Return an empty `VerificationReport`.
+        """
+        return cls(frozenset(), {}, FindingsReport())
+
     def get_findings_report(self, severity: FindingSeverity) -> Optional[FindingsReport]:
         """
         Return the reported `FindingsReport` of the given severity level if one exists.

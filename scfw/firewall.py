@@ -45,10 +45,14 @@ def run_firewall(args: Namespace) -> int:
         targets = package_manager.resolve_install_targets(args.command)
         _log.info(f"Command would install: [{', '.join(map(str, targets))}]")
 
-        verifiers = FirewallVerifiers(package_manager.ecosystem())
-        _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
+        if targets:
+            verifiers = FirewallVerifiers(package_manager.ecosystem())
+            _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
 
-        verification_report = verifiers.verify_packages(targets)
+            verification_report = verifiers.verify_packages(targets)
+        else:
+            verification_report = VerificationReport.empty()
+
         action, warned, relevant_findings = _determine_firewall_action(verification_report, warning_action)
 
         if relevant_findings:
@@ -145,12 +149,10 @@ def _determine_firewall_action(
         return FirewallAction.ALLOW, False, None
 
     # Warning findings or unverifiable packages => configured warning action (or user confirmation)
-    if warning_report and verification_report.unverifiable:
-        relevant_findings = FindingsReport.merge(warning_report, verification_report.unverifiable)
-    elif warning_report:
-        relevant_findings = warning_report
-    else:
-        relevant_findings = verification_report.unverifiable
+    relevant_findings = FindingsReport.merge(
+        warning_report if warning_report else FindingsReport(),
+        verification_report.unverifiable,
+    )
 
     return warning_action, True, relevant_findings
 

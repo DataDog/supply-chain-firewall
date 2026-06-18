@@ -9,7 +9,7 @@ checks: typecheck lint test
 
 coverage: test coverage-report
 
-test: test-cli test-configure test-pip-executable test-pip test-pip-class test-poetry test-poetry-class test-npm test-npm-class test-verifiers
+test: test-cli test-configure test-firewall test-npm test-npm-class test-pip-executable test-pip test-pip-class test-poetry test-poetry-class test-verifiers
 
 typecheck:
 	mypy --install-types --non-interactive scfw
@@ -22,6 +22,15 @@ test-cli:
 
 test-configure:
 	COVERAGE_FILE=.coverage.configure coverage run -m pytest tests/test_configure.py
+
+test-firewall:
+	COVERAGE_FILE=.coverage.firewall coverage run -m pytest tests/test_firewall.py
+
+test-npm:
+	COVERAGE_FILE=.coverage.npm coverage run -m pytest tests/package_managers/test_npm.py
+
+test-npm-class:
+	COVERAGE_FILE=.coverage.npm.class coverage run -m pytest tests/package_managers/test_npm_class.py
 
 test-pip-executable:
 	COVERAGE_FILE=.coverage.pip.executable coverage run -m pytest tests/package_managers/test_pip_class.py -k test_executable
@@ -38,20 +47,14 @@ test-poetry:
 test-poetry-class:
 	COVERAGE_FILE=.coverage.poetry.class coverage run -m pytest tests/package_managers/test_poetry_class.py
 
-test-npm:
-	COVERAGE_FILE=.coverage.npm coverage run -m pytest tests/package_managers/test_npm.py
-
-test-npm-class:
-	COVERAGE_FILE=.coverage.npm.class coverage run -m pytest tests/package_managers/test_npm_class.py
-
 test-verifiers:
 	COVERAGE_FILE=.coverage.verifiers coverage run -m pytest tests/verifiers
 
 coverage-report:
-	coverage combine .coverage.cli .coverage.configure \
+	coverage combine .coverage.cli .coverage.configure .coverage.firewall \
+	.coverage.npm .coverage.npm.class \
 	.coverage.pip.executable .coverage.pip .coverage.pip.class \
 	.coverage.poetry .coverage.poetry.class \
-	.coverage.npm .coverage.npm.class \
 	.coverage.verifiers
 	coverage report
 

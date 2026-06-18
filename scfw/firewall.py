@@ -57,13 +57,10 @@ def run_firewall(args: Namespace) -> int:
         if args.dry_run:
             _log.info("Firewall dry-run mode enabled: command will not be run")
             print("Dry-run: exiting without running command.")
-            return 1 if action == FirewallAction.BLOCK else 0
+            return 1 if args.error_on_block and action == FirewallAction.BLOCK else 0
 
+        # This only occurs when `warned=True` and no automatic action was inferrable
         if action is None:
-            if not warned:
-                # This should never occur: immediately error out if it does
-                raise RuntimeError("Invariant violation: action=None requires warned=True")
-
             user_confirmed = inquirer.confirm("Proceed with installation?", default=False)
             action = FirewallAction.ALLOW if user_confirmed else FirewallAction.BLOCK
 

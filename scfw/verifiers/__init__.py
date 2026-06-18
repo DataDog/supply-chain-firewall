@@ -80,7 +80,7 @@ class FirewallVerifiers:
             A `VerificationReport` resulting from verifying `packages` against all
             discovered verifiers.
         """
-        verification_set = set(packages)
+        verification_set = frozenset(packages)
         findings_reports: dict[FindingSeverity, FindingsReport] = {}
         unverifiable = FindingsReport()
 

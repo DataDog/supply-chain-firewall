@@ -126,7 +126,7 @@ class VerificationReport:
     """
     A structured report containing the results of verifying a set of `Package`.
     """
-    verification_set: set[Package]
+    verification_set: frozenset[Package]
     findings_reports: dict[FindingSeverity, FindingsReport]
     unverifiable: FindingsReport
 

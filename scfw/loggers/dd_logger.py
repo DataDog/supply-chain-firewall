@@ -204,10 +204,10 @@ class DDLogger(FirewallLogger):
         if action < self._level:
             return
 
-        if relevant_findings:
-            targets = list(map(str, relevant_findings.packages()))
-        elif verification_report:
-            targets = list(map(str, verification_report.verification_set))
+        if action == FirewallAction.ALLOW and verification_report:
+            targets = sorted(map(str, verification_report.verification_set))
+        elif action == FirewallAction.BLOCK and relevant_findings:
+            targets = sorted(map(str, relevant_findings.packages()))
         else:
             targets = []
 

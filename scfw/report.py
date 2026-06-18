@@ -94,11 +94,12 @@ class FindingsReport:
         return (package for package in self._report)
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class VerificationReport:
     """
     A structured report containing the results of verifying a set of `Package`.
     """
+    verification_set: set[Package]
     findings_reports: dict[FindingSeverity, FindingsReport]
     unverifiable: FindingsReport
 

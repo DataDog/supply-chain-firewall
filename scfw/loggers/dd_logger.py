@@ -8,7 +8,7 @@ import logging
 import os
 from pathlib import Path
 import socket
-from typing import Any
+from typing import Any, Optional
 
 import dotenv
 
@@ -16,8 +16,7 @@ import scfw
 from scfw.constants import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE, SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
-from scfw.package import Package
-from scfw.report import VerificationReport
+from scfw.report import FindingsReport, VerificationReport
 
 _log = logging.getLogger(__name__)
 
@@ -182,10 +181,10 @@ class DDLogger(FirewallLogger):
         package_manager: str,
         executable: str,
         command: list[str],
-        targets: list[Package],
         action: FirewallAction,
-        verified: bool,
         warned: bool,
+        relevant_findings: Optional[FindingsReport],
+        verification_report: Optional[VerificationReport],
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall.
@@ -195,13 +194,20 @@ class DDLogger(FirewallLogger):
             package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
             command: The package manager command line provided to the firewall.
-            targets: The installation targets relevant to firewall's action.
             action: The action taken by the firewall.
-            verified: Indicates whether verification was performed in taking the specified `action`.
             warned: Indicates whether the user was warned about findings and prompted for approval.
+            relevant_findings: The findings, if any, relevant to the action taken.
+            verification_report: The complete `VerificationReport`, if any, resulting from verification.
         """
         if not self._level or action < self._level:
             return
+
+        if relevant_findings:
+            targets = list(map(str, relevant_findings.packages()))
+        elif verification_report:
+            targets = list(map(str, verification_report.verification_set))
+        else:
+            targets = []
 
         self._logger.info(
             f"Command '{' '.join(command)}' was {str(action).lower()}ed",
@@ -209,9 +215,9 @@ class DDLogger(FirewallLogger):
                 "ecosystem": str(ecosystem),
                 "package_manager": package_manager,
                 "executable": executable,
-                "targets": list(map(str, targets)),
+                "targets": targets,
                 "action": str(action),
-                "verified": verified,
+                "verified": verification_report is not None,
                 "warned": warned,
             }
         )

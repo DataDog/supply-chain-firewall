@@ -45,53 +45,52 @@ def run_firewall(args: Namespace) -> int:
         targets = package_manager.resolve_install_targets(args.command)
         _log.info(f"Command would install: [{', '.join(map(str, targets))}]")
 
-        if targets:
-            verifiers = FirewallVerifiers(package_manager.ecosystem())
-            _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
+        verifiers = FirewallVerifiers(package_manager.ecosystem())
+        _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
 
-            report = verifiers.verify_packages(targets)
-            critical_report = report.get_findings_report(FindingSeverity.CRITICAL)
-            warning_report = report.get_findings_report(FindingSeverity.WARNING)
+        report = verifiers.verify_packages(targets)
+        critical_report = report.get_findings_report(FindingSeverity.CRITICAL)
+        warning_report = report.get_findings_report(FindingSeverity.WARNING)
 
-            # Treat unverifiable packages as warning-level findings
-            if warning_report is not None:
-                warning_report.extend(report.unverifiable)
-            else:
-                warning_report = report.unverifiable
+        # Treat unverifiable packages as warning-level findings
+        if warning_report is not None:
+            warning_report.extend(report.unverifiable)
+        else:
+            warning_report = report.unverifiable
 
-            if not args.dry_run and critical_report:
+        if not args.dry_run and critical_report:
+            loggers.log_firewall_action(
+                package_manager.ecosystem(),
+                package_manager.name(),
+                package_manager.executable(),
+                args.command,
+                action=FirewallAction.BLOCK,
+                warned=False,
+                relevant_findings=critical_report,
+                verification_report=report,
+            )
+            print(critical_report)
+            print("\nThe installation request was blocked. No changes have been made.")
+            return 1 if args.error_on_block else 0
+
+        if not args.dry_run and warning_report:
+            print(warning_report)
+            if (
+                warning_action == FirewallAction.BLOCK
+                or not (warning_action or inquirer.confirm("Proceed with installation?", default=False))
+            ):
                 loggers.log_firewall_action(
                     package_manager.ecosystem(),
                     package_manager.name(),
                     package_manager.executable(),
                     args.command,
-                    list(critical_report.packages()),
                     action=FirewallAction.BLOCK,
-                    verified=True,
-                    warned=False,
+                    warned=True,
+                    relevant_findings=warning_report,
+                    verification_report=report,
                 )
-                print(critical_report)
-                print("\nThe installation request was blocked. No changes have been made.")
+                print("The installation request was aborted. No changes have been made.")
                 return 1 if args.error_on_block else 0
-
-            if not args.dry_run and warning_report:
-                print(warning_report)
-                if (
-                    warning_action == FirewallAction.BLOCK
-                    or not (warning_action or inquirer.confirm("Proceed with installation?", default=False))
-                ):
-                    loggers.log_firewall_action(
-                        package_manager.ecosystem(),
-                        package_manager.name(),
-                        package_manager.executable(),
-                        args.command,
-                        list(warning_report.packages()),
-                        action=FirewallAction.BLOCK,
-                        verified=True,
-                        warned=True,
-                    )
-                    print("The installation request was aborted. No changes have been made.")
-                    return 1 if args.error_on_block else 0
 
         if args.dry_run:
             _log.info("Firewall dry-run mode enabled: command will not be run")
@@ -107,10 +106,10 @@ def run_firewall(args: Namespace) -> int:
             package_manager.name(),
             package_manager.executable(),
             args.command,
-            targets,
             action=FirewallAction.ALLOW,
-            verified=True,
             warned=True if warning_report else False,
+            relevant_findings=warning_report if warning_report else None,
+            verification_report=report,
         )
         return package_manager.run_command(args.command)
 
@@ -133,10 +132,10 @@ def run_firewall(args: Namespace) -> int:
             package_manager.name(),
             package_manager.executable(),
             args.command,
-            targets=[],
             action=FirewallAction.ALLOW,
-            verified=False,
             warned=False,
+            relevant_findings=None,
+            verification_report=None,
         )
         return package_manager.run_command(args.command)
 

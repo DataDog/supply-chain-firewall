@@ -25,11 +25,11 @@ import importlib
 import logging
 import os
 import pkgutil
+from typing import Optional
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
-from scfw.package import Package
-from scfw.report import VerificationReport
+from scfw.report import FindingsReport, VerificationReport
 
 _log = logging.getLogger(__name__)
 
@@ -64,10 +64,10 @@ class FirewallLoggers(FirewallLogger):
         package_manager: str,
         executable: str,
         command: list[str],
-        targets: list[Package],
         action: FirewallAction,
-        verified: bool,
         warned: bool,
+        relevant_findings: Optional[FindingsReport],
+        verification_report: Optional[VerificationReport],
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall to
@@ -80,10 +80,10 @@ class FirewallLoggers(FirewallLogger):
                     package_manager,
                     executable,
                     command,
-                    targets,
                     action,
-                    verified,
                     warned,
+                    relevant_findings,
+                    verification_report,
                 )
             except Exception as e:
                 _log.warning(f"Failed to log firewall action: {e}")

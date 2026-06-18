@@ -61,7 +61,7 @@ class FindingsReport:
     @classmethod
     def merge(cls, lhs: Self, rhs: Self) -> Self:
         """
-        Merge two `FindingsReports` into a new one containing them both.
+        Merge two `FindingsReport` into a new one containing them both.
 
         Args:
             lhs: The first `FindingsReport` to be merged.

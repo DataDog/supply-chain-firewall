@@ -236,7 +236,7 @@ def make_verification_report(
 
     # `verification_set` is not used in these tests
     return VerificationReport(
-        verification_set=set(),
+        verification_set=frozenset(),
         findings_reports=findings_reports,
         unverifiable=unverifiable if unverifiable is not None else FindingsReport(),
     )

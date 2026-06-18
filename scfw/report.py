@@ -21,6 +21,15 @@ class FindingsReport:
         """
         self._report: dict[Package, list[str]] = {}
 
+    def __eq__(self, other: object) -> bool:
+        """
+        Determine whether two `FindingsReport` are equal.
+        """
+        if not isinstance(other, FindingsReport):
+            return NotImplemented
+
+        return self._report == other._report
+
     def __len__(self) -> int:
         """
         Return the number of entries in the report.
@@ -48,6 +57,24 @@ class FindingsReport:
         return '\n'.join(
             show_findings(package, findings) for package, findings in self._report.items()
         )
+
+    @classmethod
+    def merge(cls, lhs: Self, rhs: Self) -> Self:
+        """
+        Merge two `FindingsReports` into a new one containing them both.
+
+        Args:
+            lhs: The first `FindingsReport` to be merged.
+            rhs: The second `FindingsReport` to be merged.
+
+        Returns:
+            A `FindingsReport` containing all of the findings in `lhs` and `rhs`.
+        """
+        merged = cls()
+        merged.extend(lhs)
+        merged.extend(rhs)
+
+        return merged
 
     def get(self, package: Package) -> Optional[list[str]]:
         """
@@ -85,7 +112,7 @@ class FindingsReport:
             if package in self._report:
                 self._report[package].extend(findings)
             else:
-                self._report[package] = findings
+                self._report[package] = list(findings)
 
     def packages(self) -> Iterable[Package]:
         """

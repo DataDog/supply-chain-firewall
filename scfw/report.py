@@ -118,7 +118,7 @@ class FindingsReport:
         """
         Return an iterator over `Package` mentioned in the report.
         """
-        return (package for package in self._report)
+        return self._report.keys()
 
 
 @dataclass(eq=True)

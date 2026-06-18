@@ -60,6 +60,20 @@ def test_critical_findings_take_precedence_over_warnings():
     assert relevant == critical
 
 
+def test_critical_findings_take_precedence_over_unverifiable():
+    """
+    When both critical findings and unverifiable packages are present, the critical findings drive
+    a BLOCK action and the unverifiable packages are not included in the result.
+    """
+    critical = make_findings_report([(_PKG_A, "critical finding")])
+    unverifiable = make_findings_report([(_PKG_B, "unverifiable package")])
+    action, warned, relevant = _determine_firewall_action(make_verification_report(critical=critical, unverifiable=unverifiable), None)
+
+    assert action == FirewallAction.BLOCK
+    assert not warned
+    assert relevant == critical
+
+
 @pytest.mark.parametrize("warning_action", [FirewallAction.BLOCK, FirewallAction.ALLOW, None])
 def test_warning_findings(warning_action: Optional[FirewallAction]):
     """
@@ -126,6 +140,15 @@ def test_get_warning_action_cli_block_takes_precedence_over_allow():
     assert _get_warning_action(cli_allow_choice=True, cli_block_choice=True) == FirewallAction.BLOCK
 
 
+def test_get_warning_action_cli_flag_takes_precedence_over_env_var(monkeypatch):
+    """
+    A CLI flag takes precedence over ON_WARNING_VAR, even when the env var specifies a
+    conflicting action.
+    """
+    monkeypatch.setenv(ON_WARNING_VAR, "ALLOW")
+    assert _get_warning_action(cli_allow_choice=False, cli_block_choice=True) == FirewallAction.BLOCK
+
+
 @pytest.mark.parametrize(
     "env_value,expected",
     [
@@ -156,6 +179,19 @@ def test_get_warning_action_env_var_invalid_falls_through(monkeypatch):
     monkeypatch.setattr(sys, "stdin", mock_stdin)
 
     assert _get_warning_action(cli_allow_choice=False, cli_block_choice=False) == FirewallAction.BLOCK
+
+
+def test_get_warning_action_env_var_empty_falls_through_silently(monkeypatch):
+    """
+    An empty `ON_WARNING_VAR` value is treated as unset and the terminal interactivity
+    check is used as the fallback, without logging a warning.
+    """
+    monkeypatch.setenv(ON_WARNING_VAR, "")
+    mock_stdin = MagicMock()
+    mock_stdin.isatty.return_value = True
+    monkeypatch.setattr(sys, "stdin", mock_stdin)
+
+    assert _get_warning_action(cli_allow_choice=False, cli_block_choice=False) is None
 
 
 def test_get_warning_action_non_interactive_terminal(monkeypatch):

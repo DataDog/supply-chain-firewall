@@ -42,6 +42,8 @@ _FIREWALL_ACTION_ATTRIBUTES = {
     "warned",
 }
 
+_ALL_LOG_ATTRIBUTES = _AUDIT_ATTRIBUTES | _FIREWALL_ACTION_ATTRIBUTES
+
 _DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
 
 DD_LOGGER_HOME = Path("dd_logger/")
@@ -132,7 +134,7 @@ class DDLogFormatter(logging.Formatter):
         except Exception as e:
             _log.warning(f"Failed to query username while formatting log: {e}")
 
-        for key in _AUDIT_ATTRIBUTES | _FIREWALL_ACTION_ATTRIBUTES:
+        for key in _ALL_LOG_ATTRIBUTES:
             try:
                 log_record[key] = record.__dict__[key]
             except KeyError:
@@ -173,7 +175,7 @@ class DDLogger(FirewallLogger):
             if (dd_log_level := os.getenv(DD_LOG_LEVEL_VAR)) is not None:
                 self._level = FirewallAction.from_string(dd_log_level)
         except ValueError:
-            _log.warning(f"Undefined or invalid Datadog log level: using default level {_DD_LOG_LEVEL_DEFAULT}")
+            _log.warning(f"Invalid value for {DD_LOG_LEVEL_VAR}: using default level {_DD_LOG_LEVEL_DEFAULT}")
 
     def log_firewall_action(
         self,
@@ -199,7 +201,7 @@ class DDLogger(FirewallLogger):
             relevant_findings: The findings, if any, relevant to the action taken.
             verification_report: The complete `VerificationReport`, if any, resulting from verification.
         """
-        if not self._level or action < self._level:
+        if action < self._level:
             return
 
         if relevant_findings:

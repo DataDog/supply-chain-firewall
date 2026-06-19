@@ -5,16 +5,15 @@ Tests of the core firewall logic.
 import sys
 
 import pytest
-from typing import Iterable, Optional
+from typing import Optional
 from unittest.mock import MagicMock
 
 from scfw.constants import ON_WARNING_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.firewall import _determine_firewall_action, _get_warning_action
 from scfw.logger import FirewallAction
-from scfw.package import Package
-from scfw.report import FindingsReport, VerificationReport
-from scfw.verifier import FindingSeverity
+from scfw.report import Unverified, VerificationReport
+from scfw.verifier import Finding, FindingSeverity
 
 from tests.utils import build_registry_package
 
@@ -22,12 +21,17 @@ from tests.utils import build_registry_package
 _PKG_A = build_registry_package(ECOSYSTEM.PyPI, "requests", "2.31.0")
 _PKG_B = build_registry_package(ECOSYSTEM.PyPI, "numpy", "1.24.0")
 
+_CRITICAL_FINDING = Finding("foo", FindingSeverity.CRITICAL, "critical finding")
+_WARNING_FINDING = Finding("foo", FindingSeverity.WARNING, "warning finding")
+
+_UNVERIFIED = Unverified("foo", "unverified package")
+
 
 def test_no_findings():
     """
     A verification report with no findings and no unverifiable packages results in an ALLOW action.
     """
-    action, warned, relevant = _determine_firewall_action(make_verification_report(), None)
+    action, warned, relevant = _determine_firewall_action(VerificationReport(), None)
 
     assert action == FirewallAction.ALLOW
     assert not warned
@@ -38,12 +42,14 @@ def test_critical_findings_blocks():
     """
     A verification report with critical findings results in a BLOCK action with no user warning.
     """
-    critical = make_findings_report([(_PKG_A, "critical finding")])
-    action, warned, relevant = _determine_firewall_action(make_verification_report(critical=critical), None)
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _CRITICAL_FINDING)
+
+    action, warned, relevant = _determine_firewall_action(report, None)
 
     assert action == FirewallAction.BLOCK
     assert not warned
-    assert relevant == critical
+    assert relevant == report.get_findings(FindingSeverity.CRITICAL)
 
 
 def test_critical_findings_take_precedence_over_warnings():
@@ -51,13 +57,15 @@ def test_critical_findings_take_precedence_over_warnings():
     When both critical and warning findings are present, the critical findings drive a BLOCK
     action and the warning findings are not included in the result.
     """
-    critical = make_findings_report([(_PKG_A, "critical finding")])
-    warning = make_findings_report([(_PKG_B, "warning finding")])
-    action, warned, relevant = _determine_firewall_action(make_verification_report(critical=critical, warning=warning), None)
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _CRITICAL_FINDING)
+    report.insert_finding(_PKG_B, _WARNING_FINDING)
+
+    action, warned, relevant = _determine_firewall_action(report, None)
 
     assert action == FirewallAction.BLOCK
     assert not warned
-    assert relevant == critical
+    assert relevant == report.get_findings(FindingSeverity.CRITICAL)
 
 
 def test_critical_findings_take_precedence_over_unverifiable():
@@ -65,13 +73,15 @@ def test_critical_findings_take_precedence_over_unverifiable():
     When both critical findings and unverifiable packages are present, the critical findings drive
     a BLOCK action and the unverifiable packages are not included in the result.
     """
-    critical = make_findings_report([(_PKG_A, "critical finding")])
-    unverifiable = make_findings_report([(_PKG_B, "unverifiable package")])
-    action, warned, relevant = _determine_firewall_action(make_verification_report(critical=critical, unverifiable=unverifiable), None)
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _CRITICAL_FINDING)
+    report.insert_unverified(_PKG_B, _UNVERIFIED)
+
+    action, warned, relevant = _determine_firewall_action(report, None)
 
     assert action == FirewallAction.BLOCK
     assert not warned
-    assert relevant == critical
+    assert relevant == report.get_findings(FindingSeverity.CRITICAL)
 
 
 @pytest.mark.parametrize("warning_action", [FirewallAction.BLOCK, FirewallAction.ALLOW, None])
@@ -80,12 +90,14 @@ def test_warning_findings(warning_action: Optional[FirewallAction]):
     A verification report with only warning findings defers to the configured warning action,
     with the user warned and the warning findings returned as relevant findings.
     """
-    warning = make_findings_report([(_PKG_A, "warning finding")])
-    action, warned, relevant = _determine_firewall_action(make_verification_report(warning=warning), warning_action)
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _WARNING_FINDING)
+
+    action, warned, relevant = _determine_firewall_action(report, warning_action)
 
     assert action == warning_action
     assert warned
-    assert relevant == warning
+    assert relevant == report.get_findings(FindingSeverity.WARNING)
 
 
 @pytest.mark.parametrize("warning_action", [FirewallAction.BLOCK, FirewallAction.ALLOW, None])
@@ -94,12 +106,14 @@ def test_unverifiable_only(warning_action: Optional[FirewallAction]):
     Unverifiable packages are treated the same as warning-level findings: the configured
     warning action is returned with the user warned and the unverifiable packages as relevant findings.
     """
-    unverifiable = make_findings_report([(_PKG_A, "unverifiable package")])
-    action, warned, relevant = _determine_firewall_action(make_verification_report(unverifiable=unverifiable), warning_action)
+    report = VerificationReport()
+    report.insert_unverified(_PKG_A, _UNVERIFIED)
+
+    action, warned, relevant = _determine_firewall_action(report, warning_action)
 
     assert action == warning_action
     assert warned
-    assert relevant == unverifiable
+    assert relevant == None
 
 
 @pytest.mark.parametrize("warning_action", [FirewallAction.BLOCK, FirewallAction.ALLOW, None])
@@ -108,15 +122,15 @@ def test_warning_and_unverifiable_merged(warning_action: Optional[FirewallAction
     When both warning findings and unverifiable packages are present, the relevant findings
     returned are a merge of the two reports.
     """
-    warning = make_findings_report([(_PKG_A, "warning finding")])
-    unverifiable = make_findings_report([(_PKG_B, "unverifiable package")])
-    action, warned, relevant = _determine_firewall_action(
-        make_verification_report(warning=warning, unverifiable=unverifiable), warning_action
-    )
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _WARNING_FINDING)
+    report.insert_unverified(_PKG_B, _UNVERIFIED)
+
+    action, warned, relevant = _determine_firewall_action(report, warning_action)
 
     assert action == warning_action
     assert warned
-    assert relevant == FindingsReport.merge(warning, unverifiable)
+    assert relevant == report.get_findings(FindingSeverity.WARNING)
 
 
 def test_get_warning_action_cli_block():
@@ -217,38 +231,3 @@ def test_get_warning_action_interactive_terminal(monkeypatch):
     monkeypatch.setattr(sys, "stdin", mock_stdin)
 
     assert _get_warning_action(cli_allow_choice=False, cli_block_choice=False) is None
-
-
-def make_verification_report(
-    critical: Optional[FindingsReport] = None,
-    warning: Optional[FindingsReport] = None,
-    unverifiable: Optional[FindingsReport] = None,
-) -> VerificationReport:
-    """
-    Create a mocked `VerificationReport` from the given inputs.
-    """
-    findings_reports = {}
-
-    if critical is not None:
-        findings_reports[FindingSeverity.CRITICAL] = critical
-    if warning is not None:
-        findings_reports[FindingSeverity.WARNING] = warning
-
-    # `verification_set` is not used in these tests
-    return VerificationReport(
-        verification_set=frozenset(),
-        findings_reports=findings_reports,
-        unverifiable=unverifiable if unverifiable is not None else FindingsReport(),
-    )
-
-
-def make_findings_report(findings: Iterable[tuple[Package, str]]) -> FindingsReport:
-    """
-    Create a `FindingsReport` from the given `Package-str` pairs.
-    """
-    report = FindingsReport()
-
-    for package, finding in findings:
-        report.insert(package, finding)
-
-    return report

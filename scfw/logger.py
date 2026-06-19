@@ -85,7 +85,7 @@ class FirewallLogger(metaclass=ABCMeta):
         action: FirewallAction,
         warned: bool,
         relevant_findings: Optional[FindingsReport],
-        verification_report: Optional[VerificationReport],
+        report: Optional[VerificationReport],
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall.
@@ -99,18 +99,8 @@ class FirewallLogger(metaclass=ABCMeta):
             warned:
                 Indicates whether the user was warned about findings for any installation
                 targets and prompted for approval to proceed with `command`.
-            relevant_findings:
-                The findings, if any, that are relevant to the `action` taken by Supply-Chain
-                Firewall. A `None` value indicates that the action was taken without relying
-                on any findings, which can occur when
-                    * There were no findings for any installation target
-                    * Installation target verification did not take place, usually because the
-                      underlying package manager was of an unsupported version
-            verification_report:
-                The complete `VerificationReport`, if any, resulting from installation target
-                verification. A `None` value indicates that installation target verification
-                did not take place, usually because the underlying package manager was of an
-                unsupported version.
+            relevant_findings: Lorem ipsum dolor sit amet.
+            report: Lorem ipsum dolor sit amet.
         """
         pass
 
@@ -129,10 +119,6 @@ class FirewallLogger(metaclass=ABCMeta):
             ecosystem: The ecosystem of the audited packages.
             package_manager: The package manager that manages the audited packages.
             executable: The package manager executable used to enumerate audited packages.
-            report:
-                The `VerificationReport` resulting from auditing the installed packages.
-
-                This report contains only those packages for which at least one verifier had
-                a finding. Packages with no findings are excluded from the audit results.
+            report: Lorem ipsum dolor sit amet.
         """
         pass

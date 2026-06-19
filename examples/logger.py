@@ -33,7 +33,7 @@ class CustomFirewallLogger(FirewallLogger):
         action: FirewallAction,
         warned: bool,
         relevant_findings: Optional[FindingsReport],
-        verification_report: Optional[VerificationReport],
+        report: Optional[VerificationReport],
     ):
         return
 

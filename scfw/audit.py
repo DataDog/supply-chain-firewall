@@ -7,7 +7,6 @@ import logging
 
 from scfw.loggers import FirewallLoggers
 import scfw.package_managers as package_managers
-from scfw.report import FindingsReport
 from scfw.verifier import FindingSeverity
 from scfw.verifiers import FirewallVerifiers
 
@@ -24,8 +23,6 @@ def run_audit(args: Namespace) -> int:
     Returns:
         An integer status code indicating normal exit.
     """
-    merged_report = FindingsReport()
-
     package_manager = package_managers.get_package_manager(args.package_manager, executable=args.executable)
 
     if (packages := package_manager.list_installed_packages()):
@@ -42,15 +39,18 @@ def run_audit(args: Namespace) -> int:
             report,
         )
 
+        # TODO(ikretz): Pretty print audit findings
+        found_issues = False
         for severity in FindingSeverity:
-            if (severity_report := report.get_findings_report(severity)):
-                merged_report.extend(severity_report)
+            if (findings := report.get_findings(severity)):
+                found_issues = True
+                print(findings)
 
-        merged_report.extend(report.unverifiable)
+        if (unverified := report.get_unverified()):
+            found_issues = True
+            print(unverified)
 
-    if merged_report:
-        print(merged_report)
-    else:
-        print("No issues found.")
+        if not found_issues:
+            print("No issues found.")
 
     return 0

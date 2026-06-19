@@ -10,7 +10,7 @@ from pathlib import Path
 from scfw.constants import SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import Finding, FindingSeverity, PackageVerifier, UnverifiablePackage
+from scfw.verifier import Finding, PackageVerifier, UnverifiablePackage
 from scfw.verifiers.list_verifier.findings_map import FindingsMap
 
 _log = logging.getLogger(__name__)

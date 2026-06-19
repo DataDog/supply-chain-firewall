@@ -17,6 +17,7 @@ from scfw.constants import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE, SCFW
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
 from scfw.report import FindingsReport, VerificationReport
+from scfw.verifier import FindingSeverity
 
 _log = logging.getLogger(__name__)
 
@@ -186,7 +187,7 @@ class DDLogger(FirewallLogger):
         action: FirewallAction,
         warned: bool,
         relevant_findings: Optional[FindingsReport],
-        verification_report: Optional[VerificationReport],
+        report: Optional[VerificationReport],
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall.
@@ -199,15 +200,16 @@ class DDLogger(FirewallLogger):
             action: The action taken by the firewall.
             warned: Indicates whether the user was warned about findings and prompted for approval.
             relevant_findings: The findings, if any, relevant to the action taken.
-            verification_report: The complete `VerificationReport`, if any, resulting from verification.
+            report: The complete `VerificationReport`, if any, resulting from verification.
         """
         if action < self._level:
             return
 
-        if action == FirewallAction.ALLOW and verification_report:
-            targets = sorted(map(str, verification_report.verification_set))
+        # TODO(ikretz): Log unverifiable packages
+        if action == FirewallAction.ALLOW and report:
+            targets = sorted(map(str, report.packages()))
         elif action == FirewallAction.BLOCK and relevant_findings:
-            targets = sorted(map(str, relevant_findings.packages()))
+            targets = sorted(map(str, relevant_findings))
         else:
             targets = []
 
@@ -219,7 +221,7 @@ class DDLogger(FirewallLogger):
                 "executable": executable,
                 "targets": targets,
                 "action": str(action),
-                "verified": verification_report is not None,
+                "verified": report is not None,
                 "warned": warned,
             }
         )
@@ -247,9 +249,9 @@ class DDLogger(FirewallLogger):
                 "package_manager": package_manager,
                 "executable": executable,
                 "reports": {
-                    str(severity): list(map(str, findings_report.packages()))
-                    for severity, findings_report in report.findings_reports.items()
+                    str(severity): sorted(map(str, report.get_findings(severity)))
+                    for severity in FindingSeverity
                 },
-                "unverifiable": list(map(str, report.unverifiable.packages())),
+                "unverifiable": sorted(map(str, report.get_unverified())),
             }
         )

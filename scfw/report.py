@@ -2,147 +2,102 @@
 Classes for structuring and displaying the results of package verification.
 """
 
-from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Optional
-from typing_extensions import Self
+from typing import TypeAlias
 
 from scfw.package import Package
-from scfw.verifier import FindingSeverity
+from scfw.verifier import Finding, FindingSeverity
 
 
-class FindingsReport:
+@dataclass(eq=True, frozen=True)
+class Unverified:
     """
-    A structured report containing verification findings for a set of `Package`.
+    Lorem ipsum dolor sit amet.
+    """
+    verifier: str
+    message: str
+
+
+FindingsReport: TypeAlias = dict[Package, set[Finding]]
+"""
+Lorem ipsum dolor sit amet.
+"""
+
+UnverifiedReport: TypeAlias = dict[Package, set[Unverified]]
+"""
+Lorem ipsum dolor sit amet.
+"""
+
+
+class VerificationReport:
+    """
+    Lorem ipsum dolor sit amet.
     """
     def __init__(self) -> None:
         """
-        Initialize a new, empty `FindingsReport`.
+        Lorem ipsum dolor sit amet.
         """
-        self._report: dict[Package, list[str]] = {}
+        self._clean: set[Package] = set()
+        self._findings: FindingsReport = {}
+        self._unverified: UnverifiedReport = {}
 
-    def __eq__(self, other: object) -> bool:
+    def get_clean(self) -> set[Package]:
         """
-        Determine whether two `FindingsReport` are equal.
+        Lorem ipsum dolor sit amet.
         """
-        if not isinstance(other, FindingsReport):
-            return NotImplemented
+        return set(self._clean)
 
-        return self._report == other._report
-
-    def __len__(self) -> int:
+    def get_findings(self, severity: FindingSeverity) -> FindingsReport:
         """
-        Return the number of entries in the report.
+        Lorem ipsum dolor sit amet.
         """
-        return len(self._report)
+        severity_findings = {}
 
-    def __str__(self) -> str:
+        for package, findings in self._findings.items():
+            if (s := {finding for finding in findings if finding.severity == severity}):
+                severity_findings[package] = s
+
+        return severity_findings
+
+    def get_unverified(self) -> UnverifiedReport:
         """
-        Return a human-readable version of a findings report.
-
-        Returns:
-            A `str` containing the formatted findings report.
+        Lorem ipsum dolor sit amet.
         """
-        def show_line(linenum: int, line: str) -> str:
-            return (f"  - {line}" if linenum == 0 else f"    {line}")
+        return {package: set(unverified) for package, unverified in self._unverified.items()}
 
-        def show_finding(finding: str) -> str:
-            return '\n'.join(
-                show_line(linenum, line) for linenum, line in enumerate(finding.split('\n'))
-            )
-
-        def show_findings(package: Package, findings: list[str]) -> str:
-            return f"Package {package}:\n" + '\n'.join(map(show_finding, findings))
-
-        return '\n'.join(
-            show_findings(package, findings) for package, findings in self._report.items()
-        )
-
-    @classmethod
-    def merge(cls, lhs: Self, rhs: Self) -> Self:
+    def insert_clean(self, package: Package) -> None:
         """
-        Merge two `FindingsReport` into a new one containing them both.
-
-        Args:
-            lhs: The first `FindingsReport` to be merged.
-            rhs: The second `FindingsReport` to be merged.
-
-        Returns:
-            A `FindingsReport` containing all of the findings in `lhs` and `rhs`.
+        Lorem ipsum dolor sit amet.
         """
-        merged = cls()
-        merged.extend(lhs)
-        merged.extend(rhs)
+        if package in self._findings or package in self._unverified:
+            return
 
-        return merged
+        self._clean.add(package)
 
-    def get(self, package: Package) -> Optional[list[str]]:
+    def insert_finding(self, package: Package, finding: Finding) -> None:
         """
-        Get the findings for the given package.
-
-        Args:
-            package: The `Package` to look up in the report.
-
-        Returns:
-            The reported findings for `package` or `None` if it is not present.
+        Lorem ipsum dolor sit amet.
         """
-        return self._report.get(package)
+        if package not in self._findings:
+            self._findings[package] = set()
+        self._findings[package].add(finding)
 
-    def insert(self, package: Package, finding: str) -> None:
-        """
-        Insert the given package and finding into the report.
+        if package in self._clean:
+            self._clean.remove(package)
 
-        Args:
-            package: The `Package` to insert into the report.
-            findings: The finding being reported for `package`.
+    def insert_unverified(self, package: Package, unverified: Unverified) -> None:
         """
-        if package in self._report:
-            self._report[package].append(finding)
-        else:
-            self._report[package] = [finding]
+        Lorem ipsum dolor sit amet.
+        """
+        if package not in self._unverified:
+            self._unverified[package] = set()
+        self._unverified[package].add(unverified)
 
-    def extend(self, other: Self) -> None:
-        """
-        Extend a `FindingsReport` with additional findings from another.
+        if package in self._clean:
+            self._clean.remove(package)
 
-        Args:
-            other: The `FindingsReport` whose findings will be extended into `self`.
+    def packages(self) -> set[Package]:
         """
-        for package, findings in other._report.items():
-            if package in self._report:
-                self._report[package].extend(findings)
-            else:
-                self._report[package] = list(findings)
-
-    def packages(self) -> Iterable[Package]:
+        Lorem ipsum dolor sit amet.
         """
-        Return an iterator over `Package` mentioned in the report.
-        """
-        return self._report.keys()
-
-
-@dataclass(eq=True)
-class VerificationReport:
-    """
-    A structured report containing the results of verifying a set of `Package`.
-    """
-    verification_set: frozenset[Package]
-    findings_reports: dict[FindingSeverity, FindingsReport]
-    unverifiable: FindingsReport
-
-    @classmethod
-    def empty(cls) -> Self:
-        """
-        Return an empty `VerificationReport`.
-        """
-        return cls(frozenset(), {}, FindingsReport())
-
-    def get_findings_report(self, severity: FindingSeverity) -> Optional[FindingsReport]:
-        """
-        Return the reported `FindingsReport` of the given severity level if one exists.
-
-        Returns:
-            The `FindingsReport` of the given `FindingSeverity` contained in the given
-            verification report's set of severity-ranked finding reports.
-        """
-        return self.findings_reports.get(severity)
+        return self._clean | set(self._findings) | set(self._unverified)

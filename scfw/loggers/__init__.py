@@ -67,7 +67,7 @@ class FirewallLoggers(FirewallLogger):
         action: FirewallAction,
         warned: bool,
         relevant_findings: Optional[FindingsReport],
-        verification_report: Optional[VerificationReport],
+        report: Optional[VerificationReport],
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall to
@@ -83,7 +83,7 @@ class FirewallLoggers(FirewallLogger):
                     action,
                     warned,
                     relevant_findings,
-                    verification_report,
+                    report,
                 )
             except Exception as e:
                 _log.warning(f"Failed to log firewall action: {e}")

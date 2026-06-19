@@ -48,13 +48,15 @@ def run_firewall(args: Namespace) -> int:
             verifiers = FirewallVerifiers(package_manager.ecosystem())
             _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
 
-            verification_report = verifiers.verify_packages(targets)
+            report = verifiers.verify_packages(targets)
         else:
-            verification_report = VerificationReport.empty()
+            report = VerificationReport()
 
         warning_action = _get_warning_action(args.allow_on_warning, args.block_on_warning)
-        action, warned, relevant_findings = _determine_firewall_action(verification_report, warning_action)
+        action, warned, relevant_findings = _determine_firewall_action(report, warning_action)
 
+        # TODO(ikretz): Also print unverified packages
+        # TODO(ikretz): Pretty print `relevant_findings`
         if relevant_findings:
             print(relevant_findings)
 
@@ -76,7 +78,7 @@ def run_firewall(args: Namespace) -> int:
             action,
             warned,
             relevant_findings,
-            verification_report,
+            report,
         )
 
         match action:
@@ -108,53 +110,40 @@ def run_firewall(args: Namespace) -> int:
             action=FirewallAction.ALLOW,
             warned=False,
             relevant_findings=None,
-            verification_report=None,
+            report=None,
         )
         return package_manager.run_command(args.command)
 
 
 def _determine_firewall_action(
-    verification_report: VerificationReport,
+    report: VerificationReport,
     warning_action: Optional[FirewallAction]
 ) -> tuple[Optional[FirewallAction], bool, Optional[FindingsReport]]:
     """
     Determine the firewall action and its relevant findings from the given inputs.
 
     Args:
-        verification_report: The `VerificationReport` on whose basis the action will be decided.
+        report: The `VerificationReport` on whose basis the action will be decided.
         warning_action:
-            The (possibly undefined) action to take in the case that `verification_report`
+            The (possibly undefined) action to take in the case that `report`
             contains only warning-level findings or unverifiable packages.
 
     Returns:
-        A `tuple[Optional[FirewallAction], bool, Optional[FindingsReport]]` representing:
-            1. The `FirewallAction` resulting from `verification_report`, if one could be determined.
-            2. A `bool` indicating whether or not the findings warrant warning the user.
-            3. An `Optional[FindingsReport]` containing the findings that are relevant to `action`.
-
-        A `FirewallAction` cannot be determined when `verification_report` contains at most
-        warning-level findings or unverifiable packages and no predetermined action to take
-        automatically in response may be inferred (e.g., from the environment). In this case,
-        the user must be prompted interactively for their intent to proceed with the command.
+        Lorem ipsum dolor sit amet.
     """
-    critical_report = verification_report.get_findings_report(FindingSeverity.CRITICAL)
-    warning_report = verification_report.get_findings_report(FindingSeverity.WARNING)
+    critical_findings = report.get_findings(FindingSeverity.CRITICAL)
+    warning_findings = report.get_findings(FindingSeverity.WARNING)
 
     # Critical findings => BLOCK
-    if critical_report:
-        return FirewallAction.BLOCK, False, critical_report
+    if critical_findings:
+        return FirewallAction.BLOCK, False, critical_findings
 
-    # No warning findings and no unverifiable packages => ALLOW
-    if not (warning_report or verification_report.unverifiable):
+    # No critical or warning findings and no unverifiable packages => ALLOW
+    if not (warning_findings or report.get_unverified()):
         return FirewallAction.ALLOW, False, None
 
     # Warning findings or unverifiable packages => configured warning action (or user confirmation)
-    relevant_findings = FindingsReport.merge(
-        warning_report if warning_report else FindingsReport(),
-        verification_report.unverifiable,
-    )
-
-    return warning_action, True, relevant_findings
+    return warning_action, True, warning_findings if warning_findings else None
 
 
 def _get_warning_action(cli_allow_choice: bool, cli_block_choice: bool) -> Optional[FirewallAction]:

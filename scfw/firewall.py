@@ -34,7 +34,6 @@ def run_firewall(args: Namespace) -> int:
         An integer status code indicating normal or error exit.
     """
     package_manager = None
-    warning_action = _get_warning_action(args.allow_on_warning, args.block_on_warning)
 
     loggers = FirewallLoggers()
     _log.info(f"Command: '{' '.join(args.command)}'")
@@ -53,6 +52,7 @@ def run_firewall(args: Namespace) -> int:
         else:
             verification_report = VerificationReport.empty()
 
+        warning_action = _get_warning_action(args.allow_on_warning, args.block_on_warning)
         action, warned, relevant_findings = _determine_firewall_action(verification_report, warning_action)
 
         if relevant_findings:

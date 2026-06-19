@@ -9,7 +9,7 @@ import os
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity, PackageVerifier, UnverifiablePackage
+from scfw.verifier import Finding, FindingSeverity, PackageVerifier, UnverifiablePackage
 import scfw.verifiers.age_verifier.npm as npm
 import scfw.verifiers.age_verifier.pypi as pypi
 
@@ -73,7 +73,7 @@ class PackageAgeVerifier(PackageVerifier):
         """
         return {ECOSYSTEM.Npm, ECOSYSTEM.PyPI}
 
-    def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
+    def verify(self, package: Package) -> set[Finding]:
         """
         Determine how recently a given package was published and warn if this is deemed
         too recent based on a user-configurable minimum age.
@@ -82,8 +82,8 @@ class PackageAgeVerifier(PackageVerifier):
             package: The `Package` to verify.
 
         Returns:
-            A list containing a single `WARNING` finding if `package` is deemed to have
-            been published too recently, otherwise an empty list.
+            A `set[Finding]` containing a single `WARNING` finding if `package` is deemed
+            to have been published too recently, otherwise an empty set.
 
         Raises:
             UnverifiablePackage:
@@ -101,7 +101,7 @@ class PackageAgeVerifier(PackageVerifier):
             )
 
         if self.minimum_age == timedelta(0):
-            return []
+            return set()
 
         try:
             match package.ecosystem:
@@ -112,18 +112,21 @@ class PackageAgeVerifier(PackageVerifier):
 
             if datetime.now(tz=timezone.utc) - release_datetime_utc < self.minimum_age:
                 minimum_age_hours = int(self.minimum_age.total_seconds()) // 3600
-                return [(
-                    FindingSeverity.WARNING,
-                    (
-                        f"Package {package} was published less than {minimum_age_hours} hours ago"
-                        ": treat new releases with caution"
-                    ),
-                )]
+                return {
+                    Finding(
+                        self.name(),
+                        FindingSeverity.WARNING,
+                        (
+                            f"Package {package} was published less than {minimum_age_hours} hours ago"
+                            ": treat new releases with caution"
+                        ),
+                    )
+                }
 
         except Exception as e:
             _log.warning(f"Failed to determine publication datetime for package {package}: {e}")
 
-        return []
+        return set()
 
 
 def load_verifier() -> PackageVerifier:

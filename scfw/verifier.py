@@ -3,6 +3,7 @@ Provides a base class for package verifiers.
 """
 
 from abc import (ABCMeta, abstractmethod)
+from dataclasses import dataclass
 from enum import Enum
 from typing_extensions import Self
 
@@ -55,6 +56,16 @@ class FindingSeverity(Enum):
             raise ValueError(f"Invalid finding severity: '{s}'")
 
 
+@dataclass(eq=True, frozen=True)
+class Finding:
+    """
+    A finding reported by a verifier with an accompanying severity assessment.
+    """
+    verifier: str
+    severity: FindingSeverity
+    finding: str
+
+
 class PackageVerifier(metaclass=ABCMeta):
     """
     Abstract base class for package verifiers.
@@ -87,7 +98,7 @@ class PackageVerifier(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
+    def verify(self, package: Package) -> set[Finding]:
         """
         Verify the given package.
 
@@ -95,12 +106,10 @@ class PackageVerifier(metaclass=ABCMeta):
             package: The `Package` to verify.
 
         Returns:
-            A `list[tuple[FindingSeverity, str]]` of all findings for the given package
-            reported by the backing data source, each tagged with a severity level.
+            A `set[Finding]` of all findings reported for the given package.
 
-            Each `str` in this list should be a concise summary of a single finding and
-            would ideally provide a link or handle to more information about that finding
-            for the benefit of the user.
+            The text of each finding should be concise and would ideally link to or
+            reference other sources of information for the benefit of the user.
         """
         pass
 

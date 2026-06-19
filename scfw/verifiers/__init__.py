@@ -94,10 +94,10 @@ class FirewallVerifiers:
                 try:
                     if (findings := future.result()):
                         _log.info(f"Verifier {verifier} had findings for package {package}")
-                        for severity, finding in findings:
-                            if severity not in findings_reports:
-                                findings_reports[severity] = FindingsReport()
-                            findings_reports[severity].insert(package, finding)
+                        for finding in findings:
+                            if finding.severity not in findings_reports:
+                                findings_reports[finding.severity] = FindingsReport()
+                            findings_reports[finding.severity].insert(package, finding.finding)
                     else:
                         _log.info(f"Verifier {verifier} had no findings for package {package}")
 

@@ -64,7 +64,7 @@ class PackageManager(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def resolve_install_targets(self, command: list[str]) -> list[Package]:
+    def resolve_install_targets(self, command: list[str]) -> set[Package]:
         """
         Resolve the package targets that would be installed if the given package
         manager command were run (without running it).
@@ -73,18 +73,18 @@ class PackageManager(metaclass=ABCMeta):
             command: The package manager command whose installation targets are to be resolved.
 
         Returns:
-            A `list[Package]` representing the package targets that would be installed
+            A `set[Package]` representing the package targets that would be installed
             if `command` were run.
         """
         pass
 
     @abstractmethod
-    def list_installed_packages(self) -> list[Package]:
+    def get_installed_packages(self) -> set[Package]:
         """
-        List all installed packages.
+        Return the set of currently installed packages.
 
         Returns:
-            A `list[Package]` representing all currently installed packages.
+            A `set[Package]` representing all currently installed packages.
         """
         pass
 

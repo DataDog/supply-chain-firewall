@@ -72,7 +72,7 @@ def test_pip_command_resolve_install_targets_exact():
     Test that `Pip.resolve_install_targets` gives the right answer relative to
     an exact top-level installation target and its dependencies.
     """
-    true_targets = list(
+    true_targets = set(
         map(
             lambda p: Package(ECOSYSTEM.PyPI, p[0], p[1], RemotePackageSource(p[2])),
             [
@@ -116,9 +116,9 @@ def test_pip_command_resolve_install_targets_exact():
     assert all(target in true_targets for target in targets)
 
 
-def test_pip_list_installed_packages(monkeypatch):
+def test_pip_get_installed_packages(monkeypatch):
     """
-    Test that `Pip.list_installed_packages` returns a `Package` with a canonical PyPI
+    Test that `Pip.get_installed_packages` returns a `Package` with a canonical PyPI
     project page `RemotePackageSource` for a registry-installed package (no `direct_url`).
     """
     target = Package(
@@ -135,12 +135,12 @@ def test_pip_list_installed_packages(monkeypatch):
         subprocess.run([sys.executable, "-m", "venv", "venv"], check=True)
         subprocess.run([venv_pip, "install", f"{target.name}=={target.version}"], check=True)
 
-        assert target in Pip(executable=venv_pip).list_installed_packages()
+        assert target in Pip(executable=venv_pip).get_installed_packages()
 
 
-def test_pip_list_installed_packages_remote_source(monkeypatch):
+def test_pip_get_installed_packages_remote_source(monkeypatch):
     """
-    Test that `Pip.list_installed_packages` returns a `Package` with a `RemotePackageSource`
+    Test that `Pip.get_installed_packages` returns a `Package` with a `RemotePackageSource`
     for a package installed from a direct remote URL (not via the index).
     """
     jmespath_url = (
@@ -157,12 +157,12 @@ def test_pip_list_installed_packages_remote_source(monkeypatch):
         subprocess.run([sys.executable, "-m", "venv", "venv"], check=True)
         subprocess.run([venv_pip, "install", jmespath_url], check=True)
 
-        assert target in Pip(executable=venv_pip).list_installed_packages()
+        assert target in Pip(executable=venv_pip).get_installed_packages()
 
 
-def test_pip_list_installed_packages_local_source(new_pip_project_installed):
+def test_pip_get_installed_packages_local_source(new_pip_project_installed):
     """
-    Test that `Pip.list_installed_packages` returns a `Package` with a `LocalPackageSource`
+    Test that `Pip.get_installed_packages` returns a `Package` with a `LocalPackageSource`
     for a package installed from a local directory.
     """
     target = Package(
@@ -173,4 +173,4 @@ def test_pip_list_installed_packages_local_source(new_pip_project_installed):
     )
 
     venv_pip = new_pip_project_installed / "venv" / "bin" / "pip"
-    assert target in Pip(executable=venv_pip).list_installed_packages()
+    assert target in Pip(executable=venv_pip).get_installed_packages()

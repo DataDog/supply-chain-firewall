@@ -325,11 +325,11 @@ def test_resolve_install_targets_local_dependency_installed(
     )
 
 
-def test_list_installed_packages_empty_directory(monkeypatch, empty_directory):
+def test_get_installed_packages_empty_directory(monkeypatch, empty_directory):
     """
     Test that `Npm` correctly identifies installed packages in an empty directory.
     """
-    backend_test_list_installed_packages(
+    backend_test_get_installed_packages(
         monkeypatch,
         empty_directory,
         should_fail=False,
@@ -337,12 +337,12 @@ def test_list_installed_packages_empty_directory(monkeypatch, empty_directory):
     )
 
 
-def test_list_installed_packages_new_npm_project(monkeypatch, new_npm_project):
+def test_get_installed_packages_new_npm_project(monkeypatch, new_npm_project):
     """
     Test that `Npm` correctly identifies installed packages in a new npm project
     with no dependencies.
     """
-    backend_test_list_installed_packages(
+    backend_test_get_installed_packages(
         monkeypatch,
         new_npm_project,
         should_fail=False,
@@ -350,14 +350,14 @@ def test_list_installed_packages_new_npm_project(monkeypatch, new_npm_project):
     )
 
 
-def test_list_installed_packages_dependency_latest(monkeypatch, npm_project_dependency_latest):
+def test_get_installed_packages_dependency_latest(monkeypatch, npm_project_dependency_latest):
     """
     Test that `Npm` correctly identifies installed packages in a new npm project
     with an uninstalled dependency. `npm list` exits non-zero with ELSPROBLEMS in
     this case, but the JSON report it writes to stdout is still consumed, and the
     declared-but-uninstalled dependency is reported as not installed.
     """
-    backend_test_list_installed_packages(
+    backend_test_get_installed_packages(
         monkeypatch,
         npm_project_dependency_latest,
         should_fail=False,
@@ -365,7 +365,7 @@ def test_list_installed_packages_dependency_latest(monkeypatch, npm_project_depe
     )
 
 
-def test_list_installed_packages_dependency_latest_lockfile(
+def test_get_installed_packages_dependency_latest_lockfile(
     monkeypatch,
     npm_project_dependency_latest_lockfile
 ):
@@ -374,7 +374,7 @@ def test_list_installed_packages_dependency_latest_lockfile(
     with an uninstalled dependency and a lockfile. As above, `npm list` exits
     non-zero but its JSON report is still consumed.
     """
-    backend_test_list_installed_packages(
+    backend_test_get_installed_packages(
         monkeypatch,
         npm_project_dependency_latest_lockfile,
         should_fail=False,
@@ -382,12 +382,12 @@ def test_list_installed_packages_dependency_latest_lockfile(
     )
 
 
-def test_list_installed_packages_installed_latest(monkeypatch, npm_project_installed_latest):
+def test_get_installed_packages_installed_latest(monkeypatch, npm_project_installed_latest):
     """
     Test that `Npm` correctly identifies installed packages in an npm project
     with an installed dependency.
     """
-    backend_test_list_installed_packages(
+    backend_test_get_installed_packages(
         monkeypatch,
         npm_project_installed_latest,
         should_fail=False,
@@ -395,19 +395,19 @@ def test_list_installed_packages_installed_latest(monkeypatch, npm_project_insta
     )
 
 
-def test_list_installed_packages_local_dependency_installed(
+def test_get_installed_packages_local_dependency_installed(
     monkeypatch,
     npm_project_local_dependency_installed,
 ):
     """
-    Test that `Npm.list_installed_packages` reports an installed local file:
+    Test that `Npm.get_installed_packages` reports an installed local file:
     dependency with its `LocalPackageSource` populated to the original source path.
     """
     expected_source = (
         npm_project_local_dependency_installed.parent / LOCAL_PACKAGE_NAME
     ).resolve(strict=True)
 
-    backend_test_list_installed_packages(
+    backend_test_get_installed_packages(
         monkeypatch,
         npm_project_local_dependency_installed,
         should_fail=False,
@@ -422,10 +422,10 @@ def test_list_installed_packages_local_dependency_installed(
     )
 
 
-def test_list_installed_packages_uses_root_lockfile_for_missing_resolved(monkeypatch, tmp_path):
+def test_get_installed_packages_uses_root_lockfile_for_missing_resolved(monkeypatch, tmp_path):
     """
     When `npm list` omits `resolved` for a deduped package but the root
-    package-lock.json has it, list_installed_packages populates source from
+    package-lock.json has it, `Npm.get_installed_packages` populates source from
     the lock file instead of leaving it None.
     """
     resolved_url = "https://registry.npmjs.org/deduped-pkg/-/deduped-pkg-1.0.0.tgz"
@@ -457,14 +457,14 @@ def test_list_installed_packages_uses_root_lockfile_for_missing_resolved(monkeyp
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
     monkeypatch.chdir(tmp_path)
 
-    packages = PACKAGE_MANAGER.list_installed_packages()
+    packages = PACKAGE_MANAGER.get_installed_packages()
 
     assert Package(
         ECOSYSTEM.Npm, "deduped-pkg", "1.0.0", source=RemotePackageSource(resolved_url)
-    ) in set(packages)
+    ) in packages
 
 
-def test_list_installed_packages_uses_root_lockfile_for_non_hoisted_packages(monkeypatch, tmp_path):
+def test_get_installed_packages_uses_root_lockfile_for_non_hoisted_packages(monkeypatch, tmp_path):
     """
     When a transitive dep can't be hoisted (version conflict with a top-level dep),
     the lock file records it under `node_modules/<parent>/node_modules/<child>`.
@@ -506,19 +506,19 @@ def test_list_installed_packages_uses_root_lockfile_for_non_hoisted_packages(mon
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
     monkeypatch.chdir(tmp_path)
 
-    packages = PACKAGE_MANAGER.list_installed_packages()
+    packages = PACKAGE_MANAGER.get_installed_packages()
 
     assert Package(
         ECOSYSTEM.Npm, "conflict-pkg", "2.0.0", source=RemotePackageSource(nested_url)
-    ) in set(packages)
+    ) in packages
 
 
-def test_list_installed_packages_uses_local_dep_lockfile_for_transitive_packages(
+def test_get_installed_packages_uses_local_dep_lockfile_for_transitive_packages(
     monkeypatch, tmp_path
 ):
     """
     When a local file: dependency's transitive packages lack `resolved` in
-    `npm list` output, list_installed_packages uses the local package's own
+    `npm list` output, get_installed_packages uses the local package's own
     package-lock.json to populate source.
     """
     transitive_url = "https://registry.npmjs.org/transitive-pkg/-/transitive-pkg-3.0.0.tgz"
@@ -555,14 +555,14 @@ def test_list_installed_packages_uses_local_dep_lockfile_for_transitive_packages
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
     monkeypatch.chdir(tmp_path)
 
-    packages = PACKAGE_MANAGER.list_installed_packages()
+    packages = PACKAGE_MANAGER.get_installed_packages()
 
     assert Package(
         ECOSYSTEM.Npm, "transitive-pkg", "3.0.0", source=RemotePackageSource(transitive_url)
-    ) in set(packages)
+    ) in packages
 
 
-def test_list_installed_packages_silently_skips_uninstalled_deps(monkeypatch, tmp_path, caplog):
+def test_get_installed_packages_silently_skips_uninstalled_deps(monkeypatch, tmp_path, caplog):
     """
     Dependencies that appear in `npm list` with no version field (e.g. uninstalled
     optional peer deps) are silently skipped — no WARNING is emitted.
@@ -585,16 +585,16 @@ def test_list_installed_packages_silently_skips_uninstalled_deps(monkeypatch, tm
     monkeypatch.chdir(tmp_path)
 
     with caplog.at_level(logging.WARNING, logger="scfw.package_managers.npm"):
-        packages = PACKAGE_MANAGER.list_installed_packages()
+        packages = PACKAGE_MANAGER.get_installed_packages()
 
-    assert set(packages) == {Package(ECOSYSTEM.Npm, "good-package", "1.2.3", source=RemotePackageSource(good_url))}
+    assert packages == {Package(ECOSYSTEM.Npm, "good-package", "1.2.3", source=RemotePackageSource(good_url))}
     assert not any("uninstalled-peer" in r.message for r in caplog.records if r.levelno >= logging.WARNING)
 
 
-def test_list_installed_packages_keeps_dep_with_missing_local_source(monkeypatch, tmp_path):
+def test_get_installed_packages_keeps_dep_with_missing_local_source(monkeypatch, tmp_path):
     """
     Regression test: when `npm list` reports a `file:` dep whose target does
-    not exist on disk, `list_installed_packages` should still return the
+    not exist on disk, `Npm.get_installed_packages` should still return the
     package (without source data) instead of silently dropping it.
     """
     npm_list_output = json.dumps({
@@ -615,12 +615,12 @@ def test_list_installed_packages_keeps_dep_with_missing_local_source(monkeypatch
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
     monkeypatch.chdir(tmp_path)
 
-    packages = PACKAGE_MANAGER.list_installed_packages()
+    packages = PACKAGE_MANAGER.get_installed_packages()
 
-    assert set(packages) == {Package(ECOSYSTEM.Npm, "ghost-package", "1.0.0")}
+    assert packages == {Package(ECOSYSTEM.Npm, "ghost-package", "1.0.0")}
 
 
-def test_list_installed_packages_skips_malformed_entries(monkeypatch, tmp_path):
+def test_get_installed_packages_skips_malformed_entries(monkeypatch, tmp_path):
     """
     Malformed entries (e.g., missing `version`, or a non-dict in place of an
     entry) are dropped with a warning, but well-formed sibling entries are
@@ -649,9 +649,9 @@ def test_list_installed_packages_skips_malformed_entries(monkeypatch, tmp_path):
     monkeypatch.setattr(PACKAGE_MANAGER, "_check_version", lambda: None)
     monkeypatch.chdir(tmp_path)
 
-    packages = PACKAGE_MANAGER.list_installed_packages()
+    packages = PACKAGE_MANAGER.get_installed_packages()
 
-    assert set(packages) == {
+    assert packages == {
         Package(ECOSYSTEM.Npm, "good-package", "1.2.3", source=RemotePackageSource(good_url)),
     }
 
@@ -680,14 +680,14 @@ def backend_test_resolve_install_targets(
     assert get_npm_project_state(project) == initial_state
 
 
-def backend_test_list_installed_packages(
+def backend_test_get_installed_packages(
     monkeypatch,
     project: Path,
     should_fail: bool,
     installed: set[Package],
 ):
     """
-    Backend function for testing that the `Npm.list_installed_packages()` method
+    Backend function for testing that the `Npm.get_installed_packages()` method
     correctly identifies installed packages or fails to do so in the given `project`.
 
     Args:
@@ -700,12 +700,12 @@ def backend_test_list_installed_packages(
 
     if should_fail:
         with pytest.raises(RuntimeError):
-            PACKAGE_MANAGER.list_installed_packages()
+            PACKAGE_MANAGER.get_installed_packages()
         return
 
-    experiment = PACKAGE_MANAGER.list_installed_packages()
+    experiment = PACKAGE_MANAGER.get_installed_packages()
     assert len(experiment) == len(installed)
-    assert set(experiment) == installed
+    assert experiment == installed
 
 
 def get_npm_project_state(project_path: Path) -> str:

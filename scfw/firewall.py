@@ -78,7 +78,7 @@ def run_firewall(args: Namespace) -> int:
             package_manager.executable(),
             FirewallRunSummary(
                 args.command,
-                set(install_targets) if action == FirewallAction.ALLOW else set(),
+                install_targets if action == FirewallAction.ALLOW else set(),
                 report,
                 relevant_findings,
                 warned,

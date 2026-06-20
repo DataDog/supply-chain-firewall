@@ -86,7 +86,7 @@ class Npm(PackageManager):
         """
         return subprocess.run(self._normalize_command(command)).returncode
 
-    def resolve_install_targets(self, command: list[str]) -> list[Package]:
+    def resolve_install_targets(self, command: list[str]) -> set[Package]:
         """
         Resolve the installation targets of the given `npm` command.
 
@@ -96,7 +96,7 @@ class Npm(PackageManager):
                 are to be resolved.
 
         Returns:
-            A `list[Package]` representing the package targets that would be installed
+            A `set[Package]` representing the package targets that would be installed
             if `command` were run.
 
         Raises:
@@ -109,13 +109,13 @@ class Npm(PackageManager):
 
         # For now, allow all non-`install` commands
         if not any(alias in command for alias in _INSTALL_COMMAND_ALIASES):
-            return []
+            return set()
 
         self._check_version()
 
         # On supported versions, the presence of these options prevents the command from running
         if any(opt in command for opt in {"-h", "--help", "--dry-run", "--version"}):
-            return []
+            return set()
 
         try:
             with TemporaryNpmProject(self._executable) as temp_project:
@@ -124,22 +124,22 @@ class Npm(PackageManager):
         except Exception as e:
             raise RuntimeError(f"Failed to resolve npm installation targets: {e}")
 
-    def list_installed_packages(self) -> list[Package]:
+    def get_installed_packages(self) -> set[Package]:
         """
-        List all `npm` packages installed in the active `npm` environment.
+        Return the set of `npm` packages installed in the active `npm` environment.
 
         Returns:
-            A `list[Package]` representing all `npm` packages installed in the active
+            A `set[Package]` representing all `npm` packages installed in the active
             `npm` environment.
 
         Raises:
-            RuntimeError: Failed to list installed packages or decode report JSON.
+            RuntimeError: Failed to determine installed packages or decode report JSON.
             UnsupportedVersionError: The underlying `npm` executable is of an unsupported version.
         """
         self._check_version()
 
         try:
-            return installed.list_installed_packages(self.executable())
+            return installed.get_installed_packages(self.executable())
 
         except json.JSONDecodeError as e:
             raise RuntimeError(f"Failed to decode installed package report JSON: {e}")

@@ -69,7 +69,7 @@ class FirewallVerifiers:
         """
         return [verifier.name() for verifier in self._verifiers]
 
-    def verify_packages(self, packages: list[Package]) -> VerificationReport:
+    def verify_packages(self, packages: set[Package]) -> VerificationReport:
         """
         Verify a set of packages against all discovered verifiers.
 
@@ -84,7 +84,7 @@ class FirewallVerifiers:
         with cf.ThreadPoolExecutor() as executor:
             task_results = {
                 executor.submit(lambda v, t: v.verify(t), verifier, package): (verifier.name(), package)
-                for verifier, package in itertools.product(self._verifiers, set(packages))
+                for verifier, package in itertools.product(self._verifiers, packages)
             }
             for future in cf.as_completed(task_results):
                 verifier, package = task_results[future]

@@ -207,7 +207,7 @@ class TemporaryNpmProject:
         self._temp_dir.cleanup()
         self._temp_dir = None
 
-    def resolve_install_command_targets(self, install_command: list[str]) -> list[Package]:
+    def resolve_install_command_targets(self, install_command: list[str]) -> set[Package]:
         """
         Resolve installation targets for an `npm install` command in the temporary environment.
 
@@ -218,7 +218,7 @@ class TemporaryNpmProject:
                 to ensure only `npm install` commands are passed to this method.
 
         Returns:
-            A `list[Package]` representing the set of installation targets that would be
+            A `set[Package]` representing the set of installation targets that would be
             installed by the given `npm install` command.
 
         Raises:
@@ -340,14 +340,14 @@ class TemporaryNpmProject:
             )
         except subprocess.CalledProcessError:
             _log.info("Input npm install command results in error: nothing will be installed")
-            return []
+            return set()
 
         dry_run_log = dry_run_process.stderr.strip().split('\n')
 
         # Each target handle corresponds to a (possibly duplicated) installation target
         target_handles = extract_target_handles(dry_run_log, temp_dir_path)
         if not target_handles:
-            return []
+            return set()
 
         # Safely run the given `npm install` command to write or update the lockfile
         # All supported versions of npm support these additional `install` command options
@@ -366,7 +366,7 @@ class TemporaryNpmProject:
                 raise KeyError("Malformed dependencies data in package-lock.json")
 
         # Read added and changed packages out of the lockfile
-        return list({handle_to_install_target(dependencies, handle) for handle in target_handles})
+        return set({handle_to_install_target(dependencies, handle) for handle in target_handles})
 
     def _normalize_command(self, command: list[str]) -> list[str]:
         """

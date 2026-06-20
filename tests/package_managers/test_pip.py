@@ -267,7 +267,7 @@ def test_pip_inspect_matches_pip_list_pip_project_local_dependency_installed(pip
 def test_pip_inspect_registry_package_no_direct_url(pip_project_remote_dependency_installed):
     """
     Test that a package installed from the PyPI registry has no `direct_url` entry in
-    `pip inspect` output. When `direct_url` is absent, `Pip.list_installed_packages`
+    `pip inspect` output. When `direct_url` is absent, `Pip.get_installed_packages`
     treats this as a registry install and uses the canonical PyPI project page URL as a
     stand-in `RemotePackageSource`.
     """

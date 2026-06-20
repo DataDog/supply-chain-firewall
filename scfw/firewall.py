@@ -10,7 +10,7 @@ import sys
 from typing import Optional
 
 from scfw.constants import ON_WARNING_VAR
-from scfw.logger import FirewallAction
+from scfw.logger import FirewallAction, FirewallRunSummary
 from scfw.loggers import FirewallLoggers
 from scfw.package_manager import UnsupportedVersionError
 import scfw.package_managers as package_managers
@@ -41,14 +41,14 @@ def run_firewall(args: Namespace) -> int:
     try:
         package_manager = package_managers.get_package_manager(args.package_manager, executable=args.executable)
 
-        targets = package_manager.resolve_install_targets(args.command)
-        _log.info(f"Command would install: [{', '.join(map(str, targets))}]")
+        install_targets = package_manager.resolve_install_targets(args.command)
+        _log.info(f"Command would install: [{', '.join(map(str, install_targets))}]")
 
-        if targets:
+        if install_targets:
             verifiers = FirewallVerifiers(package_manager.ecosystem())
             _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
 
-            report = verifiers.verify_packages(targets)
+            report = verifiers.verify_packages(install_targets)
         else:
             report = VerificationReport()
 
@@ -72,15 +72,18 @@ def run_firewall(args: Namespace) -> int:
             user_confirmed = inquirer.confirm("Proceed with installation?", default=False)
             action = FirewallAction.ALLOW if user_confirmed else FirewallAction.BLOCK
 
-        loggers.log_firewall_action(
+        loggers.log_firewall_run(
             package_manager.ecosystem(),
             package_manager.name(),
             package_manager.executable(),
-            args.command,
-            action,
-            warned,
-            relevant_findings,
-            report,
+            FirewallRunSummary(
+                args.command,
+                set(install_targets) if action == FirewallAction.ALLOW else set(),
+                report,
+                relevant_findings,
+                warned,
+                action,
+            ),
         )
 
         match action:
@@ -104,15 +107,18 @@ def run_firewall(args: Namespace) -> int:
         if not package_manager:
             raise RuntimeError("Failed to initialize package manager handle: cannot run command")
 
-        loggers.log_firewall_action(
+        loggers.log_firewall_run(
             package_manager.ecosystem(),
             package_manager.name(),
             package_manager.executable(),
-            args.command,
-            action=FirewallAction.ALLOW,
-            warned=False,
-            relevant_findings=None,
-            report=None,
+            FirewallRunSummary(
+                args.command,
+                install_targets=None,
+                report=None,
+                relevant_findings=None,
+                warned=False,
+                action=FirewallAction.ALLOW,
+            ),
         )
         return package_manager.run_command(args.command)
 

@@ -4,11 +4,13 @@ completed run of the supply-chain firewall.
 """
 
 from abc import (ABCMeta, abstractmethod)
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 from typing_extensions import Self
 
 from scfw.ecosystem import ECOSYSTEM
+from scfw.package import Package
 from scfw.report import FindingsReport, VerificationReport
 
 
@@ -70,22 +72,31 @@ class FirewallAction(Enum):
         raise ValueError(f"Invalid firewall action '{s}'")
 
 
+@dataclass(eq=True, frozen=True)
+class FirewallRunSummary:
+    """
+    Lorem ipsum dolor sit amet
+    """
+    command: list[str]
+    install_targets: Optional[set[Package]]
+    report: Optional[VerificationReport]
+    relevant_findings: Optional[FindingsReport]
+    warned: bool
+    action: FirewallAction
+
+
 class FirewallLogger(metaclass=ABCMeta):
     """
     An interface for passing information about runs of Supply-Chain Firewall to
     client loggers.
     """
     @abstractmethod
-    def log_firewall_action(
+    def log_firewall_run(
         self,
         ecosystem: ECOSYSTEM,
         package_manager: str,
         executable: str,
-        command: list[str],
-        action: FirewallAction,
-        warned: bool,
-        relevant_findings: Optional[FindingsReport],
-        report: Optional[VerificationReport],
+        run_summary: FirewallRunSummary,
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall.
@@ -94,13 +105,7 @@ class FirewallLogger(metaclass=ABCMeta):
             ecosystem: The ecosystem of the inspected package manager command.
             package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
-            command: The package manager command line provided to the firewall.
-            action: The action taken by Supply-Chain Firewall.
-            warned:
-                Indicates whether the user was warned about findings for any installation
-                targets and prompted for approval to proceed with `command`.
-            relevant_findings: Lorem ipsum dolor sit amet.
-            report: Lorem ipsum dolor sit amet.
+            run_summary: Lorem ipsum dolor sit amet.
         """
         pass
 

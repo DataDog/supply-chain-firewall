@@ -25,11 +25,10 @@ import importlib
 import logging
 import os
 import pkgutil
-from typing import Optional
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.logger import FirewallAction, FirewallLogger
-from scfw.report import FindingsReport, VerificationReport
+from scfw.logger import FirewallLogger, FirewallRunSummary
+from scfw.report import VerificationReport
 
 _log = logging.getLogger(__name__)
 
@@ -58,16 +57,12 @@ class FirewallLoggers(FirewallLogger):
         if not self._loggers:
             _log.warning("No loggers were discovered and successfully initialized")
 
-    def log_firewall_action(
+    def log_firewall_run(
         self,
         ecosystem: ECOSYSTEM,
         package_manager: str,
         executable: str,
-        command: list[str],
-        action: FirewallAction,
-        warned: bool,
-        relevant_findings: Optional[FindingsReport],
-        report: Optional[VerificationReport],
+        run_summary: FirewallRunSummary,
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall to
@@ -75,18 +70,14 @@ class FirewallLoggers(FirewallLogger):
         """
         for logger in self._loggers:
             try:
-                logger.log_firewall_action(
+                logger.log_firewall_run(
                     ecosystem,
                     package_manager,
                     executable,
-                    command,
-                    action,
-                    warned,
-                    relevant_findings,
-                    report,
+                    run_summary,
                 )
             except Exception as e:
-                _log.warning(f"Failed to log firewall action: {e}")
+                _log.warning(f"Failed to log firewall run: {e}")
 
     def log_audit(
         self,

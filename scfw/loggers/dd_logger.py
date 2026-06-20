@@ -8,15 +8,15 @@ import logging
 import os
 from pathlib import Path
 import socket
-from typing import Any, Optional
+from typing import Any
 
 import dotenv
 
 import scfw
 from scfw.constants import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE, SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
-from scfw.logger import FirewallAction, FirewallLogger
-from scfw.report import FindingsReport, VerificationReport
+from scfw.logger import FirewallAction, FirewallLogger, FirewallRunSummary
+from scfw.report import VerificationReport
 from scfw.verifier import FindingSeverity
 
 _log = logging.getLogger(__name__)
@@ -178,16 +178,12 @@ class DDLogger(FirewallLogger):
         except ValueError:
             _log.warning(f"Invalid value for {DD_LOG_LEVEL_VAR}: using default level {_DD_LOG_LEVEL_DEFAULT}")
 
-    def log_firewall_action(
+    def log_firewall_run(
         self,
         ecosystem: ECOSYSTEM,
         package_manager: str,
         executable: str,
-        command: list[str],
-        action: FirewallAction,
-        warned: bool,
-        relevant_findings: Optional[FindingsReport],
-        report: Optional[VerificationReport],
+        run_summary: FirewallRunSummary,
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall.
@@ -196,33 +192,29 @@ class DDLogger(FirewallLogger):
             ecosystem: The ecosystem of the inspected package manager command.
             package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
-            command: The package manager command line provided to the firewall.
-            action: The action taken by the firewall.
-            warned: Indicates whether the user was warned about findings and prompted for approval.
-            relevant_findings: The findings, if any, relevant to the action taken.
-            report: The complete `VerificationReport`, if any, resulting from verification.
+            run_summary: Lorem ipsum dolor sit amet.
         """
-        if action < self._level:
+        if run_summary.action < self._level:
             return
 
         # TODO(ikretz): Log unverifiable packages
-        if action == FirewallAction.ALLOW and report:
-            targets = sorted(map(str, report.packages()))
-        elif action == FirewallAction.BLOCK and relevant_findings:
-            targets = sorted(map(str, relevant_findings))
+        if run_summary.action == FirewallAction.ALLOW and run_summary.report:
+            targets = sorted(map(str, run_summary.report.packages()))
+        elif run_summary.action == FirewallAction.BLOCK and run_summary.relevant_findings:
+            targets = sorted(map(str, run_summary.relevant_findings))
         else:
             targets = []
 
         self._logger.info(
-            f"Command '{' '.join(command)}' was {str(action).lower()}ed",
+            f"Command '{' '.join(run_summary.command)}' was {str(run_summary.action).lower()}ed",
             extra={
                 "ecosystem": str(ecosystem),
                 "package_manager": package_manager,
                 "executable": executable,
                 "targets": targets,
-                "action": str(action),
-                "verified": report is not None,
-                "warned": warned,
+                "action": str(run_summary.action),
+                "verified": run_summary.report is not None,
+                "warned": run_summary.warned,
             }
         )
 

@@ -25,6 +25,22 @@ class FindingSeverity(Enum):
     CRITICAL = "CRITICAL"
     WARNING = "WARNING"
 
+    def __lt__(self, other) -> bool:
+        """
+        Lorem ipsum dolor sit amet.
+        """
+        order = {
+            "CRITICAL": 2,
+            "WARNING": 1,
+        }
+
+        if self.__class__ is not other.__class__:
+            raise TypeError(
+                f"'<' not supported between instances of '{self.__class__}' and '{other.__class__}'"
+            )
+
+        return order[self.name] < order[other.name]
+
     def __str__(self) -> str:
         """
         Format a `FindingSeverity` for printing.

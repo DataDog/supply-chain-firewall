@@ -7,6 +7,7 @@ import logging
 
 from scfw.loggers import FirewallLoggers
 import scfw.package_managers as package_managers
+from scfw.report import show_reports
 from scfw.verifier import FindingSeverity
 from scfw.verifiers import FirewallVerifiers
 
@@ -39,18 +40,13 @@ def run_audit(args: Namespace) -> int:
             report,
         )
 
-        # TODO(ikretz): Pretty print audit findings
-        found_issues = False
-        for severity in FindingSeverity:
-            if (findings := report.get_findings(severity)):
-                found_issues = True
-                print(findings)
-
-        if (unverified := report.get_unverified()):
-            found_issues = True
-            print(unverified)
-
-        if not found_issues:
+        output = show_reports(
+            [report.get_findings(severity) for severity in FindingSeverity],
+            report.get_unverified(),
+        )
+        if output:
+            print(output)
+        else:
             print("No issues found.")
 
     return 0

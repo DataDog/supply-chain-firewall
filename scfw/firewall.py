@@ -14,7 +14,7 @@ from scfw.logger import FirewallAction
 from scfw.loggers import FirewallLoggers
 from scfw.package_manager import UnsupportedVersionError
 import scfw.package_managers as package_managers
-from scfw.report import FindingsReport, VerificationReport
+from scfw.report import FindingsReport, VerificationReport, show_reports
 from scfw.verifier import FindingSeverity
 from scfw.verifiers import FirewallVerifiers
 
@@ -55,10 +55,12 @@ def run_firewall(args: Namespace) -> int:
         warning_action = _get_warning_action(args.allow_on_warning, args.block_on_warning)
         action, warned, relevant_findings = _determine_firewall_action(report, warning_action)
 
-        # TODO(ikretz): Also print unverified packages
-        # TODO(ikretz): Pretty print `relevant_findings`
-        if relevant_findings:
-            print(relevant_findings)
+        output = show_reports(
+            [relevant_findings] if relevant_findings else [],
+            report.get_unverified()
+        )
+        if output:
+            print(output)
 
         if args.dry_run:
             _log.info("Firewall dry-run mode enabled: command will not be run")

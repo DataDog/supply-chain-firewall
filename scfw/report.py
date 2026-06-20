@@ -101,3 +101,47 @@ class VerificationReport:
         Lorem ipsum dolor sit amet.
         """
         return self._clean | set(self._findings) | set(self._unverified)
+
+
+def show_reports(findings_reports: list[FindingsReport], unverified_report: UnverifiedReport) -> str:
+    """
+    Lorem ipsum dolor sit amet.
+    """
+    def show_line(linenum: int, line: str) -> str:
+        return (f"  - {line}" if linenum == 0 else f"    {line}")
+
+    def show_finding(finding: str) -> str:
+        return '\n'.join(
+            show_line(linenum, line) for linenum, line in enumerate(finding.split('\n'))
+        )
+
+    def show_output(package: Package, findings: list[str]) -> str:
+        return f"Package {package}:\n" + '\n'.join(map(show_finding, findings))
+
+    # Combine the given `FindingsReport` into a single one
+    combined_findings_report: FindingsReport = {}
+    for findings_report in findings_reports:
+        for package, findings in findings_report.items():
+            if package not in combined_findings_report:
+                combined_findings_report[package] = set(findings)
+            else:
+                combined_findings_report[package] |= findings
+
+    # Sort the findings for each package based on severity
+    sorted_findings = {
+        package: sorted(findings, key=lambda f: f.severity)
+        for package, findings in combined_findings_report.items()
+    }
+
+    # Prepare the findings + unverified output for each package
+    combined_output = {}
+    for package in set(sorted_findings) | set(unverified_report):
+        findings = list(map(lambda f: f.finding, sorted_findings.get(package, [])))
+        unverified = list(map(lambda u: u.message, unverified_report.get(package, {})))
+        combined_output[package] = findings + unverified
+
+    # Print the output to string, alphabetized by package name
+    return '\n'.join(
+        show_output(package, combined_output[package])
+        for package in sorted(set(sorted_findings) | set(unverified_report), key=str)
+    )

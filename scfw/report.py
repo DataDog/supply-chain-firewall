@@ -12,7 +12,7 @@ from scfw.verifier import Finding, FindingSeverity
 @dataclass(eq=True, frozen=True)
 class Unverified:
     """
-    Lorem ipsum dolor sit amet.
+    A message from a verifier indicating why it was unable to verify.
     """
     verifier: str
     message: str
@@ -20,22 +20,22 @@ class Unverified:
 
 FindingsReport: TypeAlias = dict[Package, set[Finding]]
 """
-Lorem ipsum dolor sit amet.
+A structured report containing findings for a set of `Package`.
 """
 
 UnverifiedReport: TypeAlias = dict[Package, set[Unverified]]
 """
-Lorem ipsum dolor sit amet.
+A structured report containing unverifiable messages for a set of `Package`.
 """
 
 
 class VerificationReport:
     """
-    Lorem ipsum dolor sit amet.
+    A structured report containing the results of verifying a set of `Package`.
     """
     def __init__(self) -> None:
         """
-        Lorem ipsum dolor sit amet.
+        Initialize an empty `VerificationReport`.
         """
         self._clean: set[Package] = set()
         self._findings: FindingsReport = {}
@@ -43,13 +43,21 @@ class VerificationReport:
 
     def get_clean(self) -> set[Package]:
         """
-        Lorem ipsum dolor sit amet.
+        Return the set of "clean" packages contained in the report.
+
+        Returns:
+            A `set[Package]` containing those packages in the report which were
+            able to be verified successfully and for which there were no findings.
         """
         return set(self._clean)
 
     def get_findings(self, severity: FindingSeverity) -> FindingsReport:
         """
-        Lorem ipsum dolor sit amet.
+        Return a structured report on packages that had findings of a given severity.
+
+        Returns:
+            A `FindingsReport` covering the `Package` contained in the report that
+            had reported findings of the given `FindingSeverity.
         """
         severity_findings = {}
 
@@ -61,13 +69,24 @@ class VerificationReport:
 
     def get_unverified(self) -> UnverifiedReport:
         """
-        Lorem ipsum dolor sit amet.
+        Return a structured report on packages that were unable to be verified.
+
+        Returns:
+            A `UnverifiedReport` covering the `Package` contained in the report
+            that were unable to be verified by at least one verifier.
         """
         return {package: set(unverified) for package, unverified in self._unverified.items()}
 
     def insert_clean(self, package: Package) -> None:
         """
-        Lorem ipsum dolor sit amet.
+        Insert a clean package into the report.
+
+        Args:
+            package:
+                The clean `Package` to be inserted into the report.
+
+                This function is a no-op if `package` already has findings in the report
+                or is known to be unverifiable by at least one verifier.
         """
         if package in self._findings or package in self._unverified:
             return
@@ -76,7 +95,11 @@ class VerificationReport:
 
     def insert_finding(self, package: Package, finding: Finding) -> None:
         """
-        Lorem ipsum dolor sit amet.
+        Insert a finding for a given package into the report.
+
+        Args:
+            `package`: The `Package` the finding pertains to.
+            `finding`: The `Finding` to be inserted for `package`.
         """
         if package not in self._findings:
             self._findings[package] = set()
@@ -87,7 +110,11 @@ class VerificationReport:
 
     def insert_unverified(self, package: Package, unverified: Unverified) -> None:
         """
-        Lorem ipsum dolor sit amet.
+        Insert an unverified message for a given package into the report.
+
+        Args:
+            `package`: The `Package` the unverified message pertains to.
+            `unverified`: The `Unverified` message to be inserted for `package`.
         """
         if package not in self._unverified:
             self._unverified[package] = set()
@@ -98,14 +125,25 @@ class VerificationReport:
 
     def packages(self) -> set[Package]:
         """
-        Lorem ipsum dolor sit amet.
+        Return the set of packages contained in the report.
+
+        Returns:
+            A `set[Package]` containing all packages mentioned in the report.
         """
         return self._clean | set(self._findings) | set(self._unverified)
 
 
 def show_reports(findings_reports: list[FindingsReport], unverified_report: UnverifiedReport) -> str:
     """
-    Lorem ipsum dolor sit amet.
+    Return a pretty-printed string representation of the given reports.
+
+    Args:
+        `findings_reports`: A `list[FindingsReports]` to be formatted for printing.
+        'unverified_report`: An `UnverifiedReport` to be formatted for printing.
+
+    Returns:
+        A pretty-printed `str` representation of the given reports suitable for displaying
+        to the user during a run of Supply-Chain Firewall.
     """
     def show_line(linenum: int, line: str) -> str:
         return (f"  - {line}" if linenum == 0 else f"    {line}")

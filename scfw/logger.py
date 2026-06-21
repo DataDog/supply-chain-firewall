@@ -75,7 +75,7 @@ class FirewallAction(Enum):
 @dataclass(eq=True, frozen=True)
 class FirewallRunSummary:
     """
-    Lorem ipsum dolor sit amet
+    A structured summary of a run of Supply-Chain Firewall used for logging.
     """
     command: list[str]
     install_targets: Optional[set[Package]]
@@ -105,7 +105,7 @@ class FirewallLogger(metaclass=ABCMeta):
             ecosystem: The ecosystem of the inspected package manager command.
             package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
-            run_summary: Lorem ipsum dolor sit amet.
+            run_summary: The summary of the completed run of Supply-Chain Firewall to be logged.
         """
         pass
 
@@ -124,6 +124,6 @@ class FirewallLogger(metaclass=ABCMeta):
             ecosystem: The ecosystem of the audited packages.
             package_manager: The package manager that manages the audited packages.
             executable: The package manager executable used to enumerate audited packages.
-            report: Lorem ipsum dolor sit amet.
+            report: The report containing the verification results for the audited packages.
         """
         pass

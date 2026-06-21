@@ -109,7 +109,14 @@ class Package:
 
     def to_dict(self) -> dict[str, Optional[str]]:
         """
-        Lorem ipsum dolor sit amet.
+        Generate a JSON-compatible dictionary representation of a `Package`.
+
+        Returns:
+            A JSON-compatible `dict` representing the contents of the given `Package`.
+
+            The distinction between local and remote package artifact sources is
+            erased in the returned `dict`: instead, a `str` representation of the
+            underlying URl or local file path is included (or `None`).
         """
         if (local_source := self.get_local_source()):
             source = str(local_source.local_source)

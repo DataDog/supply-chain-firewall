@@ -98,7 +98,7 @@ class FirewallVerifiers:
                         report.insert_clean(package)
 
                 except UnverifiablePackage as e:
-                    _log.info("Lorem ipsum dolor sit amet")
+                    _log.info(f"Verifier {verifier} was unable to verify package {package}")
                     report.insert_unverified(
                         package,
                         Unverified(

@@ -196,7 +196,7 @@ class DDLogger(FirewallLogger):
             ecosystem: The ecosystem of the inspected package manager command.
             package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
-            run_summary: Lorem ipsum dolor sit amet.
+            run_summary: The summary of the completed run of Supply-Chain Firewall to be logged.
         """
         if run_summary.action < self._level:
             return
@@ -238,7 +238,7 @@ class DDLogger(FirewallLogger):
             ecosystem: The ecosystem of the audited packages.
             package_manager: The package manager that manages the audited packages.
             executable: The package manager executable used to enumerate audited packages.
-            report: The `VerificationReport` resulting from auditing the installed packages.
+            report: The report containing the verification results for the audited packages.
         """
         self._logger.info(
             f"Successfully audited {ecosystem} packages managed by {package_manager}",
@@ -259,7 +259,7 @@ class DDLogger(FirewallLogger):
 
 def _format_packages(packages: Iterable[Package]) -> list[dict[str, Optional[str]]]:
     """
-    Lorem ipsum dolor sit amet.
+    Format a set of `Package` for logging as JSON.
     """
     return list(map(lambda package: package.to_dict(), sorted(packages, key=str)))
 
@@ -268,7 +268,7 @@ def _format_findings(
     findings: FindingsReport,
 ) -> list[dict[str, str | dict[str, Optional[str]]]]:
     """
-    Lorem ipsum dolor sit amet.
+    Format a set of findings for logging as JSON.
     """
     return [
         {
@@ -286,7 +286,7 @@ def _format_unverified(
     unverified_packages: UnverifiedReport,
 ) -> list[dict[str, dict[str, Optional[str]] | list[dict[str, str]]]]:
     """
-    Lorem ipsum dolor sit amet.
+    Format a set of unverified package errors for logging as JSON.
     """
     return [
         {

@@ -138,7 +138,16 @@ def _determine_firewall_action(
             contains only warning-level findings or unverifiable packages.
 
     Returns:
-        Lorem ipsum dolor sit amet.
+        A triple of an `Optional[FirewallAction]` representing the action that
+        Supply-Chain Firewall should take given `report` and `warning_action`, a `bool`
+        indicating whether or not the user should be given the option to continue the
+        action after a warning, and an `Optional[FindingsReport]` containing any
+        findings that were relevant to the returned action.
+
+        Note that on warning, the returned action is always equal to `warning_action`.
+        In the case that Supply-Chain Firewall was unable to determine this action
+        from the environment or the command line, `run_firewall_action()` is required
+        to interactively prompt the user to select an action.
     """
     critical_findings = report.get_findings(FindingSeverity.CRITICAL)
     warning_findings = report.get_findings(FindingSeverity.WARNING)

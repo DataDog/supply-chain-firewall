@@ -27,7 +27,17 @@ class FindingSeverity(Enum):
 
     def __lt__(self, other) -> bool:
         """
-        Lorem ipsum dolor sit amet.
+        Compare two `FindingSeverity` instances on the basis of their severity ranking.
+
+        Args:
+            self: The `FindingSeverity` to be compared on the left-hand side
+            other: The `FindingSeverity` to be compared on the right-hand side
+
+        Returns:
+            A `bool` indicating whether `<` holds between the two given `FindingSeverity`.
+
+        Raises:
+            TypeError: The other argument given was not a `FindingSeverity`.
         """
         order = {
             "CRITICAL": 2,

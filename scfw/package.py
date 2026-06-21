@@ -106,3 +106,21 @@ class Package:
         }
 
         return any(re.match(pattern, remote_source.remote_source) is not None for pattern in patterns)
+
+    def to_dict(self) -> dict[str, Optional[str]]:
+        """
+        Lorem ipsum dolor sit amet.
+        """
+        if (s := self.get_local_source()):
+            source = str(s.local_source)
+        elif (s := self.get_remote_source()):
+            source = s.remote_source
+        else:
+            source = None
+
+        return {
+            "ecosystem": str(self.ecosystem),
+            "name": self.name,
+            "version": self.version,
+            "source": source,
+        }

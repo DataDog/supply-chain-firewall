@@ -57,7 +57,7 @@ def run_firewall(args: Namespace) -> int:
 
         output = show_reports(
             [relevant_findings] if relevant_findings else [],
-            report.get_unverified()
+            report.get_unverified(),
         )
         if output:
             print(output)
@@ -78,7 +78,7 @@ def run_firewall(args: Namespace) -> int:
             package_manager.executable(),
             FirewallRunSummary(
                 args.command,
-                install_targets if action == FirewallAction.ALLOW else set(),
+                install_targets,
                 report,
                 relevant_findings,
                 warned,
@@ -90,6 +90,7 @@ def run_firewall(args: Namespace) -> int:
             case FirewallAction.BLOCK:
                 print("\nThe command was blocked. No changes have been made.")
                 return 1 if args.error_on_block else 0
+
             case FirewallAction.ALLOW:
                 return package_manager.run_command(args.command)
 

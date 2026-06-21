@@ -36,9 +36,11 @@ _FIREWALL_ACTION_ATTRIBUTES = {
     "created",
     "ecosystem",
     "executable",
+    "installed_packages",
     "msg",
     "package_manager",
-    "targets",
+    "relevant_findings",
+    "unverified_packages",
     "verified",
     "warned",
 }
@@ -197,25 +199,50 @@ class DDLogger(FirewallLogger):
         if run_summary.action < self._level:
             return
 
-        # TODO(ikretz): Log unverifiable packages
-        if run_summary.action == FirewallAction.ALLOW and run_summary.report:
-            targets = sorted(map(str, run_summary.report.packages()))
-        elif run_summary.action == FirewallAction.BLOCK and run_summary.relevant_findings:
-            targets = sorted(map(str, run_summary.relevant_findings))
-        else:
-            targets = []
+        log_data = {
+            "ecosystem": str(ecosystem),
+            "package_manager": package_manager,
+            "executable": executable,
+            "action": str(run_summary.action),
+            "verified": run_summary.report is not None,
+            "warned": run_summary.warned,
+        }
+
+        if run_summary.action == FirewallAction.ALLOW and run_summary.install_targets:
+            log_data["installed_packages"] = list(
+                map(lambda p: p.to_dict(), sorted(run_summary.install_targets, key=str))
+            )
+
+        if run_summary.relevant_findings:
+            log_data["relevant_findings"] = [
+                {
+                    "package": package.to_dict(),
+                    "verifier": finding.verifier,
+                    "severity": str(finding.severity),
+                    "finding": finding.finding,
+                }
+                for package, findings in run_summary.relevant_findings.items()
+                for finding in sorted(findings, key=lambda f: f.severity)
+            ]
+
+        if run_summary.report is not None and (unverified_packages := run_summary.report.get_unverified()):
+            log_data["unverified_packages"] = [
+                {
+                    "package": package.to_dict(),
+                    "unverified": [
+                        {
+                            "verifier": unverified.verifier,
+                            "message": unverified.message,
+                        }
+                        for unverified in sorted(unverifieds, key=lambda u: u.verifier)
+                    ]
+                }
+                for package, unverifieds in unverified_packages.items()
+            ]
 
         self._logger.info(
             f"Command '{' '.join(run_summary.command)}' was {str(run_summary.action).lower()}ed",
-            extra={
-                "ecosystem": str(ecosystem),
-                "package_manager": package_manager,
-                "executable": executable,
-                "targets": targets,
-                "action": str(run_summary.action),
-                "verified": run_summary.report is not None,
-                "warned": run_summary.warned,
-            }
+            extra=log_data,
         )
 
     def log_audit(

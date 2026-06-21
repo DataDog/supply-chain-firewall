@@ -72,7 +72,7 @@ class FirewallAction(Enum):
         raise ValueError(f"Invalid firewall action '{s}'")
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class FirewallRunSummary:
     """
     A structured summary of a run of Supply-Chain Firewall used for logging.

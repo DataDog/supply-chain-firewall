@@ -104,7 +104,8 @@ def test_warning_findings(warning_action: Optional[FirewallAction]):
 def test_unverifiable_only(warning_action: Optional[FirewallAction]):
     """
     Unverifiable packages are treated the same as warning-level findings: the configured
-    warning action is returned with the user warned and the unverifiable packages as relevant findings.
+    warning action is returned with the user warned. No relevant findings are returned,
+    as unverifiable package information is accessible via the verification report itself.
     """
     report = VerificationReport()
     report.insert_unverifiable(_PKG_A, _UNVERIFIABLE)

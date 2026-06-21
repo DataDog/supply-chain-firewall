@@ -76,7 +76,7 @@ class VerificationReport:
             for which a verifier raised an `UnverifiablePackage` error.
         """
         return {
-            package: set(error_message) for package, error_message in self._unverifiable.items()
+            package: set(error_messages) for package, error_messages in self._unverifiable.items()
         }
 
     def insert_clean(self, package: Package) -> None:
@@ -176,9 +176,11 @@ def show_reports(
         for package, findings in combined_findings_report.items()
     }
 
+    all_packages = set(sorted_findings) | set(unverifiable_report)
+
     # Prepare the findings + unverifiable output for each package
     combined_output = {}
-    for package in set(sorted_findings) | set(unverifiable_report):
+    for package in all_packages:
         findings_output = list(map(lambda f: f.finding, sorted_findings.get(package, [])))
         unverifiable_output = list(
             map(lambda u: u.error_message, unverifiable_report.get(package, {}))
@@ -188,5 +190,5 @@ def show_reports(
     # Print the output to string, alphabetized by package name
     return '\n'.join(
         show_output(package, combined_output[package])
-        for package in sorted(set(sorted_findings) | set(unverifiable_report), key=str)
+        for package in sorted(all_packages, key=str)
     )

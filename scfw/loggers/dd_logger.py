@@ -38,7 +38,7 @@ _FIREWALL_ACTION_ATTRIBUTES = {
     "created",
     "ecosystem",
     "executable",
-    "installed_packages",
+    "install_targets",
     "msg",
     "package_manager",
     "relevant_findings",
@@ -210,8 +210,8 @@ class DDLogger(FirewallLogger):
             "warned": run_summary.warned,
         }
 
-        if run_summary.action == FirewallAction.ALLOW and run_summary.install_targets:
-            log_data["installed_packages"] = _format_packages(run_summary.install_targets)
+        if run_summary.install_targets:
+            log_data["install_targets"] = _format_packages(run_summary.install_targets)
 
         if run_summary.relevant_findings:
             log_data["relevant_findings"] = _format_findings(run_summary.relevant_findings)

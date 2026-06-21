@@ -76,7 +76,7 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
             package: The `Package` to verify.
 
         Returns:
-            A `set[Package]` containing a single `CRITICAL` finding in the event that `package`
+            A `set[Finding]` containing a single `CRITICAL` finding in the event that `package`
             is found to be in the dataset, otherwise an empty set.
 
         Raises:

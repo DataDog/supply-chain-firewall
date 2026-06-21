@@ -29,7 +29,7 @@ import pkgutil
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.report import Unverified, VerificationReport
+from scfw.report import VerificationReport, VerifierErrorMessage
 from scfw.verifier import UnverifiablePackage
 
 _log = logging.getLogger(__name__)
@@ -99,9 +99,9 @@ class FirewallVerifiers:
 
                 except UnverifiablePackage as e:
                     _log.info(f"Verifier {verifier} was unable to verify package {package}")
-                    report.insert_unverified(
+                    report.insert_unverifiable(
                         package,
-                        Unverified(
+                        VerifierErrorMessage(
                             verifier,
                             f"Verifier {verifier} was unable to verify package {package}: {e}",
                         ),

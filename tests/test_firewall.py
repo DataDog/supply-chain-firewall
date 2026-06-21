@@ -12,7 +12,7 @@ from scfw.constants import ON_WARNING_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.firewall import _determine_firewall_action, _get_warning_action
 from scfw.logger import FirewallAction
-from scfw.report import Unverified, VerificationReport
+from scfw.report import VerificationReport, VerifierErrorMessage
 from scfw.verifier import Finding, FindingSeverity
 
 from tests.utils import build_registry_package
@@ -24,7 +24,7 @@ _PKG_B = build_registry_package(ECOSYSTEM.PyPI, "numpy", "1.24.0")
 _CRITICAL_FINDING = Finding("foo", FindingSeverity.CRITICAL, "critical finding")
 _WARNING_FINDING = Finding("foo", FindingSeverity.WARNING, "warning finding")
 
-_UNVERIFIED = Unverified("foo", "unverified package")
+_UNVERIFIABLE = VerifierErrorMessage("foo", "unverified package")
 
 
 def test_no_findings():
@@ -75,7 +75,7 @@ def test_critical_findings_take_precedence_over_unverifiable():
     """
     report = VerificationReport()
     report.insert_finding(_PKG_A, _CRITICAL_FINDING)
-    report.insert_unverified(_PKG_B, _UNVERIFIED)
+    report.insert_unverifiable(_PKG_B, _UNVERIFIABLE)
 
     action, warned, relevant = _determine_firewall_action(report, None)
 
@@ -107,7 +107,7 @@ def test_unverifiable_only(warning_action: Optional[FirewallAction]):
     warning action is returned with the user warned and the unverifiable packages as relevant findings.
     """
     report = VerificationReport()
-    report.insert_unverified(_PKG_A, _UNVERIFIED)
+    report.insert_unverifiable(_PKG_A, _UNVERIFIABLE)
 
     action, warned, relevant = _determine_firewall_action(report, warning_action)
 
@@ -124,7 +124,7 @@ def test_warning_and_unverifiable_merged(warning_action: Optional[FirewallAction
     """
     report = VerificationReport()
     report.insert_finding(_PKG_A, _WARNING_FINDING)
-    report.insert_unverified(_PKG_B, _UNVERIFIED)
+    report.insert_unverifiable(_PKG_B, _UNVERIFIABLE)
 
     action, warned, relevant = _determine_firewall_action(report, warning_action)
 

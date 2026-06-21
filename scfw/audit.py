@@ -42,7 +42,7 @@ def run_audit(args: Namespace) -> int:
 
         output = show_reports(
             [report.get_findings(severity) for severity in FindingSeverity],
-            report.get_unverified(),
+            report.get_unverifiable(),
         )
         if output:
             print(output)

@@ -10,12 +10,12 @@ from scfw.verifier import Finding, FindingSeverity
 
 
 @dataclass(eq=True, frozen=True)
-class Unverified:
+class VerifierErrorMessage:
     """
-    A message from a verifier indicating why it was unable to verify.
+    An error message from a given verifier.
     """
     verifier: str
-    message: str
+    error_message: str
 
 
 FindingsReport: TypeAlias = dict[Package, set[Finding]]
@@ -23,9 +23,9 @@ FindingsReport: TypeAlias = dict[Package, set[Finding]]
 A structured report containing findings for a set of `Package`.
 """
 
-UnverifiedReport: TypeAlias = dict[Package, set[Unverified]]
+UnverifiablePackageReport: TypeAlias = dict[Package, set[VerifierErrorMessage]]
 """
-A structured report containing unverifiable messages for a set of `Package`.
+A structured report containing `UnverifiablePackage` error messages for a set of `Package`.
 """
 
 
@@ -39,7 +39,7 @@ class VerificationReport:
         """
         self._clean: set[Package] = set()
         self._findings: FindingsReport = {}
-        self._unverified: UnverifiedReport = {}
+        self._unverifiable: UnverifiablePackageReport = {}
 
     def get_clean(self) -> set[Package]:
         """
@@ -67,15 +67,17 @@ class VerificationReport:
 
         return severity_findings
 
-    def get_unverified(self) -> UnverifiedReport:
+    def get_unverifiable(self) -> UnverifiablePackageReport:
         """
         Return a structured report on packages that were unable to be verified.
 
         Returns:
-            A `UnverifiedReport` covering the `Package` contained in the report
-            that were unable to be verified by at least one verifier.
+            An `UnverifiablePackageReport` covering the `Package` contained in the report
+            for which a verifier raised an `UnverifiablePackage` error.
         """
-        return {package: set(unverified) for package, unverified in self._unverified.items()}
+        return {
+            package: set(error_message) for package, error_message in self._unverifiable.items()
+        }
 
     def insert_clean(self, package: Package) -> None:
         """
@@ -88,7 +90,7 @@ class VerificationReport:
                 This function is a no-op if `package` already has findings in the report
                 or is known to be unverifiable by at least one verifier.
         """
-        if package in self._findings or package in self._unverified:
+        if package in self._findings or package in self._unverifiable:
             return
 
         self._clean.add(package)
@@ -108,17 +110,17 @@ class VerificationReport:
         if package in self._clean:
             self._clean.remove(package)
 
-    def insert_unverified(self, package: Package, unverified: Unverified) -> None:
+    def insert_unverifiable(self, package: Package, error_message: VerifierErrorMessage) -> None:
         """
-        Insert an unverified message for a given package into the report.
+        Insert an unverifiable package error message for a given package into the report.
 
         Args:
             `package`: The `Package` the unverified message pertains to.
-            `unverified`: The `Unverified` message to be inserted for `package`.
+            `error_message`: The `VerifierErrorMessage` to be inserted for `package`.
         """
-        if package not in self._unverified:
-            self._unverified[package] = set()
-        self._unverified[package].add(unverified)
+        if package not in self._unverifiable:
+            self._unverifiable[package] = set()
+        self._unverifiable[package].add(error_message)
 
         if package in self._clean:
             self._clean.remove(package)
@@ -130,16 +132,19 @@ class VerificationReport:
         Returns:
             A `set[Package]` containing all packages mentioned in the report.
         """
-        return self._clean | set(self._findings) | set(self._unverified)
+        return self._clean | set(self._findings) | set(self._unverifiable)
 
 
-def show_reports(findings_reports: list[FindingsReport], unverified_report: UnverifiedReport) -> str:
+def show_reports(
+    findings_reports: list[FindingsReport],
+    unverifiable_report: UnverifiablePackageReport,
+) -> str:
     """
     Return a pretty-printed string representation of the given reports.
 
     Args:
         `findings_reports`: A `list[FindingsReports]` to be formatted for printing.
-        'unverified_report`: An `UnverifiedReport` to be formatted for printing.
+        'unverifiable_report`: An `UnverifiablePackageReport` to be formatted for printing.
 
     Returns:
         A pretty-printed `str` representation of the given reports suitable for displaying
@@ -171,15 +176,17 @@ def show_reports(findings_reports: list[FindingsReport], unverified_report: Unve
         for package, findings in combined_findings_report.items()
     }
 
-    # Prepare the findings + unverified output for each package
+    # Prepare the findings + unverifiable output for each package
     combined_output = {}
-    for package in set(sorted_findings) | set(unverified_report):
+    for package in set(sorted_findings) | set(unverifiable_report):
         findings_output = list(map(lambda f: f.finding, sorted_findings.get(package, [])))
-        unverified_output = list(map(lambda u: u.message, unverified_report.get(package, {})))
-        combined_output[package] = findings_output + unverified_output
+        unverifiable_output = list(
+            map(lambda u: u.error_message, unverifiable_report.get(package, {}))
+        )
+        combined_output[package] = findings_output + unverifiable_output
 
     # Print the output to string, alphabetized by package name
     return '\n'.join(
         show_output(package, combined_output[package])
-        for package in sorted(set(sorted_findings) | set(unverified_report), key=str)
+        for package in sorted(set(sorted_findings) | set(unverifiable_report), key=str)
     )

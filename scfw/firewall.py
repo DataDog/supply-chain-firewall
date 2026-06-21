@@ -57,7 +57,7 @@ def run_firewall(args: Namespace) -> int:
 
         output = show_reports(
             [relevant_findings] if relevant_findings else [],
-            report.get_unverified(),
+            report.get_unverifiable(),
         )
         if output:
             print(output)
@@ -157,7 +157,7 @@ def _determine_firewall_action(
         return FirewallAction.BLOCK, False, critical_findings
 
     # No critical or warning findings and no unverifiable packages => ALLOW
-    if not (warning_findings or report.get_unverified()):
+    if not (warning_findings or report.get_unverifiable()):
         return FirewallAction.ALLOW, False, None
 
     # Warning findings or unverifiable packages => configured warning action (or user confirmation)

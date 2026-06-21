@@ -17,7 +17,7 @@ from scfw.constants import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE, SCFW
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger, FirewallRunSummary
 from scfw.package import Package
-from scfw.report import FindingsReport, UnverifiedReport, VerificationReport
+from scfw.report import FindingsReport, UnverifiablePackageReport, VerificationReport
 from scfw.verifier import FindingSeverity
 
 _log = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ _AUDIT_ATTRIBUTES = {
     "executable",
     "msg",
     "package_manager",
-    "unverified_packages",
+    "unverifiable",
 }
 _FIREWALL_ACTION_ATTRIBUTES = {
     "action",
@@ -42,7 +42,7 @@ _FIREWALL_ACTION_ATTRIBUTES = {
     "msg",
     "package_manager",
     "relevant_findings",
-    "unverified_packages",
+    "unverifiable",
     "verified",
     "warned",
 }
@@ -216,8 +216,8 @@ class DDLogger(FirewallLogger):
         if run_summary.relevant_findings:
             log_data["relevant_findings"] = _format_findings(run_summary.relevant_findings)
 
-        if run_summary.report is not None and (unverified_packages := run_summary.report.get_unverified()):
-            log_data["unverified_packages"] = _format_unverified(unverified_packages)
+        if run_summary.report is not None and (unverifiable := run_summary.report.get_unverifiable()):
+            log_data["unverifiable"] = _format_unverifiable(unverifiable)
 
         self._logger.info(
             f"Command '{' '.join(run_summary.command)}' was {str(run_summary.action).lower()}ed",
@@ -252,7 +252,7 @@ class DDLogger(FirewallLogger):
                     for severity in FindingSeverity
                     for formatted in _format_findings(report.get_findings(severity))
                 ],
-                "unverified_packages": _format_unverified(report.get_unverified()),
+                "unverifiable": _format_unverifiable(report.get_unverifiable()),
             }
         )
 
@@ -282,22 +282,22 @@ def _format_findings(
     ]
 
 
-def _format_unverified(
-    unverified_packages: UnverifiedReport,
+def _format_unverifiable(
+    unverifiable: UnverifiablePackageReport,
 ) -> list[dict[str, dict[str, Optional[str]] | list[dict[str, str]]]]:
     """
-    Format a set of unverified package errors for logging as JSON.
+    Format a set of unverifiable package error messages for logging as JSON.
     """
     return [
         {
             "package": package.to_dict(),
-            "unverified": [
+            "error_messages": [
                 {
-                    "verifier": unverified.verifier,
-                    "message": unverified.message,
+                    "verifier": error_message.verifier,
+                    "error_message": error_message.error_message,
                 }
-                for unverified in sorted(unverifieds, key=lambda u: u.verifier)
+                for error_message in sorted(error_messages, key=lambda e: e.verifier)
             ]
         }
-        for package, unverifieds in unverified_packages.items()
+        for package, error_messages in unverifiable.items()
     ]

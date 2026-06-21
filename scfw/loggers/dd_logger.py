@@ -8,7 +8,7 @@ import logging
 import os
 from pathlib import Path
 import socket
-from typing import Any
+from typing import Any, Iterable, Optional
 
 import dotenv
 
@@ -16,20 +16,22 @@ import scfw
 from scfw.constants import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE, SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger, FirewallRunSummary
-from scfw.report import VerificationReport
+from scfw.package import Package
+from scfw.report import FindingsReport, UnverifiedReport, VerificationReport
 from scfw.verifier import FindingSeverity
 
 _log = logging.getLogger(__name__)
 
 # The `created` and `msg` attributes are provided by `logging.LogRecord`
 _AUDIT_ATTRIBUTES = {
+    "audited_packages",
     "created",
     "ecosystem",
+    "findings",
     "executable",
     "msg",
     "package_manager",
-    "reports",
-    "unverifiable",
+    "unverified_packages",
 }
 _FIREWALL_ACTION_ATTRIBUTES = {
     "action",
@@ -209,36 +211,13 @@ class DDLogger(FirewallLogger):
         }
 
         if run_summary.action == FirewallAction.ALLOW and run_summary.install_targets:
-            log_data["installed_packages"] = list(
-                map(lambda p: p.to_dict(), sorted(run_summary.install_targets, key=str))
-            )
+            log_data["installed_packages"] = _format_packages(run_summary.install_targets)
 
         if run_summary.relevant_findings:
-            log_data["relevant_findings"] = [
-                {
-                    "package": package.to_dict(),
-                    "verifier": finding.verifier,
-                    "severity": str(finding.severity),
-                    "finding": finding.finding,
-                }
-                for package, findings in run_summary.relevant_findings.items()
-                for finding in sorted(findings, key=lambda f: f.severity)
-            ]
+            log_data["relevant_findings"] = _format_findings(run_summary.relevant_findings)
 
         if run_summary.report is not None and (unverified_packages := run_summary.report.get_unverified()):
-            log_data["unverified_packages"] = [
-                {
-                    "package": package.to_dict(),
-                    "unverified": [
-                        {
-                            "verifier": unverified.verifier,
-                            "message": unverified.message,
-                        }
-                        for unverified in sorted(unverifieds, key=lambda u: u.verifier)
-                    ]
-                }
-                for package, unverifieds in unverified_packages.items()
-            ]
+            log_data["unverified_packages"] = _format_unverified(unverified_packages)
 
         self._logger.info(
             f"Command '{' '.join(run_summary.command)}' was {str(run_summary.action).lower()}ed",
@@ -267,10 +246,58 @@ class DDLogger(FirewallLogger):
                 "ecosystem": str(ecosystem),
                 "package_manager": package_manager,
                 "executable": executable,
-                "reports": {
-                    str(severity): sorted(map(str, report.get_findings(severity)))
+                "audited_packages": _format_packages(report.packages()),
+                "findings": [
+                    formatted
                     for severity in FindingSeverity
-                },
-                "unverifiable": sorted(map(str, report.get_unverified())),
+                    for formatted in _format_findings(report.get_findings(severity))
+                ],
+                "unverified_packages": _format_unverified(report.get_unverified()),
             }
         )
+
+
+def _format_packages(packages: Iterable[Package]) -> list[dict[str, Optional[str]]]:
+    """
+    Lorem ipsum dolor sit amet.
+    """
+    return list(map(lambda package: package.to_dict(), sorted(packages, key=str)))
+
+
+def _format_findings(
+    findings: FindingsReport,
+) -> list[dict[str, str | dict[str, Optional[str]]]]:
+    """
+    Lorem ipsum dolor sit amet.
+    """
+    return [
+        {
+            "package": package.to_dict(),
+            "verifier": finding.verifier,
+            "severity": str(finding.severity),
+            "finding": finding.finding,
+        }
+        for package, findings in findings.items()
+        for finding in sorted(findings, key=lambda f: f.severity)
+    ]
+
+
+def _format_unverified(
+    unverified_packages: UnverifiedReport,
+) -> list[dict[str, dict[str, Optional[str]] | list[dict[str, str]]]]:
+    """
+    Lorem ipsum dolor sit amet.
+    """
+    return [
+        {
+            "package": package.to_dict(),
+            "unverified": [
+                {
+                    "verifier": unverified.verifier,
+                    "message": unverified.message,
+                }
+                for unverified in sorted(unverifieds, key=lambda u: u.verifier)
+            ]
+        }
+        for package, unverifieds in unverified_packages.items()
+    ]

@@ -111,10 +111,10 @@ class Package:
         """
         Lorem ipsum dolor sit amet.
         """
-        if (s := self.get_local_source()):
-            source = str(s.local_source)
-        elif (s := self.get_remote_source()):
-            source = s.remote_source
+        if (local_source := self.get_local_source()):
+            source = str(local_source.local_source)
+        elif (remote_source := self.get_remote_source()):
+            source = remote_source.remote_source
         else:
             source = None
 

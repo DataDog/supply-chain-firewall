@@ -136,9 +136,9 @@ def show_reports(findings_reports: list[FindingsReport], unverified_report: Unve
     # Prepare the findings + unverified output for each package
     combined_output = {}
     for package in set(sorted_findings) | set(unverified_report):
-        findings = list(map(lambda f: f.finding, sorted_findings.get(package, [])))
-        unverified = list(map(lambda u: u.message, unverified_report.get(package, {})))
-        combined_output[package] = findings + unverified
+        findings_output = list(map(lambda f: f.finding, sorted_findings.get(package, [])))
+        unverified_output = list(map(lambda u: u.message, unverified_report.get(package, {})))
+        combined_output[package] = findings_output + unverified_output
 
     # Print the output to string, alphabetized by package name
     return '\n'.join(

@@ -38,6 +38,7 @@ class _DDLogHandler(logging.Handler):
             f"version:{scfw.__version__}"
         }
 
+        # TODO(ikretz): Fix this to make it line up with the new format.
         targets = record.__dict__.get("targets", {})
         target_tags = set(map(lambda e: f"target:{e}", targets))
 
@@ -58,6 +59,7 @@ class _DDLogHandler(logging.Handler):
             api_instance.submit_log(content_encoding=ContentEncoding.DEFLATE, body=body)
 
 
+# TODO(ikretz): Put this being another opt-in environment variable
 # Configure a single logging handle for all `DDAPILogger` instances to share
 _handler = _DDLogHandler() if os.getenv(DD_API_KEY_VAR) else logging.NullHandler()
 _handler.setFormatter(DDLogFormatter())

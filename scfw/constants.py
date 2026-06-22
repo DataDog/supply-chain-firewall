@@ -22,6 +22,11 @@ DD_API_KEY_VAR = "DD_API_KEY"
 The environment variable under which the firewall looks for a Datadog API key.
 """
 
+DD_APP_KEY_VAR = "DD_APP_KEY"
+"""
+Lorem ipsum dolor sit amet.
+"""
+
 DD_LOG_LEVEL_VAR = "SCFW_DD_LOG_LEVEL"
 """
 The environment variable under which the firewall looks for a Datadog log level setting.

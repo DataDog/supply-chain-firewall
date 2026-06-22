@@ -3,7 +3,7 @@ Classes for structuring and displaying the results of package verification.
 """
 
 from dataclasses import dataclass
-from typing import TypeAlias
+from typing import Optional, TypeAlias
 
 from scfw.package import Package
 from scfw.verifier import Finding, FindingSeverity
@@ -51,14 +51,24 @@ class VerificationReport:
         """
         return set(self._clean)
 
-    def get_findings(self, severity: FindingSeverity) -> FindingsReport:
+    def get_findings(self, severity: Optional[FindingSeverity] = None) -> FindingsReport:
         """
         Return a structured report on packages that had findings of a given severity.
 
+        Args:
+            `severity`:
+                An `Optional[FindingSeverity]` describing the severity of the findings of
+                interest. If `None`, all findings present in the report are returned.
+
         Returns:
-            A `FindingsReport` covering the `Package` contained in the report that
-            had reported findings of the given `FindingSeverity.
+            A `FindingsReport` covering all findings in the report or optionally only
+            those of the given `severity`.
         """
+        if severity is None:
+            return {
+                package: set(findings) for package, findings in self._findings.items()
+            }
+
         severity_findings = {}
 
         for package, findings in self._findings.items():

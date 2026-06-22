@@ -44,7 +44,7 @@ _FIREWALL_ACTION_ATTRIBUTES = {
     "relevant_findings",
     "unverifiable",
     "verified",
-    "warned",
+    "warning",
 }
 
 _ALL_LOG_ATTRIBUTES = _AUDIT_ATTRIBUTES | _FIREWALL_ACTION_ATTRIBUTES
@@ -207,7 +207,7 @@ class DDLogger(FirewallLogger):
             "executable": executable,
             "action": str(run_summary.action),
             "verified": run_summary.report is not None,
-            "warned": run_summary.warned,
+            "warning": run_summary.warning,
         }
 
         if run_summary.install_targets:

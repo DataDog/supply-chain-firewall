@@ -31,10 +31,10 @@ def test_no_findings():
     """
     A verification report with no findings and no unverifiable packages results in an ALLOW action.
     """
-    action, warned, relevant = _determine_firewall_action(VerificationReport(), None)
+    action, severity, relevant = _determine_firewall_action(VerificationReport(), None)
 
     assert action == FirewallAction.ALLOW
-    assert not warned
+    assert severity is None
     assert relevant is None
 
 
@@ -45,10 +45,10 @@ def test_critical_findings_blocks():
     report = VerificationReport()
     report.insert_finding(_PKG_A, _CRITICAL_FINDING)
 
-    action, warned, relevant = _determine_firewall_action(report, None)
+    action, severity, relevant = _determine_firewall_action(report, None)
 
     assert action == FirewallAction.BLOCK
-    assert not warned
+    assert severity == FindingSeverity.CRITICAL
     assert relevant == report.get_findings(FindingSeverity.CRITICAL)
 
 
@@ -61,10 +61,10 @@ def test_critical_findings_take_precedence_over_warnings():
     report.insert_finding(_PKG_A, _CRITICAL_FINDING)
     report.insert_finding(_PKG_B, _WARNING_FINDING)
 
-    action, warned, relevant = _determine_firewall_action(report, None)
+    action, severity, relevant = _determine_firewall_action(report, None)
 
     assert action == FirewallAction.BLOCK
-    assert not warned
+    assert severity == FindingSeverity.CRITICAL
     assert relevant == report.get_findings(FindingSeverity.CRITICAL)
 
 
@@ -77,10 +77,10 @@ def test_critical_findings_take_precedence_over_unverifiable():
     report.insert_finding(_PKG_A, _CRITICAL_FINDING)
     report.insert_unverifiable(_PKG_B, _UNVERIFIABLE)
 
-    action, warned, relevant = _determine_firewall_action(report, None)
+    action, severity, relevant = _determine_firewall_action(report, None)
 
     assert action == FirewallAction.BLOCK
-    assert not warned
+    assert severity == FindingSeverity.CRITICAL
     assert relevant == report.get_findings(FindingSeverity.CRITICAL)
 
 
@@ -93,10 +93,10 @@ def test_warning_findings(warning_action: Optional[FirewallAction]):
     report = VerificationReport()
     report.insert_finding(_PKG_A, _WARNING_FINDING)
 
-    action, warned, relevant = _determine_firewall_action(report, warning_action)
+    action, severity, relevant = _determine_firewall_action(report, warning_action)
 
     assert action == warning_action
-    assert warned
+    assert severity == FindingSeverity.WARNING
     assert relevant == report.get_findings(FindingSeverity.WARNING)
 
 
@@ -110,10 +110,10 @@ def test_unverifiable_only(warning_action: Optional[FirewallAction]):
     report = VerificationReport()
     report.insert_unverifiable(_PKG_A, _UNVERIFIABLE)
 
-    action, warned, relevant = _determine_firewall_action(report, warning_action)
+    action, severity, relevant = _determine_firewall_action(report, warning_action)
 
     assert action == warning_action
-    assert warned
+    assert severity == FindingSeverity.WARNING
     assert relevant == None
 
 
@@ -127,10 +127,10 @@ def test_warning_and_unverifiable_merged(warning_action: Optional[FirewallAction
     report.insert_finding(_PKG_A, _WARNING_FINDING)
     report.insert_unverifiable(_PKG_B, _UNVERIFIABLE)
 
-    action, warned, relevant = _determine_firewall_action(report, warning_action)
+    action, severity, relevant = _determine_firewall_action(report, warning_action)
 
     assert action == warning_action
-    assert warned
+    assert severity == FindingSeverity.WARNING
     assert relevant == report.get_findings(FindingSeverity.WARNING)
 
 

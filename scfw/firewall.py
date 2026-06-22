@@ -53,7 +53,7 @@ def run_firewall(args: Namespace) -> int:
             report = VerificationReport()
 
         warning_action = _get_warning_action(args.allow_on_warning, args.block_on_warning)
-        action, warned, relevant_findings = _determine_firewall_action(report, warning_action)
+        action, severity, relevant_findings = _determine_firewall_action(report, warning_action)
 
         output = show_reports(
             [relevant_findings] if relevant_findings else [],
@@ -67,7 +67,7 @@ def run_firewall(args: Namespace) -> int:
             print("Dry-run: exiting without running command.")
             return 1 if args.error_on_block and action == FirewallAction.BLOCK else 0
 
-        # This only occurs when `warned=True` and no automatic action was inferrable
+        # This only occurs on `severity=WARNING` when no automatic action was inferrable
         if action is None:
             user_confirmed = inquirer.confirm("Proceed with installation?", default=False)
             action = FirewallAction.ALLOW if user_confirmed else FirewallAction.BLOCK
@@ -81,7 +81,7 @@ def run_firewall(args: Namespace) -> int:
                 install_targets,
                 report,
                 relevant_findings,
-                warned,
+                severity == FindingSeverity.WARNING,
                 action,
             ),
         )
@@ -117,7 +117,7 @@ def run_firewall(args: Namespace) -> int:
                 install_targets=None,
                 report=None,
                 relevant_findings=None,
-                warned=False,
+                warning=False,
                 action=FirewallAction.ALLOW,
             ),
         )
@@ -127,7 +127,7 @@ def run_firewall(args: Namespace) -> int:
 def _determine_firewall_action(
     report: VerificationReport,
     warning_action: Optional[FirewallAction]
-) -> tuple[Optional[FirewallAction], bool, Optional[FindingsReport]]:
+) -> tuple[Optional[FirewallAction], Optional[FindingSeverity], Optional[FindingsReport]]:
     """
     Determine the firewall action and its relevant findings from the given inputs.
 
@@ -139,10 +139,11 @@ def _determine_firewall_action(
 
     Returns:
         A triple of an `Optional[FirewallAction]` representing the action that
-        Supply-Chain Firewall should take given `report` and `warning_action`, a `bool`
-        indicating whether or not the user should be given the option to continue the
-        action after a warning, and an `Optional[FindingsReport]` containing any
-        findings that were relevant to the returned action.
+        Supply-Chain Firewall should take given `report` and `warning_action`, an
+        `Optional[FindingSeverity]` indicating the highest severity level present in
+        `report` (where `FindingSeverity.WARNING` also covers unverifiable packages),
+        and an `Optional[FindingsReport]` containing any findings that were relevant
+        to the returned action.
 
         Note that on warning, the returned action is always equal to `warning_action`.
         In the case that Supply-Chain Firewall was unable to determine this action
@@ -154,14 +155,14 @@ def _determine_firewall_action(
 
     # Critical findings => BLOCK
     if critical_findings:
-        return FirewallAction.BLOCK, False, critical_findings
+        return FirewallAction.BLOCK, FindingSeverity.CRITICAL, critical_findings
 
     # No critical or warning findings and no unverifiable packages => ALLOW
     if not (warning_findings or report.get_unverifiable()):
-        return FirewallAction.ALLOW, False, None
+        return FirewallAction.ALLOW, None, None
 
     # Warning findings or unverifiable packages => configured warning action (or user confirmation)
-    return warning_action, True, warning_findings if warning_findings else None
+    return warning_action, FindingSeverity.WARNING, warning_findings if warning_findings else None
 
 
 def _get_warning_action(cli_allow_choice: bool, cli_block_choice: bool) -> Optional[FirewallAction]:

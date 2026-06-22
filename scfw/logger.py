@@ -81,7 +81,7 @@ class FirewallRunSummary:
     install_targets: Optional[set[Package]]
     report: Optional[VerificationReport]
     relevant_findings: Optional[FindingsReport]
-    warned: bool
+    warning: bool
     action: FirewallAction
 
 

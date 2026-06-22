@@ -39,17 +39,12 @@ class FindingSeverity(Enum):
         Raises:
             TypeError: The other argument given was not a `FindingSeverity`.
         """
-        order = {
-            "CRITICAL": 2,
-            "WARNING": 1,
-        }
-
         if self.__class__ is not other.__class__:
             raise TypeError(
                 f"'<' not supported between instances of '{self.__class__}' and '{other.__class__}'"
             )
 
-        return order[self.name] < order[other.name]
+        return self == FindingSeverity.WARNING and other == FindingSeverity.CRITICAL
 
     def __str__(self) -> str:
         """

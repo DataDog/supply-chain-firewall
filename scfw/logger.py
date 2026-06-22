@@ -5,11 +5,11 @@ completed run of the supply-chain firewall.
 
 from abc import (ABCMeta, abstractmethod)
 from enum import Enum
+from typing import Optional
 from typing_extensions import Self
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.package import Package
-from scfw.report import VerificationReport
+from scfw.report import FindingsReport, VerificationReport
 
 
 class FirewallAction(Enum):
@@ -82,10 +82,10 @@ class FirewallLogger(metaclass=ABCMeta):
         package_manager: str,
         executable: str,
         command: list[str],
-        targets: list[Package],
         action: FirewallAction,
-        verified: bool,
         warned: bool,
+        relevant_findings: Optional[FindingsReport],
+        verification_report: Optional[VerificationReport],
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall.
@@ -95,20 +95,22 @@ class FirewallLogger(metaclass=ABCMeta):
             package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
             command: The package manager command line provided to the firewall.
-            targets:
-                The installation targets relevant to Supply-Chain Firewall's action:
-                  * For `BLOCK` actions, contains the installation targets that caused the block
-                  * For `ALLOW` actions, contains all installation targets
             action: The action taken by Supply-Chain Firewall.
-            verified:
-                Indicates whether Supply-Chain Firewall performed installation target
-                verification in deciding to take the specified `action`. Verification is not
-                performed **only** under the following conditions:
-                  * The package manager is of an unsupported version and the user has passed the
-                    command-line option `--allow-unsupported`
             warned:
                 Indicates whether the user was warned about findings for any installation
                 targets and prompted for approval to proceed with `command`.
+            relevant_findings:
+                The findings, if any, that are relevant to the `action` taken by Supply-Chain
+                Firewall. A `None` value indicates that the action was taken without relying
+                on any findings, which can occur when
+                    * There were no findings for any installation target
+                    * Installation target verification did not take place, usually because the
+                      underlying package manager was of an unsupported version
+            verification_report:
+                The complete `VerificationReport`, if any, resulting from installation target
+                verification. A `None` value indicates that installation target verification
+                did not take place, usually because the underlying package manager was of an
+                unsupported version.
         """
         pass
 

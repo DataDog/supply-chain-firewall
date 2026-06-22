@@ -80,13 +80,14 @@ class FirewallVerifiers:
             A `VerificationReport` resulting from verifying `packages` against all
             discovered verifiers.
         """
+        verification_set = frozenset(packages)
         findings_reports: dict[FindingSeverity, FindingsReport] = {}
         unverifiable = FindingsReport()
 
         with cf.ThreadPoolExecutor() as executor:
             task_results = {
                 executor.submit(lambda v, t: v.verify(t), verifier, package): (verifier.name(), package)
-                for verifier, package in itertools.product(self._verifiers, packages)
+                for verifier, package in itertools.product(self._verifiers, verification_set)
             }
             for future in cf.as_completed(task_results):
                 verifier, package = task_results[future]
@@ -107,4 +108,4 @@ class FirewallVerifiers:
                     )
 
         _log.info("Verification of packages complete")
-        return VerificationReport(findings_reports, unverifiable)
+        return VerificationReport(verification_set, findings_reports, unverifiable)

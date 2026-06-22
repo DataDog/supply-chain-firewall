@@ -16,10 +16,11 @@ directory for runtime import, no further modification required. Make sure to rei
 the `scfw` package after doing so.
 """
 
+from typing import Optional
+
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger
-from scfw.package import Package
-from scfw.report import VerificationReport
+from scfw.report import FindingsReport, VerificationReport
 
 
 class CustomFirewallLogger(FirewallLogger):
@@ -29,10 +30,10 @@ class CustomFirewallLogger(FirewallLogger):
         package_manager: str,
         executable: str,
         command: list[str],
-        targets: list[Package],
         action: FirewallAction,
-        verified: bool,
         warned: bool,
+        relevant_findings: Optional[FindingsReport],
+        verification_report: Optional[VerificationReport],
     ):
         return
 

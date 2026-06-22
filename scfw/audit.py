@@ -27,7 +27,7 @@ def run_audit(args: Namespace) -> int:
     package_manager = package_managers.get_package_manager(args.package_manager, executable=args.executable)
 
     if (installed_packages := package_manager.get_installed_packages()):
-        _log.info(f"Installed packages: [{', '.join(map(str, installed_packages))}]")
+        _log.info(f"Installed packages: [{', '.join(sorted(map(str, installed_packages)))}]")
 
         verifiers = FirewallVerifiers(package_manager.ecosystem())
         _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")

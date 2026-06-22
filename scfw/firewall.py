@@ -42,7 +42,7 @@ def run_firewall(args: Namespace) -> int:
         package_manager = package_managers.get_package_manager(args.package_manager, executable=args.executable)
 
         install_targets = package_manager.resolve_install_targets(args.command)
-        _log.info(f"Command would install: [{', '.join(map(str, install_targets))}]")
+        _log.info(f"Command would install: [{', '.join(sorted(map(str, install_targets)))}]")
 
         if install_targets:
             verifiers = FirewallVerifiers(package_manager.ecosystem())
@@ -147,8 +147,8 @@ def _determine_firewall_action(
 
         Note that on warning, the returned action is always equal to `warning_action`.
         In the case that Supply-Chain Firewall was unable to determine this action
-        from the environment or the command line, `run_firewall_action()` is required
-        to interactively prompt the user to select an action.
+        from the environment or the command line, `run_firewall()` is required to
+        interactively prompt the user to select an action.
     """
     critical_findings = report.get_findings(FindingSeverity.CRITICAL)
     warning_findings = report.get_findings(FindingSeverity.WARNING)

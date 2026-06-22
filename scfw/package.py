@@ -116,7 +116,7 @@ class Package:
 
             The distinction between local and remote package artifact sources is
             erased in the returned `dict`: instead, a `str` representation of the
-            underlying URl or local file path is included (or `None`).
+            underlying URL or local file path is included (or `None`).
         """
         if (local_source := self.get_local_source()):
             source = str(local_source.local_source)

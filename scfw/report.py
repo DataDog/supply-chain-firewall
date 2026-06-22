@@ -153,8 +153,8 @@ def show_reports(
     Return a pretty-printed string representation of the given reports.
 
     Args:
-        `findings_reports`: A `list[FindingsReports]` to be formatted for printing.
-        'unverifiable_report`: An `UnverifiablePackageReport` to be formatted for printing.
+        `findings_reports`: A `list[FindingsReport]` to be formatted for printing.
+        `unverifiable_report`: An `UnverifiablePackageReport` to be formatted for printing.
 
     Returns:
         A pretty-printed `str` representation of the given reports suitable for displaying
@@ -193,7 +193,7 @@ def show_reports(
     for package in all_packages:
         findings_output = list(map(lambda f: f.finding, sorted_findings.get(package, [])))
         unverifiable_output = list(
-            map(lambda u: u.error_message, unverifiable_report.get(package, {}))
+            map(lambda u: u.error_message, unverifiable_report.get(package, set()))
         )
         combined_output[package] = findings_output + unverifiable_output
 

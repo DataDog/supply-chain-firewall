@@ -38,28 +38,28 @@ def get_answers() -> dict:
         inquirer.Text(
             name="scfw_home",
             message=(
-                "Enter a directory the firewall can use as a local cache"
+                "Enter a directory that Supply-Chain Firewall can use as a local cache"
                 f" (default: {home_dir_default})" if home_dir_default else ""
             )
         ),
         inquirer.Confirm(
             name="alias_npm",
-            message="Would you like to set a shell alias to run all npm commands through the firewall?",
+            message="Would you like to set a shell alias to run all npm commands through SCFW?",
             default=True
         ),
         inquirer.Confirm(
             name="alias_pip",
-            message="Would you like to set a shell alias to run all pip commands through the firewall?",
+            message="Would you like to set a shell alias to run all pip commands through SCFW?",
             default=True
         ),
         inquirer.Confirm(
             name="alias_poetry",
-            message="Would you like to set a shell alias to run all Poetry commands through the firewall?",
+            message="Would you like to set a shell alias to run all Poetry commands through SCFW?",
             default=True
         ),
         inquirer.Confirm(
             name="dd_agent_logging",
-            message="If you have the Datadog Agent installed locally, would you like to forward firewall logs to it?",
+            message="If you have the Datadog Agent installed locally, would you like to forward SCFW logs to it?",
             default=False
         ),
         inquirer.Text(
@@ -69,7 +69,7 @@ def get_answers() -> dict:
         ),
         inquirer.Confirm(
             name="dd_api_logging",
-            message="Would you like to enable sending firewall logs to Datadog using an API key?",
+            message="Would you like to enable sending SCFW logs to Datadog using an API key?",
             default=False,
             ignore=lambda answers: has_dd_api_key or answers["dd_agent_logging"]
         ),
@@ -120,7 +120,7 @@ def get_farewell(answers: dict) -> str:
     )
 
     if answers.get("dd_agent_logging"):
-        farewell += "\n* Restart the Datadog Agent in order for it to accept firewall logs."
+        farewell += "\n* Restart the Datadog Agent in order for it to accept logs from SCFW."
 
     farewell += "\n\nGood luck!"
 
@@ -146,10 +146,10 @@ def _describe_log_level(action: FirewallAction) -> str:
 
 def _get_home_dir_default() -> Optional[str]:
     """
-    Resolve the default firewall cache directory from the user's home directory.
+    Resolve the default SCFW cache directory from the user's home directory.
 
     Returns:
-        A `str` representing the default firewall cache directory, which is contained
+        A `str` representing the default SCFW cache directory, which is contained
         inside the user's home directory, or `None` if the home directory cannot be resolved.
     """
     try:

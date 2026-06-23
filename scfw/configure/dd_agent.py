@@ -1,5 +1,5 @@
 """
-Provides utilities for configuring the local Datadog Agent to receive logs from Supply-Chain Firewall.
+Provides utilities for configuring the local Datadog Agent to receive logs from SCFW.
 """
 
 import json
@@ -16,10 +16,10 @@ _log = logging.getLogger(__name__)
 
 def configure_agent_logging(port: str):
     """
-    Configure a local Datadog Agent for accepting logs from the firewall.
+    Configure a local Datadog Agent for accepting logs from Supply-Chain Firewall.
 
     Args:
-        port: The local port number where the firewall logs will be sent to the Agent.
+        port: The local port number where logs will be sent to the Agent.
 
     Raises:
         ValueError: An invalid port number was provided.

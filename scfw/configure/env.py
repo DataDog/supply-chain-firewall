@@ -23,7 +23,7 @@ def remove_config() -> int:
     Returns:
         An integer status code indicating normal or error exit.
     """
-    # These options result in the firewall's configuration block being removed
+    # These options result in SCFW's configuration block being removed
     return update_config_files({
         "alias_npm": False,
         "alias_pip": False,

@@ -79,7 +79,7 @@ dotenv.load_dotenv()
 
 class DDLogFormatter(logging.Formatter):
     """
-    A custom JSON formatter for firewall logs.
+    A custom JSON formatter for Supply-Chain Firewall logs.
     """
     def format(self, record) -> str:
         """

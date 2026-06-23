@@ -1,6 +1,6 @@
 """
-Provides an interface for client loggers to receive information about a
-completed run of the supply-chain firewall.
+Provides an interface for client loggers to receive data from completed runs
+of Supply-Chain Firewall.
 """
 
 from abc import (ABCMeta, abstractmethod)
@@ -16,8 +16,7 @@ from scfw.report import FindingsReport, VerificationReport
 
 class FirewallAction(Enum):
     """
-    The various actions the firewall may take in response to inspecting a
-    package manager command.
+    The actions that SCFW may take in response to an inspected package manager command.
     """
     ALLOW = 0
     BLOCK = 1
@@ -87,8 +86,7 @@ class FirewallRunSummary:
 
 class FirewallLogger(metaclass=ABCMeta):
     """
-    An interface for passing information about runs of Supply-Chain Firewall to
-    client loggers.
+    An interface for client loggers to receive data from completed runs of SCFW.
     """
     @abstractmethod
     def log_firewall_run(

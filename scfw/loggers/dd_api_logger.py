@@ -1,5 +1,5 @@
 """
-Configures a logger for sending firewall logs to Datadog's API over HTTP.
+Configures a logger for sending Supply-Chain Firewall logs to Datadog's API over HTTP.
 """
 
 import logging
@@ -27,10 +27,8 @@ Lorem ipsum dolor sit amet.
 
 class _DDLogHandler(logging.Handler):
     """
-    A log handler for adding tags and forwarding firewall logs of blocked and
-    permitted package installation requests to the Datadog API.
-
-    In addition to USM tags, install targets are tagged with the `target` tag and included.
+    A log handler for adding tags and forwarding logs of blocked and allowed
+    package manager commands to the Datadog API.
     """
     def emit(self, record):
         """
@@ -95,9 +93,9 @@ class DDAPILogger(DDLogger):
 
 def load_logger() -> FirewallLogger:
     """
-    Export `DDAPILogger` for discovery by the firewall.
+    Export `DDAPILogger` for discovery by Supply-Chain Firewall.
 
     Returns:
-        A `DDAPILogger` for use in a run of the firewall.
+        A `DDAPILogger` for use in a run of Supply-Chain Firewall.
     """
     return DDAPILogger()

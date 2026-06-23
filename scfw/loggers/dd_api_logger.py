@@ -21,7 +21,7 @@ _DD_LOG_NAME = "dd_api_log"
 
 DD_API_LOGGER_ENABLED_VAR = "SCFW_DD_API_LOGGER_ENABLED"
 """
-Lorem ipsum dolor sit amet.
+Setting this environment variable is required to enable the Datadog API logger.
 """
 
 
@@ -70,7 +70,6 @@ class _DDLogHandler(logging.Handler):
             raise RuntimeError(f"Datadog API returned error: {detail}")
 
 
-# TODO(ikretz): Update documentation
 # Configure a single logging handle for all `DDAPILogger` instances to share
 _handler = _DDLogHandler() if os.getenv(DD_API_LOGGER_ENABLED_VAR) else logging.NullHandler()
 _handler.setFormatter(DDLogFormatter())

@@ -154,7 +154,7 @@ Supply-Chain Firewall can optionally send logs of blocked and successful install
 
 ![scfw datadog log](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/datadog_log.png?raw=true)
 
-Logs may be forwarded to Datadog via the HTTP API (requires an API key) or via a local Datadog Agent process.  Documentation on how to enable and configure these loggers may be found [here](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/loggers.md).
+Logs may be forwarded to Datadog via the HTTP API or a local Datadog Agent process.  A Datadog API key is required to enable log forwarding.  Documentation on how to enable and configure these loggers may be found [here](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/loggers.md).
 
 Supply-Chain Firewall can maintain a local JSON Lines log file that records all completed `run` and `audit` executions.  Users are strongly encouraged to [enable](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/loggers.md#local-file-logger) this logger, as having a centralized record of executed package manager commands, their outcomes, and installed packages over time can be useful in incident response scenarios.  Once file logging has been enabled, users may separately [configure](https://docs.datadoghq.com/agent/logs/?tab=tailfiles#custom-log-collection) the local Datadog Agent to tail this file and thereby ingest logs from SCFW with no additional overhead.
 

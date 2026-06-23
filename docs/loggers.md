@@ -48,8 +48,11 @@ The Datadog API logger submits JSON logs of successful `run` and `audit` actions
 
 Users may configure the behavior of this logger via the following environment variables:
 
+* `SCFW_DD_API_LOGGER_ENABLED`:
+    Setting this environment variable to any nonempty value is required to enable this logger.
+
 * `DD_API_KEY`:
-    Takes a Datadog API key.  Required to enable this logger.
+    Takes a Datadog API key.  Required to successfully use this logger.
 
     The `scfw configure` [subcommand](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/subcommands.md#scfw-configure) can be used to write this environment variable into the user's `~/.bashrc` and `~/.zshrc` files.
 
@@ -84,6 +87,28 @@ Users may configure the behavior of this logger via the following environment va
     Takes the local filesystem path of the SCFW home directory.
 
     If `SCFW_DD_LOG_ATTRIBUTES_FILE` is not set, this logger will look for custom log attributes at `$SCFW_HOME/dd_logger/log_attributes.json` by default, with `SCFW_DD_LOG_ATTRIBUTES` again taking precedence over attributes read from file.
+
+## Datadog Code Security API logger
+
+> **Preview:** The Datadog Code Security API logger is currently available only as a preview for Datadog customers and upon request.
+
+This logger submits reports of `run` actions taken by Supply-Chain Firewall to Datadog Code Security's Supply-Chain Firewall API over HTTPS.  Note that `audit` actions are not currently supported by this logger.
+
+Users may configure the behavior of this logger via the following environment variables:
+
+* `SCFW_DD_CODESEC_LOGGER_ENABLED`:
+    Setting this environment variable to any nonempty value is required to enable this logger.
+
+* `DD_API_KEY`:
+    Takes a Datadog API key.  Required to successfully use this logger.
+
+    The `scfw configure` [subcommand](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/subcommands.md#scfw-configure) can be used to write this environment variable into the user's `~/.bashrc` and `~/.zshrc` files.
+
+* `DD_APP_KEY`:
+    Takes a Datadog application key.  Required to successfully use this logger.
+
+* `DD_SITE`:
+    Takes a [Datadog site parameter](https://docs.datadoghq.com/getting_started/site/#access-the-datadog-site) for setting the region where the target Datadog organization is hosted.  Defaults to `datadoghq.com` if not set.
 
 ## Local file logger
 

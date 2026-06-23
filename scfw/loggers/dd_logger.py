@@ -87,6 +87,9 @@ class DDLogFormatter(logging.Formatter):
 
         Args:
             record: The log record to be formatted.
+
+        Returns:
+            A `str` containing the formatted log record.
         """
         def parse_log_attributes(json_str: str) -> dict[str, Any]:
             attributes = json.loads(json_str)

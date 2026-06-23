@@ -8,26 +8,29 @@ import logging
 import os
 from pathlib import Path
 import socket
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 import dotenv
 
 import scfw
 from scfw.constants import DD_ENV, DD_LOG_LEVEL_VAR, DD_SERVICE, DD_SOURCE, SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
-from scfw.logger import FirewallAction, FirewallLogger
-from scfw.report import FindingsReport, VerificationReport
+from scfw.logger import FirewallAction, FirewallLogger, FirewallRunSummary
+from scfw.package import Package
+from scfw.report import FindingsReport, UnverifiablePackageReport, VerificationReport
+from scfw.verifier import FindingSeverity
 
 _log = logging.getLogger(__name__)
 
 # The `created` and `msg` attributes are provided by `logging.LogRecord`
 _AUDIT_ATTRIBUTES = {
+    "audited_packages",
     "created",
     "ecosystem",
+    "findings",
     "executable",
     "msg",
     "package_manager",
-    "reports",
     "unverifiable",
 }
 _FIREWALL_ACTION_ATTRIBUTES = {
@@ -35,11 +38,13 @@ _FIREWALL_ACTION_ATTRIBUTES = {
     "created",
     "ecosystem",
     "executable",
+    "install_targets",
     "msg",
     "package_manager",
-    "targets",
+    "relevant_findings",
+    "unverifiable",
     "verified",
-    "warned",
+    "warning",
 }
 
 _ALL_LOG_ATTRIBUTES = _AUDIT_ATTRIBUTES | _FIREWALL_ACTION_ATTRIBUTES
@@ -177,16 +182,12 @@ class DDLogger(FirewallLogger):
         except ValueError:
             _log.warning(f"Invalid value for {DD_LOG_LEVEL_VAR}: using default level {_DD_LOG_LEVEL_DEFAULT}")
 
-    def log_firewall_action(
+    def log_firewall_run(
         self,
         ecosystem: ECOSYSTEM,
         package_manager: str,
         executable: str,
-        command: list[str],
-        action: FirewallAction,
-        warned: bool,
-        relevant_findings: Optional[FindingsReport],
-        verification_report: Optional[VerificationReport],
+        run_summary: FirewallRunSummary,
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall.
@@ -195,33 +196,32 @@ class DDLogger(FirewallLogger):
             ecosystem: The ecosystem of the inspected package manager command.
             package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
-            command: The package manager command line provided to the firewall.
-            action: The action taken by the firewall.
-            warned: Indicates whether the user was warned about findings and prompted for approval.
-            relevant_findings: The findings, if any, relevant to the action taken.
-            verification_report: The complete `VerificationReport`, if any, resulting from verification.
+            run_summary: The summary of the completed run of Supply-Chain Firewall to be logged.
         """
-        if action < self._level:
+        if run_summary.action < self._level:
             return
 
-        if action == FirewallAction.ALLOW and verification_report:
-            targets = sorted(map(str, verification_report.verification_set))
-        elif action == FirewallAction.BLOCK and relevant_findings:
-            targets = sorted(map(str, relevant_findings.packages()))
-        else:
-            targets = []
+        log_data = {
+            "ecosystem": str(ecosystem),
+            "package_manager": package_manager,
+            "executable": executable,
+            "action": str(run_summary.action),
+            "verified": run_summary.report is not None,
+            "warning": run_summary.warning,
+        }
+
+        if run_summary.install_targets:
+            log_data["install_targets"] = _format_packages(run_summary.install_targets)
+
+        if run_summary.relevant_findings:
+            log_data["relevant_findings"] = _format_findings(run_summary.relevant_findings)
+
+        if run_summary.report is not None and (unverifiable := run_summary.report.get_unverifiable()):
+            log_data["unverifiable"] = _format_unverifiable(unverifiable)
 
         self._logger.info(
-            f"Command '{' '.join(command)}' was {str(action).lower()}ed",
-            extra={
-                "ecosystem": str(ecosystem),
-                "package_manager": package_manager,
-                "executable": executable,
-                "targets": targets,
-                "action": str(action),
-                "verified": verification_report is not None,
-                "warned": warned,
-            }
+            f"Command '{' '.join(run_summary.command)}' was {str(run_summary.action).lower()}ed",
+            extra=log_data,
         )
 
     def log_audit(
@@ -238,7 +238,7 @@ class DDLogger(FirewallLogger):
             ecosystem: The ecosystem of the audited packages.
             package_manager: The package manager that manages the audited packages.
             executable: The package manager executable used to enumerate audited packages.
-            report: The `VerificationReport` resulting from auditing the installed packages.
+            report: The report containing the verification results for the audited packages.
         """
         self._logger.info(
             f"Successfully audited {ecosystem} packages managed by {package_manager}",
@@ -246,10 +246,58 @@ class DDLogger(FirewallLogger):
                 "ecosystem": str(ecosystem),
                 "package_manager": package_manager,
                 "executable": executable,
-                "reports": {
-                    str(severity): list(map(str, findings_report.packages()))
-                    for severity, findings_report in report.findings_reports.items()
-                },
-                "unverifiable": list(map(str, report.unverifiable.packages())),
+                "audited_packages": _format_packages(report.packages()),
+                "findings": [
+                    formatted
+                    for severity in FindingSeverity
+                    for formatted in _format_findings(report.get_findings(severity))
+                ],
+                "unverifiable": _format_unverifiable(report.get_unverifiable()),
             }
         )
+
+
+def _format_packages(packages: Iterable[Package]) -> list[dict[str, Optional[str]]]:
+    """
+    Format a set of `Package` for logging as JSON.
+    """
+    return list(map(lambda package: package.to_dict(), sorted(packages, key=str)))
+
+
+def _format_findings(
+    findings: FindingsReport,
+) -> list[dict[str, str | dict[str, Optional[str]]]]:
+    """
+    Format a set of findings for logging as JSON.
+    """
+    return [
+        {
+            "package": package.to_dict(),
+            "verifier": finding.verifier,
+            "severity": str(finding.severity),
+            "finding": finding.finding,
+        }
+        for package, findings in findings.items()
+        for finding in sorted(findings, key=lambda f: f.severity)
+    ]
+
+
+def _format_unverifiable(
+    unverifiable: UnverifiablePackageReport,
+) -> list[dict[str, dict[str, Optional[str]] | list[dict[str, str]]]]:
+    """
+    Format a set of unverifiable package error messages for logging as JSON.
+    """
+    return [
+        {
+            "package": package.to_dict(),
+            "error_messages": [
+                {
+                    "verifier": error_message.verifier,
+                    "error_message": error_message.error_message,
+                }
+                for error_message in sorted(error_messages, key=lambda e: e.verifier)
+            ]
+        }
+        for package, error_messages in unverifiable.items()
+    ]

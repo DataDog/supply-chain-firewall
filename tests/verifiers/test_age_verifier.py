@@ -45,7 +45,7 @@ def test_warn_on_recent_package(test_package: Package, unverifiable: bool):
 
     results = recency_verifier.verify(test_package)
     assert len(results) == 1
-    assert results[0][0] == FindingSeverity.WARNING
+    assert results.pop().severity == FindingSeverity.WARNING
 
 
 

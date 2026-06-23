@@ -29,8 +29,8 @@ import pkgutil
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.report import FindingsReport, VerificationReport
-from scfw.verifier import FindingSeverity, UnverifiablePackage
+from scfw.report import VerificationReport, VerifierErrorMessage
+from scfw.verifier import UnverifiablePackage
 
 _log = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ class FirewallVerifiers:
         """
         return [verifier.name() for verifier in self._verifiers]
 
-    def verify_packages(self, packages: list[Package]) -> VerificationReport:
+    def verify_packages(self, packages: set[Package]) -> VerificationReport:
         """
         Verify a set of packages against all discovered verifiers.
 
@@ -77,35 +77,35 @@ class FirewallVerifiers:
             packages: The set of `Package` to verify.
 
         Returns:
-            A `VerificationReport` resulting from verifying `packages` against all
-            discovered verifiers.
+            A `VerificationReport` resulting from verifying `packages` against all discovered verifiers.
         """
-        verification_set = frozenset(packages)
-        findings_reports: dict[FindingSeverity, FindingsReport] = {}
-        unverifiable = FindingsReport()
+        report = VerificationReport()
 
         with cf.ThreadPoolExecutor() as executor:
             task_results = {
                 executor.submit(lambda v, t: v.verify(t), verifier, package): (verifier.name(), package)
-                for verifier, package in itertools.product(self._verifiers, verification_set)
+                for verifier, package in itertools.product(self._verifiers, packages)
             }
             for future in cf.as_completed(task_results):
                 verifier, package = task_results[future]
                 try:
                     if (findings := future.result()):
                         _log.info(f"Verifier {verifier} had findings for package {package}")
-                        for severity, finding in findings:
-                            if severity not in findings_reports:
-                                findings_reports[severity] = FindingsReport()
-                            findings_reports[severity].insert(package, finding)
+                        for finding in findings:
+                            report.insert_finding(package, finding)
                     else:
                         _log.info(f"Verifier {verifier} had no findings for package {package}")
+                        report.insert_clean(package)
 
                 except UnverifiablePackage as e:
-                    unverifiable.insert(
+                    _log.info(f"Verifier {verifier} was unable to verify package {package}")
+                    report.insert_unverifiable(
                         package,
-                        f"Verifier {verifier} was unable to verify package {package}: {e}",
+                        VerifierErrorMessage(
+                            verifier,
+                            f"Verifier {verifier} was unable to verify package {package}: {e}",
+                        ),
                     )
 
         _log.info("Verification of packages complete")
-        return VerificationReport(verification_set, findings_reports, unverifiable)
+        return report

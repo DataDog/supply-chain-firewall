@@ -72,9 +72,9 @@ def test_dd_verifier_malicious(
         findings = dd_verifier.verify(package)
         assert len(findings) == 1
 
-        severity, finding = findings[0]
-        assert severity == FindingSeverity.CRITICAL
-        assert finding
+        finding = findings.pop()
+        assert finding.severity == FindingSeverity.CRITICAL
+        assert finding.finding
 
 
 @pytest.mark.parametrize("ecosystem", [ECOSYSTEM.Npm, ECOSYSTEM.PyPI])

@@ -59,12 +59,13 @@ def test_poetry_command_resolve_install_targets_add(
             ["poetry", "add", "--directory", poetry_project, target_spec]
         )
 
-        assert (
-            len(targets) == 1
-            and targets[0].ecosystem == ECOSYSTEM.PyPI
-            and targets[0].name == TARGET
-            and targets[0].version == target_version
-        )
+        assert len(targets) == 1
+
+        target = targets.pop()
+        assert target.ecosystem == ECOSYSTEM.PyPI
+        assert target.name == TARGET
+        assert target.version == target_version
+
         assert poetry_show(poetry_project) == init_state
 
 
@@ -143,14 +144,14 @@ def test_poetry_command_resolve_install_targets_update(
     )
 
 
-def test_poetry_list_installed_packages(monkeypatch, poetry_project_target_latest):
+def test_poetry_get_installed_packages(monkeypatch, poetry_project_target_latest):
     """
-    Tests that `Poetry.list_installed_packages` correctly parses `poetry` output.
+    Tests that `Poetry.get_installed_packages` correctly parses `poetry` output.
     """
     # Change directories into the test project directory for only this test
     monkeypatch.chdir(poetry_project_target_latest)
 
-    assert PACKAGE_MANAGER.list_installed_packages() == [Package(ECOSYSTEM.PyPI, TARGET, TARGET_LATEST)]
+    assert PACKAGE_MANAGER.get_installed_packages() == {Package(ECOSYSTEM.PyPI, TARGET, TARGET_LATEST)}
 
 
 def _test_poetry_command_resolve_install_targets(command, project, targets) -> bool:
@@ -160,6 +161,6 @@ def _test_poetry_command_resolve_install_targets(command, project, targets) -> b
     """
     init_state = poetry_show(project)
 
-    targets = [Package(ECOSYSTEM.PyPI, name, version) for name, version in targets]
+    targets = {Package(ECOSYSTEM.PyPI, name, version) for name, version in targets}
 
     return PACKAGE_MANAGER.resolve_install_targets(command) == targets and poetry_show(project) == init_state

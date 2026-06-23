@@ -7,7 +7,7 @@ import logging
 
 from scfw.loggers import FirewallLoggers
 import scfw.package_managers as package_managers
-from scfw.report import FindingsReport
+from scfw.report import show_reports
 from scfw.verifier import FindingSeverity
 from scfw.verifiers import FirewallVerifiers
 
@@ -24,17 +24,15 @@ def run_audit(args: Namespace) -> int:
     Returns:
         An integer status code indicating normal exit.
     """
-    merged_report = FindingsReport()
-
     package_manager = package_managers.get_package_manager(args.package_manager, executable=args.executable)
 
-    if (packages := package_manager.list_installed_packages()):
-        _log.info(f"Installed packages: [{', '.join(map(str, packages))}]")
+    if (installed_packages := package_manager.get_installed_packages()):
+        _log.info(f"Installed packages: [{', '.join(sorted(map(str, installed_packages)))}]")
 
         verifiers = FirewallVerifiers(package_manager.ecosystem())
         _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
 
-        report = verifiers.verify_packages(packages)
+        report = verifiers.verify_packages(installed_packages)
         FirewallLoggers().log_audit(
             package_manager.ecosystem(),
             package_manager.name(),
@@ -42,15 +40,13 @@ def run_audit(args: Namespace) -> int:
             report,
         )
 
-        for severity in FindingSeverity:
-            if (severity_report := report.get_findings_report(severity)):
-                merged_report.extend(severity_report)
-
-        merged_report.extend(report.unverifiable)
-
-    if merged_report:
-        print(merged_report)
-    else:
-        print("No issues found.")
+        output = show_reports(
+            [report.get_findings(severity) for severity in FindingSeverity],
+            report.get_unverifiable(),
+        )
+        if output:
+            print(output)
+        else:
+            print("No issues found.")
 
     return 0

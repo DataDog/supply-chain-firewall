@@ -10,7 +10,7 @@ from pathlib import Path
 from scfw.constants import SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity, PackageVerifier, UnverifiablePackage
+from scfw.verifier import Finding, PackageVerifier, UnverifiablePackage
 from scfw.verifiers.list_verifier.findings_map import FindingsMap
 
 _log = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ class FindingsListVerifier(PackageVerifier):
         """
         return {ecosystem for ecosystem in ECOSYSTEM}
 
-    def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
+    def verify(self, package: Package) -> set[Finding]:
         """
         Determine whether a package has findings in the user-provided findings lists.
 
@@ -78,8 +78,8 @@ class FindingsListVerifier(PackageVerifier):
             package: The `Package` to verify.
 
         Returns:
-            A list containing all findings for the given package present in the user-provided
-            findings list with which the `FindingsListVerifier` was initialized.
+            A `set[Finding]` containing all findings for the given package present in the
+            user-provided findings list with which the `FindingsListVerifier` was initialized.
 
         Raises:
             UnverifiablePackage:
@@ -96,7 +96,10 @@ class FindingsListVerifier(PackageVerifier):
                 f"{self.name()}: Unknown source for package {package}: assuming {package.ecosystem} registry source"
             )
 
-        return self._findings_map.get_findings(package)
+        return {
+            Finding(self.name(), severity, finding)
+            for severity, finding in self._findings_map.get_findings(package)
+        }
 
 
 def load_verifier() -> PackageVerifier:

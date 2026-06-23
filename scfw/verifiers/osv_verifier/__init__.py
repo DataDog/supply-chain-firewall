@@ -13,7 +13,7 @@ import requests
 from scfw.constants import SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity, PackageVerifier, UnverifiablePackage
+from scfw.verifier import Finding, FindingSeverity, PackageVerifier, UnverifiablePackage
 from scfw.verifiers.osv_verifier.osv_advisory import OsvAdvisory
 
 _log = logging.getLogger(__name__)
@@ -96,7 +96,7 @@ class OsvVerifier(PackageVerifier):
         """
         return {ECOSYSTEM.Npm, ECOSYSTEM.PyPI}
 
-    def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
+    def verify(self, package: Package) -> set[Finding]:
         """
         Query a given package against the OSV.dev database.
 
@@ -104,8 +104,8 @@ class OsvVerifier(PackageVerifier):
             package: The `Package` to query.
 
         Returns:
-            A list containing any findings for the given package, obtained by querying
-            the OSV.dev API.
+            A `set[Finding]` containing any findings for the given package obtained by
+            querying the OSV.dev API.
 
             OSV.dev advisories with `MAL` IDs are treated as `CRITICAL` findings and all
             others are treated as `WARNING`.  *It is very important to note that most but
@@ -169,7 +169,7 @@ class OsvVerifier(PackageVerifier):
                     break
 
             if not vulns:
-                return []
+                return set()
 
             osvs = set(map(OsvAdvisory.from_json, filter(lambda vuln: vuln.get("id"), vulns)))
             mal_osvs = set(filter(lambda osv: osv.id.startswith("MAL"), osvs))
@@ -184,18 +184,26 @@ class OsvVerifier(PackageVerifier):
             sorted_mal_osvs = sorted(mal_osvs, reverse=True, key=osv_sort_key)
             sorted_non_mal_osvs = sorted(non_mal_osvs, reverse=True, key=osv_sort_key)
 
-            return (
-                [(FindingSeverity.CRITICAL, finding(osv)) for osv in sorted_mal_osvs]
-                + [(FindingSeverity.WARNING, finding(osv)) for osv in sorted_non_mal_osvs]
-            )
+            critical_findings = {
+                Finding(self.name(), FindingSeverity.CRITICAL, finding(osv)) for osv in sorted_mal_osvs
+            }
+            warning_findings = {
+                Finding(self.name(), FindingSeverity.WARNING, finding(osv)) for osv in sorted_non_mal_osvs
+            }
+
+            return critical_findings | warning_findings
 
         except requests.exceptions.RequestException as e:
             _log.warning(f"Failed to query OSV.dev API for package {package}: {e}")
-            return [(FindingSeverity.WARNING, failure_message())]
+            return {
+                Finding(self.name(), FindingSeverity.WARNING, failure_message())
+            }
 
         except Exception as e:
             _log.warning(f"Verification failed for package {package}: {e}")
-            return [(FindingSeverity.WARNING, failure_message())]
+            return {
+                Finding(self.name(), FindingSeverity.WARNING, failure_message())
+            }
 
 
 def load_verifier() -> PackageVerifier:

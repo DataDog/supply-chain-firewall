@@ -3,6 +3,7 @@ Provides a base class for package verifiers.
 """
 
 from abc import (ABCMeta, abstractmethod)
+from dataclasses import dataclass
 from enum import Enum
 from typing_extensions import Self
 
@@ -23,6 +24,27 @@ class FindingSeverity(Enum):
     """
     CRITICAL = "CRITICAL"
     WARNING = "WARNING"
+
+    def __lt__(self, other) -> bool:
+        """
+        Compare two `FindingSeverity` instances on the basis of their severity ranking.
+
+        Args:
+            self: The `FindingSeverity` to be compared on the left-hand side
+            other: The `FindingSeverity` to be compared on the right-hand side
+
+        Returns:
+            A `bool` indicating whether `<` holds between the two given `FindingSeverity`.
+
+        Raises:
+            TypeError: The other argument given was not a `FindingSeverity`.
+        """
+        if self.__class__ is not other.__class__:
+            raise TypeError(
+                f"'<' not supported between instances of '{self.__class__}' and '{other.__class__}'"
+            )
+
+        return self == FindingSeverity.WARNING and other == FindingSeverity.CRITICAL
 
     def __str__(self) -> str:
         """
@@ -53,6 +75,16 @@ class FindingSeverity(Enum):
             return mappings[s.lower()]
         except KeyError:
             raise ValueError(f"Invalid finding severity: '{s}'")
+
+
+@dataclass(eq=True, frozen=True)
+class Finding:
+    """
+    A finding reported by a verifier with an accompanying severity assessment.
+    """
+    verifier: str
+    severity: FindingSeverity
+    finding: str
 
 
 class PackageVerifier(metaclass=ABCMeta):
@@ -87,7 +119,7 @@ class PackageVerifier(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
+    def verify(self, package: Package) -> set[Finding]:
         """
         Verify the given package.
 
@@ -95,12 +127,10 @@ class PackageVerifier(metaclass=ABCMeta):
             package: The `Package` to verify.
 
         Returns:
-            A `list[tuple[FindingSeverity, str]]` of all findings for the given package
-            reported by the backing data source, each tagged with a severity level.
+            A `set[Finding]` of all findings reported for the given package.
 
-            Each `str` in this list should be a concise summary of a single finding and
-            would ideally provide a link or handle to more information about that finding
-            for the benefit of the user.
+            The text of each finding should be concise and would ideally link to or
+            reference other sources of information for the benefit of the user.
         """
         pass
 

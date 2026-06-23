@@ -9,7 +9,7 @@ from pathlib import Path
 from scfw.constants import SCFW_HOME_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity, PackageVerifier, UnverifiablePackage
+from scfw.verifier import Finding, FindingSeverity, PackageVerifier, UnverifiablePackage
 import scfw.verifiers.dd_verifier.dataset as dataset
 
 _log = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
         """
         return {ECOSYSTEM.Npm, ECOSYSTEM.PyPI}
 
-    def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
+    def verify(self, package: Package) -> set[Finding]:
         """
         Determine whether the given package is malicious by consulting the dataset's manifests.
 
@@ -76,9 +76,8 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
             package: The `Package` to verify.
 
         Returns:
-            A list containing any findings for the given package, obtained by checking for its
-            presence in the dataset's manifests.  Only a single `CRITICAL` finding to this effect
-            is present in this case.
+            A `set[Finding]` containing a single `CRITICAL` finding in the event that `package`
+            is found to be in the dataset, otherwise an empty set.
 
         Raises:
             UnverifiablePackage:
@@ -100,14 +99,15 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
             package.name in manifest
             and (not manifest[package.name] or package.version in manifest[package.name])
         ):
-            return [
-                (
+            return {
+                Finding(
+                    self.name(),
                     FindingSeverity.CRITICAL,
-                    f"Datadog Security Research has determined that package {package} is malicious"
+                    f"Datadog Security Research has determined that package {package} is malicious",
                 )
-            ]
-        else:
-            return []
+            }
+
+        return set()
 
 
 def load_verifier() -> PackageVerifier:

@@ -1,5 +1,5 @@
 """
-Provides logic for listing installed npm packages in the active environment.
+Provides logic for determining installed npm packages.
 """
 
 import json
@@ -15,15 +15,15 @@ from scfw.package_managers.npm.common import FILE_URI_PREFIX, NODE_MODULES_PREFI
 _log = logging.getLogger(__name__)
 
 
-def list_installed_packages(executable: str) -> list[Package]:
+def get_installed_packages(executable: str) -> set[Package]:
     """
-    List all npm packages installed in the active npm environment.
+    Return the set of npm packages installed in the active npm environment.
 
     Args:
         executable: Path to the npm executable.
 
     Returns:
-        A `list[Package]` representing all npm packages installed in the active environment.
+        A `set[Package]` representing all npm packages installed in the active environment.
 
     Raises:
         RuntimeError:
@@ -49,7 +49,7 @@ def list_installed_packages(executable: str) -> list[Package]:
 
     resolved_fallback = _load_lock_file_resolved_map(Path.cwd() / "package-lock.json")
 
-    return list(_dependencies_to_packages(dependencies, resolved_fallback))
+    return _dependencies_to_packages(dependencies, resolved_fallback)
 
 
 def _dependencies_to_packages(

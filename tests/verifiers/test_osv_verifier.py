@@ -264,8 +264,8 @@ def test_osv_verifier_malicious(
         findings = osv_verifier.verify(package)
         assert findings
 
-        any_critical = any(finding[0] == FindingSeverity.CRITICAL for finding in findings)
-        any_warning = any(finding[0] == FindingSeverity.WARNING for finding in findings)
+        any_critical = any(finding.severity == FindingSeverity.CRITICAL for finding in findings)
+        any_warning = any(finding.severity == FindingSeverity.WARNING for finding in findings)
 
         if has_critical:
             assert any_critical

@@ -16,24 +16,18 @@ directory for runtime import, no further modification required. Make sure to rei
 the `scfw` package after doing so.
 """
 
-from typing import Optional
-
 from scfw.ecosystem import ECOSYSTEM
-from scfw.logger import FirewallAction, FirewallLogger
-from scfw.report import FindingsReport, VerificationReport
+from scfw.logger import FirewallLogger, FirewallRunSummary
+from scfw.report import VerificationReport
 
 
 class CustomFirewallLogger(FirewallLogger):
-    def log_firewall_action(
+    def log_firewall_run(
         self,
         ecosystem: ECOSYSTEM,
         package_manager: str,
         executable: str,
-        command: list[str],
-        action: FirewallAction,
-        warned: bool,
-        relevant_findings: Optional[FindingsReport],
-        verification_report: Optional[VerificationReport],
+        run_summary: FirewallRunSummary,
     ):
         return
 

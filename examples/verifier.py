@@ -19,7 +19,7 @@ the `scfw` package after doing so.
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity, PackageVerifier
+from scfw.verifier import Finding, FindingSeverity, PackageVerifier
 
 
 class CustomPackageVerifier(PackageVerifier):
@@ -31,8 +31,8 @@ class CustomPackageVerifier(PackageVerifier):
     def supported_ecosystems(cls) -> set[ECOSYSTEM]:
         return set()
 
-    def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
-        return []
+    def verify(self, package: Package) -> set[Finding]:
+        return set()
 
 
 def load_verifier() -> PackageVerifier:

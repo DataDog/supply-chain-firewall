@@ -95,7 +95,7 @@ class Pip(PackageManager):
         """
         return subprocess.run(self._normalize_command(command)).returncode
 
-    def resolve_install_targets(self, command: list[str]) -> list[Package]:
+    def resolve_install_targets(self, command: list[str]) -> set[Package]:
         """
         Resolve the installation targets of the given `pip` command.
 
@@ -105,7 +105,7 @@ class Pip(PackageManager):
                 are to be resolved.
 
         Returns:
-            A `list[Package]` representing the package targets that would be installed
+            A `set[Package]` representing the package targets that would be installed
             if `command` were run.
 
         Raises:
@@ -132,13 +132,13 @@ class Pip(PackageManager):
         # pip only installs or upgrades packages via the `pip install` subcommand
         # If `install` is not present, the command is automatically safe to run
         if "install" not in command:
-            return []
+            return set()
 
         self._check_version()
 
         # On supported versions, the presence of these options prevents the command from running
         if any(opt in command for opt in {"-h", "--help", "--dry-run"}):
-            return []
+            return set()
 
         # Otherwise, this is probably a live `pip install` command
         # To be certain, we would need to write a full parser for pip
@@ -146,23 +146,23 @@ class Pip(PackageManager):
             dry_run_command = command + ["--dry-run", "-qqqqq", "--report", "-"]
             dry_run = subprocess.run(dry_run_command, check=True, text=True, capture_output=True)
             install_reports = json.loads(dry_run.stdout).get("install", [])
-            return list(map(report_to_install_target, install_reports))
+            return set(map(report_to_install_target, install_reports))
         except subprocess.CalledProcessError:
             # An error must have resulted from the given pip command
             # As nothing will be installed in this case, allow the command
             _log.info("Encountered an error while resolving pip installation targets")
-            return []
+            return set()
 
-    def list_installed_packages(self) -> list[Package]:
+    def get_installed_packages(self) -> set[Package]:
         """
-        List all `PyPI` packages installed in the active `pip` environment.
+        Return the set of `PyPI` packages installed in the active `pip` environment.
 
         Returns:
-            A `list[Package]` representing all `PyPI` packages installed in the active
+            A `set[Package]` representing all `PyPI` packages installed in the active
             `pip` environment.
 
         Raises:
-            RuntimeError: Failed to list installed packages or decode report JSON.
+            RuntimeError: Failed to determine installed packages or decode report JSON.
             UnsupportedVersionError: The underlying `pip` executable is of an unsupported version.
         """
         def inspect_entry_to_package(entry: dict) -> Optional[Package]:
@@ -201,13 +201,13 @@ class Pip(PackageManager):
         try:
             pip_inspect_command = self._normalize_command(["pip", "inspect"])
             pip_inspect = subprocess.run(pip_inspect_command, check=True, text=True, capture_output=True)
-            return [
+            return {
                 p for entry in json.loads(pip_inspect.stdout).get("installed", [])
                 if (p := inspect_entry_to_package(entry)) is not None
-            ]
+            }
 
         except subprocess.CalledProcessError:
-            raise RuntimeError("Failed to list pip installed packages")
+            raise RuntimeError("Failed to determine pip installed packages")
 
         except json.JSONDecodeError:
             raise RuntimeError("Failed to decode installed package report JSON")

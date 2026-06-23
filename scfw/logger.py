@@ -4,11 +4,13 @@ completed run of the supply-chain firewall.
 """
 
 from abc import (ABCMeta, abstractmethod)
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 from typing_extensions import Self
 
 from scfw.ecosystem import ECOSYSTEM
+from scfw.package import Package
 from scfw.report import FindingsReport, VerificationReport
 
 
@@ -70,22 +72,31 @@ class FirewallAction(Enum):
         raise ValueError(f"Invalid firewall action '{s}'")
 
 
+@dataclass(eq=True)
+class FirewallRunSummary:
+    """
+    A structured summary of a run of Supply-Chain Firewall used for logging.
+    """
+    command: list[str]
+    install_targets: Optional[set[Package]]
+    report: Optional[VerificationReport]
+    relevant_findings: Optional[FindingsReport]
+    warning: bool
+    action: FirewallAction
+
+
 class FirewallLogger(metaclass=ABCMeta):
     """
     An interface for passing information about runs of Supply-Chain Firewall to
     client loggers.
     """
     @abstractmethod
-    def log_firewall_action(
+    def log_firewall_run(
         self,
         ecosystem: ECOSYSTEM,
         package_manager: str,
         executable: str,
-        command: list[str],
-        action: FirewallAction,
-        warned: bool,
-        relevant_findings: Optional[FindingsReport],
-        verification_report: Optional[VerificationReport],
+        run_summary: FirewallRunSummary,
     ):
         """
         Log the data and action taken in a completed run of Supply-Chain Firewall.
@@ -94,23 +105,7 @@ class FirewallLogger(metaclass=ABCMeta):
             ecosystem: The ecosystem of the inspected package manager command.
             package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
-            command: The package manager command line provided to the firewall.
-            action: The action taken by Supply-Chain Firewall.
-            warned:
-                Indicates whether the user was warned about findings for any installation
-                targets and prompted for approval to proceed with `command`.
-            relevant_findings:
-                The findings, if any, that are relevant to the `action` taken by Supply-Chain
-                Firewall. A `None` value indicates that the action was taken without relying
-                on any findings, which can occur when
-                    * There were no findings for any installation target
-                    * Installation target verification did not take place, usually because the
-                      underlying package manager was of an unsupported version
-            verification_report:
-                The complete `VerificationReport`, if any, resulting from installation target
-                verification. A `None` value indicates that installation target verification
-                did not take place, usually because the underlying package manager was of an
-                unsupported version.
+            run_summary: The summary of the completed run of Supply-Chain Firewall to be logged.
         """
         pass
 
@@ -129,10 +124,6 @@ class FirewallLogger(metaclass=ABCMeta):
             ecosystem: The ecosystem of the audited packages.
             package_manager: The package manager that manages the audited packages.
             executable: The package manager executable used to enumerate audited packages.
-            report:
-                The `VerificationReport` resulting from auditing the installed packages.
-
-                This report contains only those packages for which at least one verifier had
-                a finding. Packages with no findings are excluded from the audit results.
+            report: The report containing the verification results for the audited packages.
         """
         pass

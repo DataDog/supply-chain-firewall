@@ -81,7 +81,7 @@ class Poetry(PackageManager):
         """
         return subprocess.run(self._normalize_command(command)).returncode
 
-    def resolve_install_targets(self, command: list[str]) -> list[Package]:
+    def resolve_install_targets(self, command: list[str]) -> set[Package]:
         """
         Resolve the installation targets of the given `poetry` command.
 
@@ -91,7 +91,7 @@ class Poetry(PackageManager):
                 are to be resolved.
 
         Returns:
-            A `list[Package]` representing the package targets that would be installed
+            A `set[Package]` representing the package targets that would be installed
             if `command` were run.
 
         Raises:
@@ -113,33 +113,33 @@ class Poetry(PackageManager):
         command = self._normalize_command(command)
 
         if not any(subcommand in command for subcommand in INSPECTED_SUBCOMMANDS):
-            return []
+            return set()
 
         self._check_version()
 
         # On supported versions, the presence of these options prevents the command from running
         if any(opt in command for opt in {"-V", "--version", "-h", "--help", "--dry-run"}):
-            return []
+            return set()
 
         try:
             # Compute installation targets: new dependencies and updates/downgrades of existing ones
             dry_run = subprocess.run(command + ["--dry-run"], check=True, text=True, capture_output=True)
-            return list(filter(None, map(line_to_package, dry_run.stdout.split('\n'))))
+            return set(filter(None, map(line_to_package, dry_run.stdout.split('\n'))))
         except subprocess.CalledProcessError:
             # An erroring command does not install anything
             _log.info("Encountered an error while resolving poetry installation targets")
-            return []
+            return set()
 
-    def list_installed_packages(self) -> list[Package]:
+    def get_installed_packages(self) -> set[Package]:
         """
-        List all `PyPI` packages installed in the active `poetry` environment.
+        Return the set of `PyPI` packages installed in the active `poetry` environment.
 
         Returns:
-            A `list[Package]` representing all `PyPI` packages installed in the active
+            A `set[Package]` representing all `PyPI` packages installed in the active
             `poetry` environment.
 
         Raises:
-            RuntimeError: Failed to list installed packages.
+            RuntimeError: Failed to determine installed packages.
             ValueError: Malformed installed package report.
             UnsupportedVersionError: The underlying `poetry` executable is of an unsupported version.
         """
@@ -153,10 +153,10 @@ class Poetry(PackageManager):
             poetry_show_command = self._normalize_command(["poetry", "show", "--all"])
             poetry_show = subprocess.run(poetry_show_command, check=True, text=True, capture_output=True)
             installed_report = poetry_show.stdout.strip()
-            return list(map(line_to_package, installed_report.split('\n'))) if installed_report else []
+            return set(map(line_to_package, installed_report.split('\n'))) if installed_report else set()
 
         except subprocess.CalledProcessError:
-            raise RuntimeError("Failed to list poetry installed packages")
+            raise RuntimeError("Failed to determine poetry installed packages")
 
         except IndexError:
             raise ValueError("Malformed installed package report")

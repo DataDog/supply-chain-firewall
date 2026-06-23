@@ -10,11 +10,11 @@ import sys
 from typing import Optional
 
 from scfw.constants import ON_WARNING_VAR
-from scfw.logger import FirewallAction
+from scfw.logger import FirewallAction, FirewallRunSummary
 from scfw.loggers import FirewallLoggers
 from scfw.package_manager import UnsupportedVersionError
 import scfw.package_managers as package_managers
-from scfw.report import FindingsReport, VerificationReport
+from scfw.report import FindingsReport, VerificationReport, show_reports
 from scfw.verifier import FindingSeverity
 from scfw.verifiers import FirewallVerifiers
 
@@ -41,48 +41,56 @@ def run_firewall(args: Namespace) -> int:
     try:
         package_manager = package_managers.get_package_manager(args.package_manager, executable=args.executable)
 
-        targets = package_manager.resolve_install_targets(args.command)
-        _log.info(f"Command would install: [{', '.join(map(str, targets))}]")
+        install_targets = package_manager.resolve_install_targets(args.command)
+        _log.info(f"Command would install: [{', '.join(sorted(map(str, install_targets)))}]")
 
-        if targets:
+        if install_targets:
             verifiers = FirewallVerifiers(package_manager.ecosystem())
             _log.info(f"Using package verifiers: [{', '.join(verifiers.names())}]")
 
-            verification_report = verifiers.verify_packages(targets)
+            report = verifiers.verify_packages(install_targets)
         else:
-            verification_report = VerificationReport.empty()
+            report = VerificationReport()
 
         warning_action = _get_warning_action(args.allow_on_warning, args.block_on_warning)
-        action, warned, relevant_findings = _determine_firewall_action(verification_report, warning_action)
+        action, severity, relevant_findings = _determine_firewall_action(report, warning_action)
 
-        if relevant_findings:
-            print(relevant_findings)
+        output = show_reports(
+            [relevant_findings] if relevant_findings else [],
+            report.get_unverifiable(),
+        )
+        if output:
+            print(output)
 
         if args.dry_run:
             _log.info("Firewall dry-run mode enabled: command will not be run")
             print("Dry-run: exiting without running command.")
             return 1 if args.error_on_block and action == FirewallAction.BLOCK else 0
 
-        # This only occurs when `warned=True` and no automatic action was inferrable
+        # This only occurs on `severity=WARNING` when no automatic action was inferrable
         if action is None:
             user_confirmed = inquirer.confirm("Proceed with installation?", default=False)
             action = FirewallAction.ALLOW if user_confirmed else FirewallAction.BLOCK
 
-        loggers.log_firewall_action(
+        loggers.log_firewall_run(
             package_manager.ecosystem(),
             package_manager.name(),
             package_manager.executable(),
-            args.command,
-            action,
-            warned,
-            relevant_findings,
-            verification_report,
+            FirewallRunSummary(
+                args.command,
+                install_targets,
+                report,
+                relevant_findings,
+                severity == FindingSeverity.WARNING,
+                action,
+            ),
         )
 
         match action:
             case FirewallAction.BLOCK:
                 print("\nThe command was blocked. No changes have been made.")
                 return 1 if args.error_on_block else 0
+
             case FirewallAction.ALLOW:
                 return package_manager.run_command(args.command)
 
@@ -100,61 +108,61 @@ def run_firewall(args: Namespace) -> int:
         if not package_manager:
             raise RuntimeError("Failed to initialize package manager handle: cannot run command")
 
-        loggers.log_firewall_action(
+        loggers.log_firewall_run(
             package_manager.ecosystem(),
             package_manager.name(),
             package_manager.executable(),
-            args.command,
-            action=FirewallAction.ALLOW,
-            warned=False,
-            relevant_findings=None,
-            verification_report=None,
+            FirewallRunSummary(
+                args.command,
+                install_targets=None,
+                report=None,
+                relevant_findings=None,
+                warning=False,
+                action=FirewallAction.ALLOW,
+            ),
         )
         return package_manager.run_command(args.command)
 
 
 def _determine_firewall_action(
-    verification_report: VerificationReport,
+    report: VerificationReport,
     warning_action: Optional[FirewallAction]
-) -> tuple[Optional[FirewallAction], bool, Optional[FindingsReport]]:
+) -> tuple[Optional[FirewallAction], Optional[FindingSeverity], Optional[FindingsReport]]:
     """
     Determine the firewall action and its relevant findings from the given inputs.
 
     Args:
-        verification_report: The `VerificationReport` on whose basis the action will be decided.
+        report: The `VerificationReport` on whose basis the action will be decided.
         warning_action:
-            The (possibly undefined) action to take in the case that `verification_report`
+            The (possibly undefined) action to take in the case that `report`
             contains only warning-level findings or unverifiable packages.
 
     Returns:
-        A `tuple[Optional[FirewallAction], bool, Optional[FindingsReport]]` representing:
-            1. The `FirewallAction` resulting from `verification_report`, if one could be determined.
-            2. A `bool` indicating whether or not the findings warrant warning the user.
-            3. An `Optional[FindingsReport]` containing the findings that are relevant to `action`.
+        A triple of an `Optional[FirewallAction]` representing the action that
+        Supply-Chain Firewall should take given `report` and `warning_action`, an
+        `Optional[FindingSeverity]` indicating the highest severity level present in
+        `report` (where `FindingSeverity.WARNING` also covers unverifiable packages),
+        and an `Optional[FindingsReport]` containing any findings that were relevant
+        to the returned action.
 
-        A `FirewallAction` cannot be determined when `verification_report` contains at most
-        warning-level findings or unverifiable packages and no predetermined action to take
-        automatically in response may be inferred (e.g., from the environment). In this case,
-        the user must be prompted interactively for their intent to proceed with the command.
+        Note that on warning, the returned action is always equal to `warning_action`.
+        In the case that Supply-Chain Firewall was unable to determine this action
+        from the environment or the command line, `run_firewall()` is required to
+        interactively prompt the user to select an action.
     """
-    critical_report = verification_report.get_findings_report(FindingSeverity.CRITICAL)
-    warning_report = verification_report.get_findings_report(FindingSeverity.WARNING)
+    critical_findings = report.get_findings(FindingSeverity.CRITICAL)
+    warning_findings = report.get_findings(FindingSeverity.WARNING)
 
     # Critical findings => BLOCK
-    if critical_report:
-        return FirewallAction.BLOCK, False, critical_report
+    if critical_findings:
+        return FirewallAction.BLOCK, FindingSeverity.CRITICAL, critical_findings
 
-    # No warning findings and no unverifiable packages => ALLOW
-    if not (warning_report or verification_report.unverifiable):
-        return FirewallAction.ALLOW, False, None
+    # No critical or warning findings and no unverifiable packages => ALLOW
+    if not (warning_findings or report.get_unverifiable()):
+        return FirewallAction.ALLOW, None, None
 
     # Warning findings or unverifiable packages => configured warning action (or user confirmation)
-    relevant_findings = FindingsReport.merge(
-        warning_report if warning_report else FindingsReport(),
-        verification_report.unverifiable,
-    )
-
-    return warning_action, True, relevant_findings
+    return warning_action, FindingSeverity.WARNING, warning_findings if warning_findings else None
 
 
 def _get_warning_action(cli_allow_choice: bool, cli_block_choice: bool) -> Optional[FirewallAction]:

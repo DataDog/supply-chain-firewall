@@ -7,7 +7,7 @@ from typing import Optional
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import FindingSeverity, UnverifiablePackage
+from scfw.verifier import Finding, FindingSeverity, UnverifiablePackage
 from scfw.verifiers.list_verifier import FindingsListVerifier, FindingsMap
 
 from .. import utils
@@ -285,4 +285,6 @@ def backend_test_verify(
         return
 
     assert findings is not None
-    assert list_verifier.verify(package) == findings
+    assert list_verifier.verify(package) == {
+        Finding(list_verifier.name(), severity, finding) for severity, finding in findings
+    }

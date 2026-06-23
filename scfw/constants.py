@@ -17,6 +17,11 @@ DD_ENV = "dev"
 Default environment value for Datadog logging.
 """
 
+DD_SITE_VAR = "DD_SITE"
+"""
+Lorem ipsum dolor sit amet.
+"""
+
 DD_API_KEY_VAR = "DD_API_KEY"
 """
 The environment variable under which the firewall looks for a Datadog API key.

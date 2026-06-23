@@ -11,7 +11,7 @@ import uuid
 
 import requests
 
-from scfw.constants import DD_API_KEY_VAR, DD_APP_KEY_VAR
+from scfw.constants import DD_API_KEY_VAR, DD_APP_KEY_VAR, DD_SITE_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger, FirewallRunSummary
 from scfw.report import Finding, VerificationReport
@@ -20,10 +20,12 @@ _log = logging.getLogger(__name__)
 
 _DD_LOG_NAME = "dd_codesec_log"
 
-_STAGING_ENDPOINT = "https://dd.datad0g.com/api/v2/static-analysis-sca/scfw/report"
+_CODESEC_LOGGER_API_ENDPOINT = "api/v2/static-analysis-sca/scfw/report"
 
-# Lorem ipsum dolor sit amet.
 DD_CODESEC_LOGGER_ENABLED_VAR = "SCFW_DD_CODESEC_LOGGER_ENABLED"
+"""
+Lorem ipsum dolor sit amet.
+"""
 
 
 class _DDCodeSecurityLogFormatter(logging.Formatter):
@@ -114,9 +116,11 @@ class _DDCodeSecurityLogHandler(logging.Handler):
             _log.warning("Lorem ipsum dolor sit amet")
             return
 
+        dd_site = os.getenv(DD_SITE_VAR, "datadoghq.com")
+
         try:
             r = requests.post(
-                _STAGING_ENDPOINT,
+                f"https://api.{dd_site}/{_CODESEC_LOGGER_API_ENDPOINT}",
                 headers={
                     "DD-API-KEY": dd_api_key,
                     "dd-application-key": dd_app_key,

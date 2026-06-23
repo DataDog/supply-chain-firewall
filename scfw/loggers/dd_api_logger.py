@@ -10,13 +10,19 @@ from datadog_api_client.v2.api.logs_api import LogsApi
 from datadog_api_client.v2.model.content_encoding import ContentEncoding
 from datadog_api_client.v2.model.http_log import HTTPLog
 from datadog_api_client.v2.model.http_log_item import HTTPLogItem
+import datadog_api_client.exceptions as dd_exceptions
 
 import scfw
-from scfw.constants import DD_API_KEY_VAR, DD_ENV, DD_SERVICE, DD_SOURCE
+from scfw.constants import DD_ENV, DD_SERVICE, DD_SOURCE
 from scfw.logger import FirewallLogger
 from scfw.loggers.dd_logger import DDLogFormatter, DDLogger
 
 _DD_LOG_NAME = "dd_api_log"
+
+DD_API_LOGGER_ENABLED_VAR = "SCFW_DD_API_LOGGER_ENABLED"
+"""
+Lorem ipsum dolor sit amet.
+"""
 
 
 class _DDLogHandler(logging.Handler):
@@ -38,30 +44,37 @@ class _DDLogHandler(logging.Handler):
             f"version:{scfw.__version__}"
         }
 
-        # TODO(ikretz): Fix this to make it line up with the new format.
-        targets = record.__dict__.get("targets", {})
-        target_tags = set(map(lambda e: f"target:{e}", targets))
-
         body = HTTPLog(
             [
                 HTTPLogItem(
                     ddsource=DD_SOURCE,
-                    ddtags=",".join(usm_tags | target_tags),
+                    ddtags=",".join(usm_tags),
                     message=self.format(record),
                     service=DD_SERVICE,
                 ),
             ]
         )
 
-        configuration = Configuration()
-        with ApiClient(configuration) as api_client:
-            api_instance = LogsApi(api_client)
-            api_instance.submit_log(content_encoding=ContentEncoding.DEFLATE, body=body)
+        try:
+            configuration = Configuration()
+            with ApiClient(configuration) as api_client:
+                api_instance = LogsApi(api_client)
+                api_instance.submit_log(content_encoding=ContentEncoding.DEFLATE, body=body)
+
+        except dd_exceptions.ApiException as e:
+            if isinstance(e.body, dict):
+                detail = e.body.get("errors", "")
+            elif e.reason:
+                detail = e.reason
+            else:
+                detail = "Unspecified API error"
+
+            raise RuntimeError(f"Datadog API returned error: {detail}")
 
 
-# TODO(ikretz): Put this being another opt-in environment variable
+# TODO(ikretz): Update documentation
 # Configure a single logging handle for all `DDAPILogger` instances to share
-_handler = _DDLogHandler() if os.getenv(DD_API_KEY_VAR) else logging.NullHandler()
+_handler = _DDLogHandler() if os.getenv(DD_API_LOGGER_ENABLED_VAR) else logging.NullHandler()
 _handler.setFormatter(DDLogFormatter())
 
 _ddlog = logging.getLogger(_DD_LOG_NAME)

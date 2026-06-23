@@ -13,16 +13,11 @@ from datadog_api_client.v2.model.http_log_item import HTTPLogItem
 import datadog_api_client.exceptions as dd_exceptions
 
 import scfw
-from scfw.constants import DD_ENV, DD_SERVICE, DD_SOURCE
+from scfw.constants import DD_API_LOGGER_ENABLED_VAR, DD_ENV, DD_SERVICE, DD_SOURCE
 from scfw.logger import FirewallLogger
 from scfw.loggers.dd_logger import DDLogFormatter, DDLogger
 
 _DD_LOG_NAME = "dd_api_log"
-
-DD_API_LOGGER_ENABLED_VAR = "SCFW_DD_API_LOGGER_ENABLED"
-"""
-Setting this environment variable is required to enable the Datadog API logger.
-"""
 
 
 class _DDLogHandler(logging.Handler):
@@ -60,10 +55,14 @@ class _DDLogHandler(logging.Handler):
                 api_instance.submit_log(content_encoding=ContentEncoding.DEFLATE, body=body)
 
         except dd_exceptions.ApiException as e:
-            if isinstance(e.body, dict):
-                detail = e.body.get("errors", "")
+            if (
+                isinstance(e.body, dict)
+                and (errors := e.body.get("errors", []))
+                and isinstance(errors, list)
+            ):
+                detail = ": ".join(str(error) for error in errors)
             elif e.reason:
-                detail = e.reason
+                detail = str(e.reason)
             else:
                 detail = "Unspecified API error"
 

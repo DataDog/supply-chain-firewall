@@ -32,6 +32,11 @@ DD_APP_KEY_VAR = "DD_APP_KEY"
 The environment variable under which SCFW looks for a Datadog application key.
 """
 
+DD_API_LOGGER_ENABLED_VAR = "SCFW_DD_API_LOGGER_ENABLED"
+"""
+The environment variable that must be set to enable the Datadog API logger.
+"""
+
 DD_LOG_LEVEL_VAR = "SCFW_DD_LOG_LEVEL"
 """
 The environment variable under which SCFW looks for a Datadog log level setting.

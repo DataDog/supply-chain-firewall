@@ -71,7 +71,7 @@ def get_answers() -> dict:
             name="dd_api_logging",
             message="Would you like to enable sending SCFW logs to Datadog using an API key?",
             default=False,
-            ignore=lambda answers: has_dd_api_key or answers["dd_agent_logging"]
+            ignore=lambda answers: answers["dd_agent_logging"]
         ),
         inquirer.Text(
             name="dd_api_key",
@@ -83,7 +83,7 @@ def get_answers() -> dict:
             name="dd_log_level",
             message="Select the desired log level for Datadog logging",
             choices=[(_describe_log_level(action), str(action)) for action in FirewallAction],
-            ignore=lambda answers: not (answers["dd_agent_logging"] or has_dd_api_key or answers["dd_api_logging"])
+            ignore=lambda answers: not (answers["dd_agent_logging"] or answers["dd_api_logging"])
         )
     ]
 

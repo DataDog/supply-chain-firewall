@@ -1,5 +1,5 @@
 """
-Configures a logger for sending Supply-Chain Firewall logs to Datadog's API over HTTP.
+Configures a logger for sending Supply Chain Firewall logs to Datadog's API over HTTP.
 """
 
 import logging
@@ -91,9 +91,9 @@ class DDAPILogger(DDLogger):
 
 def load_logger() -> FirewallLogger:
     """
-    Export `DDAPILogger` for discovery by Supply-Chain Firewall.
+    Export `DDAPILogger` for discovery by Supply Chain Firewall.
 
     Returns:
-        A `DDAPILogger` for use in a run of Supply-Chain Firewall.
+        A `DDAPILogger` for use in a run of Supply Chain Firewall.
     """
     return DDAPILogger()

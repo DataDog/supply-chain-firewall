@@ -1,5 +1,5 @@
 """
-A representation of package ecosystems supported by Supply-Chain Firewall.
+A representation of package ecosystems supported by Supply Chain Firewall.
 """
 
 from enum import Enum
@@ -8,7 +8,7 @@ from typing_extensions import Self
 
 class ECOSYSTEM(Enum):
     """
-    Package ecosystems supported by Supply-Chain Firewall.
+    Package ecosystems supported by Supply Chain Firewall.
     """
     Npm = "npm"
     PyPI = "PyPI"

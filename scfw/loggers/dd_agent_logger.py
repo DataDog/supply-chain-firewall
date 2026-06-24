@@ -1,5 +1,5 @@
 """
-Configures a logger for sending Supply-Chain Firewall logs to a local Datadog Agent.
+Configures a logger for sending Supply Chain Firewall logs to a local Datadog Agent.
 """
 
 import logging
@@ -23,7 +23,7 @@ class _DDLogHandler(logging.Handler):
         Args:
             agent_port:
                 The port number where the Datadog Agent has been independently configured
-                to receive logs from Supply-Chain Firewall.
+                to receive logs from Supply Chain Firewall.
 
         Raises:
             ValueError: An invalid port number was given.
@@ -86,9 +86,9 @@ class DDAgentLogger(DDLogger):
 
 def load_logger() -> FirewallLogger:
     """
-    Export `DDAgentLogger` for discovery by Supply-Chain Firewall.
+    Export `DDAgentLogger` for discovery by Supply Chain Firewall.
 
     Returns:
-        A `DDAgentLogger` for use in a run of Supply-Chain Firewall.
+        A `DDAgentLogger` for use in a run of Supply Chain Firewall.
     """
     return DDAgentLogger()

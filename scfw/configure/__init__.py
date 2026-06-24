@@ -1,5 +1,5 @@
 """
-Implements Supply-Chain Firewall's `configure` subcommand.
+Implements Supply Chain Firewall's `configure` subcommand.
 """
 
 from argparse import Namespace
@@ -15,7 +15,7 @@ _log = logging.getLogger(__name__)
 
 def run_configure(args: Namespace) -> int:
     """
-    Configure the environment for using Supply-Chain Firewall.
+    Configure the environment for using Supply Chain Firewall.
 
     Args:
         args: A `Namespace` containing the parsed `configure` subcommand command line.
@@ -36,7 +36,7 @@ def run_configure(args: Namespace) -> int:
         env_status = env.remove_config()
 
         print(
-            "All Supply-Chain Firewall-managed configuration has been removed from your environment."
+            "All Supply Chain Firewall-managed configuration has been removed from your environment."
             "\n\nPost-removal tasks:"
             "\n* Update your current shell environment by sourcing from your .bashrc/.zshrc file."
             "\n* If you had previously configured Datadog Agent log forwarding, restart the Agent."
@@ -67,7 +67,7 @@ def run_configure(args: Namespace) -> int:
         try:
             dd_agent.configure_agent_logging(port)
         except Exception as e:
-            _log.warning(f"Failed to configure Datadog Agent for Supply-Chain Firewall: {e}")
+            _log.warning(f"Failed to configure Datadog Agent for Supply Chain Firewall: {e}")
             dd_agent_status = 1
             # Don't set the Agent port environment variable if Agent configuration failed
             answers["dd_agent_port"] = None

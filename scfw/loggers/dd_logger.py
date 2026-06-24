@@ -84,7 +84,7 @@ dotenv.load_dotenv()
 
 class DDLogFormatter(logging.Formatter):
     """
-    A custom JSON formatter for Supply-Chain Firewall logs.
+    A custom JSON formatter for Supply Chain Firewall logs.
     """
     def format(self, record) -> str:
         """
@@ -199,13 +199,13 @@ class DDLogger(FirewallLogger):
         run_summary: FirewallRunSummary,
     ):
         """
-        Log the data and action taken in a completed run of Supply-Chain Firewall.
+        Log the data and action taken in a completed run of Supply Chain Firewall.
 
         Args:
             ecosystem: The ecosystem of the inspected package manager command.
             package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
-            run_summary: The summary of the completed run of Supply-Chain Firewall to be logged.
+            run_summary: The summary of the completed run of Supply Chain Firewall to be logged.
         """
         if run_summary.action < self._level:
             return

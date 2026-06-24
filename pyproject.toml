@@ -17,7 +17,7 @@ authors = [
 maintainers = [
     {name = "Ian Kretz", email = "ian.kretz@datadoghq.com"},
 ]
-description = "A tool for preventing the installation of malicious open-source packages"
+description = "A tool for preventing the installation of malicious npm and PyPI packages"
 readme = "README.md"
 
 [project.scripts]

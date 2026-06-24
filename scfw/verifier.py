@@ -16,10 +16,10 @@ class FindingSeverity(Enum):
     A hierarchy of severity levels for package verifier findings.
 
     Package verifiers attach severity levels to their findings in order to direct
-    Supply-Chain Firewall to take the correct action with respect to blocking or
+    Supply Chain Firewall to take the correct action with respect to blocking or
     warning on a package manager command.
 
-    A `CRITICAL` finding causes Supply-Chain Firewall to block. A `WARNING` finding
+    A `CRITICAL` finding causes Supply Chain Firewall to block. A `WARNING` finding
     prompts it to seek confirmation from the user before running the command.
     """
     CRITICAL = "CRITICAL"
@@ -146,7 +146,7 @@ class UnverifiablePackage(Exception):
     a private package registry would not be within the purview of a verifier that only
     covers packages sourced from an ecosystem's main public registry.
 
-    Supply-Chain Firewall handles this exception gracefully by separately collecting,
+    Supply Chain Firewall handles this exception gracefully by separately collecting,
     logging and reporting any packages that were unable to be verified.
     """
     pass

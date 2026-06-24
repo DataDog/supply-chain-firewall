@@ -51,6 +51,11 @@ _ALL_LOG_ATTRIBUTES = _AUDIT_ATTRIBUTES | _FIREWALL_ACTION_ATTRIBUTES
 
 _DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
 
+DD_LOG_VERSION = 1
+"""
+A version number for the log record format.
+"""
+
 DD_LOGGER_HOME = Path("dd_logger/")
 """
 The Datadog logger home directory, realtive to `SCFW_HOME`.
@@ -129,12 +134,13 @@ class DDLogFormatter(logging.Formatter):
             return attributes
 
         log_record = {
-            "source": DD_SOURCE,
-            "service": DD_SERVICE,
-            "version": scfw.__version__,
+            "cwd": os.getcwd(),
             "env": os.getenv("DD_ENV", DD_ENV),
             "hostname": socket.gethostname(),
-            "cwd": os.getcwd(),
+            "log_version": DD_LOG_VERSION,
+            "service": DD_SERVICE,
+            "source": DD_SOURCE,
+            "version": scfw.__version__,
         }
 
         try:

@@ -1,5 +1,5 @@
 """
-Provides the supply-chain firewall's main routine.
+Provides Supply-Chain Firewall's main routine.
 """
 
 import logging
@@ -16,7 +16,7 @@ _log = logging.getLogger(__name__)
 
 def main() -> int:
     """
-    The supply-chain firewall's main routine.
+    Supply-Chain Firewall's main routine.
 
     Returns:
         An integer status code indicating normal or error exit.

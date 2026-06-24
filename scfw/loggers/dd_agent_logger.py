@@ -1,5 +1,5 @@
 """
-Configures a logger for sending firewall logs to a local Datadog Agent.
+Configures a logger for sending Supply-Chain Firewall logs to a local Datadog Agent.
 """
 
 import logging
@@ -86,9 +86,9 @@ class DDAgentLogger(DDLogger):
 
 def load_logger() -> FirewallLogger:
     """
-    Export `DDAgentLogger` for discovery by the firewall.
+    Export `DDAgentLogger` for discovery by Supply-Chain Firewall.
 
     Returns:
-        A `DDAgentLogger` for use in a run of the firewall.
+        A `DDAgentLogger` for use in a run of Supply-Chain Firewall.
     """
     return DDAgentLogger()

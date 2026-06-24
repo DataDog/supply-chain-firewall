@@ -15,7 +15,7 @@ _log = logging.getLogger(__name__)
 
 def run_configure(args: Namespace) -> int:
     """
-    Configure the environment for use with the supply-chain firewall.
+    Configure the environment for using Supply-Chain Firewall.
 
     Args:
         args: A `Namespace` containing the parsed `configure` subcommand command line.

@@ -1,5 +1,5 @@
 """
-Implements the supply-chain firewall's core `run` subcommand.
+Implements Supply-Chain Firewall's core `run` subcommand.
 """
 
 from argparse import Namespace
@@ -23,12 +23,12 @@ _log = logging.getLogger(__name__)
 
 def run_firewall(args: Namespace) -> int:
     """
-    Run a package manager command through the supply-chain firewall.
+    Run a package manager command through Supply-Chain Firewall.
 
     Args:
         args:
             A `Namespace` parsed from a `run` subcommand command line containing a
-            command to run through the firewall.
+            package manager command to inspect with Supply-Chain Firewall.
 
     Returns:
         An integer status code indicating normal or error exit.
@@ -63,7 +63,7 @@ def run_firewall(args: Namespace) -> int:
             print(output)
 
         if args.dry_run:
-            _log.info("Firewall dry-run mode enabled: command will not be run")
+            _log.info("Dry-run mode enabled: command will not be run")
             print("Dry-run: exiting without running command.")
             return 1 if args.error_on_block and action == FirewallAction.BLOCK else 0
 

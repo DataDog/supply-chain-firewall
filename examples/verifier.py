@@ -1,7 +1,7 @@
 """
 Users of Supply-Chain Firewall may provide custom package verifiers representing
-alternative sources of truth for the firewall to use. This module contains a template
-for writing such a custom verifier.
+alternative sources of truth for SCFW to use. This module contains a template for
+writing such a custom verifier.
 
 Supply-Chain Firewall discovers verifiers at runtime via the following simple protocol.
 The module implementing the custom verifier must contain a function with the following

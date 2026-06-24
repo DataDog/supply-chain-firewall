@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 import re
 
-from scfw.constants import DD_AGENT_PORT_VAR, DD_API_KEY_VAR, DD_LOG_LEVEL_VAR, SCFW_HOME_VAR
+from scfw.constants import DD_AGENT_PORT_VAR, DD_API_KEY_VAR, DD_API_LOGGER_ENABLED_VAR, DD_LOG_LEVEL_VAR, SCFW_HOME_VAR
 
 _log = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ def remove_config() -> int:
     Returns:
         An integer status code indicating normal or error exit.
     """
-    # These options result in the firewall's configuration block being removed
+    # These options result in SCFW's configuration block being removed
     return update_config_files({
         "alias_npm": False,
         "alias_pip": False,
@@ -106,6 +106,8 @@ def _format_answers(answers: dict) -> str:
         config += 'alias poetry="scfw run poetry"\n'
     if (dd_agent_port := answers.get("dd_agent_port")):
         config += f'export {DD_AGENT_PORT_VAR}="{dd_agent_port}"\n'
+    if answers.get("dd_api_logging"):
+        config += f'export {DD_API_LOGGER_ENABLED_VAR}="1"\n'
     if (dd_api_key := answers.get("dd_api_key")):
         config += f'export {DD_API_KEY_VAR}="{dd_api_key}"\n'
     if (dd_log_level := answers.get("dd_log_level")):

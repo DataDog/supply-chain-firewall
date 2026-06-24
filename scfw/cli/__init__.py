@@ -1,5 +1,5 @@
 """
-Defines the supply-chain firewall's command-line interface and performs argument parsing.
+Defines Supply-Chain Firewall's command-line interface and performs argument parsing.
 """
 
 from argparse import ArgumentError, Namespace, SUPPRESS
@@ -24,7 +24,7 @@ _DEFAULT_LOG_LEVEL = logging.getLevelName(logging.WARNING)
 
 def _add_audit_cli(parser: ArgumentParser):
     """
-    Defines the command-line interface for the firewall's `audit` subcommand.
+    Defines the command-line interface for Supply-Chain Firewall's `audit` subcommand.
 
     Args:
         parser: The `ArgumentParser` to which the `audit` command line will be added.
@@ -47,7 +47,7 @@ def _add_audit_cli(parser: ArgumentParser):
 
 def _add_configure_cli(parser: ArgumentParser):
     """
-    Defines the command-line interface for the firewall's `configure` subcommand.
+    Defines the command-line interface for Supply-Chain Firewall's `configure` subcommand.
 
     Args:
         parser: The `ArgumentParser` to which the `configure` command line will be added.
@@ -113,7 +113,7 @@ def _add_configure_cli(parser: ArgumentParser):
 
 def _add_run_cli(parser: ArgumentParser):
     """
-    Defines the command-line interface for the firewall's `run` subcommand.
+    Defines the command-line interface for Supply-Chain Firewall's `run` subcommand.
 
     Args:
         parser: The `ArgumentParser` to which the `run` command line will be added.
@@ -168,7 +168,7 @@ def _add_run_cli(parser: ArgumentParser):
 
 class Subcommand(Enum):
     """
-    The set of subcommands that comprise the supply-chain firewall's command line.
+    The set of subcommands that comprise Supply-Chain Firewall's command line.
     """
     Audit = "audit"
     Configure = "configure"
@@ -230,13 +230,13 @@ class Subcommand(Enum):
 
 def _cli() -> ArgumentParser:
     """
-    Defines the command-line interface for the supply-chain firewall.
+    Defines the command-line interface for Supply-Chain Firewall.
 
     Returns:
-        A parser for the supply-chain firewall's command line.
+        A parser for Supply-Chain Firewall's command line.
 
-        This parser only handles the firewall's own optional arguments and subcommands.
-        It does not parse the package manager commands being run through the firewall.
+        This parser only handles SCFW's own optional arguments and subcommands.
+        It does not parse the package manager commands being run through it.
     """
     parser = ArgumentParser(
         prog="scfw",
@@ -271,7 +271,7 @@ def _cli() -> ArgumentParser:
 
 def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
     """
-    Parse the supply-chain firewall's command line from a given argument vector.
+    Parse Supply-Chain Firewall's command line from a given argument vector.
 
     Args:
         argv: The argument vector to be parsed.
@@ -328,18 +328,16 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
 
 def parse_command_line() -> tuple[Optional[Namespace], str]:
     """
-    Parse the supply-chain firewall's command line.
+    Parse Supply-Chain Firewall's command line.
 
     Returns:
-        A `tuple` of a `Namespace` object containing the results of parsing the
-        firewall's command line and a `str` help message for the caller's use in
-        early exits. In the case of a parsing failure, `None` is returned instead
-        of a `Namespace`.
+        A `tuple` of a `Namespace` object containing the results of parsing SCFW's
+        command line and a `str` help message for the caller's use in early exits.
+        In the case of a parsing failure, `None` is returned instead of a `Namespace`.
 
         On successful parsing of a command line for the `run` subcommand, the
-        returned `Namespace` contains the package manager command provided to the
-        firewall as a `list[str]` under the `command` attribute. Meanwhile, the name
-        of the selected package manager is contained under the `package_manager`
-        attribute.
+        returned `Namespace` contains the package manager command provided to SCFW
+        as a `list[str]` under the `command` attribute. Meanwhile, the name of the
+        selected package manager is contained under the `package_manager` attribute.
     """
     return _parse_command_line(sys.argv)

@@ -1,24 +1,20 @@
 """
-Exposes the currently discoverable set of client loggers implementing the
-firewall's logging protocol.
+Exposes the currently discoverable set of client loggers implementing SCFW's
+logging protocol.
 
-Two loggers ship with the supply chain firewall by default: `DDAgentLogger`
-and `DDAPILogger`, which send logs to Datadog via a local Datadog Agent
-or the HTTP API, respectively. Firewall users may additionally provide custom
-loggers according to their own logging needs.
-
-The firewall discovers loggers at runtime via the following simple protocol.
-The module implementing the custom logger must contain a function with the
-following name and signature:
+Firewall users may provide custom loggers according to their own logging needs.
+SCFW discovers loggers at runtime via the following simple protocol. The module
+implementing the custom logger must contain a function with the following name
+and signature:
 
 ```
 def load_logger() -> FirewallLogger
 ```
 
 This `load_logger` function should return an instance of the custom logger
-for the firewall's use. The module may then be placed in the same directory
-as this source file for runtime import. Make sure to reinstall the package
-after doing so.
+for SCFW's use. The module may then be placed in the same directory as this
+source file for runtime import. Make sure to reinstall the `scfw` package after
+doing so.
 """
 
 import importlib

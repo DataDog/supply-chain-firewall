@@ -1,5 +1,5 @@
 """
-Defines Supply-Chain Firewall's command-line interface and performs argument parsing.
+Defines Supply Chain Firewall's command-line interface and performs argument parsing.
 """
 
 from argparse import ArgumentError, Namespace, SUPPRESS
@@ -24,7 +24,7 @@ _DEFAULT_LOG_LEVEL = logging.getLevelName(logging.WARNING)
 
 def _add_audit_cli(parser: ArgumentParser):
     """
-    Defines the command-line interface for Supply-Chain Firewall's `audit` subcommand.
+    Defines the command-line interface for Supply Chain Firewall's `audit` subcommand.
 
     Args:
         parser: The `ArgumentParser` to which the `audit` command line will be added.
@@ -47,7 +47,7 @@ def _add_audit_cli(parser: ArgumentParser):
 
 def _add_configure_cli(parser: ArgumentParser):
     """
-    Defines the command-line interface for Supply-Chain Firewall's `configure` subcommand.
+    Defines the command-line interface for Supply Chain Firewall's `configure` subcommand.
 
     Args:
         parser: The `ArgumentParser` to which the `configure` command line will be added.
@@ -56,25 +56,25 @@ def _add_configure_cli(parser: ArgumentParser):
         "-r",
         "--remove",
         action="store_true",
-        help="Remove all Supply-Chain Firewall-managed configuration"
+        help="Remove all Supply Chain Firewall-managed configuration"
     )
 
     parser.add_argument(
         "--alias-npm",
         action="store_true",
-        help="Add shell aliases to always run npm commands through Supply-Chain Firewall"
+        help="Add shell aliases to always run npm commands through Supply Chain Firewall"
     )
 
     parser.add_argument(
         "--alias-pip",
         action="store_true",
-        help="Add shell aliases to always run pip commands through Supply-Chain Firewall"
+        help="Add shell aliases to always run pip commands through Supply Chain Firewall"
     )
 
     parser.add_argument(
         "--alias-poetry",
         action="store_true",
-        help="Add shell aliases to always run Poetry commands through Supply-Chain Firewall"
+        help="Add shell aliases to always run Poetry commands through Supply Chain Firewall"
     )
 
     parser.add_argument(
@@ -107,13 +107,13 @@ def _add_configure_cli(parser: ArgumentParser):
         type=str,
         default=None,
         metavar="PATH",
-        help="Directory that Supply-Chain Firewall can use as a local cache"
+        help="Directory that Supply Chain Firewall can use as a local cache"
     )
 
 
 def _add_run_cli(parser: ArgumentParser):
     """
-    Defines the command-line interface for Supply-Chain Firewall's `run` subcommand.
+    Defines the command-line interface for Supply Chain Firewall's `run` subcommand.
 
     Args:
         parser: The `ArgumentParser` to which the `run` command line will be added.
@@ -168,7 +168,7 @@ def _add_run_cli(parser: ArgumentParser):
 
 class Subcommand(Enum):
     """
-    The set of subcommands that comprise Supply-Chain Firewall's command line.
+    The set of subcommands that comprise Supply Chain Firewall's command line.
     """
     Audit = "audit"
     Configure = "configure"
@@ -195,18 +195,18 @@ class Subcommand(Enum):
             case Subcommand.Audit:
                 return {
                     "exit_on_error": False,
-                    "description": "Audit installed packages using Supply-Chain Firewall's verifiers."
+                    "description": "Audit installed packages using Supply Chain Firewall's verifiers."
                 }
             case Subcommand.Configure:
                 return {
                     "exit_on_error": False,
-                    "description": "Configure the environment for using Supply-Chain Firewall."
+                    "description": "Configure the environment for using Supply Chain Firewall."
                 }
             case Subcommand.Run:
                 return {
                     "usage": "%(prog)s [options] COMMAND",
                     "exit_on_error": False,
-                    "description": "Run a package manager command through Supply-Chain Firewall."
+                    "description": "Run a package manager command through Supply Chain Firewall."
                 }
 
     def _cli_spec(self) -> Callable[[ArgumentParser], None]:
@@ -230,10 +230,10 @@ class Subcommand(Enum):
 
 def _cli() -> ArgumentParser:
     """
-    Defines the command-line interface for Supply-Chain Firewall.
+    Defines the command-line interface for Supply Chain Firewall.
 
     Returns:
-        A parser for Supply-Chain Firewall's command line.
+        A parser for Supply Chain Firewall's command line.
 
         This parser only handles SCFW's own optional arguments and subcommands.
         It does not parse the package manager commands being run through it.
@@ -271,7 +271,7 @@ def _cli() -> ArgumentParser:
 
 def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
     """
-    Parse Supply-Chain Firewall's command line from a given argument vector.
+    Parse Supply Chain Firewall's command line from a given argument vector.
 
     Args:
         argv: The argument vector to be parsed.
@@ -328,7 +328,7 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
 
 def parse_command_line() -> tuple[Optional[Namespace], str]:
     """
-    Parse Supply-Chain Firewall's command line.
+    Parse Supply Chain Firewall's command line.
 
     Returns:
         A `tuple` of a `Namespace` object containing the results of parsing SCFW's

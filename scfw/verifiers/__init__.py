@@ -1,13 +1,13 @@
 """
 Exports the currently discoverable set of package verifiers for use in
-Supply-Chain Firewall.
+Supply Chain Firewall.
 
-Two package verifiers ship with Supply-Chain Firewall by default: one for
+Two package verifiers ship with Supply Chain Firewall by default: one for
 Datadog Security Research's malicious packages dataset and one for OSV.dev's
-advisory database. Users of Supply-Chain Firewall may additionally provide
+advisory database. Users of Supply Chain Firewall may additionally provide
 custom verifiers representing alternative sources of truth.
 
-Supply-Chain Firewall discovers verifiers at runtime via the following protocol.
+Supply Chain Firewall discovers verifiers at runtime via the following protocol.
 The module implementing the custom verifier must contain a function with the
 following name and signature:
 
@@ -17,7 +17,7 @@ def load_verifier() -> PackageVerifier
 
 This `load_verifier` function should return an instance of the custom verifier.
 The module may then be placed in the same directory as this source file for
-runtime import. Make sure to reinstall Supply-Chain Firewall after doing so.
+runtime import. Make sure to reinstall Supply Chain Firewall after doing so.
 """
 
 import concurrent.futures as cf

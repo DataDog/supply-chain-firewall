@@ -23,7 +23,7 @@ def test_poetry_version_output():
 
 def test_poetry_add_no_change(new_poetry_project):
     """
-    Test that certain `poetry add` commands relied on by Supply-Chain Firewall not
+    Test that certain `poetry add` commands relied on by Supply Chain Firewall not
     to error or modify the local installation state indeed have these properties.
     """
     test_cases = [
@@ -51,7 +51,7 @@ def test_poetry_add_no_change(new_poetry_project):
 
 def test_poetry_install_no_change(new_poetry_project):
     """
-    Test that certain `poetry install` commands relied on by Supply-Chain Firewall
+    Test that certain `poetry install` commands relied on by Supply Chain Firewall
     not to error or modify the local installation state indeed have these properties.
     """
     test_cases = [
@@ -74,7 +74,7 @@ def test_poetry_install_no_change(new_poetry_project):
 
 def test_poetry_sync_no_change(new_poetry_project):
     """
-    Test that certain `poetry sync` commands relied on by Supply-Chain Firewall
+    Test that certain `poetry sync` commands relied on by Supply Chain Firewall
     not to error or modify the local installation state indeed have these properties.
     """
     version = poetry_version()
@@ -103,7 +103,7 @@ def test_poetry_sync_no_change(new_poetry_project):
 
 def test_poetry_update_no_change(new_poetry_project):
     """
-    Test that certain `poetry update` commands relied on by Supply-Chain Firewall
+    Test that certain `poetry update` commands relied on by Supply Chain Firewall
     not to error or modify the local installation state indeed have these properties.
     """
     test_cases = [

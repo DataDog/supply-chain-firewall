@@ -104,9 +104,9 @@ class FindingsListVerifier(PackageVerifier):
 
 def load_verifier() -> PackageVerifier:
     """
-    Export `FindingsListVerifier` for discovery by Supply-Chain Firewall.
+    Export `FindingsListVerifier` for discovery by Supply Chain Firewall.
 
     Returns:
-        A `FindingsListVerifier` for use in a run of Supply-Chain Firewall.
+        A `FindingsListVerifier` for use in a run of Supply Chain Firewall.
     """
     return FindingsListVerifier()

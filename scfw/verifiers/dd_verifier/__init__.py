@@ -112,9 +112,9 @@ class DatadogMaliciousPackagesVerifier(PackageVerifier):
 
 def load_verifier() -> PackageVerifier:
     """
-    Export `DatadogMaliciousPackagesVerifier` for discovery by Supply-Chain Firewall.
+    Export `DatadogMaliciousPackagesVerifier` for discovery by Supply Chain Firewall.
 
     Returns:
-        A `DatadogMaliciousPackagesVerifier` for use in a run of Supply-Chain Firewall.
+        A `DatadogMaliciousPackagesVerifier` for use in a run of Supply Chain Firewall.
     """
     return DatadogMaliciousPackagesVerifier()

@@ -1,5 +1,5 @@
 """
-Provides a `FirewallLogger` for Datadog Code Security's Supply-Chain Firewall API.
+Provides a `FirewallLogger` for Datadog Code Security's Supply Chain Firewall API.
 """
 
 import logging
@@ -28,7 +28,7 @@ Setting this environment variable is required to enable the Datadog Code Securit
 class DDCodeSecurityLogger(FirewallLogger):
     """
     An implementation of `FirewallLogger` for sending logs to Datadog Code Security's
-    Supply-Chain Firewall API.
+    Supply Chain Firewall API.
     """
     def __init__(self):
         """
@@ -44,13 +44,13 @@ class DDCodeSecurityLogger(FirewallLogger):
         run_summary: FirewallRunSummary,
     ):
         """
-        Log the data and action taken in a completed run of Supply-Chain Firewall.
+        Log the data and action taken in a completed run of Supply Chain Firewall.
 
         Args:
             ecosystem: The ecosystem of the inspected package manager command.
             package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
-            run_summary: The summary of the completed run of Supply-Chain Firewall to be logged.
+            run_summary: The summary of the completed run of Supply Chain Firewall to be logged.
         """
         if not self._enabled:
             return
@@ -112,7 +112,7 @@ class DDCodeSecurityLogger(FirewallLogger):
         Args:
             package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
-            run_summary: The summary of the completed run of Supply-Chain Firewall to be logged.
+            run_summary: The summary of the completed run of Supply Chain Firewall to be logged.
 
         Returns:
             A `dict` containing the API's JSON payload generated from the inputs.
@@ -173,9 +173,9 @@ class DDCodeSecurityLogger(FirewallLogger):
 
 def load_logger() -> FirewallLogger:
     """
-    Export `DDCodeSecurityLogger` for discovery by Supply-Chain Firewall.
+    Export `DDCodeSecurityLogger` for discovery by Supply Chain Firewall.
 
     Returns:
-        A `DDCodeSecurityLogger` for use in a run of Supply-Chain Firewall.
+        A `DDCodeSecurityLogger` for use in a run of Supply Chain Firewall.
     """
     return DDCodeSecurityLogger()

@@ -1,5 +1,5 @@
 """
-Tests establishing the validity of Supply-Chain Firewall's assumptions about
+Tests establishing the validity of Supply Chain Firewall's assumptions about
 npm's command-line options and behavior.
 """
 

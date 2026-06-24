@@ -1,22 +1,22 @@
-# Supply-Chain Firewall default loggers
+# Supply Chain Firewall default loggers
 
 ## Datadog Agent logger
 
-The Datadog Agent logger submits JSON logs of successful `run` and `audit` actions taken by Supply-Chain Firewall to a properly configured local Datadog Agent process over ad hoc TCP connections.
+The Datadog Agent logger submits JSON logs of successful `run` and `audit` actions taken by Supply Chain Firewall to a properly configured local Datadog Agent process over ad hoc TCP connections.
 
 Note that the Datadog Agent must already be separately [configured](https://docs.datadoghq.com/agent/logs/#activate-log-collection) for log collection in order to use this logger.
 
 Users may configure the behavior of this logger via the following environment variables:
 
 * `SCFW_DD_AGENT_LOG_PORT`:
-    Takes a TCP port number on which the local Datadog Agent has been configured to receive logs from Supply-Chain Firewall.  Required to enable this logger.
+    Takes a TCP port number on which the local Datadog Agent has been configured to receive logs from Supply Chain Firewall.  Required to enable this logger.
 
     The `scfw configure` [subcommand](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/subcommands.md#scfw-configure) should be used in order to simultaneously configure the Datadog Agent to receive SCFW logs and write this environment variable into the user's `~/.bashrc` and `~/.zshrc` files.
 
 * `DD_ENV`:
-    Takes a string identifying the environment where Supply-Chain Firewall is running.  Defaults to `dev` if not set.
+    Takes a string identifying the environment where Supply Chain Firewall is running.  Defaults to `dev` if not set.
 
-* `DD_LOG_LEVEL`:
+* `SCFW_DD_LOG_LEVEL`:
     Takes one of the strings `ALLOW` or `BLOCK`.
 
     This value controls which `run` actions are forwarded to Datadog as follows:
@@ -44,7 +44,7 @@ Users may configure the behavior of this logger via the following environment va
 
 ## Datadog API logger
 
-The Datadog API logger submits JSON logs of successful `run` and `audit` actions taken by Supply-Chain Firewall to the Datadog HTTP API.
+The Datadog API logger submits JSON logs of successful `run` and `audit` actions taken by Supply Chain Firewall to the Datadog HTTP API.
 
 Users may configure the behavior of this logger via the following environment variables:
 
@@ -60,9 +60,9 @@ Users may configure the behavior of this logger via the following environment va
     Takes a [Datadog site parameter](https://docs.datadoghq.com/getting_started/site/#access-the-datadog-site) for setting the region where the target Datadog organization is hosted.  Defaults to `US1` if not set.
 
 * `DD_ENV`:
-    Takes a string identifying the environment where Supply-Chain Firewall is running.  Defaults to `dev` if not set.
+    Takes a string identifying the environment where Supply Chain Firewall is running.  Defaults to `dev` if not set.
 
-* `DD_LOG_LEVEL`:
+* `SCFW_DD_LOG_LEVEL`:
     Takes one of the strings `ALLOW` or `BLOCK`.
 
     This value controls which `run` actions are forwarded to Datadog as follows:
@@ -92,7 +92,7 @@ Users may configure the behavior of this logger via the following environment va
 
 > **Preview:** The Datadog Code Security API logger is currently available only as a preview for Datadog customers and upon request.
 
-This logger submits reports of `run` actions taken by Supply-Chain Firewall to Datadog Code Security's Supply-Chain Firewall API over HTTPS.  Note that `audit` actions are not currently supported by this logger.
+This logger submits reports of `run` actions taken by Supply Chain Firewall to Datadog Code Security's Supply Chain Firewall API over HTTPS.  Note that `audit` actions are not currently supported by this logger.
 
 Users may configure the behavior of this logger via the following environment variables:
 
@@ -102,17 +102,15 @@ Users may configure the behavior of this logger via the following environment va
 * `DD_API_KEY`:
     Takes a Datadog API key.  Required to successfully use this logger.
 
-    The `scfw configure` [subcommand](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/subcommands.md#scfw-configure) can be used to write this environment variable into the user's `~/.bashrc` and `~/.zshrc` files.
-
 * `DD_APP_KEY`:
     Takes a Datadog application key.  Required to successfully use this logger.
 
 * `DD_SITE`:
-    Takes a [Datadog site parameter](https://docs.datadoghq.com/getting_started/site/#access-the-datadog-site) for setting the region where the target Datadog organization is hosted.  Defaults to `datadoghq.com` if not set.
+    Takes a [Datadog site parameter](https://docs.datadoghq.com/getting_started/site/#access-the-datadog-site) for setting the region where the target Datadog organization is hosted.  Defaults to `US1` if not set.
 
 ## Local file logger
 
-The local file logger writes JSON Lines logs of all `run` and `audit` actions taken by Supply-Chain Firewall to a specified local log file.  Users are strongly encouraged to enable this logger, as having a centralized record of executed package manager commands, their outcomes, and installed packages over time can be useful in incident response scenarios.
+The local file logger writes JSON Lines logs of all `run` and `audit` actions taken by Supply Chain Firewall to a specified local log file.  Users are strongly encouraged to enable this logger, as having a centralized record of executed package manager commands, their outcomes, and installed packages over time can be useful in incident response scenarios.
 
 ```json
 {"source": "scfw", "service": "scfw", "version": "2.5.0", "env": "dev", "hostname": "bitshq", "username": "bits", "package_manager": "poetry", "executable": "~/.local/bin/poetry", "ecosystem": "PyPI", "msg": "Command 'poetry add git+https://github.com/tree-sitter/py-tree-sitter' was allowed", "action": "ALLOW", "created": 1768396428.952134, "targets": ["tree-sitter-0.25.2"], "verified": true, "warned": false}

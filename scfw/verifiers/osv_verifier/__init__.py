@@ -208,9 +208,9 @@ class OsvVerifier(PackageVerifier):
 
 def load_verifier() -> PackageVerifier:
     """
-    Export `OsvVerifier` for discovery by Supply-Chain Firewall.
+    Export `OsvVerifier` for discovery by Supply Chain Firewall.
 
     Returns:
-        An `OsvVerifier` for use in a run of Supply-Chain Firewall.
+        An `OsvVerifier` for use in a run of Supply Chain Firewall.
     """
     return OsvVerifier()

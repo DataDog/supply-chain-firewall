@@ -1,5 +1,5 @@
 """
-Tests of the Supply-Chain Firewall command-line interface.
+Tests of the Supply Chain Firewall command-line interface.
 """
 
 import pytest

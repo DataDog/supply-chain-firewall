@@ -1,5 +1,5 @@
 """
-Implements Supply-Chain Firewall's core `run` subcommand.
+Implements Supply Chain Firewall's core `run` subcommand.
 """
 
 from argparse import Namespace
@@ -23,12 +23,12 @@ _log = logging.getLogger(__name__)
 
 def run_firewall(args: Namespace) -> int:
     """
-    Run a package manager command through Supply-Chain Firewall.
+    Run a package manager command through Supply Chain Firewall.
 
     Args:
         args:
             A `Namespace` parsed from a `run` subcommand command line containing a
-            package manager command to inspect with Supply-Chain Firewall.
+            package manager command to inspect with Supply Chain Firewall.
 
     Returns:
         An integer status code indicating normal or error exit.
@@ -139,14 +139,14 @@ def _determine_firewall_action(
 
     Returns:
         A triple of an `Optional[FirewallAction]` representing the action that
-        Supply-Chain Firewall should take given `report` and `warning_action`, an
+        Supply Chain Firewall should take given `report` and `warning_action`, an
         `Optional[FindingSeverity]` indicating the highest severity level present in
         `report` (where `FindingSeverity.WARNING` also covers unverifiable packages),
         and an `Optional[FindingsReport]` containing any findings that were relevant
         to the returned action.
 
         Note that on warning, the returned action is always equal to `warning_action`.
-        In the case that Supply-Chain Firewall was unable to determine this action
+        In the case that Supply Chain Firewall was unable to determine this action
         from the environment or the command line, `run_firewall()` is required to
         interactively prompt the user to select an action.
     """

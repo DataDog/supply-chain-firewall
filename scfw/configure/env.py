@@ -1,5 +1,5 @@
 """
-Provides utilities for configuring the environment (via `.rc` files) for using Supply-Chain Firewall.
+Provides utilities for configuring the environment (via `.rc` files) for using Supply Chain Firewall.
 """
 
 import logging
@@ -18,7 +18,7 @@ _BLOCK_END = "# END SCFW MANAGED BLOCK"
 
 def remove_config() -> int:
     """
-    Remove Supply-Chain Firewall configuration from all supported files.
+    Remove Supply Chain Firewall configuration from all supported files.
 
     Returns:
         An integer status code indicating normal or error exit.
@@ -37,7 +37,7 @@ def remove_config() -> int:
 
 def update_config_files(answers: dict) -> int:
     """
-    Update the Supply-Chain Firewall configuration in all supported files.
+    Update the Supply Chain Firewall configuration in all supported files.
 
     Args:
         answers: A `dict` of configuration options to format and write to each file.
@@ -66,7 +66,7 @@ def update_config_files(answers: dict) -> int:
 
 def _update_config_file(config_file: Path, scfw_config: str):
     """
-    Update the Supply-Chain Firewall configuration in the given file.
+    Update the Supply Chain Firewall configuration in the given file.
 
     Args:
         config_file: A `Path` to the configuration file to update.

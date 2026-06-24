@@ -16,7 +16,7 @@ _log = logging.getLogger(__name__)
 
 def configure_agent_logging(port: str):
     """
-    Configure a local Datadog Agent for accepting logs from Supply-Chain Firewall.
+    Configure a local Datadog Agent for accepting logs from Supply Chain Firewall.
 
     Args:
         port: The local port number where logs will be sent to the Agent.
@@ -52,7 +52,7 @@ def configure_agent_logging(port: str):
 
 def remove_agent_logging():
     """
-    Remove Datadog Agent configuration for Supply-Chain Firewall, if it exists.
+    Remove Datadog Agent configuration for Supply Chain Firewall, if it exists.
     """
     scfw_config_dir = _dd_agent_scfw_config_dir()
     if not (scfw_config_dir and scfw_config_dir.is_dir()):
@@ -70,16 +70,16 @@ def remove_agent_logging():
 
 def _dd_agent_scfw_config_dir() -> Optional[Path]:
     """
-    Return the filesystem path to Supply-Chain Firewall's configuration directory
+    Return the filesystem path to Supply Chain Firewall's configuration directory
     for Datadog Agent log forwarding.
 
     Returns:
-        A `Path` containing the local filesystem path to Supply-Chain Firewall's
+        A `Path` containing the local filesystem path to Supply Chain Firewall's
         configuration directory for the Datadog Agent or `None` if the Agent binary
         is inaccessible or the Agent's global configuration directory (always the
         returned directory's parent) does not exist.
 
-        The returned path is what Supply-Chain Firewall's configuration directory
+        The returned path is what Supply Chain Firewall's configuration directory
         would be if it existed, but this function does not check that this directory
         actually exists. It is the caller's responsibility to do so.
 

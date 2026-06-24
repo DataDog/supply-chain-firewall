@@ -1,6 +1,6 @@
 """
 Provides an interface for client loggers to receive data from completed runs
-of Supply-Chain Firewall.
+of Supply Chain Firewall.
 """
 
 from abc import (ABCMeta, abstractmethod)
@@ -74,7 +74,7 @@ class FirewallAction(Enum):
 @dataclass(eq=True)
 class FirewallRunSummary:
     """
-    A structured summary of a run of Supply-Chain Firewall used for logging.
+    A structured summary of a run of Supply Chain Firewall used for logging.
     """
     command: list[str]
     install_targets: Optional[set[Package]]
@@ -97,13 +97,13 @@ class FirewallLogger(metaclass=ABCMeta):
         run_summary: FirewallRunSummary,
     ):
         """
-        Log the data and action taken in a completed run of Supply-Chain Firewall.
+        Log the data and action taken in a completed run of Supply Chain Firewall.
 
         Args:
             ecosystem: The ecosystem of the inspected package manager command.
             package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
-            run_summary: The summary of the completed run of Supply-Chain Firewall to be logged.
+            run_summary: The summary of the completed run of Supply Chain Firewall to be logged.
         """
         pass
 

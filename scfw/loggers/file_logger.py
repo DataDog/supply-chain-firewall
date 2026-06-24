@@ -57,9 +57,9 @@ class FileLogger(DDLogger):
 
 def load_logger() -> FirewallLogger:
     """
-    Export `FileLogger` for discovery by Supply-Chain Firewall.
+    Export `FileLogger` for discovery by Supply Chain Firewall.
 
     Returns:
-        A `FileLogger` for use in a run of Supply-Chain Firewall.
+        A `FileLogger` for use in a run of Supply Chain Firewall.
     """
     return FileLogger()

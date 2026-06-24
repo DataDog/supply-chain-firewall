@@ -61,7 +61,7 @@ class FirewallLoggers(FirewallLogger):
         run_summary: FirewallRunSummary,
     ):
         """
-        Log the data and action taken in a completed run of Supply-Chain Firewall to
+        Log the data and action taken in a completed run of Supply Chain Firewall to
         all client loggers.
         """
         for logger in self._loggers:

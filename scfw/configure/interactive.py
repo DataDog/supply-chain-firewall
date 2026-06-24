@@ -13,8 +13,8 @@ from scfw.constants import DD_API_KEY_VAR
 from scfw.logger import FirewallAction
 
 GREETING = (
-    "Thank you for using scfw, the Supply-Chain Firewall by Datadog!\n\n"
-    "Supply-Chain Firewall is a tool for preventing the installation of malicious npm and PyPI packages.\n\n"
+    "Thank you for using scfw, the Supply Chain Firewall by Datadog!\n\n"
+    "Supply Chain Firewall is a tool for preventing the installation of malicious npm and PyPI packages.\n\n"
     "This script will walk you through setting up your environment to get the most out of scfw.\n"
     "You can rerun this script at any time to update your configuration settings.\n"
 )
@@ -38,7 +38,7 @@ def get_answers() -> dict:
         inquirer.Text(
             name="scfw_home",
             message=(
-                "Enter a directory that Supply-Chain Firewall can use as a local cache"
+                "Enter a directory that Supply Chain Firewall can use as a local cache"
                 f" (default: {home_dir_default})" if home_dir_default else ""
             )
         ),
@@ -114,7 +114,7 @@ def get_farewell(answers: dict) -> str:
         A `str` farewell message to print in interactive mode.
     """
     farewell = (
-        "The environment was successfully configured for Supply-Chain Firewall."
+        "The environment was successfully configured for Supply Chain Firewall."
         "\n\nPost-configuration tasks:"
         "\n* Update your current shell environment by sourcing from your .bashrc/.zshrc file."
     )

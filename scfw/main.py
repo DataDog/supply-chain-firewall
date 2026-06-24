@@ -1,5 +1,5 @@
 """
-Provides Supply-Chain Firewall's main routine.
+Provides Supply Chain Firewall's main routine.
 """
 
 import logging
@@ -16,7 +16,7 @@ _log = logging.getLogger(__name__)
 
 def main() -> int:
     """
-    Supply-Chain Firewall's main routine.
+    Supply Chain Firewall's main routine.
 
     Returns:
         An integer status code indicating normal or error exit.
@@ -29,7 +29,7 @@ def main() -> int:
 
     _configure_logging(args.log_level)
 
-    _log.info(f"Starting Supply-Chain Firewall on {time.asctime(time.localtime())}")
+    _log.info(f"Starting Supply Chain Firewall on {time.asctime(time.localtime())}")
     _log.debug(f"Command line: {vars(args)}")
 
     try:

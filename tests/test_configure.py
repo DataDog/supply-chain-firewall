@@ -1,5 +1,5 @@
 """
-Tests of utilities for writing Supply-Chain Firewall configuration to supported files.
+Tests of utilities for writing Supply Chain Firewall configuration to supported files.
 """
 
 from pathlib import Path

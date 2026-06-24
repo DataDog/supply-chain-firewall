@@ -51,6 +51,11 @@ _ALL_LOG_ATTRIBUTES = _AUDIT_ATTRIBUTES | _FIREWALL_ACTION_ATTRIBUTES
 
 _DD_LOG_LEVEL_DEFAULT = FirewallAction.BLOCK
 
+DD_LOG_VERSION = 1
+"""
+A version number for the log record format.
+"""
+
 DD_LOGGER_HOME = Path("dd_logger/")
 """
 The Datadog logger home directory, realtive to `SCFW_HOME`.
@@ -79,7 +84,7 @@ dotenv.load_dotenv()
 
 class DDLogFormatter(logging.Formatter):
     """
-    A custom JSON formatter for Supply-Chain Firewall logs.
+    A custom JSON formatter for Supply Chain Firewall logs.
     """
     def format(self, record) -> str:
         """
@@ -129,12 +134,13 @@ class DDLogFormatter(logging.Formatter):
             return attributes
 
         log_record = {
-            "source": DD_SOURCE,
-            "service": DD_SERVICE,
-            "version": scfw.__version__,
+            "cwd": os.getcwd(),
             "env": os.getenv("DD_ENV", DD_ENV),
             "hostname": socket.gethostname(),
-            "cwd": os.getcwd(),
+            "log_version": DD_LOG_VERSION,
+            "service": DD_SERVICE,
+            "source": DD_SOURCE,
+            "version": scfw.__version__,
         }
 
         try:
@@ -193,13 +199,13 @@ class DDLogger(FirewallLogger):
         run_summary: FirewallRunSummary,
     ):
         """
-        Log the data and action taken in a completed run of Supply-Chain Firewall.
+        Log the data and action taken in a completed run of Supply Chain Firewall.
 
         Args:
             ecosystem: The ecosystem of the inspected package manager command.
             package_manager: The command-line name of the package manager.
             executable: The executable used to execute the inspected package manager command.
-            run_summary: The summary of the completed run of Supply-Chain Firewall to be logged.
+            run_summary: The summary of the completed run of Supply Chain Firewall to be logged.
         """
         if run_summary.action < self._level:
             return

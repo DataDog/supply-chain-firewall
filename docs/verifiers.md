@@ -1,4 +1,4 @@
-# Supply-Chain Firewall default verifiers
+# Supply Chain Firewall default verifiers
 
 ## Package minimum age verifier
 

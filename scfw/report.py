@@ -158,7 +158,7 @@ def show_reports(
 
     Returns:
         A pretty-printed `str` representation of the given reports suitable for displaying
-        to the user during a run of Supply-Chain Firewall.
+        to the user during a run of Supply Chain Firewall.
     """
     def show_line(linenum: int, line: str) -> str:
         return (f"  - {line}" if linenum == 0 else f"    {line}")

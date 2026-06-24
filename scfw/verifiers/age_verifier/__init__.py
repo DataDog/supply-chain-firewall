@@ -131,9 +131,9 @@ class PackageAgeVerifier(PackageVerifier):
 
 def load_verifier() -> PackageVerifier:
     """
-    Export `PackageAgeVerifier` for discovery by Supply-Chain Firewall.
+    Export `PackageAgeVerifier` for discovery by Supply Chain Firewall.
 
     Returns:
-        A `PackageAgeVerifier` for use in a run of Supply-Chain Firewall.
+        A `PackageAgeVerifier` for use in a run of Supply Chain Firewall.
     """
     return PackageAgeVerifier()

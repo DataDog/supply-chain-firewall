@@ -1,5 +1,5 @@
 """
-Implements Supply-Chain Firewall's `audit` subcommand.
+Implements Supply Chain Firewall's `audit` subcommand.
 """
 
 from argparse import Namespace
@@ -16,7 +16,7 @@ _log = logging.getLogger(__name__)
 
 def run_audit(args: Namespace) -> int:
     """
-    Audit installed packages using Supply-Chain Firewall's verifiers.
+    Audit installed packages using Supply Chain Firewall's verifiers.
 
     Args:
         args: A `Namespace` containing the parsed `audit` subcommand command line.

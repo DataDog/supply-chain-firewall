@@ -1,4 +1,4 @@
-# Contributing to Supply-Chain Firewall
+# Contributing to Supply Chain Firewall
 
 ## :hammer_and_wrench: Setting up for development
 

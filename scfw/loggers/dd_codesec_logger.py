@@ -34,7 +34,7 @@ class DDCodeSecurityLogger(FirewallLogger):
         """
         Lorem ipsum dolor sit amet.
         """
-        self._enabled = os.getenv(DD_CODESEC_LOGGER_ENABLED_VAR) is not None
+        self._enabled = bool(os.getenv(DD_CODESEC_LOGGER_ENABLED_VAR))
 
     def log_firewall_run(
         self,
@@ -70,6 +70,7 @@ class DDCodeSecurityLogger(FirewallLogger):
                     "dd-application-key": dd_app_key,
                 },
                 json=self.generate_api_payload(package_manager, executable, run_summary),
+                timeout=10,
             )
             r.raise_for_status()
 

@@ -102,13 +102,11 @@ Users may configure the behavior of this logger via the following environment va
 * `DD_API_KEY`:
     Takes a Datadog API key.  Required to successfully use this logger.
 
-    The `scfw configure` [subcommand](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/subcommands.md#scfw-configure) can be used to write this environment variable into the user's `~/.bashrc` and `~/.zshrc` files.
-
 * `DD_APP_KEY`:
     Takes a Datadog application key.  Required to successfully use this logger.
 
 * `DD_SITE`:
-    Takes a [Datadog site parameter](https://docs.datadoghq.com/getting_started/site/#access-the-datadog-site) for setting the region where the target Datadog organization is hosted.  Defaults to `datadoghq.com` if not set.
+    Takes a [Datadog site parameter](https://docs.datadoghq.com/getting_started/site/#access-the-datadog-site) for setting the region where the target Datadog organization is hosted.  Defaults to `US1` if not set.
 
 ## Local file logger
 

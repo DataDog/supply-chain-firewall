@@ -32,7 +32,7 @@ class DDCodeSecurityLogger(FirewallLogger):
     """
     def __init__(self):
         """
-        Lorem ipsum dolor sit amet.
+        Initialize a new `DDCodeSecurityLogger`.
         """
         self._enabled = bool(os.getenv(DD_CODESEC_LOGGER_ENABLED_VAR))
 
@@ -107,7 +107,15 @@ class DDCodeSecurityLogger(FirewallLogger):
         run_summary: FirewallRunSummary,
     ) -> dict:
         """
-        Lorem ipsum dolor sit amet.
+        Generate the API payload from the `log_firewall_run()` inputs.
+
+        Args:
+            package_manager: The command-line name of the package manager.
+            executable: The executable used to execute the inspected package manager command.
+            run_summary: The summary of the completed run of Supply-Chain Firewall to be logged.
+
+        Returns:
+            A `dict` containing the API's JSON payload generated from the inputs.
         """
         def get_reports(run_summary: FirewallRunSummary) -> list[dict]:
             reports = []

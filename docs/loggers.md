@@ -16,7 +16,7 @@ Users may configure the behavior of this logger via the following environment va
 * `DD_ENV`:
     Takes a string identifying the environment where Supply Chain Firewall is running.  Defaults to `dev` if not set.
 
-* `DD_LOG_LEVEL`:
+* `SCFW_DD_LOG_LEVEL`:
     Takes one of the strings `ALLOW` or `BLOCK`.
 
     This value controls which `run` actions are forwarded to Datadog as follows:
@@ -62,7 +62,7 @@ Users may configure the behavior of this logger via the following environment va
 * `DD_ENV`:
     Takes a string identifying the environment where Supply Chain Firewall is running.  Defaults to `dev` if not set.
 
-* `DD_LOG_LEVEL`:
+* `SCFW_DD_LOG_LEVEL`:
     Takes one of the strings `ALLOW` or `BLOCK`.
 
     This value controls which `run` actions are forwarded to Datadog as follows:

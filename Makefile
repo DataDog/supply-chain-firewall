@@ -12,10 +12,10 @@ coverage: test coverage-report
 test: test-cli test-configure test-firewall test-npm test-npm-class test-pip-executable test-pip test-pip-class test-poetry test-poetry-class test-report test-verifiers
 
 typecheck:
-	mypy --install-types --non-interactive scfw
+	mypy --install-types --non-interactive examples/ scfw/ tests/
 
 lint:
-	flake8 scfw --count --show-source --statistics --max-line-length=120
+	flake8 --count --show-source --statistics --max-line-length=120 examples/ scfw/ tests/
 
 test-cli:
 	COVERAGE_FILE=.coverage.cli coverage run -m pytest tests/test_cli.py

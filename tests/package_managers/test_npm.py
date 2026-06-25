@@ -9,12 +9,19 @@ import os
 from pathlib import Path
 import re
 import subprocess
-from typing import Any
+from typing import Any, Optional
 
 import packaging.version as version
 import pytest
 
-from .npm_fixtures import *
+from .npm_fixtures import (
+    LOCAL_PACKAGE_NAME,
+    LOCAL_PACKAGE_VERSION,
+    TEST_PACKAGE,
+    TEST_PACKAGE_LATEST_DEPENDENCIES,
+    TEST_PACKAGE_LATEST_SPEC,
+    init_npm_project,
+)
 
 PREVENT_INSTALL_TEST_CASES = list(
     itertools.product(
@@ -129,7 +136,7 @@ def test_npm_log_line_format_place_dep(empty_directory):
     assert silly_lines
 
     # There are `placeDep` lines among the `silly` lines
-    place_dep_lines = list(filter(lambda l: "placeDep" in l, silly_lines))
+    place_dep_lines = list(filter(lambda line: "placeDep" in line, silly_lines))
     assert place_dep_lines
 
     # The `placeDep` lines have the required format
@@ -151,7 +158,7 @@ def test_npm_log_line_format_add(empty_directory):
     assert silly_lines
 
     # There are `ADD` lines among the `silly` lines
-    add_lines = list(filter(lambda l: "ADD" in l, silly_lines))
+    add_lines = list(filter(lambda line: "ADD" in line, silly_lines))
     assert add_lines
 
     # The `ADD` lines have the required format
@@ -174,7 +181,7 @@ def test_npm_log_line_format_add_local_dependency(npm_project_local_dependency):
     assert silly_lines
 
     # There are `ADD` lines among the `silly` lines
-    add_lines = list(filter(lambda l: "ADD" in l, silly_lines))
+    add_lines = list(filter(lambda line: "ADD" in line, silly_lines))
     assert add_lines
 
     # The `ADD` lines have the required format
@@ -196,7 +203,7 @@ def test_npm_log_line_format_change(npm_project_installed_previous):
     assert silly_lines
 
     # There are `CHANGE` lines among the `silly` lines
-    change_lines = list(filter(lambda l: "CHANGE" in l, silly_lines))
+    change_lines = list(filter(lambda line: "CHANGE" in line, silly_lines))
     assert change_lines
 
     # The `CHANGE` lines have the required format
@@ -686,7 +693,7 @@ def get_silly_log_lines(project: Path, command_line: list[str]) -> list[str]:
     )
 
     silly_lines = list(
-        filter(lambda l: l.startswith("npm sill"), log_output.stderr.strip().split('\n'))
+        filter(lambda line: line.startswith("npm sill"), log_output.stderr.strip().split('\n'))
     )
 
     # The `silly` log lines all have the expected format

@@ -9,7 +9,12 @@ from typing import Optional
 import packaging.version as version
 import pytest
 
-from .poetry_fixtures import *
+from .poetry_fixtures import (
+    TARGET,
+    TARGET_LATEST,
+    TARGET_PREVIOUS,
+    TEST_PROJECT_NAME,
+)
 
 POETRY_V2 = version.parse("2.0.0")
 
@@ -272,12 +277,12 @@ def test_poetry_dry_run_output_install(new_poetry_project, poetry_project_lock_l
         (poetry_project_lock_latest, ["poetry", "update", "--dry-run"], TARGET, TARGET_LATEST, None)
     ]
 
-    for poetry_project, command, target, version, min_poetry_version in test_cases:
+    for poetry_project, command, target, target_version, min_poetry_version in test_cases:
         if min_poetry_version and poetry_version() < min_poetry_version:
             continue
 
         dry_run = subprocess.run(command, check=True, cwd=poetry_project, text=True, capture_output=True)
-        assert any(is_install_line(target, version, line) for line in dry_run.stdout.split('\n'))
+        assert any(is_install_line(target, target_version, line) for line in dry_run.stdout.split('\n'))
 
 
 def test_poetry_dry_run_output_update(

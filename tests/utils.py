@@ -59,4 +59,8 @@ def _build_pypi_whl_url(package_name: str, package_version: str) -> str:
     """
     Return a URL resembling that of the PyPI wheel file for the given package and version.
     """
-    return f"https://files.pythonhosted.org/packages/00/00/000000000000000000000000000000000000000000000000000000000000/{package_name}-{package_version}-py3-none-any.whl"
+    return (
+        "https://files.pythonhosted.org/packages/00/00/"
+        "000000000000000000000000000000000000000000000000000000000000/"
+        f"{package_name}-{package_version}-py3-none-any.whl"
+    )

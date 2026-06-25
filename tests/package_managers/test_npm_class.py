@@ -15,7 +15,17 @@ from scfw.package import Package, LocalPackageSource, RemotePackageSource
 from scfw.package_managers.npm import Npm
 import scfw.package_managers.npm as npm
 
-from .npm_fixtures import *
+from .npm_fixtures import (
+    LOCAL_PACKAGE_NAME,
+    LOCAL_PACKAGE_VERSION,
+    TEST_PACKAGE,
+    TEST_PACKAGE_LATEST,
+    TEST_PACKAGE_LATEST_DEPENDENCIES,
+    TEST_PACKAGE_LATEST_SPEC,
+    TEST_PACKAGE_PREVIOUS,
+    TEST_PACKAGE_PREVIOUS_DEPENDENCIES,
+    TEST_PACKAGE_PREVIOUS_SPEC,
+)
 from .. import utils
 
 PACKAGE_MANAGER = Npm()

@@ -110,7 +110,7 @@ def poetry_project_lock_latest():
     tempdir.cleanup()
 
 
-def _init_poetry_project(directory, name, dependencies = None):
+def _init_poetry_project(directory, name, dependencies=None):
     """
     Initialize a fresh Poetry project in `directory` with the given `dependencies`.
     """

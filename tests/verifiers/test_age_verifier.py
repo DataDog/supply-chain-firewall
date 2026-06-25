@@ -48,7 +48,6 @@ def test_warn_on_recent_package(test_package: Package, unverifiable: bool):
     assert results.pop().severity == FindingSeverity.WARNING
 
 
-
 @pytest.mark.parametrize("test_package,unverifiable", TEST_CASES)
 def test_no_warn_on_non_recent_package(test_package: Package, unverifiable: bool):
     """

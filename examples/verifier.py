@@ -19,7 +19,7 @@ the `scfw` package after doing so.
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.verifier import Finding, FindingSeverity, PackageVerifier
+from scfw.verifier import Finding, PackageVerifier
 
 
 class CustomPackageVerifier(PackageVerifier):

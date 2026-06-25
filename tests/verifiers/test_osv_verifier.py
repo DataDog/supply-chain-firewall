@@ -249,18 +249,18 @@ def test_osv_verifier_malicious(
         case ECOSYSTEM.PyPI:
             test_set = PYPI_TEST_SET
 
-    test_set = [
+    test_cases = [
         (package_builder(ecosystem, name, version), has_critical, has_warning)
         for name, version, has_critical, has_warning in test_set
     ]
 
     if unverifiable:
-        for package, _, _ in test_set:
+        for package, _, _ in test_cases:
             with pytest.raises(UnverifiablePackage):
                 _ = osv_verifier.verify(package)
         return
 
-    for package, has_critical, has_warning in test_set:
+    for package, has_critical, has_warning in test_cases:
         findings = osv_verifier.verify(package)
         assert findings
 

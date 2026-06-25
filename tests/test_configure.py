@@ -16,6 +16,7 @@ from scfw.constants import (
     DD_API_LOGGER_ENABLED_VAR,
     DD_CODESEC_LOGGER_ENABLED_VAR,
     DD_LOG_LEVEL_VAR,
+    DD_SITE_VAR,
     SCFW_HOME_VAR,
 )
 
@@ -100,6 +101,11 @@ export SCFW_HOME="~/.scfw"
                 {"dd_log_level": "ALLOW"},
                 f'export {DD_LOG_LEVEL_VAR}="ALLOW"\n',
             ),
+            # Datadog site parameter
+            (
+                {"dd_site": "datadoghq.eu"},
+                f'export {DD_SITE_VAR}="datadoghq.eu"\n',
+            ),
             # SCFW home directory
             (
                 {"scfw_home": "~/.scfw"},
@@ -117,6 +123,7 @@ export SCFW_HOME="~/.scfw"
                     "dd_api_key": "abc123",
                     "dd_app_key": "xyz789",
                     "dd_log_level": "BLOCK",
+                    "dd_site": "datadoghq.eu",
                     "scfw_home": "~/.scfw",
                 },
                 (
@@ -129,6 +136,7 @@ export SCFW_HOME="~/.scfw"
                     f'export {DD_API_KEY_VAR}="abc123"\n'
                     f'export {DD_APP_KEY_VAR}="xyz789"\n'
                     f'export {DD_LOG_LEVEL_VAR}="BLOCK"\n'
+                    f'export {DD_SITE_VAR}="datadoghq.eu"\n'
                     f'export {SCFW_HOME_VAR}="~/.scfw"\n'
                 ),
             ),

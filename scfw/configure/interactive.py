@@ -93,6 +93,11 @@ def get_answers() -> dict:
             validate=lambda _, current: current != '',
             ignore=lambda answers: has_dd_app_key or not answers["dd_codesec_logger"]
         ),
+        inquirer.Text(
+            name="dd_site",
+            message="Enter a Datadog site parameter (default: datadoghq.com)",
+            ignore=lambda answers: not (answers["dd_api_logger"] or answers["dd_codesec_logger"])
+        ),
         inquirer.List(
             name="dd_log_level",
             message="Select the desired log level for Datadog logging",

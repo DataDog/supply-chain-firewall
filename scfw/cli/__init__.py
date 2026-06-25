@@ -123,6 +123,14 @@ def _add_configure_cli(parser: ArgumentParser):
     )
 
     parser.add_argument(
+        "--dd-site",
+        type=str,
+        default=None,
+        metavar="SITE",
+        help="Datadog site parameter (default: datadoghq.com)"
+    )
+
+    parser.add_argument(
         "--scfw-home",
         type=str,
         default=None,

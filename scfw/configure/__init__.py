@@ -54,6 +54,7 @@ def run_configure(args: Namespace) -> int:
         args.dd_api_logger,
         args.dd_codesec_logger,
         args.dd_log_level,
+        args.dd_site,
         args.scfw_home,
     })
 

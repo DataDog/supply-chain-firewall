@@ -30,6 +30,7 @@ def remove_config() -> int:
         "alias_poetry": False,
         "dd_agent_port": None,
         "dd_api_key": None,
+        "dd_api_logger": False,
         "dd_log_level": None,
         "scfw_home": None,
     })

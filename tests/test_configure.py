@@ -5,6 +5,7 @@ Tests of utilities for writing Supply Chain Firewall configuration to supported 
 from pathlib import Path
 import pytest
 from tempfile import NamedTemporaryFile
+from unittest.mock import patch
 
 from scfw.configure.env import _BLOCK_END, _BLOCK_START
 import scfw.configure.env as env
@@ -117,6 +118,17 @@ def test_format_answers(answers: dict, expected: str):
     Test that configuration answers are formatted into the expected .rc file content.
     """
     assert env._format_answers(answers) == expected
+
+
+def test_remove_config_produces_empty_output():
+    """
+    Test that the answers passed by remove_config produce empty formatted output,
+    ensuring all configuration keys (including dd_api_logger) are explicitly cleared.
+    """
+    with patch.object(env, 'update_config_files', return_value=0) as mock:
+        env.remove_config()
+        answers = mock.call_args[0][0]
+        assert env._format_answers(answers) == ""
 
 
 def enclose(scfw_config: str) -> str:

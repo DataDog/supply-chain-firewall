@@ -74,10 +74,9 @@ def get_answers() -> dict:
             default=False,
             ignore=lambda answers: answers["dd_agent_logger"]
         ),
-        # TODO(ikretz): Mention private beta
         inquirer.Confirm(
             name="dd_codesec_logger",
-            message="Would you like to enable sending SCFW logs to Datadog Code Security?",
+            message="Would you like to enable sending SCFW logs to Datadog Code Security? (requires private beta access)",
             default=False,
             ignore=lambda answers: answers["dd_agent_logger"] or answers["dd_api_logger"]
         ),
@@ -95,7 +94,7 @@ def get_answers() -> dict:
         ),
         inquirer.Text(
             name="dd_site",
-            message="Enter a Datadog site parameter (default: datadoghq.com)",
+            message="Enter your Datadog site parameter if necessary (default: datadoghq.com)",
             ignore=lambda answers: not (answers["dd_api_logger"] or answers["dd_codesec_logger"])
         ),
         inquirer.List(

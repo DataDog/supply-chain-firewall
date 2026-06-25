@@ -342,7 +342,11 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
                 args.alias_poetry,
                 args.dd_agent_port,
                 args.dd_api_key,
+                args.dd_app_key,
+                args.dd_api_logger,
+                args.dd_codesec_logger,
                 args.dd_log_level,
+                args.dd_site,
                 args.scfw_home,
             })
         ):

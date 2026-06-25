@@ -50,6 +50,7 @@ def run_configure(args: Namespace) -> int:
         args.alias_poetry,
         args.dd_agent_port,
         args.dd_api_key,
+        args.dd_api_logger,
         args.dd_log_level,
         args.scfw_home,
     })

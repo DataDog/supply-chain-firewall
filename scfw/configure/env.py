@@ -106,7 +106,7 @@ def _format_answers(answers: dict) -> str:
         config += 'alias poetry="scfw run poetry"\n'
     if (dd_agent_port := answers.get("dd_agent_port")):
         config += f'export {DD_AGENT_PORT_VAR}="{dd_agent_port}"\n'
-    if answers.get("dd_api_logging"):
+    if answers.get("dd_api_logger"):
         config += f'export {DD_API_LOGGER_ENABLED_VAR}="1"\n'
     if (dd_api_key := answers.get("dd_api_key")):
         config += f'export {DD_API_KEY_VAR}="{dd_api_key}"\n'

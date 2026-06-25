@@ -94,6 +94,12 @@ def _add_configure_cli(parser: ArgumentParser):
     )
 
     parser.add_argument(
+        "--dd-api-logger",
+        action="store_true",
+        help="Enable the Datadog HTTP API logger"
+    )
+
+    parser.add_argument(
         "--dd-log-level",
         type=str,
         default=None,

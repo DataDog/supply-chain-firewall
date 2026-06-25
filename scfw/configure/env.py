@@ -6,7 +6,10 @@ import logging
 from pathlib import Path
 import re
 
-from scfw.constants import DD_AGENT_PORT_VAR, DD_API_KEY_VAR, DD_API_LOGGER_ENABLED_VAR, DD_LOG_LEVEL_VAR, SCFW_HOME_VAR
+from scfw.constants import (
+    DD_AGENT_PORT_VAR, DD_API_KEY_VAR, DD_APP_KEY_VAR, DD_API_LOGGER_ENABLED_VAR,
+    DD_CODESEC_LOGGER_ENABLED_VAR, DD_LOG_LEVEL_VAR, SCFW_HOME_VAR
+)
 
 _log = logging.getLogger(__name__)
 
@@ -30,7 +33,9 @@ def remove_config() -> int:
         "alias_poetry": False,
         "dd_agent_port": None,
         "dd_api_key": None,
+        "dd_app_key": None,
         "dd_api_logger": False,
+        "dd_codesec_logger": False,
         "dd_log_level": None,
         "scfw_home": None,
     })
@@ -109,8 +114,12 @@ def _format_answers(answers: dict) -> str:
         config += f'export {DD_AGENT_PORT_VAR}="{dd_agent_port}"\n'
     if answers.get("dd_api_logger"):
         config += f'export {DD_API_LOGGER_ENABLED_VAR}="1"\n'
+    if answers.get("dd_codesec_logger"):
+        config += f'export {DD_CODESEC_LOGGER_ENABLED_VAR}="1"\n'
     if (dd_api_key := answers.get("dd_api_key")):
         config += f'export {DD_API_KEY_VAR}="{dd_api_key}"\n'
+    if (dd_app_key := answers.get("dd_app_key")):
+        config += f'export {DD_APP_KEY_VAR}="{dd_app_key}"\n'
     if (dd_log_level := answers.get("dd_log_level")):
         config += f'export {DD_LOG_LEVEL_VAR}="{dd_log_level}"\n'
     if (scfw_home := answers.get("scfw_home")):

@@ -90,13 +90,27 @@ def _add_configure_cli(parser: ArgumentParser):
         type=str,
         default=None,
         metavar="KEY",
-        help="API key to use when forwarding logs via the Datadog API"
+        help="API key for forwarding logs to the Datadog HTTP API or Code Security"
+    )
+
+    parser.add_argument(
+        "--dd-app-key",
+        type=str,
+        default=None,
+        metavar="KEY",
+        help="Application key for forwarding logs to Datadog Code Security"
     )
 
     parser.add_argument(
         "--dd-api-logger",
         action="store_true",
         help="Enable the Datadog HTTP API logger"
+    )
+
+    parser.add_argument(
+        "--dd-codesec-logger",
+        action="store_true",
+        help="Enable the Datadog Code Security logger"
     )
 
     parser.add_argument(

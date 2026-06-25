@@ -37,6 +37,11 @@ DD_API_LOGGER_ENABLED_VAR = "SCFW_DD_API_LOGGER_ENABLED"
 The environment variable that must be set to enable the Datadog API logger.
 """
 
+DD_CODESEC_LOGGER_ENABLED_VAR = "SCFW_DD_CODESEC_LOGGER_ENABLED"
+"""
+The environment variable that must be set to enable the Datadog Code Security logger.
+"""
+
 DD_LOG_LEVEL_VAR = "SCFW_DD_LOG_LEVEL"
 """
 The environment variable under which SCFW looks for a Datadog log level setting.

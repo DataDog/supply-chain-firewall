@@ -10,7 +10,7 @@ import uuid
 
 import requests
 
-from scfw.constants import DD_API_KEY_VAR, DD_APP_KEY_VAR, DD_SITE_VAR
+from scfw.constants import DD_API_KEY_VAR, DD_APP_KEY_VAR, DD_CODESEC_LOGGER_ENABLED_VAR, DD_SITE_VAR
 from scfw.ecosystem import ECOSYSTEM
 from scfw.logger import FirewallAction, FirewallLogger, FirewallRunSummary
 from scfw.report import Finding, VerificationReport
@@ -18,11 +18,6 @@ from scfw.report import Finding, VerificationReport
 _log = logging.getLogger(__name__)
 
 _CODESEC_LOGGER_API_ENDPOINT = "api/v2/static-analysis-sca/scfw/report"
-
-DD_CODESEC_LOGGER_ENABLED_VAR = "SCFW_DD_CODESEC_LOGGER_ENABLED"
-"""
-Setting this environment variable is required to enable the Datadog Code Security logger.
-"""
 
 
 class DDCodeSecurityLogger(FirewallLogger):

@@ -9,7 +9,7 @@ from typing import Optional
 
 import inquirer  # type: ignore
 
-from scfw.constants import DD_API_KEY_VAR
+from scfw.constants import DD_API_KEY_VAR, DD_APP_KEY_VAR
 from scfw.logger import FirewallAction
 
 GREETING = (
@@ -33,6 +33,7 @@ def get_answers() -> dict:
     """
     home_dir_default = _get_home_dir_default()
     has_dd_api_key = os.getenv(DD_API_KEY_VAR) is not None
+    has_dd_app_key = os.getenv(DD_APP_KEY_VAR) is not None
 
     questions = [
         inquirer.Text(
@@ -69,15 +70,28 @@ def get_answers() -> dict:
         ),
         inquirer.Confirm(
             name="dd_api_logger",
-            message="Would you like to enable sending SCFW logs to Datadog using an API key?",
+            message="Would you like to enable sending SCFW logs to Datadog via the HTTP API?",
             default=False,
             ignore=lambda answers: answers["dd_agent_logger"]
+        ),
+        # TODO(ikretz): Mention private beta
+        inquirer.Confirm(
+            name="dd_codesec_logger",
+            message="Would you like to enable sending SCFW logs to Datadog Code Security?",
+            default=False,
+            ignore=lambda answers: answers["dd_agent_logger"] or answers["dd_api_logger"]
         ),
         inquirer.Text(
             name="dd_api_key",
             message="Enter a Datadog API key",
             validate=lambda _, current: current != '',
-            ignore=lambda answers: has_dd_api_key or not answers["dd_api_logger"]
+            ignore=lambda answers: has_dd_api_key or not (answers["dd_api_logger"] or answers["dd_codesec_logger"])
+        ),
+        inquirer.Text(
+            name="dd_app_key",
+            message="Enter a Datadog application key",
+            validate=lambda _, current: current != '',
+            ignore=lambda answers: has_dd_app_key or not answers["dd_codesec_logger"]
         ),
         inquirer.List(
             name="dd_log_level",

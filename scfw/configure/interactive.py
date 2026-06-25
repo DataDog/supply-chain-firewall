@@ -97,7 +97,7 @@ def get_answers() -> dict:
             name="dd_log_level",
             message="Select the desired log level for Datadog logging",
             choices=[(_describe_log_level(action), str(action)) for action in FirewallAction],
-            ignore=lambda answers: not (answers["dd_agent_logger"] or answers["dd_api_logger"])
+            ignore=lambda answers: not (answers["dd_agent_logger"] or answers["dd_api_logger"])  # type: ignore[arg-type]
         )
     ]
 

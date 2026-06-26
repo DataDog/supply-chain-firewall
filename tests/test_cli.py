@@ -118,7 +118,11 @@ def test_cli_configure_basic_usage():
     assert not args.alias_poetry
     assert args.dd_agent_port is None
     assert args.dd_api_key is None
+    assert args.dd_app_key is None
+    assert not args.dd_api_logger
+    assert not args.dd_codesec_logger
     assert args.dd_log_level is None
+    assert args.dd_site is None
     assert args.scfw_home is None
 
 
@@ -130,7 +134,11 @@ def test_cli_configure_basic_usage():
             ["--alias-poetry"],
             ["--dd-agent-port", "10365"],
             ["--dd-api-key", "foo"],
+            ["--dd-app-key", "foo"],
+            ["--dd-api-logger"],
+            ["--dd-codesec-logger"],
             ["--dd-log-level", "BLOCK"],
+            ["--dd-site", "datadoghq.eu"],
             ["--scfw-home", "foo"],
         ]
 )

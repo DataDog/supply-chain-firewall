@@ -4,6 +4,7 @@ Tests of pip's command line behavior.
 
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
@@ -12,7 +13,12 @@ from typing import Optional
 import packaging.version as version
 import pytest
 
-from .pip_fixtures import *
+from .pip_fixtures import (
+    LOCAL_PACKAGE_NAME,
+    REMOTE_PACKAGE_NAME,
+    TEST_PACKAGE_NAME,
+    TEST_PACKAGE_VERSION,
+)
 
 PIP_COMMAND_PREFIX = [sys.executable, "-m", "pip"]
 
@@ -33,7 +39,7 @@ def select_test_install_target(installed_packages: str) -> str:
     """
     def read_top_pypi_packages() -> set[str]:
         test_dir = os.path.dirname(os.path.realpath(__file__, strict=True))
-        top_packages_file = os.path.join(test_dir, f"top_pypi_packages.txt")
+        top_packages_file = os.path.join(test_dir, "top_pypi_packages.txt")
         with open(top_packages_file) as f:
             return set(f.read().split())
 

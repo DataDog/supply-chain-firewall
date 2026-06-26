@@ -114,7 +114,7 @@ def test_unverifiable_only(warning_action: Optional[FirewallAction]):
 
     assert action == warning_action
     assert severity == FindingSeverity.WARNING
-    assert relevant == None
+    assert relevant is None
 
 
 @pytest.mark.parametrize("warning_action", [FirewallAction.BLOCK, FirewallAction.ALLOW, None])

@@ -13,7 +13,10 @@ from scfw.ecosystem import ECOSYSTEM
 from scfw.package import LocalPackageSource, Package, RemotePackageSource
 from scfw.package_managers.pip import Pip
 
-from .pip_fixtures import *
+from .pip_fixtures import (
+    TEST_PACKAGE_NAME,
+    TEST_PACKAGE_VERSION,
+)
 from .test_pip import INIT_PIP_STATE, TEST_TARGET, pip_list
 
 PACKAGE_MANAGER = Pip()
@@ -79,32 +82,44 @@ def test_pip_command_resolve_install_targets_exact():
                 (
                     "botocore",
                     "1.15.0",
-                    "https://files.pythonhosted.org/packages/a4/ba/236f25b9200f0cda4842585205b566979484d38927a8a302cc5c1beea10c/botocore-1.15.0-py2.py3-none-any.whl",
+                    "https://files.pythonhosted.org/packages/a4/ba/"
+                    "236f25b9200f0cda4842585205b566979484d38927a8a302cc5c1beea10c/"
+                    "botocore-1.15.0-py2.py3-none-any.whl",
                 ),
                 (
                     "docutils",
                     "0.15.2",
-                    "https://files.pythonhosted.org/packages/22/cd/a6aa959dca619918ccb55023b4cb151949c64d4d5d55b3f4ffd7eee0c6e8/docutils-0.15.2-py3-none-any.whl",
+                    "https://files.pythonhosted.org/packages/22/cd/"
+                    "a6aa959dca619918ccb55023b4cb151949c64d4d5d55b3f4ffd7eee0c6e8/"
+                    "docutils-0.15.2-py3-none-any.whl",
                 ),
                 (
                     "jmespath",
                     "0.10.0",
-                    "https://files.pythonhosted.org/packages/07/cb/5f001272b6faeb23c1c9e0acc04d48eaaf5c862c17709d20e3469c6e0139/jmespath-0.10.0-py2.py3-none-any.whl",
+                    "https://files.pythonhosted.org/packages/07/cb/"
+                    "5f001272b6faeb23c1c9e0acc04d48eaaf5c862c17709d20e3469c6e0139/"
+                    "jmespath-0.10.0-py2.py3-none-any.whl",
                 ),
                 (
                     "python-dateutil",
                     "2.9.0.post0",
-                    "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
+                    "https://files.pythonhosted.org/packages/ec/57/"
+                    "56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/"
+                    "python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
                 ),
                 (
                     "six",
                     "1.17.0",
-                    "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl",
+                    "https://files.pythonhosted.org/packages/b7/ce/"
+                    "149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/"
+                    "six-1.17.0-py2.py3-none-any.whl",
                 ),
                 (
                     "urllib3",
                     "1.25.11",
-                    "https://files.pythonhosted.org/packages/56/aa/4ef5aa67a9a62505db124a5cb5262332d1d4153462eb8fd89c9fa41e5d92/urllib3-1.25.11-py2.py3-none-any.whl",
+                    "https://files.pythonhosted.org/packages/56/aa/"
+                    "4ef5aa67a9a62505db124a5cb5262332d1d4153462eb8fd89c9fa41e5d92/"
+                    "urllib3-1.25.11-py2.py3-none-any.whl",
                 )
             ]
         )

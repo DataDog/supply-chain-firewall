@@ -15,7 +15,17 @@ from scfw.package import Package, LocalPackageSource, RemotePackageSource
 from scfw.package_managers.npm import Npm
 import scfw.package_managers.npm as npm
 
-from .npm_fixtures import *
+from .npm_fixtures import (
+    LOCAL_PACKAGE_NAME,
+    LOCAL_PACKAGE_VERSION,
+    TEST_PACKAGE,
+    TEST_PACKAGE_LATEST,
+    TEST_PACKAGE_LATEST_DEPENDENCIES,
+    TEST_PACKAGE_LATEST_SPEC,
+    TEST_PACKAGE_PREVIOUS,
+    TEST_PACKAGE_PREVIOUS_DEPENDENCIES,
+    TEST_PACKAGE_PREVIOUS_SPEC,
+)
 from .. import utils
 
 PACKAGE_MANAGER = Npm()
@@ -322,6 +332,61 @@ def test_resolve_install_targets_local_dependency_installed(
         npm_project_local_dependency_installed,
         command,
         true_targets,
+    )
+
+
+def test_resolve_install_targets_aliased_dependency(
+    monkeypatch,
+    npm_project_aliased_dependency,
+):
+    """
+    Test that `Npm` correctly resolves the real package name for an aliased
+    dependency when no lockfile is present.
+    """
+    backend_test_resolve_install_targets(
+        monkeypatch,
+        npm_project_aliased_dependency,
+        ["npm", "install"],
+        true_targets=TEST_PACKAGE_LATEST_INSTALL_TARGETS,
+    )
+
+
+def test_resolve_install_targets_aliased_dependency_lockfile(
+    monkeypatch,
+    npm_project_aliased_dependency_lockfile,
+):
+    """
+    Regression test: when a dependency is installed under an alias
+    (`"alias": "npm:real@version"`), `resolve_install_targets` must return the
+    real package name from the lockfile's `name` field, not the alias.
+    """
+    backend_test_resolve_install_targets(
+        monkeypatch,
+        npm_project_aliased_dependency_lockfile,
+        ["npm", "install"],
+        true_targets=TEST_PACKAGE_LATEST_INSTALL_TARGETS,
+    )
+
+
+def test_resolve_install_targets_dangling_node_modules_symlink(
+    monkeypatch,
+    npm_project_dangling_local_dependency,
+):
+    """
+    Regression test: `resolve_install_targets` must not raise when `node_modules`
+    contains a dangling symlink, as can happen when a workspace package is deleted
+    without updating the lockfile. The deleted package is still identified as an
+    install target with its original local source path, even though that path no
+    longer exists on disk.
+    """
+    expected_source = LocalPackageSource(
+        (npm_project_dangling_local_dependency.parent / LOCAL_PACKAGE_NAME).resolve()
+    )
+    backend_test_resolve_install_targets(
+        monkeypatch,
+        npm_project_dangling_local_dependency,
+        ["npm", "install"],
+        true_targets={Package(ECOSYSTEM.Npm, LOCAL_PACKAGE_NAME, LOCAL_PACKAGE_VERSION, source=expected_source)},
     )
 
 

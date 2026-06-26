@@ -5,9 +5,20 @@ Tests of utilities for writing Supply Chain Firewall configuration to supported 
 from pathlib import Path
 import pytest
 from tempfile import NamedTemporaryFile
+from unittest.mock import patch
 
 from scfw.configure.env import _BLOCK_END, _BLOCK_START
 import scfw.configure.env as env
+from scfw.constants import (
+    DD_AGENT_PORT_VAR,
+    DD_API_KEY_VAR,
+    DD_APP_KEY_VAR,
+    DD_API_LOGGER_ENABLED_VAR,
+    DD_CODESEC_LOGGER_ENABLED_VAR,
+    DD_LOG_LEVEL_VAR,
+    DD_SITE_VAR,
+    SCFW_HOME_VAR,
+)
 
 ORIGINAL_CONFIG = """\
 # Set an environment variable
@@ -25,6 +36,128 @@ SCFW_CONFIG_UPDATED = """\
 alias poetry="scfw run poetry"
 export SCFW_HOME="~/.scfw"
 """
+
+
+@pytest.mark.parametrize(
+        "answers,expected",
+        [
+            # Empty answers produce empty config
+            (
+                {},
+                "",
+            ),
+            # npm alias
+            (
+                {"alias_npm": True},
+                'alias npm="scfw run npm"\n',
+            ),
+            # pip alias
+            (
+                {"alias_pip": True},
+                'alias pip="scfw run pip"\n',
+            ),
+            # poetry alias
+            (
+                {"alias_poetry": True},
+                'alias poetry="scfw run poetry"\n',
+            ),
+            # Datadog Agent port
+            (
+                {"dd_agent_port": "10365"},
+                f'export {DD_AGENT_PORT_VAR}="10365"\n',
+            ),
+            # Datadog HTTP API logger enabled via dd_api_logger key
+            (
+                {"dd_api_logger": True},
+                f'export {DD_API_LOGGER_ENABLED_VAR}="1"\n',
+            ),
+            # dd_api_logger=False produces no output
+            (
+                {"dd_api_logger": False},
+                "",
+            ),
+            # Datadog Code Security logger enabled via dd_codesec_logger key
+            (
+                {"dd_codesec_logger": True},
+                f'export {DD_CODESEC_LOGGER_ENABLED_VAR}="1"\n',
+            ),
+            # dd_codesec_logger=False produces no output
+            (
+                {"dd_codesec_logger": False},
+                "",
+            ),
+            # Datadog API key
+            (
+                {"dd_api_key": "abc123"},
+                f'export {DD_API_KEY_VAR}="abc123"\n',
+            ),
+            # Datadog application key
+            (
+                {"dd_app_key": "xyz789"},
+                f'export {DD_APP_KEY_VAR}="xyz789"\n',
+            ),
+            # Log level
+            (
+                {"dd_log_level": "ALLOW"},
+                f'export {DD_LOG_LEVEL_VAR}="ALLOW"\n',
+            ),
+            # Datadog site parameter
+            (
+                {"dd_site": "datadoghq.eu"},
+                f'export {DD_SITE_VAR}="datadoghq.eu"\n',
+            ),
+            # SCFW home directory
+            (
+                {"scfw_home": "~/.scfw"},
+                f'export {SCFW_HOME_VAR}="~/.scfw"\n',
+            ),
+            # All options together, in emission order
+            (
+                {
+                    "alias_npm": True,
+                    "alias_pip": True,
+                    "alias_poetry": True,
+                    "dd_agent_port": "10365",
+                    "dd_api_logger": True,
+                    "dd_codesec_logger": True,
+                    "dd_api_key": "abc123",
+                    "dd_app_key": "xyz789",
+                    "dd_log_level": "BLOCK",
+                    "dd_site": "datadoghq.eu",
+                    "scfw_home": "~/.scfw",
+                },
+                (
+                    'alias npm="scfw run npm"\n'
+                    'alias pip="scfw run pip"\n'
+                    'alias poetry="scfw run poetry"\n'
+                    f'export {DD_AGENT_PORT_VAR}="10365"\n'
+                    f'export {DD_API_LOGGER_ENABLED_VAR}="1"\n'
+                    f'export {DD_CODESEC_LOGGER_ENABLED_VAR}="1"\n'
+                    f'export {DD_API_KEY_VAR}="abc123"\n'
+                    f'export {DD_APP_KEY_VAR}="xyz789"\n'
+                    f'export {DD_LOG_LEVEL_VAR}="BLOCK"\n'
+                    f'export {DD_SITE_VAR}="datadoghq.eu"\n'
+                    f'export {SCFW_HOME_VAR}="~/.scfw"\n'
+                ),
+            ),
+        ]
+)
+def test_format_answers(answers: dict, expected: str):
+    """
+    Test that configuration answers are formatted into the expected .rc file content.
+    """
+    assert env._format_answers(answers) == expected
+
+
+def test_remove_config_produces_empty_output():
+    """
+    Test that the answers passed by remove_config produce empty formatted output,
+    ensuring all configuration keys (including dd_api_logger) are explicitly cleared.
+    """
+    with patch.object(env, 'update_config_files', return_value=0) as mock:
+        env.remove_config()
+        answers = mock.call_args[0][0]
+        assert env._format_answers(answers) == ""
 
 
 def enclose(scfw_config: str) -> str:

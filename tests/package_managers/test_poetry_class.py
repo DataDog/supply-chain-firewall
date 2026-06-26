@@ -6,7 +6,12 @@ from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.package_managers.poetry import Poetry
 
-from .poetry_fixtures import *
+from .poetry_fixtures import (
+    TARGET,
+    TARGET_LATEST,
+    TARGET_PREVIOUS,
+    TEST_PROJECT_NAME,
+)
 from .test_poetry import POETRY_V2, poetry_show, poetry_version
 
 PACKAGE_MANAGER = Poetry()

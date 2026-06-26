@@ -90,7 +90,27 @@ def _add_configure_cli(parser: ArgumentParser):
         type=str,
         default=None,
         metavar="KEY",
-        help="API key to use when forwarding logs via the Datadog API"
+        help="API key for forwarding logs to the Datadog HTTP API or Code Security"
+    )
+
+    parser.add_argument(
+        "--dd-app-key",
+        type=str,
+        default=None,
+        metavar="KEY",
+        help="Application key for forwarding logs to Datadog Code Security"
+    )
+
+    parser.add_argument(
+        "--dd-api-logger",
+        action="store_true",
+        help="Enable the Datadog HTTP API logger"
+    )
+
+    parser.add_argument(
+        "--dd-codesec-logger",
+        action="store_true",
+        help="Enable the Datadog Code Security logger"
     )
 
     parser.add_argument(
@@ -100,6 +120,14 @@ def _add_configure_cli(parser: ArgumentParser):
         choices=[str(action) for action in FirewallAction],
         metavar="LEVEL",
         help="Desired logging level for Datadog log forwarding (options: %(choices)s)"
+    )
+
+    parser.add_argument(
+        "--dd-site",
+        type=str,
+        default=None,
+        metavar="SITE",
+        help="Datadog site parameter (default: datadoghq.com)"
     )
 
     parser.add_argument(
@@ -314,7 +342,11 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
                 args.alias_poetry,
                 args.dd_agent_port,
                 args.dd_api_key,
+                args.dd_app_key,
+                args.dd_api_logger,
+                args.dd_codesec_logger,
                 args.dd_log_level,
+                args.dd_site,
                 args.scfw_home,
             })
         ):

@@ -33,7 +33,8 @@ When run with no command-line arguments, the `configure` subcommand launches an 
 The `--remove` option may be used to remove all saved SCFW-managed configuration options.  It may not be passed with any other command-line option.
 
 ```bash
-usage: scfw configure [-h] [-r] [--alias-npm] [--alias-pip] [--alias-poetry] [--dd-agent-port PORT] [--dd-api-key KEY] [--dd-log-level LEVEL] [--scfw-home PATH]
+usage: scfw configure [-h] [-r] [--alias-npm] [--alias-pip] [--alias-poetry] [--dd-agent-port PORT] [--dd-api-key KEY] [--dd-app-key KEY] [--dd-api-logger] [--dd-codesec-logger] [--dd-log-level LEVEL]
+                      [--dd-site SITE] [--scfw-home PATH]
 
 Configure the environment for using Supply Chain Firewall.
 
@@ -44,8 +45,12 @@ options:
   --alias-pip           Add shell aliases to always run pip commands through Supply Chain Firewall
   --alias-poetry        Add shell aliases to always run Poetry commands through Supply Chain Firewall
   --dd-agent-port PORT  Configure log forwarding to the local Datadog Agent on the given port
-  --dd-api-key KEY      API key to use when forwarding logs via the Datadog API
+  --dd-api-key KEY      API key for forwarding logs to the Datadog HTTP API or Code Security
+  --dd-app-key KEY      Application key for forwarding logs to Datadog Code Security
+  --dd-api-logger       Enable the Datadog HTTP API logger
+  --dd-codesec-logger   Enable the Datadog Code Security logger
   --dd-log-level LEVEL  Desired logging level for Datadog log forwarding (options: ALLOW, BLOCK)
+  --dd-site SITE        Datadog site parameter (default: datadoghq.com)
   --scfw-home PATH      Directory that Supply Chain Firewall can use as a local cache
 ```
 

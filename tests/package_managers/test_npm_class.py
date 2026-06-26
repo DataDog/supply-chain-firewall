@@ -335,6 +335,39 @@ def test_resolve_install_targets_local_dependency_installed(
     )
 
 
+def test_resolve_install_targets_aliased_dependency(
+    monkeypatch,
+    npm_project_aliased_dependency,
+):
+    """
+    Test that `Npm` correctly resolves the real package name for an aliased
+    dependency when no lockfile is present.
+    """
+    backend_test_resolve_install_targets(
+        monkeypatch,
+        npm_project_aliased_dependency,
+        ["npm", "install"],
+        true_targets=TEST_PACKAGE_LATEST_INSTALL_TARGETS,
+    )
+
+
+def test_resolve_install_targets_aliased_dependency_lockfile(
+    monkeypatch,
+    npm_project_aliased_dependency_lockfile,
+):
+    """
+    Regression test: when a dependency is installed under an alias
+    (`"alias": "npm:real@version"`), `resolve_install_targets` must return the
+    real package name from the lockfile's `name` field, not the alias.
+    """
+    backend_test_resolve_install_targets(
+        monkeypatch,
+        npm_project_aliased_dependency_lockfile,
+        ["npm", "install"],
+        true_targets=TEST_PACKAGE_LATEST_INSTALL_TARGETS,
+    )
+
+
 def test_resolve_install_targets_dangling_node_modules_symlink(
     monkeypatch,
     npm_project_dangling_local_dependency,

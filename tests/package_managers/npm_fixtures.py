@@ -254,6 +254,46 @@ def npm_project_local_dependency_installed():
 
 
 @pytest.fixture
+def npm_project_aliased_dependency():
+    """
+    Initialize an npm project with `TEST_PACKAGE@TEST_PACKAGE_LATEST` added as a
+    dependency under the alias `test-alias`, with no lockfile and not installed.
+    """
+    tempdir = TemporaryDirectory()
+    tempdir_path = Path(tempdir.name)
+    init_npm_project(
+        tempdir_path,
+        dependencies=[("test-alias", TEST_PACKAGE, TEST_PACKAGE_LATEST)],
+        with_lockfile=False,
+        with_node_modules=False,
+    )
+
+    yield tempdir_path
+
+    tempdir.cleanup()
+
+
+@pytest.fixture
+def npm_project_aliased_dependency_lockfile():
+    """
+    Initialize an npm project with `TEST_PACKAGE@TEST_PACKAGE_LATEST` added as a
+    dependency under the alias `test-alias`, covered in the lockfile but not installed.
+    """
+    tempdir = TemporaryDirectory()
+    tempdir_path = Path(tempdir.name)
+    init_npm_project(
+        tempdir_path,
+        dependencies=[("test-alias", TEST_PACKAGE, TEST_PACKAGE_LATEST)],
+        with_lockfile=True,
+        with_node_modules=False,
+    )
+
+    yield tempdir_path
+
+    tempdir.cleanup()
+
+
+@pytest.fixture
 def npm_project_dangling_local_dependency():
     """
     Initialize an npm project with a fully installed local dependency, then delete
@@ -283,7 +323,7 @@ def npm_project_dangling_local_dependency():
 
 def init_npm_project(
     path: Path,
-    dependencies: Optional[list[tuple[str, str] | Path]] = None,
+    dependencies: Optional[list[tuple[str, str] | tuple[str, str, str] | Path]] = None,
     with_lockfile: bool = False,
     with_node_modules: bool = False,
 ):
@@ -304,6 +344,10 @@ def init_npm_project(
         if isinstance(dependency, tuple) and len(dependency) == 2:
             package, version = dependency
             target_spec = f"{package}@{version}"
+        # Aliased dependency: install `real_package@version` under `alias`
+        elif isinstance(dependency, tuple) and len(dependency) == 3:
+            alias, package, version = dependency
+            target_spec = f"{alias}@npm:{package}@{version}"
         # Dependency sourced from local directory
         elif isinstance(dependency, Path):
             target_spec = f"{dependency}"

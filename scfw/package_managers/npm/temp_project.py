@@ -293,6 +293,12 @@ class TemporaryNpmProject:
                 raise KeyError(
                     f"Missing entry for installation target {target_name} in package-lock.json"
                 )
+
+            # For aliased packages (`"alias": "npm:real@version"`), npm records the
+            # real package name under `name` in the lockfile entry
+            if entry_name := target_entry.get("name"):
+                target_name = entry_name
+
             if not (version := target_entry.get("version")):
                 # Parse recursively if this entry links to another
                 # All supported npm versions adhere to this format

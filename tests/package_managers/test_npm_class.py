@@ -335,6 +335,28 @@ def test_resolve_install_targets_local_dependency_installed(
     )
 
 
+def test_resolve_install_targets_dangling_node_modules_symlink(
+    monkeypatch,
+    npm_project_dangling_local_dependency,
+):
+    """
+    Regression test: `resolve_install_targets` must not raise when `node_modules`
+    contains a dangling symlink, as can happen when a workspace package is deleted
+    without updating the lockfile. The deleted package is still identified as an
+    install target with its original local source path, even though that path no
+    longer exists on disk.
+    """
+    expected_source = LocalPackageSource(
+        (npm_project_dangling_local_dependency.parent / LOCAL_PACKAGE_NAME).resolve()
+    )
+    backend_test_resolve_install_targets(
+        monkeypatch,
+        npm_project_dangling_local_dependency,
+        ["npm", "install"],
+        true_targets={Package(ECOSYSTEM.Npm, LOCAL_PACKAGE_NAME, LOCAL_PACKAGE_VERSION, source=expected_source)},
+    )
+
+
 def test_get_installed_packages_empty_directory(monkeypatch, empty_directory):
     """
     Test that `Npm` correctly identifies installed packages in an empty directory.

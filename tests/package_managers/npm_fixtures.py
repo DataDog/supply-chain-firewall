@@ -253,6 +253,34 @@ def npm_project_local_dependency_installed():
     tempdir.cleanup()
 
 
+@pytest.fixture
+def npm_project_dangling_local_dependency():
+    """
+    Initialize an npm project with a fully installed local dependency, then delete
+    the local package's source directory to leave a dangling symlink in `node_modules`.
+    """
+    tempdir = TemporaryDirectory()
+
+    local_package_path = Path(tempdir.name) / LOCAL_PACKAGE_NAME
+    os.mkdir(local_package_path)
+    init_npm_project(local_package_path)
+
+    test_package_path = Path(tempdir.name) / "foo"
+    os.mkdir(test_package_path)
+    init_npm_project(
+        test_package_path,
+        dependencies=[local_package_path],
+        with_lockfile=True,
+        with_node_modules=True,
+    )
+
+    shutil.rmtree(local_package_path)
+
+    yield test_package_path
+
+    tempdir.cleanup()
+
+
 def init_npm_project(
     path: Path,
     dependencies: Optional[list[tuple[str, str] | Path]] = None,

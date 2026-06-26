@@ -5,6 +5,7 @@ Pytest fixtures shared across all package manager tests.
 from .npm_fixtures import (  # noqa: F401
     empty_directory,
     new_npm_project,
+    npm_project_dangling_local_dependency,
     npm_project_dependency_latest,
     npm_project_dependency_latest_lockfile,
     npm_project_dependency_previous,

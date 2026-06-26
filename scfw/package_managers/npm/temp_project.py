@@ -144,7 +144,7 @@ class TemporaryNpmProject:
                 return
 
             temp_node_modules = temp_dir_path / "node_modules"
-            shutil.copytree(orig_node_modules, temp_node_modules, symlinks=True)
+            shutil.copytree(orig_node_modules, temp_node_modules, symlinks=True, ignore_dangling_symlinks=True)
 
             # Re-relativize relative symlinks to the temporary project directory
             for root, dirs, files in os.walk(temp_node_modules, followlinks=False):
@@ -280,7 +280,9 @@ class TemporaryNpmProject:
 
             def resolve_local_source(rel: str) -> Optional[LocalPackageSource]:
                 try:
-                    return LocalPackageSource((temp_dir_path / rel).resolve(strict=True))
+                    # No guarantee the artifact still exists at the resolved path;
+                    # LocalPackageSource signals origin (local vs. remote) to verifiers.
+                    return LocalPackageSource((temp_dir_path / rel).resolve())
                 except (OSError, RuntimeError) as e:
                     _log.warning(
                         f"Could not resolve local source path for installation target {target_name}: {e}"

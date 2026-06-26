@@ -314,6 +314,19 @@ def npm_project_dangling_local_dependency():
         with_node_modules=True,
     )
 
+    # npm 9.x installs `file:` dependencies as directory copies rather than symlinks.
+    # Explicitly replace the installed entry with a relative symlink so the fixture
+    # produces a dangling symlink on all npm versions after the source is deleted.
+    node_modules_entry = test_package_path / "node_modules" / LOCAL_PACKAGE_NAME
+    if node_modules_entry.is_symlink():
+        node_modules_entry.unlink()
+    elif node_modules_entry.is_dir():
+        shutil.rmtree(node_modules_entry)
+    os.symlink(
+        os.path.relpath(local_package_path, node_modules_entry.parent),
+        node_modules_entry,
+    )
+
     shutil.rmtree(local_package_path)
 
     yield test_package_path

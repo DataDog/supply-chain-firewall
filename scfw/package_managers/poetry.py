@@ -13,7 +13,7 @@ from types import TracebackType
 from typing import Optional
 
 try:
-    import tomllib
+    import tomllib  # type: ignore[import-not-found]
 except ImportError:
     import tomli as tomllib  # type: ignore[no-redef]
 

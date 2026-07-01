@@ -258,52 +258,6 @@ def _get_source_map(
         return {}
 
 
-def _rewrite_path_dependencies(project_dir: Path) -> str:
-    """
-    Read `pyproject.toml` from `project_dir` and return its content with any
-    relative `path =` dependency values rewritten to absolute paths.
-
-    This allows the file to be copied to a temporary directory and still resolve
-    local path dependencies correctly.
-
-    Args:
-        project_dir: The project directory containing `pyproject.toml`.
-
-    Returns:
-        The (possibly modified) content of `pyproject.toml` as a string.
-    """
-    pyproject_path = project_dir / "pyproject.toml"
-    content = pyproject_path.read_text()
-
-    with open(pyproject_path, "rb") as f:
-        data = tomllib.load(f)
-
-    poetry = data.get("tool", {}).get("poetry", {})
-
-    dep_sections = [
-        poetry.get("dependencies", {}),
-        poetry.get("dev-dependencies", {}),
-    ]
-    for group in poetry.get("group", {}).values():
-        dep_sections.append(group.get("dependencies", {}))
-
-    for section in dep_sections:
-        for dep_spec in section.values():
-            if isinstance(dep_spec, dict):
-                candidates = [dep_spec]
-            elif isinstance(dep_spec, list):
-                candidates = [d for d in dep_spec if isinstance(d, dict)]
-            else:
-                continue
-
-            for candidate in candidates:
-                if (path := candidate.get("path")) and not Path(path).is_absolute():
-                    abs_path = str((project_dir / path).resolve())
-                    content = content.replace(f'"{path}"', f'"{abs_path}"')
-
-    return content
-
-
 class TemporaryPoetryProject:
     """
     Prepares a temporary Poetry project that duplicates a given one, allowing a
@@ -331,9 +285,7 @@ class TemporaryPoetryProject:
         self._temp_dir = TemporaryDirectory()
         temp_path = Path(self._temp_dir.name)
 
-        (temp_path / "pyproject.toml").write_text(
-            _rewrite_path_dependencies(self._project_dir)
-        )
+        shutil.copy(self._project_dir / "pyproject.toml", temp_path / "pyproject.toml")
         if (poetry_toml := self._project_dir / "poetry.toml").is_file():
             shutil.copy(poetry_toml, temp_path / "poetry.toml")
 

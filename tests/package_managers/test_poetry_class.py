@@ -2,9 +2,12 @@
 Tests of `Poetry`, the `PackageManager` subclass.
 """
 
+import shutil
+from pathlib import Path
+
 from scfw.ecosystem import ECOSYSTEM
-from scfw.package import Package
-from scfw.package_managers.poetry import Poetry
+from scfw.package import LocalPackageSource, Package, RemotePackageSource
+from scfw.package_managers.poetry import Poetry, _get_source_map
 
 from .poetry_fixtures import (
     TARGET,
@@ -70,6 +73,7 @@ def test_poetry_command_resolve_install_targets_add(
         assert target.ecosystem == ECOSYSTEM.PyPI
         assert target.name == TARGET
         assert target.version == target_version
+        # source may be None for packages not yet present in the lock file
 
         assert poetry_show(poetry_project) == init_state
 
@@ -162,10 +166,55 @@ def test_poetry_get_installed_packages(monkeypatch, poetry_project_target_latest
 def _test_poetry_command_resolve_install_targets(command, project, targets) -> bool:
     """
     Tests that `Poetry.resolve_install_targets()` correctly resolves installation
-    targets without installing anything.
+    targets without installing anything, and that each resolved package has a source.
     """
     init_state = poetry_show(project)
 
-    targets = {Package(ECOSYSTEM.PyPI, name, version) for name, version in targets}
+    expected = {(ECOSYSTEM.PyPI, name, version) for name, version in targets}
+    resolved = PACKAGE_MANAGER.resolve_install_targets(command)
+    resolved_identity = {(p.ecosystem, p.name, p.version) for p in resolved}
+    # The root project package is not a third-party dep and may not appear in the lock file
+    third_party = [p for p in resolved if p.name != TEST_PROJECT_NAME]
+    sources_populated = all(p.source is not None for p in third_party)
 
-    return PACKAGE_MANAGER.resolve_install_targets(command) == targets and poetry_show(project) == init_state
+    return resolved_identity == expected and sources_populated and poetry_show(project) == init_state
+
+
+def test_resolve_install_targets_pypi_source(poetry_project_target_previous_lock_latest):
+    """
+    Tests that packages resolved by `Poetry.resolve_install_targets()` for an
+    install command are sourced from the PyPI registry.
+    """
+    project = poetry_project_target_previous_lock_latest
+    command = ["poetry", "install", "--directory", project]
+
+    targets = PACKAGE_MANAGER.resolve_install_targets(command)
+    registry_targets = [t for t in targets if t.name != TEST_PROJECT_NAME]
+
+    assert registry_targets
+    assert all(t.has_registry_source() for t in registry_targets)
+
+
+def test_get_source_map_no_lock(poetry_project_no_lock):
+    """
+    Tests that `_get_source_map` generates a lock file via `TemporaryPoetryProject`
+    when none exists, returning PyPI sources for registry packages, without
+    creating a lock file in the original project directory.
+    """
+    project = Path(poetry_project_no_lock)
+    assert not (project / "poetry.lock").exists()
+
+    command = [shutil.which("poetry"), "install", "--directory", str(project)]
+    source_map = _get_source_map(shutil.which("poetry"), command)
+
+    assert source_map
+
+    for (name, version), source in source_map.items():
+        assert isinstance(source, (LocalPackageSource, RemotePackageSource))
+
+    target_entries = {ver: src for (name, ver), src in source_map.items() if name == TARGET}
+    assert target_entries
+    assert all(isinstance(src, RemotePackageSource) for src in target_entries.values())
+    assert all(src.remote_source.startswith("https://pypi.org/") for src in target_entries.values())
+
+    assert not (project / "poetry.lock").exists()

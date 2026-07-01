@@ -29,6 +29,7 @@ from .pip_fixtures import (  # noqa: F401
 from .poetry_fixtures import (  # noqa: F401
     new_poetry_project,
     poetry_project_lock_latest,
+    poetry_project_no_lock,
     poetry_project_target_latest,
     poetry_project_target_latest_lock_previous,
     poetry_project_target_previous,

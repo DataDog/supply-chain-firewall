@@ -294,13 +294,19 @@ class TemporaryPoetryProject:
         result = subprocess.run(
             [self._executable, "lock"],
             cwd=temp_path,
+            text=True,
             capture_output=True,
         )
-        if result.returncode != 0:
-            _log.warning("Failed to generate poetry.lock in temporary directory")
+        lock_path = temp_path / "poetry.lock"
+        if result.returncode != 0 or not lock_path.is_file():
+            _log.warning(
+                "Failed to generate poetry.lock in temporary directory (rc=%s): %s",
+                result.returncode,
+                (result.stderr or result.stdout).strip(),
+            )
             return None
 
-        return temp_path / "poetry.lock"
+        return lock_path
 
     def __exit__(
         self,

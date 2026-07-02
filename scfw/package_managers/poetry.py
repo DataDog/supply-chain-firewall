@@ -350,8 +350,8 @@ def _parse_lock_file(lock_path: Path) -> dict[tuple[str, str], LocalPackageSourc
             continue
 
         if source := package.get("source"):
-            url = source.get("url", "")
-            if source.get("type") in {"directory", "file"}:
+            url = source.get("url")
+            if source.get("type") in {"directory", "file"} and url:
                 source_map[(name, version)] = LocalPackageSource(Path(url))
             elif url:
                 source_map[(name, version)] = RemotePackageSource(url)

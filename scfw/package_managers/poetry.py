@@ -254,7 +254,7 @@ def _get_source_map(
             return _parse_lock_file(generated_lock) if generated_lock else {}
 
     except Exception as e:
-        _log.warning(f"Could not determine package sources from poetry.lock: {e}")
+        _log.warning("Could not determine package sources from poetry.lock: %s", e, exc_info=True)
         return {}
 
 

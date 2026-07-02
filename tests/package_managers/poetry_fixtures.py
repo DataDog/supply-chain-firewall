@@ -110,6 +110,21 @@ def poetry_project_lock_latest():
     tempdir.cleanup()
 
 
+@pytest.fixture
+def poetry_project_no_lock():
+    """
+    Initialize a Poetry project with `TARGET` as a declared dependency but no `poetry.lock`.
+    """
+    tempdir = TemporaryDirectory()
+    subprocess.run(["poetry", "init", "--no-interaction", "--name", TEST_PROJECT_NAME], check=True, cwd=tempdir.name)
+    subprocess.run(["poetry", "add", "--lock", f"{TARGET}=={TARGET_LATEST}"], check=True, cwd=tempdir.name)
+    (Path(tempdir.name) / "poetry.lock").unlink()
+
+    yield tempdir.name
+
+    tempdir.cleanup()
+
+
 def _init_poetry_project(directory, name, dependencies=None):
     """
     Initialize a fresh Poetry project in `directory` with the given `dependencies`.

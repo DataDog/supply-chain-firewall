@@ -9,6 +9,7 @@ dependencies = [
     "python-dotenv",
     "pyyaml",
     "requests",
+    "tomli>=2.0; python_version<'3.11'",
 ]
 requires-python = ">=3.10"
 authors = [

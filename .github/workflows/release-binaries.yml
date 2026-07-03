@@ -22,7 +22,7 @@ jobs:
             runs-on: ubuntu-24.04-arm
           - os: macos
             arch: x86_64
-            runs-on: macos-13
+            runs-on: macos-26-intel
           - os: macos
             arch: arm64
             runs-on: macos-latest

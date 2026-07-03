@@ -26,15 +26,9 @@ jobs:
           - os: macos
             arch: arm64
             runs-on: macos-latest
-          - os: windows
-            arch: x86_64
-            runs-on: windows-latest
-          - os: windows
-            arch: arm64
-            runs-on: windows-11-arm
     runs-on: ${{ matrix.runs-on }}
     env:
-      ASSET_NAME: scfw-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }}
+      ASSET_NAME: scfw-${{ matrix.os }}-${{ matrix.arch }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -69,12 +63,7 @@ jobs:
 
       - name: Rename binary
         shell: bash
-        run: |
-          if [ "${{ matrix.os }}" = "windows" ]; then
-            mv dist/scfw.exe "dist/${{ env.ASSET_NAME }}"
-          else
-            mv dist/scfw "dist/${{ env.ASSET_NAME }}"
-          fi
+        run: mv dist/scfw "dist/${{ env.ASSET_NAME }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

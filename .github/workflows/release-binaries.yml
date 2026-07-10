@@ -45,7 +45,7 @@ jobs:
           pip install pyinstaller==6.21.0
 
       - name: Install Supply Chain Firewall
-        run: pip install -r requirements.txt
+        run: pip install .
 
       - name: Write PyInstaller entry point
         shell: bash

@@ -41,10 +41,10 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install .
           pip install pyinstaller==6.21.0
 
-      - name: Install Supply-Chain Firewall
+      - name: Install Supply Chain Firewall
         run: pip install -r requirements.txt
 
       - name: Write PyInstaller entry point

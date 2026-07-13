@@ -36,6 +36,7 @@ packages = [
     "scfw.loggers",
     "scfw.package_managers",
     "scfw.package_managers.npm",
+    "scfw.package_managers.poetry",
     "scfw.verifiers",
     "scfw.verifiers.age_verifier",
     "scfw.verifiers.dd_verifier",

@@ -7,7 +7,8 @@ from pathlib import Path
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import LocalPackageSource, Package, RemotePackageSource
-from scfw.package_managers.poetry import Poetry, _get_source_map
+from scfw.package_managers.poetry import Poetry
+from scfw.package_managers.poetry.temp_project import get_source_map
 
 from .poetry_fixtures import (
     TARGET,
@@ -73,7 +74,7 @@ def test_poetry_command_resolve_install_targets_add(
         assert target.ecosystem == ECOSYSTEM.PyPI
         assert target.name == TARGET
         assert target.version == target_version
-        # source may be None for packages not yet present in the lock file
+        assert target.source is not None
 
         assert poetry_show(poetry_project) == init_state
 
@@ -132,24 +133,19 @@ def test_poetry_command_resolve_install_targets_sync(
     )
 
 
-def test_poetry_command_resolve_install_targets_update(
-    poetry_project_lock_latest,
-    poetry_project_target_latest_lock_previous,
-    poetry_project_target_previous_lock_latest,
-):
+def test_poetry_command_resolve_install_targets_update(poetry_project_target_previous_loose_constraint):
     """
     Tests that `Poetry.resolve_install_targets()` for a `poetry update` command
     correctly resolves installation targets without installing anything.
-    """
-    test_cases = [
-        (poetry_project_lock_latest, [(TARGET, TARGET_LATEST)]),
-        (poetry_project_target_latest_lock_previous, [(TARGET, TARGET_PREVIOUS)]),
-        (poetry_project_target_previous_lock_latest, [(TARGET, TARGET_LATEST)]),
-    ]
 
-    assert all(
-        _test_poetry_command_resolve_install_targets(["poetry", "update", "--directory", project], project, targets)
-        for project, targets in test_cases
+    A package's installation target is the version `update` would newly introduce
+    to the project's `poetry.lock`, regardless of whether the local environment
+    happens to already be in sync with it.
+    """
+    project = poetry_project_target_previous_loose_constraint
+
+    assert _test_poetry_command_resolve_install_targets(
+        ["poetry", "update", "--directory", project], project, [(TARGET, TARGET_LATEST)]
     )
 
 
@@ -197,7 +193,7 @@ def test_resolve_install_targets_pypi_source(poetry_project_target_previous_lock
 
 def test_get_source_map_no_lock(poetry_project_no_lock):
     """
-    Tests that `_get_source_map` generates a lock file via `TemporaryPoetryProject`
+    Tests that `get_source_map` generates a lock file via `TemporaryPoetryProject`
     when none exists, returning PyPI sources for registry packages, without
     creating a lock file in the original project directory.
     """
@@ -205,7 +201,7 @@ def test_get_source_map_no_lock(poetry_project_no_lock):
     assert not (project / "poetry.lock").exists()
 
     command = [shutil.which("poetry"), "install", "--directory", str(project)]
-    source_map = _get_source_map(shutil.which("poetry"), command)
+    source_map = get_source_map(shutil.which("poetry"), command)
 
     assert source_map
 

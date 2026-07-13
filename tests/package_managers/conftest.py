@@ -34,4 +34,5 @@ from .poetry_fixtures import (  # noqa: F401
     poetry_project_target_latest_lock_previous,
     poetry_project_target_previous,
     poetry_project_target_previous_lock_latest,
+    poetry_project_target_previous_loose_constraint,
 )

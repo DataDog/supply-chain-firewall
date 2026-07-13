@@ -111,6 +111,24 @@ def poetry_project_lock_latest():
 
 
 @pytest.fixture
+def poetry_project_target_previous_loose_constraint():
+    """
+    Initialize a Poetry project with `TARGET` locked at its previous version, but
+    declared under an unconstrained requirement, so that `poetry update` is free
+    to move it to the latest version.
+    """
+    tempdir = TemporaryDirectory()
+    _init_poetry_project(tempdir.name, TEST_PROJECT_NAME, [(TARGET, TARGET_PREVIOUS)])
+
+    pyproject_path = Path(tempdir.name) / "pyproject.toml"
+    pyproject_path.write_text(pyproject_path.read_text().replace(f"{TARGET} (=={TARGET_PREVIOUS})", TARGET))
+
+    yield tempdir.name
+
+    tempdir.cleanup()
+
+
+@pytest.fixture
 def poetry_project_no_lock():
     """
     Initialize a Poetry project with `TARGET` as a declared dependency but no `poetry.lock`.

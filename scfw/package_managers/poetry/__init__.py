@@ -4,32 +4,27 @@ Provides a `PackageManager` representation of `poetry`.
 
 import logging
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
-from tempfile import TemporaryDirectory
-from types import TracebackType
 from typing import Optional
-
-try:
-    import tomllib  # type: ignore[import-not-found]
-except ImportError:
-    import tomli as tomllib  # type: ignore[no-redef]
 
 from packaging.version import InvalidVersion, Version, parse as version_parse
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.package import LocalPackageSource, Package, RemotePackageSource
+from scfw.package import Package
 from scfw.package_manager import PackageManager, UnsupportedVersionError
+from scfw.package_managers.poetry.temp_project import get_source_map, resolve_via_lock
 
 _log = logging.getLogger(__name__)
-
-_PYPI_PROJECT_BASE_URL = "https://pypi.org/project"
 
 MIN_POETRY_VERSION = version_parse("1.7.0")
 
 INSPECTED_SUBCOMMANDS = {"add", "install", "sync", "update"}
+
+# Subcommands that change declared dependencies or their locked versions: any existing
+# poetry.lock predates the change and must be resolved and re-sourced together
+LOCK_REGEN_SUBCOMMANDS = {"add", "update"}
 
 
 class Poetry(PackageManager):
@@ -102,7 +97,9 @@ class Poetry(PackageManager):
 
         Returns:
             A `set[Package]` representing the package targets that would be installed
-            if `command` were run.
+            if `command` were run. For `add`/`update`, these are the packages newly
+            introduced to the project's dependency graph, which may differ from what
+            is currently present in the local environment.
 
         Raises:
             ValueError: The given `command` is empty or not a valid `poetry` command.
@@ -132,18 +129,27 @@ class Poetry(PackageManager):
             return set()
 
         try:
+            if any(subcommand in command for subcommand in LOCK_REGEN_SUBCOMMANDS):
+                # `add`/`update` require a fresh resolution of the project's dependency graph,
+                # via --lock instead of --dry-run
+                source_map = resolve_via_lock(command)
+                return {
+                    Package(self.ecosystem(), name, version, source)
+                    for (name, version), source in source_map.items()
+                }
+
             # Compute installation targets: new dependencies and updates/downgrades of existing ones
             dry_run = subprocess.run(command + ["--dry-run"], check=True, text=True, capture_output=True)
-            packages = set(filter(None, map(line_to_package, dry_run.stdout.split('\n'))))
         except subprocess.CalledProcessError:
             # An erroring command does not install anything
             _log.info("Encountered an error while resolving poetry installation targets")
             return set()
 
+        packages = set(filter(None, map(line_to_package, dry_run.stdout.split('\n'))))
         if not packages:
             return packages
 
-        source_map = _get_source_map(self._executable, command)
+        source_map = get_source_map(self._executable, command)
         return {
             Package(p.ecosystem, p.name, p.version, source_map.get((p.name, p.version)))
             for p in packages
@@ -220,144 +226,3 @@ class Poetry(PackageManager):
             raise ValueError("Received invalid poetry command line")
 
         return [self._executable] + command[1:]
-
-
-def _get_source_map(
-    executable: str, command: list[str]
-) -> dict[tuple[str, str], LocalPackageSource | RemotePackageSource]:
-    """
-    Return a `(name, version)` source mapping for the project referenced by `command`.
-
-    Locates the project directory via the `--directory`/`-C` flag in `command`,
-    falling back to the current working directory. If a `poetry.lock` already
-    exists there it is parsed directly; otherwise a `TemporaryPoetryProject` is
-    used to generate one first.
-
-    Returns an empty dict (and logs a warning) on any failure so callers can
-    degrade gracefully to returning packages without source information.
-    """
-    for flag in ("--directory", "-C"):
-        try:
-            project_dir = Path(command[command.index(flag) + 1])
-            break
-        except (ValueError, IndexError):
-            pass
-    else:
-        project_dir = Path.cwd()
-
-    try:
-        lock_path = project_dir / "poetry.lock"
-        if lock_path.is_file():
-            return _parse_lock_file(lock_path)
-
-        with TemporaryPoetryProject(executable, project_dir) as generated_lock:
-            return _parse_lock_file(generated_lock) if generated_lock else {}
-
-    except Exception as e:
-        _log.warning("Could not determine package sources from poetry.lock: %s", e, exc_info=True)
-        return {}
-
-
-class TemporaryPoetryProject:
-    """
-    Prepares a temporary Poetry project that duplicates a given one, allowing a
-    `poetry.lock` file to be generated without modifying the original project.
-    """
-    def __init__(self, executable: str, project_dir: Path):
-        """
-        Initialize a new `TemporaryPoetryProject`.
-
-        Args:
-            executable: Path to the `poetry` executable.
-            project_dir: Path to the project directory containing `pyproject.toml`.
-        """
-        self._executable = executable
-        self._project_dir = project_dir
-        self._temp_dir: Optional[TemporaryDirectory] = None
-
-    def __enter__(self) -> Optional[Path]:
-        """
-        Set up the temporary project and generate a `poetry.lock` file.
-
-        Returns:
-            The `Path` to the generated `poetry.lock`, or `None` if generation failed.
-        """
-        self._temp_dir = TemporaryDirectory()
-        temp_path = Path(self._temp_dir.name)
-
-        shutil.copy(self._project_dir / "pyproject.toml", temp_path / "pyproject.toml")
-        if (poetry_toml := self._project_dir / "poetry.toml").is_file():
-            shutil.copy(poetry_toml, temp_path / "poetry.toml")
-
-        _log.warning("No poetry.lock found; generating one in a temporary directory (this may be slow)")
-
-        result = subprocess.run(
-            [self._executable, "lock"],
-            cwd=temp_path,
-            text=True,
-            capture_output=True,
-        )
-        lock_path = temp_path / "poetry.lock"
-        if result.returncode != 0 or not lock_path.is_file():
-            _log.warning(
-                "Failed to generate poetry.lock in temporary directory (rc=%s): %s",
-                result.returncode,
-                (result.stderr or result.stdout).strip(),
-            )
-            return None
-
-        return lock_path
-
-    def __exit__(
-        self,
-        exc_type: Optional[type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
-    ) -> None:
-        if self._temp_dir:
-            self._temp_dir.cleanup()
-            self._temp_dir = None
-
-
-def _parse_lock_file(lock_path: Path) -> dict[tuple[str, str], LocalPackageSource | RemotePackageSource]:
-    """
-    Parse a `poetry.lock` file and return a mapping from `(name, version)` to
-    the package's source.
-
-    Packages with a `[package.source]` of type `"directory"` or `"file"` are
-    mapped to a `LocalPackageSource`. Packages with any other source type are
-    mapped to the source URL as a `RemotePackageSource`. Packages with no source
-    entry are assumed to come from PyPI and mapped to their canonical project page URL.
-
-    Args:
-        lock_path: Path to the `poetry.lock` file to parse.
-
-    Returns:
-        A `dict` mapping `(name, version)` pairs to package source objects.
-
-    Raises:
-        FileNotFoundError: `lock_path` does not exist.
-        tomllib.TOMLDecodeError: The lock file is not valid TOML.
-    """
-    with open(lock_path, "rb") as f:
-        lock_data = tomllib.load(f)
-
-    source_map: dict[tuple[str, str], LocalPackageSource | RemotePackageSource] = {}
-    for package in lock_data.get("package", []):
-        name = package.get("name", "")
-        version = package.get("version", "")
-        if not name or not version:
-            continue
-
-        if source := package.get("source"):
-            url = source.get("url")
-            if source.get("type") in {"directory", "file"} and url:
-                source_map[(name, version)] = LocalPackageSource(Path(url))
-            elif url:
-                source_map[(name, version)] = RemotePackageSource(url)
-        else:
-            source_map[(name, version)] = RemotePackageSource(
-                f"{_PYPI_PROJECT_BASE_URL}/{name}/{version}/"
-            )
-
-    return source_map

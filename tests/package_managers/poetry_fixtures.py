@@ -119,7 +119,13 @@ def poetry_project_target_previous_loose_constraint():
     _init_poetry_project(tempdir.name, TEST_PROJECT_NAME, [(TARGET, TARGET_PREVIOUS)])
 
     pyproject_path = Path(tempdir.name) / "pyproject.toml"
-    pyproject_path.write_text(pyproject_path.read_text().replace(f"{TARGET} (=={TARGET_PREVIOUS})", TARGET))
+    text = pyproject_path.read_text()
+    # Poetry >=2.0 declares dependencies as PEP 621 strings (e.g. "tree-sitter (==0.25.2)"),
+    # while Poetry <2.0 uses the legacy `[tool.poetry.dependencies]` table syntax
+    # (e.g. tree-sitter = "0.25.2"). Loosen whichever form is present.
+    text = text.replace(f"{TARGET} (=={TARGET_PREVIOUS})", TARGET)
+    text = text.replace(f'{TARGET} = "{TARGET_PREVIOUS}"', f'{TARGET} = "*"')
+    pyproject_path.write_text(text)
 
     yield tempdir.name
 

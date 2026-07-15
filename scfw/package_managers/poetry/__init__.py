@@ -140,9 +140,13 @@ class Poetry(PackageManager):
 
             # Compute installation targets: new dependencies and updates/downgrades of existing ones
             dry_run = subprocess.run(command + ["--dry-run"], check=True, text=True, capture_output=True)
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
             # An erroring command does not install anything
-            _log.info("Encountered an error while resolving poetry installation targets")
+            _log.error(
+                "Encountered an error while resolving poetry installation targets: %s",
+                (e.stderr or e.stdout or "").strip(),
+                exc_info=True,
+            )
             return set()
 
         packages = set(filter(None, map(line_to_package, dry_run.stdout.split('\n'))))

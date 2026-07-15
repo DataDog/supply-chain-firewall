@@ -8,7 +8,6 @@ import sys
 from tempfile import TemporaryDirectory
 
 import pytest
-import requests
 
 TEST_PROJECT_NAME = "foo"
 
@@ -16,14 +15,13 @@ TEST_PROJECT_NAME = "foo"
 # and is not part of the standard set of system Python modules
 TARGET = "tree-sitter"
 
-# Version numbers of available Tree-sitter releases on PyPI
-TARGET_RELEASES = list(
-    requests.get(f"https://pypi.org/pypi/{TARGET}/json", timeout=5).json()["releases"]
-)
-
-# The latest and most recent previous versions of Tree-sitter
-TARGET_LATEST = TARGET_RELEASES[-1]
-TARGET_PREVIOUS = TARGET_RELEASES[-2]
+# Pinned Tree-sitter versions used by the tests below. These are frozen rather than
+# fetched from PyPI at collection time: Tree-sitter releases frequently enough that a
+# new version can appear mid-run and diverge from whatever was "latest" at collection
+# time, making tests that assert against the true latest release flaky. Bump these by
+# hand when a test needs to target a newer pair of releases.
+TARGET_LATEST = "0.26.0"
+TARGET_PREVIOUS = "0.25.2"
 
 
 @pytest.fixture

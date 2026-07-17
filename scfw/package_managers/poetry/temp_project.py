@@ -38,7 +38,7 @@ def get_source_map(
     Returns an empty dict (and logs a warning) on any failure so callers can
     degrade gracefully to returning packages without source information.
     """
-    project_dir = resolve_project_dir(command)
+    project_dir = _resolve_project_dir(command)
 
     try:
         lock_path = project_dir / "poetry.lock"
@@ -65,7 +65,7 @@ def get_source_map(
 
 
 def resolve_via_lock(
-    command: list[str], installed: set[tuple[str, str]]
+    command: list[str]
 ) -> dict[tuple[str, str], LocalPackageSource | RemotePackageSource]:
     """
     Run an `add`/`update` `command` with `--lock` against a temporary copy of its
@@ -75,19 +75,17 @@ def resolve_via_lock(
 
     Args:
         command: A normalized `add`/`update` `poetry` command.
-        installed: The `(name, version)` pairs currently installed in the project's environment.
 
     Returns:
         The `(name, version)` source map of packages newly added to or changed in
         the resulting `poetry.lock`, relative to the project's existing one (if any).
         A package already present in the old lock at the same version and source is
-        only considered unchanged if it is also actually installed; otherwise, running
-        the command would still install it, so it must be reported.
+        considered unchanged; a change to either is reported.
 
     Raises:
         subprocess.CalledProcessError: The command failed to resolve dependencies.
     """
-    project_dir = resolve_project_dir(command)
+    project_dir = _resolve_project_dir(command)
 
     with TemporaryPoetryProject(project_dir) as temp_dir:
         lock_path = temp_dir / "poetry.lock"
@@ -97,24 +95,41 @@ def resolve_via_lock(
         subprocess.run(lock_command, cwd=temp_dir, check=True, text=True, capture_output=True)
 
         new_map = _parse_lock_file(lock_path) if lock_path.is_file() else {}
-        satisfied = {
-            key for key, source in old_map.items()
-            if key in installed and new_map.get(key) == source
+        return {
+            key: source
+            for key, source in new_map.items()
+            if key not in old_map or old_map[key] != source
         }
-        return {key: source for key, source in new_map.items() if key not in satisfied}
 
 
-def resolve_project_dir(command: list[str]) -> Path:
+def _find_directory_flag(command: list[str]) -> Optional[tuple[int, int, str]]:
+    """
+    Find `poetry`'s `--directory`/`-C` flag in `command`, in any of its accepted
+    forms (`--directory path`, `--directory=path`, `-C path`, `-Cpath`, `-C=path`).
+
+    Returns:
+        A tuple `(start, end, value)` such that `command[start:end]` is the token
+        span occupied by the flag and its argument, and `value` is that argument;
+        or `None` if the flag is not present or has no argument.
+    """
+    for i, token in enumerate(command):
+        if token in ("--directory", "-C"):
+            return (i, i + 2, command[i + 1]) if i + 1 < len(command) else None
+        if token.startswith("--directory="):
+            return (i, i + 1, token[len("--directory="):])
+        if token.startswith("-C") and token != "-C":
+            value = token[len("-C"):]
+            return (i, i + 1, value[1:] if value.startswith("=") else value)
+    return None
+
+
+def _resolve_project_dir(command: list[str]) -> Path:
     """
     Locate the project directory referenced by a `poetry` `command`, via its
     `--directory`/`-C` flag if present, falling back to the current working directory.
     """
-    for flag in ("--directory", "-C"):
-        try:
-            return Path(command[command.index(flag) + 1])
-        except (ValueError, IndexError):
-            pass
-    return Path.cwd()
+    match = _find_directory_flag(command)
+    return Path(match[2]) if match else Path.cwd()
 
 
 def _strip_directory_flag(command: list[str]) -> list[str]:
@@ -122,12 +137,11 @@ def _strip_directory_flag(command: list[str]) -> list[str]:
     Remove any `--directory`/`-C` flag and its argument from `command`, so it can be
     safely re-run in a different project directory via the `cwd` argument.
     """
-    stripped = list(command)
-    for flag in ("--directory", "-C"):
-        if flag in stripped:
-            i = stripped.index(flag)
-            del stripped[i:i + 2]
-    return stripped
+    match = _find_directory_flag(command)
+    if not match:
+        return list(command)
+    start, end, _ = match
+    return command[:start] + command[end:]
 
 
 class TemporaryPoetryProject:
@@ -153,7 +167,9 @@ class TemporaryPoetryProject:
         Returns:
             The `Path` to the temporary project directory.
         """
-        self._temp_dir = TemporaryDirectory()
+        # Placed as a sibling of the real project directory (not the system temp root) so that
+        # relative local path dependencies (e.g. `../sibling-pkg` in a monorepo) still resolve.
+        self._temp_dir = TemporaryDirectory(prefix=".scfw-poetry-", dir=self._project_dir.parent)
         temp_path = Path(self._temp_dir.name)
         _log.debug("Created temporary poetry project directory %s for %s", temp_path, self._project_dir)
 
@@ -189,7 +205,9 @@ def _parse_lock_file(lock_path: Path) -> dict[tuple[str, str], LocalPackageSourc
     the package's source.
 
     Packages with a `[package.source]` of type `"directory"` or `"file"` are
-    mapped to a `LocalPackageSource`. Packages with any other source type are
+    mapped to a `LocalPackageSource`, whose path is resolved to an absolute path
+    relative to `lock_path`'s directory (matching Poetry's own semantics for
+    relative local path dependencies). Packages with any other source type are
     mapped to the source URL as a `RemotePackageSource`. Packages with no source
     entry are assumed to come from PyPI and mapped to their canonical project page URL.
 
@@ -216,7 +234,7 @@ def _parse_lock_file(lock_path: Path) -> dict[tuple[str, str], LocalPackageSourc
         if source := package.get("source"):
             url = source.get("url")
             if source.get("type") in {"directory", "file"} and url:
-                source_map[(name, version)] = LocalPackageSource(Path(url))
+                source_map[(name, version)] = LocalPackageSource((lock_path.parent / url).resolve())
             elif url:
                 source_map[(name, version)] = RemotePackageSource(url)
         else:

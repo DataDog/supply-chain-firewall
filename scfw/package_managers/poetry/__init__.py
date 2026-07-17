@@ -14,7 +14,7 @@ from packaging.version import InvalidVersion, Version, parse as version_parse
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.package_manager import PackageManager, UnsupportedVersionError
-from scfw.package_managers.poetry.temp_project import get_source_map, resolve_via_lock
+from scfw.package_managers.poetry.temp_project import get_source_map, resolve_project_dir, resolve_via_lock
 
 _log = logging.getLogger(__name__)
 
@@ -132,7 +132,9 @@ class Poetry(PackageManager):
             if any(subcommand in command for subcommand in LOCK_REGEN_SUBCOMMANDS):
                 # `add`/`update` require a fresh resolution of the project's dependency graph,
                 # via --lock instead of --dry-run
-                source_map = resolve_via_lock(command)
+                project_dir = resolve_project_dir(command)
+                installed = {(p.name, p.version) for p in self.get_installed_packages(directory=str(project_dir))}
+                source_map = resolve_via_lock(command, installed)
                 return {
                     Package(self.ecosystem(), name, version, source)
                     for (name, version), source in source_map.items()
@@ -159,9 +161,14 @@ class Poetry(PackageManager):
             for p in packages
         }
 
-    def get_installed_packages(self) -> set[Package]:
+    def get_installed_packages(self, directory: Optional[str] = None) -> set[Package]:
         """
         Return the set of `PyPI` packages installed in the active `poetry` environment.
+
+        Args:
+            directory:
+                An optional path to the `poetry` project directory whose environment
+                should be queried. If not provided, the current working directory is used.
 
         Returns:
             A `set[Package]` representing all `PyPI` packages installed in the active
@@ -179,7 +186,10 @@ class Poetry(PackageManager):
         self._check_version()
 
         try:
-            poetry_show_command = self._normalize_command(["poetry", "show", "--all"])
+            poetry_show_command = ["poetry", "show", "--all"]
+            if directory is not None:
+                poetry_show_command += ["--directory", directory]
+            poetry_show_command = self._normalize_command(poetry_show_command)
             poetry_show = subprocess.run(poetry_show_command, check=True, text=True, capture_output=True)
             installed_report = poetry_show.stdout.strip()
             return set(map(line_to_package, installed_report.split('\n'))) if installed_report else set()

@@ -2,6 +2,7 @@
 Tests of the Datadog Code Security API logger.
 """
 
+from dataclasses import replace
 from datetime import datetime, timezone
 
 from scfw.ecosystem import ECOSYSTEM
@@ -18,19 +19,19 @@ _CRITICAL_FINDING = Finding("foo", FindingSeverity.CRITICAL, "critical finding")
 
 _TIMESTAMP = datetime(2026, 7, 17, 12, 0, 0, tzinfo=timezone.utc)
 
+_BASE_RUN_SUMMARY = FirewallRunSummary(
+    timestamp=_TIMESTAMP,
+    command=["pip", "install", "requests"],
+    install_targets={_PKG_A},
+    report=None,
+    relevant_findings=None,
+    warning=False,
+    action=FirewallAction.ALLOW,
+)
+
 
 def _run_summary(**overrides) -> FirewallRunSummary:
-    defaults = dict(
-        timestamp=_TIMESTAMP,
-        command=["pip", "install", "requests"],
-        install_targets={_PKG_A},
-        report=None,
-        relevant_findings=None,
-        warning=False,
-        action=FirewallAction.ALLOW,
-    )
-    defaults.update(overrides)
-    return FirewallRunSummary(**defaults)
+    return replace(_BASE_RUN_SUMMARY, **overrides)
 
 
 def test_payload_reports_install_timestamp():

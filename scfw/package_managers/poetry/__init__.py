@@ -14,12 +14,17 @@ from packaging.version import InvalidVersion, Version, parse as version_parse
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
 from scfw.package_manager import PackageManager, UnsupportedVersionError
+from scfw.package_managers.poetry.temp_project import get_source_map, resolve_via_lock
 
 _log = logging.getLogger(__name__)
 
 MIN_POETRY_VERSION = version_parse("1.7.0")
 
 INSPECTED_SUBCOMMANDS = {"add", "install", "sync", "update"}
+
+# Subcommands that change declared dependencies or their locked versions: any existing
+# poetry.lock predates the change and must be resolved and re-sourced together
+LOCK_REGEN_SUBCOMMANDS = {"add", "update"}
 
 
 class Poetry(PackageManager):
@@ -92,7 +97,9 @@ class Poetry(PackageManager):
 
         Returns:
             A `set[Package]` representing the package targets that would be installed
-            if `command` were run.
+            if `command` were run. For `add`/`update`, these are the packages newly
+            introduced to the project's dependency graph, which may differ from what
+            is currently present in the local environment.
 
         Raises:
             ValueError: The given `command` is empty or not a valid `poetry` command.
@@ -122,13 +129,35 @@ class Poetry(PackageManager):
             return set()
 
         try:
+            if any(subcommand in command for subcommand in LOCK_REGEN_SUBCOMMANDS):
+                # `add`/`update` require a fresh resolution of the project's dependency graph,
+                # via --lock instead of --dry-run
+                source_map = resolve_via_lock(command)
+                return {
+                    Package(self.ecosystem(), name, version, source)
+                    for (name, version), source in source_map.items()
+                }
+
             # Compute installation targets: new dependencies and updates/downgrades of existing ones
             dry_run = subprocess.run(command + ["--dry-run"], check=True, text=True, capture_output=True)
-            return set(filter(None, map(line_to_package, dry_run.stdout.split('\n'))))
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
             # An erroring command does not install anything
-            _log.info("Encountered an error while resolving poetry installation targets")
+            _log.error(
+                "Encountered an error while resolving poetry installation targets: %s",
+                (e.stderr or e.stdout or "").strip(),
+                exc_info=True,
+            )
             return set()
+
+        packages = set(filter(None, map(line_to_package, dry_run.stdout.split('\n'))))
+        if not packages:
+            return packages
+
+        source_map = get_source_map(self._executable, command)
+        return {
+            Package(p.ecosystem, p.name, p.version, source_map.get((p.name, p.version)))
+            for p in packages
+        }
 
     def get_installed_packages(self) -> set[Package]:
         """

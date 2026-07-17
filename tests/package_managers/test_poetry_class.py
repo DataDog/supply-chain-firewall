@@ -202,7 +202,6 @@ def test_get_source_map_no_lock(poetry_project_no_lock):
 
     poetry = shutil.which("poetry")
     assert poetry
-    
     command = [poetry, "install", "--directory", str(project)]
     source_map = get_source_map(poetry, command)
 

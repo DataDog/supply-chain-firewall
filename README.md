@@ -77,8 +77,6 @@ By default, `scfw` will refuse to run inspected subcommands with an unsupported 
 
 Currently, Supply Chain Firewall is only fully supported on macOS systems, though it should run as intended on common Linux distributions.  It is currently not supported on Windows.
 
-For `poetry`, target resolution for `add`/`update` is based entirely on the project's `pyproject.toml`/`poetry.lock`. If a project's installed environment has drifted out of sync with its lock file (e.g. the lock was regenerated or checked in separately without running `poetry install`/`sync` afterward), `scfw` has no reliable way to detect that drift, since Poetry itself does not expose the actual installed version of a package independently of what the lock file says. Keeping a project's environment in sync with its lock file is out of scope for this tool.
-
 ### Uninstalling Supply Chain Firewall
 
 Supply Chain Firewall may be uninstalled via `pip(x) uninstall scfw`.  Before doing so, be sure to run the command `scfw configure --remove` to remove any Supply Chain Firewall-managed configuration you may have previously added to your environment.

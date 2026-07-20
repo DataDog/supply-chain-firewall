@@ -9,7 +9,7 @@ checks: typecheck lint test
 
 coverage: test coverage-report
 
-test: test-cli test-configure test-firewall test-npm test-npm-class test-pip-executable test-pip test-pip-class test-poetry test-poetry-class test-report test-verifiers
+test: test-cli test-configure test-firewall test-loggers test-npm test-npm-class test-pip-executable test-pip test-pip-class test-poetry test-poetry-class test-report test-verifiers
 
 typecheck:
 	mypy --install-types --non-interactive examples/ scfw/ tests/
@@ -25,6 +25,9 @@ test-configure:
 
 test-firewall:
 	COVERAGE_FILE=.coverage.firewall coverage run -m pytest tests/test_firewall.py
+
+test-loggers:
+	COVERAGE_FILE=.coverage.loggers coverage run -m pytest tests/test_dd_codesec_logger.py
 
 test-npm:
 	COVERAGE_FILE=.coverage.npm coverage run -m pytest tests/package_managers/test_npm.py
@@ -55,6 +58,7 @@ test-verifiers:
 
 coverage-report:
 	coverage combine .coverage.cli .coverage.configure .coverage.firewall \
+	.coverage.loggers \
 	.coverage.npm .coverage.npm.class \
 	.coverage.pip.executable .coverage.pip .coverage.pip.class \
 	.coverage.poetry .coverage.poetry.class \

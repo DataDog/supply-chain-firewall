@@ -9,6 +9,7 @@ dependencies = [
     "python-dotenv",
     "pyyaml",
     "requests",
+    "tomli>=2.0; python_version<'3.11'",
 ]
 requires-python = ">=3.10"
 authors = [
@@ -35,6 +36,7 @@ packages = [
     "scfw.loggers",
     "scfw.package_managers",
     "scfw.package_managers.npm",
+    "scfw.package_managers.poetry",
     "scfw.verifiers",
     "scfw.verifiers.age_verifier",
     "scfw.verifiers.dd_verifier",

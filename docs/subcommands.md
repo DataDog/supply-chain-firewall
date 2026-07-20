@@ -62,6 +62,8 @@ All package targets that would be installed by running the given package manager
 
 For `pip install` commands, packages will be installed in the same environment (virtual or global) in which the command was run.
 
+For `poetry`, target resolution for `add`/`update` is based entirely on the project's `pyproject.toml`/`poetry.lock`. If a project's installed environment has drifted out of sync with its lock file (e.g. the lock was regenerated or checked in separately without running `poetry install`/`sync` afterward), `scfw` has no reliable way to detect that drift, since Poetry itself does not expose the actual installed version of a package independently of what the lock file says. Keeping a project's environment in sync with its lock file is out of scope for this tool.
+
 ```bash
 $ scfw run --help
 usage: scfw run [options] COMMAND

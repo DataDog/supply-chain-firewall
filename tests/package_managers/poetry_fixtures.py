@@ -8,7 +8,6 @@ import sys
 from tempfile import TemporaryDirectory
 
 import pytest
-import requests
 
 TEST_PROJECT_NAME = "foo"
 
@@ -16,14 +15,13 @@ TEST_PROJECT_NAME = "foo"
 # and is not part of the standard set of system Python modules
 TARGET = "tree-sitter"
 
-# Version numbers of available Tree-sitter releases on PyPI
-TARGET_RELEASES = list(
-    requests.get(f"https://pypi.org/pypi/{TARGET}/json", timeout=5).json()["releases"]
-)
-
-# The latest and most recent previous versions of Tree-sitter
-TARGET_LATEST = TARGET_RELEASES[-1]
-TARGET_PREVIOUS = TARGET_RELEASES[-2]
+# Pinned Tree-sitter versions used by the tests below. These are frozen rather than
+# fetched from PyPI at collection time: Tree-sitter releases frequently enough that a
+# new version can appear mid-run and diverge from whatever was "latest" at collection
+# time, making tests that assert against the true latest release flaky. Bump these by
+# hand when a test needs to target a newer pair of releases.
+TARGET_LATEST = "0.26.0"
+TARGET_PREVIOUS = "0.25.2"
 
 
 @pytest.fixture
@@ -104,6 +102,45 @@ def poetry_project_lock_latest():
     tempdir = TemporaryDirectory()
     _init_poetry_project(tempdir.name, TEST_PROJECT_NAME)
     subprocess.run(["poetry", "add", "--lock", f"{TARGET}=={TARGET_LATEST}"], check=True, cwd=tempdir.name)
+
+    yield tempdir.name
+
+    tempdir.cleanup()
+
+
+@pytest.fixture
+def poetry_project_target_previous_loose_constraint():
+    """
+    Initialize a Poetry project with `TARGET` locked at its previous version, but
+    declared under an unconstrained requirement, so that `poetry update` is free
+    to move it to the latest version.
+    """
+    tempdir = TemporaryDirectory()
+    _init_poetry_project(tempdir.name, TEST_PROJECT_NAME, [(TARGET, TARGET_PREVIOUS)])
+
+    pyproject_path = Path(tempdir.name) / "pyproject.toml"
+    text = pyproject_path.read_text()
+    # Poetry >=2.0 declares dependencies as PEP 621 strings (e.g. "tree-sitter (==0.25.2)"),
+    # while Poetry <2.0 uses the legacy `[tool.poetry.dependencies]` table syntax
+    # (e.g. tree-sitter = "0.25.2"). Loosen whichever form is present.
+    text = text.replace(f"{TARGET} (=={TARGET_PREVIOUS})", TARGET)
+    text = text.replace(f'{TARGET} = "{TARGET_PREVIOUS}"', f'{TARGET} = "*"')
+    pyproject_path.write_text(text)
+
+    yield tempdir.name
+
+    tempdir.cleanup()
+
+
+@pytest.fixture
+def poetry_project_no_lock():
+    """
+    Initialize a Poetry project with `TARGET` as a declared dependency but no `poetry.lock`.
+    """
+    tempdir = TemporaryDirectory()
+    subprocess.run(["poetry", "init", "--no-interaction", "--name", TEST_PROJECT_NAME], check=True, cwd=tempdir.name)
+    subprocess.run(["poetry", "add", "--lock", f"{TARGET}=={TARGET_LATEST}"], check=True, cwd=tempdir.name)
+    (Path(tempdir.name) / "poetry.lock").unlink()
 
     yield tempdir.name
 

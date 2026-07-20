@@ -149,6 +149,7 @@ class DDCodeSecurityLogger(FirewallLogger):
             "cwd": os.getcwd(),
             "executable": executable,
             "hostname": socket.gethostname(),
+            "install_timestamp": run_summary.timestamp.isoformat(),
             "package_manager": package_manager,
         }
 

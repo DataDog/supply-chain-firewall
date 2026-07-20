@@ -3,6 +3,7 @@ Implements Supply Chain Firewall's core `run` subcommand.
 """
 
 from argparse import Namespace
+from datetime import datetime, timezone
 import inquirer  # type: ignore
 import logging
 import os
@@ -33,6 +34,7 @@ def run_firewall(args: Namespace) -> int:
     Returns:
         An integer status code indicating normal or error exit.
     """
+    timestamp = datetime.now(tz=timezone.utc)
     package_manager = None
 
     loggers = FirewallLoggers()
@@ -77,6 +79,7 @@ def run_firewall(args: Namespace) -> int:
             package_manager.name(),
             package_manager.executable(),
             FirewallRunSummary(
+                timestamp,
                 args.command,
                 install_targets,
                 report,
@@ -113,6 +116,7 @@ def run_firewall(args: Namespace) -> int:
             package_manager.name(),
             package_manager.executable(),
             FirewallRunSummary(
+                timestamp,
                 args.command,
                 install_targets=None,
                 report=None,

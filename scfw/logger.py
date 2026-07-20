@@ -5,6 +5,7 @@ of Supply Chain Firewall.
 
 from abc import (ABCMeta, abstractmethod)
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from typing import Optional
 from typing_extensions import Self
@@ -76,6 +77,7 @@ class FirewallRunSummary:
     """
     A structured summary of a run of Supply Chain Firewall used for logging.
     """
+    timestamp: datetime
     command: list[str]
     install_targets: Optional[set[Package]]
     report: Optional[VerificationReport]

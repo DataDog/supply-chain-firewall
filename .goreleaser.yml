@@ -1,0 +1,32 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: scfw
+    main: .
+    binary: "{{ .ProjectName }}"
+    goarch:
+      - amd64
+      - arm64
+    goos:
+      - darwin
+      - linux
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - '-X github.com/DataDog/scfw/scfw/internal/build.Version={{ .Version }}'
+
+archives:
+  - formats: ["binary"]
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: "{{ .ProjectName }}_SHA256SUMS"
+  algorithm: sha256
+
+release:
+  draft: true

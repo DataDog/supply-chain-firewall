@@ -1,0 +1,6 @@
+Component,Origin,License,Copyright
+go-toml,Go,MIT,Thomas Pelletier
+cobra,Go,Apache-2.0,The Cobra Authors
+go-keyring,Go,MIT,Zalando SE
+pflag,Go,BSD-3-Clause,Alex Ogier and The Go Authors
+term,Go,BSD-3-Clause,The Go Authors

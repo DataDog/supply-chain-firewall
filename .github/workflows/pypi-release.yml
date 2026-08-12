@@ -3,7 +3,7 @@ name: Release to PyPI
 on:
   push:
     tags:
-      - "v*"
+      - "v3.*"
 
 permissions:
   contents: read

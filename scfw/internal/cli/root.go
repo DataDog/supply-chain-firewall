@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/DataDog/scfw/scfw/internal/build"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/build"
 )
 
 var logLevels = map[string]slog.Level{

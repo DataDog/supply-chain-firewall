@@ -9,10 +9,10 @@ import (
 	"context"
 	"slices"
 
-	"github.com/DataDog/scfw/scfw/internal/pm"
-	"github.com/DataDog/scfw/scfw/internal/pm/npm"
-	"github.com/DataDog/scfw/scfw/internal/pm/pip"
-	"github.com/DataDog/scfw/scfw/internal/pm/poetry"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/npm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/pip"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/poetry"
 )
 
 type PackageManagerFactory struct {

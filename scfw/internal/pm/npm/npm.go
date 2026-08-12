@@ -13,7 +13,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/DataDog/scfw/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
 // npmInstallCommandAliases are all the tokens npm recognizes as the install

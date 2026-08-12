@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DataDog/scfw/scfw/internal/ddapi"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ddapi"
 )
 
 // withKeyringSet temporarily replaces ddapi.KeyringSet for the duration of a test.

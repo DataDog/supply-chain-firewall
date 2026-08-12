@@ -6,8 +6,9 @@ To set up for development and testing, clone the repository and ensure you
 can build the `scfw` binary:
 
 ```bash
-git clone https://github.com/DataDog/scfw.git
-cd scfw
+git clone https://github.com/DataDog/supply-chain-firewall.git
+cd supply-chain-firewall
+git checkout v4
 make
 ```
 

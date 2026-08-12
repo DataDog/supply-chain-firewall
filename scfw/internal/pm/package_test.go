@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DataDog/scfw/scfw/internal/ecosystem"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 )
 
 func TestPackageMarshalJSON(t *testing.T) {

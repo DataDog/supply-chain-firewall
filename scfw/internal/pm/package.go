@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/DataDog/scfw/scfw/internal/ecosystem"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 )
 
 // Package is used as a Set element, so fields must compare by value; PublishDate is

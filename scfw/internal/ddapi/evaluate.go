@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/DataDog/scfw/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
 // Code Security API endpoint for evaluating installation targets against policy.

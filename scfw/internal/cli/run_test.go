@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DataDog/scfw/scfw/internal/ddapi"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ddapi"
 )
 
 func TestDecideFirewallAction(t *testing.T) {

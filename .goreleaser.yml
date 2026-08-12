@@ -7,7 +7,7 @@ before:
 builds:
   - id: scfw
     main: ./scfw
-    binary: "{{ .ProjectName }}"
+    binary: scfw
     goarch:
       - amd64
       - arm64
@@ -22,10 +22,10 @@ builds:
 
 archives:
   - formats: ["binary"]
-    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+    name_template: "scfw-{{ .Os }}-{{ .Arch }}"
 
 checksum:
-  name_template: "{{ .ProjectName }}_SHA256SUMS"
+  name_template: "scfw_SHA256SUMS"
   algorithm: sha256
 
 release:

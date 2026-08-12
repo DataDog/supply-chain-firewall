@@ -3,7 +3,7 @@ name: Release standalone binaries
 on:
   push:
     tags:
-      - "v*"
+      - "v3.*"
 
 permissions:
   contents: read

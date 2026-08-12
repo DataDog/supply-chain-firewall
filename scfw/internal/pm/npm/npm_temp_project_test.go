@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/DataDog/scfw/scfw/internal/ecosystem"
-	"github.com/DataDog/scfw/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
 func TestRewriteRelativePath(t *testing.T) {

@@ -1,4 +1,4 @@
-module github.com/DataDog/scfw/scfw
+module github.com/DataDog/supply-chain-firewall
 
 go 1.26.5
 

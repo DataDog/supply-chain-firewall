@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DataDog/scfw/scfw/internal/ecosystem"
-	"github.com/DataDog/scfw/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
 // testNpmTarget is a small, stable, pinned npm package used as a dry-run

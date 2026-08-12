@@ -21,7 +21,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/DataDog/scfw/scfw/internal/ddapi"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ddapi"
 )
 
 // onWarningVar is the environment variable that resolves the firewall's on-warning

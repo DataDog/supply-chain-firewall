@@ -10,7 +10,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/DataDog/scfw/scfw/internal/cli"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/cli"
 )
 
 func main() {

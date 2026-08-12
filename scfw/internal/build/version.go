@@ -12,7 +12,7 @@ import (
 
 // Version is set at build time via:
 //
-//	-ldflags "-X github.com/DataDog/scfw/scfw/internal/build.Version={{.Version}}"
+//	-ldflags "-X github.com/DataDog/supply-chain-firewall/scfw/internal/build.Version={{.Version}}"
 //
 // It is left as "dev" for local and `go install` builds that don't set it explicitly.
 var Version = "dev"

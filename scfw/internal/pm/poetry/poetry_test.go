@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DataDog/scfw/scfw/internal/ecosystem"
-	"github.com/DataDog/scfw/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
 // Mirrors the fixtures and tests in the Python reference implementation's

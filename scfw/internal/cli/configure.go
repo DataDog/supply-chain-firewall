@@ -14,7 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/DataDog/scfw/scfw/internal/ddapi"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ddapi"
 )
 
 var configureCmd = &cobra.Command{

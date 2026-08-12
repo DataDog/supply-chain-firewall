@@ -1,11 +1,11 @@
 # Supply Chain Firewall
 
-![Build](https://github.com/DataDog/scfw/actions/workflows/build.yml/badge.svg)
-![Test](https://github.com/DataDog/scfw/actions/workflows/test.yml/badge.svg)
-![Code quality](https://github.com/DataDog/scfw/actions/workflows/code-quality.yml/badge.svg)
+![Build](https://github.com/DataDog/supply-chain-firewall/actions/workflows/build.yml/badge.svg)
+![Test](https://github.com/DataDog/supply-chain-firewall/actions/workflows/test.yml/badge.svg)
+![Code quality](https://github.com/DataDog/supply-chain-firewall/actions/workflows/code-quality.yml/badge.svg)
 
 <p align="center">
-  <img src="https://github.com/DataDog/scfw/blob/main/images/logo.png?raw=true" alt="Supply Chain Firewall" width="300" />
+  <img src="https://github.com/DataDog/supply-chain-firewall/blob/v4/images/logo.png?raw=true" alt="Supply Chain Firewall" width="300" />
 </p>
 
 Supply Chain Firewall (SCFW) is a command-line tool for preventing the installation of malicious npm and PyPI packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
@@ -23,7 +23,7 @@ Given a command for a supported package manager, Supply Chain Firewall collects 
 Supply Chain Firewall is distributed as a single Go binary with no runtime dependencies. The recommended way to install it is via `go install` (requires Go 1.26+):
 
 ```bash
-$ go install github.com/DataDog/scfw/scfw@latest
+$ go install github.com/DataDog/supply-chain-firewall/scfw@latest
 ```
 
 This installs the `scfw` binary to `$(go env GOPATH)/bin`; be sure that directory is on your `PATH`.
@@ -137,7 +137,7 @@ The `SCFW_ON_WARNING` environment variable (`allow` or `block`) has the same eff
 
 ## Development
 
-We welcome contributions to Supply Chain Firewall.  Refer to the [CONTRIBUTING](https://github.com/DataDog/scfw/blob/main/CONTRIBUTING.md) guide for instructions on setting up for development.
+We welcome contributions to Supply Chain Firewall.  Refer to the [CONTRIBUTING](https://github.com/DataDog/supply-chain-firewall/blob/v4/CONTRIBUTING.md) guide for instructions on setting up for development.
 
 ## Authors
 

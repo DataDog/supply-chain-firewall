@@ -16,8 +16,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/DataDog/scfw/scfw/internal/ecosystem"
-	"github.com/DataDog/scfw/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
 // poetryInspectedSubcommands are the poetry subcommands that can install or

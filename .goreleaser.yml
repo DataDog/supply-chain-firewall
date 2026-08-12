@@ -6,7 +6,7 @@ before:
 
 builds:
   - id: scfw
-    main: .
+    main: ./scfw
     binary: "{{ .ProjectName }}"
     goarch:
       - amd64
@@ -18,7 +18,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - '-X github.com/DataDog/scfw/scfw/internal/build.Version={{ .Version }}'
+      - '-X github.com/DataDog/supply-chain-firewall/scfw/internal/build.Version={{ .Version }}'
 
 archives:
   - formats: ["binary"]

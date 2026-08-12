@@ -16,8 +16,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/DataDog/scfw/scfw/internal/ecosystem"
-	"github.com/DataDog/scfw/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
 var pipDryRunSkipOptions = []string{"-h", "--help", "--dry-run"}

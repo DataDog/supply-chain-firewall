@@ -175,6 +175,7 @@ def test_cli_run_basic_usage(command: list[str]):
     assert not args.allow_unsupported
     assert not args.dry_run
     assert not args.executable
+    assert args.ignore is None
 
 
 def test_cli_run_all_options_no_command():
@@ -182,7 +183,7 @@ def test_cli_run_all_options_no_command():
     Invocation with all options and no arguments.
     """
     executable = "/usr/bin/python"
-    argv = ["scfw", "run", "--executable", executable, "--dry-run", "--allow-unsupported"]
+    argv = ["scfw", "run", "--executable", executable, "--dry-run", "--allow-unsupported", "--ignore", "react"]
     args, _ = _parse_command_line(argv)
     assert args is None
 
@@ -200,18 +201,42 @@ def test_cli_run_all_options_command(command: list[str]):
     Invocation of a run command with all options and the given `command`.
     """
     executable = "/path/to/executable"
-    argv = ["scfw", "run", "--executable", executable, "--dry-run", "--allow-unsupported"] + command
+    options = ["--executable", executable, "--dry-run", "--allow-unsupported", "--ignore", "foo"]
+    argv = ["scfw", "run"] + options + command
     args, _ = _parse_command_line(argv)
     assert args is not None
 
     assert args.subcommand == Subcommand.Run
     assert args.log_level == _DEFAULT_LOG_LEVEL
 
-    assert args.package_manager == argv[6]
-    assert args.command == argv[6:]
+    assert args.package_manager == command[0]
+    assert args.command == command
     assert args.allow_unsupported
     assert args.dry_run
     assert args.executable == executable
+    assert args.ignore == ["foo"]
+
+
+@pytest.mark.parametrize(
+        "command",
+        [
+            ["npm", "install", "react"],
+            ["pip", "install", "requests"],
+            ["poetry", "add", "requests"],
+        ]
+)
+def test_cli_run_ignore_repeatable(command: list[str]):
+    """
+    The `--ignore` option accumulates each occurrence into a list, in order.
+    """
+    argv = ["scfw", "run", "--ignore", "foo", "--ignore", "bar-1.0.0"] + command
+    args, _ = _parse_command_line(argv)
+    assert args is not None
+
+    assert args.subcommand == Subcommand.Run
+    assert args.package_manager == command[0]
+    assert args.command == command
+    assert args.ignore == ["foo", "bar-1.0.0"]
 
 
 @pytest.mark.parametrize(

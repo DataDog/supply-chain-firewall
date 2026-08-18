@@ -193,6 +193,17 @@ def _add_run_cli(parser: ArgumentParser):
         help="Package manager executable to use for running commands (default: environmentally determined)"
     )
 
+    parser.add_argument(
+        "--ignore",
+        action="append",
+        default=None,
+        metavar="PACKAGE",
+        help=(
+            "Suppress findings for the given package, e.g. to bypass a false positive "
+            "(may be given multiple times; matches a package name or a name-version string)"
+        )
+    )
+
 
 class Subcommand(Enum):
     """

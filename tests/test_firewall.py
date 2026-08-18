@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 from scfw.constants import ON_WARNING_VAR
 from scfw.ecosystem import ECOSYSTEM
-from scfw.firewall import _determine_firewall_action, _get_warning_action
+from scfw.firewall import _apply_ignores, _determine_firewall_action, _get_warning_action
 from scfw.logger import FirewallAction
 from scfw.report import VerificationReport, VerifierErrorMessage
 from scfw.verifier import Finding, FindingSeverity
@@ -20,6 +20,7 @@ from tests.utils import build_registry_package
 
 _PKG_A = build_registry_package(ECOSYSTEM.PyPI, "requests", "2.31.0")
 _PKG_B = build_registry_package(ECOSYSTEM.PyPI, "numpy", "1.24.0")
+_PKG_C = build_registry_package(ECOSYSTEM.Npm, "dotenv-expand", "5.1.0")
 
 _CRITICAL_FINDING = Finding("foo", FindingSeverity.CRITICAL, "critical finding")
 _WARNING_FINDING = Finding("foo", FindingSeverity.WARNING, "warning finding")
@@ -132,6 +133,137 @@ def test_warning_and_unverifiable_merged(warning_action: Optional[FirewallAction
     assert action == warning_action
     assert severity == FindingSeverity.WARNING
     assert relevant == report.get_findings(FindingSeverity.WARNING)
+
+
+@pytest.mark.parametrize("ignore", [None, []])
+def test_apply_ignores_no_specs(ignore):
+    """
+    With no ignore specifications, `_apply_ignores` is a no-op and returns no packages.
+    """
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _CRITICAL_FINDING)
+
+    ignored = _apply_ignores(report, ignore)
+
+    assert ignored == set()
+    assert report.get_findings() == {_PKG_A: {_CRITICAL_FINDING}}
+
+
+def test_apply_ignores_by_name():
+    """
+    An ignore specification matching a package name suppresses that package's findings.
+    """
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _CRITICAL_FINDING)
+
+    ignored = _apply_ignores(report, [_PKG_A.name])
+
+    assert ignored == {_PKG_A}
+    assert report.get_findings() == {}
+    assert _PKG_A in report.get_clean()
+
+
+@pytest.mark.parametrize("package", [_PKG_A, _PKG_C])
+def test_apply_ignores_by_name_version_string(package):
+    """
+    An ignore specification matching a package's full ecosystem-formatted string suppresses
+    that package's findings, for both PyPI (`name-version`) and npm (`name@version`) formats.
+    """
+    report = VerificationReport()
+    report.insert_finding(package, _CRITICAL_FINDING)
+
+    ignored = _apply_ignores(report, [str(package)])
+
+    assert ignored == {package}
+    assert report.get_findings() == {}
+    assert package in report.get_clean()
+
+
+def test_apply_ignores_suppresses_unverifiable():
+    """
+    `_apply_ignores` also suppresses unverifiable results for a matching package.
+    """
+    report = VerificationReport()
+    report.insert_unverifiable(_PKG_A, _UNVERIFIABLE)
+
+    ignored = _apply_ignores(report, [_PKG_A.name])
+
+    assert ignored == {_PKG_A}
+    assert report.get_unverifiable() == {}
+    assert _PKG_A in report.get_clean()
+
+
+def test_apply_ignores_only_affects_matching_packages():
+    """
+    `_apply_ignores` leaves the findings of non-matching packages untouched.
+    """
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _CRITICAL_FINDING)
+    report.insert_finding(_PKG_B, _WARNING_FINDING)
+
+    ignored = _apply_ignores(report, [_PKG_A.name])
+
+    assert ignored == {_PKG_A}
+    assert report.get_findings() == {_PKG_B: {_WARNING_FINDING}}
+
+
+def test_apply_ignores_non_matching_spec():
+    """
+    An ignore specification that matches no package leaves the report unchanged.
+    """
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _CRITICAL_FINDING)
+
+    ignored = _apply_ignores(report, ["nonexistent"])
+
+    assert ignored == set()
+    assert report.get_findings() == {_PKG_A: {_CRITICAL_FINDING}}
+
+
+def test_apply_ignores_version_specific_spec_does_not_match_other_version():
+    """
+    A version-specific ignore specification does not suppress findings for a different version
+    of the same package.
+    """
+    other_version = build_registry_package(ECOSYSTEM.PyPI, _PKG_A.name, "2.30.0")
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _CRITICAL_FINDING)
+
+    ignored = _apply_ignores(report, [str(other_version)])
+
+    assert ignored == set()
+    assert report.get_findings() == {_PKG_A: {_CRITICAL_FINDING}}
+
+
+def test_apply_ignores_allows_previously_blocked_command():
+    """
+    After ignoring the only package with a critical finding, the firewall action becomes ALLOW.
+    """
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _CRITICAL_FINDING)
+
+    _apply_ignores(report, [_PKG_A.name])
+    action, severity, relevant = _determine_firewall_action(report, None)
+
+    assert action == FirewallAction.ALLOW
+    assert severity is None
+    assert relevant is None
+
+
+def test_apply_ignores_leaves_unignored_critical_finding_blocking():
+    """
+    Ignoring one package does not prevent another package's critical finding from blocking.
+    """
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _CRITICAL_FINDING)
+    report.insert_finding(_PKG_B, _CRITICAL_FINDING)
+
+    _apply_ignores(report, [_PKG_A.name])
+    action, severity, relevant = _determine_firewall_action(report, None)
+
+    assert action == FirewallAction.BLOCK
+    assert severity == FindingSeverity.CRITICAL
+    assert relevant == {_PKG_B: {_CRITICAL_FINDING}}
 
 
 def test_get_warning_action_cli_block():

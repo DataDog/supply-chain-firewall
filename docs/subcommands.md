@@ -78,7 +78,18 @@ options:
   --block-on-warning   Non-interactively block commands with only warning-level findings
   --error-on-block     Treat blocked commands as errors (useful for scripting)
   --executable PATH    Package manager executable to use for running commands (default: environmentally determined)
+  --ignore PACKAGE     Suppress findings for the given package, e.g. to bypass a false positive (may be given multiple
+                       times; matches a package name or a name-version string)
 ```
+
+The `--ignore` option may be used to temporarily suppress all findings (including critical ones) for a specific package, which is useful for bypassing a false positive without disabling verification entirely.  It may be given multiple times to ignore several packages in a single command.
+
+A value passed to `--ignore` matches a package in one of two ways:
+
+* A bare package name (e.g. `dotenv-expand`) suppresses findings for that package regardless of version.
+* A full name-version string in the ecosystem's own formatting (e.g. `dotenv-expand@5.1.0` for npm or `requests-2.31.0` for PyPI, matching how SCFW prints packages) suppresses findings only for that specific version.
+
+Because it bypasses SCFW's protections, `--ignore` applies only to the single command it is passed to and should be used with caution.  Ignored packages are noted in SCFW's output for the run.
 
 Users may configure the behavior of this subcommand via the following environment variables:
 

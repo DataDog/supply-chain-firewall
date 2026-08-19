@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -167,6 +168,55 @@ func updateConfigFile(path, content string) error {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	return nil
+}
+
+// readManagedBlock returns the aliases defined in SCFW's managed
+// block in path. Files without a managed block (including missing files)
+// contain no managed aliases.
+func readManagedBlock(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+
+	content := string(data)
+	start := strings.Index(content, blockStart)
+	if start == -1 {
+		if strings.Contains(content, blockEnd) {
+			return nil, fmt.Errorf("%s: malformed SCFW managed block: end marker without a start marker", path)
+		}
+		return nil, nil
+	}
+
+	afterStart := start + len(blockStart)
+	endRel := strings.Index(content[afterStart:], blockEnd)
+	if endRel == -1 {
+		return nil, fmt.Errorf("%s: malformed SCFW managed block: missing end marker", path)
+	}
+	end := afterStart + endRel
+	if strings.Contains(content[end+len(blockEnd):], blockStart) {
+		return nil, fmt.Errorf("%s: multiple SCFW managed blocks found", path)
+	}
+
+	aliases := make(map[string]string)
+	for line := range strings.Lines(content[afterStart:end]) {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "alias ") {
+			continue
+		}
+		name, value, ok := strings.Cut(strings.TrimSpace(strings.TrimPrefix(line, "alias ")), "=")
+		if name = strings.TrimSpace(name); ok && name != "" {
+			value = strings.TrimSpace(value)
+			if unquoted, err := strconv.Unquote(value); err == nil {
+				value = unquoted
+			}
+			aliases[name] = value
+		}
+	}
+	return aliases, nil
 }
 
 const (

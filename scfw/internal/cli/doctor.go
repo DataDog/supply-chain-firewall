@@ -5,7 +5,12 @@
 
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"fmt"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ddapi"
+	"github.com/spf13/cobra"
+)
 
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
@@ -16,5 +21,21 @@ var doctorCmd = &cobra.Command{
 
 func runDoctor(cmd *cobra.Command, args []string) error {
 	// Installation and configuration checks will be added here.
-	return nil
+	apiKey, appKey, apiKeyCredentialSource, appKeyCredentialSource, err := ddapi.DDCredentials()
+
+	if err != nil {
+		fmt.Printf("❌ Credentials not found with an error : %v\n", err)
+	} else {
+		if len(apiKey) == 0 {
+			fmt.Printf("❌ API Key not found in keychain nor environment\n")
+		} else {
+			fmt.Printf("✅ API Key found in %s\n", apiKeyCredentialSource)
+		}
+		if len(appKey) == 0 {
+			fmt.Printf("❌ Application Key not found in keychain nor environment\n")
+		} else {
+			fmt.Printf("✅ Application Key found in %s\n", appKeyCredentialSource)
+		}
+	}
+	return err
 }

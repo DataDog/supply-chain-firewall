@@ -37,7 +37,7 @@ func resolveDdSite() string {
 // Datadog credentials, logs the request/response bodies at DEBUG, and treats any
 // non-2xx status as an error.
 func postDatadogAPI(ctx context.Context, endpoint string, body []byte) ([]byte, error) {
-	ddAPIKey, ddAppKey, err := ddCredentials()
+	ddAPIKey, ddAppKey, _, _, err := DDCredentials()
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve Datadog credentials: %w", err)
 	}

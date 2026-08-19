@@ -47,6 +47,7 @@ func RootCmd() *cobra.Command {
 
 	cmd.AddCommand(
 		configureCmd,
+		doctorCmd,
 		runCmd,
 	)
 

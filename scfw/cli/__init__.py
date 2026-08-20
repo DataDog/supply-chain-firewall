@@ -59,23 +59,52 @@ def _add_configure_cli(parser: ArgumentParser):
         help="Remove all Supply Chain Firewall-managed configuration"
     )
 
-    parser.add_argument(
+    npm_alias_group = parser.add_mutually_exclusive_group()
+    npm_alias_group.add_argument(
         "--alias-npm",
+        dest="alias_npm",
         action="store_true",
         help="Add shell aliases to always run npm commands through Supply Chain Firewall"
     )
 
-    parser.add_argument(
+    npm_alias_group.add_argument(
+        "--remove-alias-npm",
+        dest="alias_npm",
+        action="store_false",
+        help="Remove Supply Chain Firewall's npm shell alias"
+    )
+
+    pip_alias_group = parser.add_mutually_exclusive_group()
+    pip_alias_group.add_argument(
         "--alias-pip",
+        dest="alias_pip",
         action="store_true",
         help="Add shell aliases to always run pip commands through Supply Chain Firewall"
     )
 
-    parser.add_argument(
+    pip_alias_group.add_argument(
+        "--remove-alias-pip",
+        dest="alias_pip",
+        action="store_false",
+        help="Remove Supply Chain Firewall's pip shell alias"
+    )
+
+    poetry_alias_group = parser.add_mutually_exclusive_group()
+    poetry_alias_group.add_argument(
         "--alias-poetry",
+        dest="alias_poetry",
         action="store_true",
         help="Add shell aliases to always run Poetry commands through Supply Chain Firewall"
     )
+
+    poetry_alias_group.add_argument(
+        "--remove-alias-poetry",
+        dest="alias_poetry",
+        action="store_false",
+        help="Remove Supply Chain Firewall's Poetry shell alias"
+    )
+
+    parser.set_defaults(alias_npm=None, alias_pip=None, alias_poetry=None)
 
     parser.add_argument(
         "--dd-agent-port",
@@ -337,9 +366,11 @@ def _parse_command_line(argv: list[str]) -> tuple[Optional[Namespace], str]:
             args.subcommand == Subcommand.Configure
             and args.remove
             and any({
-                args.alias_npm,
-                args.alias_pip,
-                args.alias_poetry,
+                any(alias is not None for alias in (
+                    args.alias_npm,
+                    args.alias_pip,
+                    args.alias_poetry,
+                )),
                 args.dd_agent_port,
                 args.dd_api_key,
                 args.dd_app_key,

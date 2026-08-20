@@ -160,6 +160,59 @@ def test_remove_config_produces_empty_output():
         assert env._format_answers(answers) == ""
 
 
+def test_unspecified_aliases_are_preserved_from_existing_config():
+    """
+    Repeated configuration preserves aliases that the user did not mention.
+    """
+    answers = {
+        "alias_npm": None,
+        "alias_pip": True,
+        "alias_poetry": None,
+    }
+
+    resolved = env._resolve_alias_answers(enclose('alias npm="scfw run npm"\n'), answers)
+
+    assert env._format_answers(resolved) == (
+        'alias npm="scfw run npm"\n'
+        'alias pip="scfw run pip"\n'
+    )
+
+
+def test_alias_can_be_explicitly_removed_from_existing_config():
+    """
+    An explicitly removed alias is omitted while unspecified aliases remain.
+    """
+    existing = enclose(
+        'alias npm="scfw run npm"\n'
+        'alias pip="scfw run pip"\n'
+    )
+    answers = {
+        "alias_npm": False,
+        "alias_pip": None,
+        "alias_poetry": None,
+    }
+
+    resolved = env._resolve_alias_answers(existing, answers)
+
+    assert env._format_answers(resolved) == 'alias pip="scfw run pip"\n'
+
+
+def test_update_config_files_preserves_unspecified_aliases(tmp_path: Path):
+    """
+    Updating configuration on disk carries existing aliases into the new managed block.
+    """
+    config_file = tmp_path / ".bashrc"
+    config_file.write_text(enclose('alias npm="scfw run npm"\n'))
+
+    with patch.object(env, "_CONFIG_FILES", [str(config_file)]):
+        assert env.update_config_files({"alias_npm": None, "alias_pip": True}) == 0
+
+    assert config_file.read_text() == enclose(
+        'alias npm="scfw run npm"\n'
+        'alias pip="scfw run pip"\n'
+    )
+
+
 def enclose(scfw_config: str) -> str:
     """
     Enclose the given `scfw_config` in its block comments.

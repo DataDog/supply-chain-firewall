@@ -24,7 +24,7 @@ options:
 
 ## `scfw configure`
 
-The `configure` subcommand may be used to configure the environment with shell aliases and environment variables in order to get the most out of Supply Chain Firewall.  It may be run repeatedly to update desired configuration settings.
+The `configure` subcommand may be used to configure the environment with shell aliases and environment variables in order to get the most out of Supply Chain Firewall.  It may be run repeatedly to update desired configuration settings. Alias options are additive: aliases configured by an earlier invocation remain in place unless their corresponding `--remove-alias-*` option is passed.
 
 Selected configuration options are written to the user's pre-existing `~/.bashrc` and `~/.zshrc` files in a clearly delimited block that Supply Chain Firewall manages.  This block should never be manually edited, at the risk of breaking SCFW's ability to maintain these files and its own options successfully.
 
@@ -33,7 +33,7 @@ When run with no command-line arguments, the `configure` subcommand launches an 
 The `--remove` option may be used to remove all saved SCFW-managed configuration options.  It may not be passed with any other command-line option.
 
 ```bash
-usage: scfw configure [-h] [-r] [--alias-npm] [--alias-pip] [--alias-poetry] [--dd-agent-port PORT] [--dd-api-key KEY] [--dd-app-key KEY] [--dd-api-logger] [--dd-codesec-logger] [--dd-log-level LEVEL]
+usage: scfw configure [-h] [-r] [--alias-npm | --remove-alias-npm] [--alias-pip | --remove-alias-pip] [--alias-poetry | --remove-alias-poetry] [--dd-agent-port PORT] [--dd-api-key KEY] [--dd-app-key KEY] [--dd-api-logger] [--dd-codesec-logger] [--dd-log-level LEVEL]
                       [--dd-site SITE] [--scfw-home PATH]
 
 Configure the environment for using Supply Chain Firewall.
@@ -42,8 +42,12 @@ options:
   -h, --help            show this help message and exit
   -r, --remove          Remove all Supply Chain Firewall-managed configuration
   --alias-npm           Add shell aliases to always run npm commands through Supply Chain Firewall
+  --remove-alias-npm    Remove Supply Chain Firewall's npm shell alias
   --alias-pip           Add shell aliases to always run pip commands through Supply Chain Firewall
+  --remove-alias-pip    Remove Supply Chain Firewall's pip shell alias
   --alias-poetry        Add shell aliases to always run Poetry commands through Supply Chain Firewall
+  --remove-alias-poetry
+                        Remove Supply Chain Firewall's Poetry shell alias
   --dd-agent-port PORT  Configure log forwarding to the local Datadog Agent on the given port
   --dd-api-key KEY      API key for forwarding logs to the Datadog HTTP API or Code Security
   --dd-app-key KEY      Application key for forwarding logs to Datadog Code Security

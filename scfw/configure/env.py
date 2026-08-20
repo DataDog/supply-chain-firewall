@@ -18,6 +18,12 @@ _CONFIG_FILES = [".bashrc", ".zshrc"]
 _BLOCK_START = "# BEGIN SCFW MANAGED BLOCK"
 _BLOCK_END = "# END SCFW MANAGED BLOCK"
 
+_ALIASES = {
+    "alias_npm": 'alias npm="scfw run npm"',
+    "alias_pip": 'alias pip="scfw run pip"',
+    "alias_poetry": 'alias poetry="scfw run poetry"',
+}
+
 
 def remove_config() -> int:
     """
@@ -53,7 +59,6 @@ def update_config_files(answers: dict) -> int:
         An integer status code indicating normal or error exit.
     """
     error_count = 0
-    scfw_config = _format_answers(answers)
 
     for config_file in [Path.home() / file for file in _CONFIG_FILES]:
         if not config_file.exists():
@@ -61,6 +66,9 @@ def update_config_files(answers: dict) -> int:
             continue
 
         try:
+            original_config = config_file.read_text()
+            resolved_answers = _resolve_alias_answers(original_config, answers)
+            scfw_config = _format_answers(resolved_answers)
             _update_config_file(config_file, scfw_config)
             _log.info(f"Successfully updated configuration in file {config_file}")
 
@@ -69,6 +77,28 @@ def update_config_files(answers: dict) -> int:
             error_count += 1
 
     return 1 if error_count else 0
+
+
+def _resolve_alias_answers(original_config: str, answers: dict) -> dict:
+    """
+    Resolve unspecified alias answers from an existing managed configuration block.
+
+    Args:
+        original_config: The complete existing contents of a shell configuration file.
+        answers: A `dict` containing the configuration options requested by the user.
+
+    Returns:
+        A copy of `answers` where unspecified aliases reflect the existing configuration.
+    """
+    resolved_answers = answers.copy()
+    match = re.search(f"{_BLOCK_START}(.*?){_BLOCK_END}", original_config, flags=re.DOTALL)
+    managed_lines = set(match.group(1).splitlines()) if match else set()
+
+    for option, alias in _ALIASES.items():
+        if resolved_answers.get(option) is None:
+            resolved_answers[option] = alias in managed_lines
+
+    return resolved_answers
 
 
 def _update_config_file(config_file: Path, scfw_config: str):
@@ -105,12 +135,9 @@ def _format_answers(answers: dict) -> str:
     """
     config = ''
 
-    if answers.get("alias_npm"):
-        config += 'alias npm="scfw run npm"\n'
-    if answers.get("alias_pip"):
-        config += 'alias pip="scfw run pip"\n'
-    if answers.get("alias_poetry"):
-        config += 'alias poetry="scfw run poetry"\n'
+    for option, alias in _ALIASES.items():
+        if answers.get(option):
+            config += f"{alias}\n"
     if (dd_agent_port := answers.get("dd_agent_port")):
         config += f'export {DD_AGENT_PORT_VAR}="{dd_agent_port}"\n'
     if answers.get("dd_api_logger"):

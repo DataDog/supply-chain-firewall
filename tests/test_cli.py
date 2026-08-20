@@ -113,9 +113,9 @@ def test_cli_configure_basic_usage():
     assert args.log_level == _DEFAULT_LOG_LEVEL
 
     assert not args.remove
-    assert not args.alias_npm
-    assert not args.alias_pip
-    assert not args.alias_poetry
+    assert args.alias_npm is None
+    assert args.alias_pip is None
+    assert args.alias_poetry is None
     assert args.dd_agent_port is None
     assert args.dd_api_key is None
     assert args.dd_app_key is None
@@ -132,6 +132,9 @@ def test_cli_configure_basic_usage():
             ["--alias-npm"],
             ["--alias-pip"],
             ["--alias-poetry"],
+            ["--remove-alias-npm"],
+            ["--remove-alias-pip"],
+            ["--remove-alias-poetry"],
             ["--dd-agent-port", "10365"],
             ["--dd-api-key", "foo"],
             ["--dd-app-key", "foo"],
@@ -148,6 +151,35 @@ def test_cli_configure_removal(option: list[str]):
     """
     argv = ["scfw", "configure", "--remove"] + option
     args, _ = _parse_command_line(argv)
+    assert args is None
+
+
+@pytest.mark.parametrize("package_manager", ["npm", "pip", "poetry"])
+def test_cli_configure_alias_options(package_manager: str):
+    """
+    Alias addition and removal options set an explicit desired state.
+    """
+    add_args, _ = _parse_command_line(["scfw", "configure", f"--alias-{package_manager}"])
+    remove_args, _ = _parse_command_line(["scfw", "configure", f"--remove-alias-{package_manager}"])
+
+    assert add_args is not None
+    assert getattr(add_args, f"alias_{package_manager}") is True
+    assert remove_args is not None
+    assert getattr(remove_args, f"alias_{package_manager}") is False
+
+
+@pytest.mark.parametrize("package_manager", ["npm", "pip", "poetry"])
+def test_cli_configure_alias_addition_and_removal_are_mutually_exclusive(package_manager: str):
+    """
+    An alias cannot be added and removed in the same invocation.
+    """
+    args, _ = _parse_command_line([
+        "scfw",
+        "configure",
+        f"--alias-{package_manager}",
+        f"--remove-alias-{package_manager}",
+    ])
+
     assert args is None
 
 

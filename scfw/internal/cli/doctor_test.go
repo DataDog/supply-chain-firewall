@@ -7,11 +7,13 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ddapi"
 	"github.com/spf13/cobra"
 )
 
@@ -27,6 +29,25 @@ func TestDoctorCmdHasHandler(t *testing.T) {
 func TestDoctorCmdRejectsArguments(t *testing.T) {
 	if err := doctorCmd.Args(doctorCmd, []string{"unexpected"}); err == nil {
 		t.Fatal("doctor command accepted an unexpected positional argument")
+	}
+}
+
+func TestReportCredentialDistinguishesCredentialErrors(t *testing.T) {
+	var output bytes.Buffer
+	apiErr := errors.New("API key lookup failed")
+	appErr := errors.New("application key lookup failed")
+
+	reportCredential(&output, "API Key", "", ddapi.CredentialSourceKeychain, apiErr)
+	reportCredential(&output, "Application Key", "", ddapi.CredentialSourceKeychain, appErr)
+
+	wantLines := []string{
+		"❌ API Key not found: API key lookup failed",
+		"❌ Application Key not found: application key lookup failed",
+	}
+	for _, want := range wantLines {
+		if !strings.Contains(output.String(), want+"\n") {
+			t.Errorf("reportCredential() output = %q, want line %q", output.String(), want)
+		}
 	}
 }
 

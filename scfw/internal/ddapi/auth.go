@@ -38,18 +38,36 @@ const (
 	CredentialSourceEnv      CredentialSource = "Environment"
 )
 
-// Return the configured Datadog API key and application key. Each is
+// Returns the configured Datadog API key and application key. Each is
 // resolved independently: the corresponding environment variable is
 // preferred, falling back to the system keychain if the environment
 // variable is unset or empty.
-func DDCredentials() (ddAPIKey, ddAppKey string, apiKeyCredentialSource, appKeyCredentialSource CredentialSource, err error) {
-	if ddAPIKey, apiKeyCredentialSource, err = resolveCredential(KeychainAPIKeyAccount, ddAPIKeyVar); err != nil {
-		return "", "", apiKeyCredentialSource, "", fmt.Errorf("failed to resolve Datadog API key: %w", err)
+func ddCredentials() (ddAPIKey, ddAppKey string, err error) {
+	if ddAPIKey, _, err = ResolveDatadogAPIKey(); err != nil {
+		return "", "", err
 	}
-	if ddAppKey, appKeyCredentialSource, err = resolveCredential(KeychainAppKeyAccount, ddAppKeyVar); err != nil {
-		return "", "", apiKeyCredentialSource, appKeyCredentialSource, fmt.Errorf("failed to resolve Datadog application key: %w", err)
+	if ddAppKey, _, err = ResolveDatadogAppKey(); err != nil {
+		return "", "", err
 	}
-	return ddAPIKey, ddAppKey, apiKeyCredentialSource, appKeyCredentialSource, nil
+	return ddAPIKey, ddAppKey, nil
+}
+
+// ResolveDatadogAPIKey returns the configured Datadog API key and its source.
+func ResolveDatadogAPIKey() (string, CredentialSource, error) {
+	value, source, err := resolveCredential(KeychainAPIKeyAccount, ddAPIKeyVar)
+	if err != nil {
+		return "", source, fmt.Errorf("failed to resolve Datadog API key: %w", err)
+	}
+	return value, source, nil
+}
+
+// ResolveDatadogAppKey returns the configured Datadog application key and its source.
+func ResolveDatadogAppKey() (string, CredentialSource, error) {
+	value, source, err := resolveCredential(KeychainAppKeyAccount, ddAppKeyVar)
+	if err != nil {
+		return "", source, fmt.Errorf("failed to resolve Datadog application key: %w", err)
+	}
+	return value, source, nil
 }
 
 // resolveCredential returns the value of a single credential, preferring

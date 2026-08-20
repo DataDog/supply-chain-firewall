@@ -8,6 +8,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,23 +25,11 @@ var doctorCmd = &cobra.Command{
 }
 
 func runDoctor(cmd *cobra.Command, args []string) error {
-	// Installation and configuration checks will be added here.
-	apiKey, appKey, apiKeyCredentialSource, appKeyCredentialSource, credentialErr := ddapi.DDCredentials()
-
-	if credentialErr != nil {
-		fmt.Fprintf(cmd.OutOrStdout(), "❌ Credentials not found with an error : %v\n", credentialErr)
-	} else {
-		if len(apiKey) == 0 {
-			fmt.Fprintln(cmd.OutOrStdout(), "❌ API Key not found in keychain nor environment")
-		} else {
-			fmt.Fprintf(cmd.OutOrStdout(), "✅ API Key found in %s\n", apiKeyCredentialSource)
-		}
-		if len(appKey) == 0 {
-			fmt.Fprintln(cmd.OutOrStdout(), "❌ Application Key not found in keychain nor environment")
-		} else {
-			fmt.Fprintf(cmd.OutOrStdout(), "✅ Application Key found in %s\n", appKeyCredentialSource)
-		}
-	}
+	apiKey, apiKeyCredentialSource, apiKeyErr := ddapi.ResolveDatadogAPIKey()
+	appKey, appKeyCredentialSource, appKeyErr := ddapi.ResolveDatadogAppKey()
+	reportCredential(cmd.OutOrStdout(), "API Key", apiKey, apiKeyCredentialSource, apiKeyErr)
+	reportCredential(cmd.OutOrStdout(), "Application Key", appKey, appKeyCredentialSource, appKeyErr)
+	credentialErr := errors.Join(apiKeyErr, appKeyErr)
 
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -52,6 +41,18 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	}
 
 	return credentialErr
+}
+
+func reportCredential(out io.Writer, name, value string, source ddapi.CredentialSource, err error) {
+	if err != nil {
+		fmt.Fprintf(out, "❌ %s not found: %v\n", name, err)
+		return
+	}
+	if value == "" {
+		fmt.Fprintf(out, "❌ %s not found in keychain nor environment\n", name)
+		return
+	}
+	fmt.Fprintf(out, "✅ %s found in %s\n", name, source)
 }
 
 var availableAliases = []string{"npm", "pip", "pip3", "poetry"}

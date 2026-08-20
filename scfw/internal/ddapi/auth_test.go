@@ -68,15 +68,12 @@ func TestDdCredentials_EnvTakesPrecedenceOverKeychain(t *testing.T) {
 		return "", keyring.ErrNotFound
 	})
 
-	apiKey, appKey, apiKeySource, appKeySource, err := DDCredentials()
+	apiKey, appKey, err := ddCredentials()
 	if err != nil {
 		t.Fatalf("ddCredentials() returned unexpected error: %v", err)
 	}
 	if apiKey != "env-api-key" || appKey != "env-app-key" {
 		t.Fatalf("ddCredentials() = (%q, %q), want (%q, %q)", apiKey, appKey, "env-api-key", "env-app-key")
-	}
-	if apiKeySource != CredentialSourceEnv || appKeySource != CredentialSourceEnv {
-		t.Fatalf("ddCredentials() sources = (%q, %q), want (%q, %q)", apiKeySource, appKeySource, CredentialSourceEnv, CredentialSourceEnv)
 	}
 }
 
@@ -98,15 +95,12 @@ func TestDdCredentials_EachCredentialFallsBackToKeychainIndependently(t *testing
 		}
 	})
 
-	apiKey, appKey, apiKeySource, appKeySource, err := DDCredentials()
+	apiKey, appKey, err := ddCredentials()
 	if err != nil {
 		t.Fatalf("ddCredentials() returned unexpected error: %v", err)
 	}
 	if apiKey != "keychain-api-key" || appKey != "env-app-key" {
 		t.Fatalf("ddCredentials() = (%q, %q), want (%q, %q)", apiKey, appKey, "keychain-api-key", "env-app-key")
-	}
-	if apiKeySource != CredentialSourceKeychain || appKeySource != CredentialSourceEnv {
-		t.Fatalf("ddCredentials() sources = (%q, %q), want (%q, %q)", apiKeySource, appKeySource, CredentialSourceKeychain, CredentialSourceEnv)
 	}
 }
 
@@ -127,19 +121,16 @@ func TestDdCredentials_KeychainFallback(t *testing.T) {
 		}
 	})
 
-	apiKey, appKey, apiKeySource, appKeySource, err := DDCredentials()
+	apiKey, appKey, err := ddCredentials()
 	if err != nil {
 		t.Fatalf("ddCredentials() returned unexpected error: %v", err)
 	}
 	if apiKey != "keychain-api-key" || appKey != "keychain-app-key" {
 		t.Fatalf("ddCredentials() = (%q, %q), want (%q, %q)", apiKey, appKey, "keychain-api-key", "keychain-app-key")
 	}
-	if apiKeySource != CredentialSourceKeychain || appKeySource != CredentialSourceKeychain {
-		t.Fatalf("ddCredentials() sources = (%q, %q), want (%q, %q)", apiKeySource, appKeySource, CredentialSourceKeychain, CredentialSourceKeychain)
-	}
 }
 
-func TestDdCredentials_EnvPreferredEvenWithPartialKeychain(t *testing.T) {
+func TestResolveDatadogCredentials_ReturnSources(t *testing.T) {
 	withEnv(t, ddAPIKeyVar, "env-api-key")
 	withEnv(t, ddAppKeyVar, "")
 	withKeyringGet(t, func(service, account string) (string, error) {
@@ -154,15 +145,16 @@ func TestDdCredentials_EnvPreferredEvenWithPartialKeychain(t *testing.T) {
 		}
 	})
 
-	apiKey, appKey, apiKeySource, appKeySource, err := DDCredentials()
-	if err != nil {
-		t.Fatalf("ddCredentials() returned unexpected error: %v", err)
+	apiKey, apiKeySource, apiKeyErr := ResolveDatadogAPIKey()
+	appKey, appKeySource, appKeyErr := ResolveDatadogAppKey()
+	if err := errors.Join(apiKeyErr, appKeyErr); err != nil {
+		t.Fatalf("credential resolvers returned unexpected error: %v", err)
 	}
 	if apiKey != "env-api-key" || appKey != "keychain-app-key" {
-		t.Fatalf("ddCredentials() = (%q, %q), want (%q, %q)", apiKey, appKey, "env-api-key", "keychain-app-key")
+		t.Fatalf("credential resolvers returned (%q, %q), want (%q, %q)", apiKey, appKey, "env-api-key", "keychain-app-key")
 	}
 	if apiKeySource != CredentialSourceEnv || appKeySource != CredentialSourceKeychain {
-		t.Fatalf("ddCredentials() sources = (%q, %q), want (%q, %q)", apiKeySource, appKeySource, CredentialSourceEnv, CredentialSourceKeychain)
+		t.Fatalf("credential resolver sources = (%q, %q), want (%q, %q)", apiKeySource, appKeySource, CredentialSourceEnv, CredentialSourceKeychain)
 	}
 }
 
@@ -173,7 +165,7 @@ func TestDdCredentials_MissingEverywhereReturnsError(t *testing.T) {
 		return "", keyring.ErrNotFound
 	})
 
-	_, _, _, _, err := DDCredentials()
+	_, _, err := ddCredentials()
 	if err == nil {
 		t.Fatal("ddCredentials() = nil error, want error")
 	}
@@ -190,7 +182,7 @@ func TestDdCredentials_KeychainErrorPropagatesWhenEnvAlsoMissing(t *testing.T) {
 		return "", wantErr
 	})
 
-	if _, _, _, _, err := DDCredentials(); !errors.Is(err, wantErr) {
+	if _, _, err := ddCredentials(); !errors.Is(err, wantErr) {
 		t.Fatalf("ddCredentials() error = %v, want wrapping %v", err, wantErr)
 	}
 }
@@ -205,7 +197,7 @@ func TestDdCredentials_APIKeyLookupFailureShortCircuits(t *testing.T) {
 		return "", keyring.ErrNotFound
 	})
 
-	_, _, _, _, err := DDCredentials()
+	_, _, err := ddCredentials()
 	if err == nil {
 		t.Fatal("ddCredentials() = nil error, want error")
 	}
@@ -224,7 +216,7 @@ func TestDdCredentials_AppKeyLookupFailure(t *testing.T) {
 		return "", keyring.ErrNotFound
 	})
 
-	_, _, _, _, err := DDCredentials()
+	_, _, err := ddCredentials()
 	if err == nil {
 		t.Fatal("ddCredentials() = nil error, want error")
 	}
@@ -243,7 +235,7 @@ func TestDdCredentials_EmptyKeychainValueTreatedAsNotFound(t *testing.T) {
 		return "", nil
 	})
 
-	if _, _, _, _, err := DDCredentials(); !errors.Is(err, keyring.ErrNotFound) {
+	if _, _, err := ddCredentials(); !errors.Is(err, keyring.ErrNotFound) {
 		t.Fatalf("ddCredentials() error = %v, want wrapping %v", err, keyring.ErrNotFound)
 	}
 }

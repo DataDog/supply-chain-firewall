@@ -66,6 +66,8 @@ This does two things:
 
 `scfw configure` is idempotent and may be re-run at any time to change your configuration. It manages its own clearly indicated block of your shell rc files and never touches anything else you've added.
 
+Bash completion requires the [`bash-completion`](https://github.com/scop/bash-completion) package to be installed and initialized before the SCFW managed block is sourced. SCFW reports a warning at shell startup and leaves completion disabled when that dependency is unavailable.
+
 Available `configure` options:
 
 | Flag | Description |

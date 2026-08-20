@@ -135,10 +135,17 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 // configuration options into the content of SCFW's managed block.
 func buildManagedBlock(shell string) string {
 	var b strings.Builder
-	if shell == "zsh" {
+	switch shell {
+	case "bash":
+		b.WriteString("if type _get_comp_words_by_ref >/dev/null 2>&1; then\n")
+		b.WriteString("\teval \"$(scfw completion bash)\"\n")
+		b.WriteString("else\n")
+		b.WriteString("\tprintf '%s\\n' 'SCFW: bash completion is unavailable; install and initialize bash-completion to enable it.' >&2\n")
+		b.WriteString("fi\n")
+	case "zsh":
 		b.WriteString("if ! type compdef >/dev/null 2>&1; then\n\tautoload -Uz compinit && compinit\nfi\n")
+		b.WriteString("source <(scfw completion zsh)\n")
 	}
-	fmt.Fprintf(&b, "source <(scfw completion %s)\n", shell)
 	if aliasNpm {
 		writePackageManagerFunction(&b, "npm")
 	}

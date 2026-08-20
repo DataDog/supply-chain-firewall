@@ -83,6 +83,12 @@ func reportAliases(cmd *cobra.Command, home string) error {
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "✅ Alias %s is set in %s\n", name, strings.Join(locations, ", "))
 	}
+	aliasNames := strings.Join(availableAliases, " ")
+	fmt.Fprintf(
+		cmd.OutOrStdout(),
+		"ℹ️ Run `alias %s` to check which aliases are active in the current terminal. If an alias configured above is not found, reload your terminal.\n",
+		aliasNames,
+	)
 
 	return errors.Join(errs...)
 }

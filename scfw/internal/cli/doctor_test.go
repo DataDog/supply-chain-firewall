@@ -57,6 +57,7 @@ func TestReportAliases(t *testing.T) {
 		"✅ Alias pip is set in " + bashrc,
 		"❌ Alias pip3 is not set",
 		"✅ Alias poetry is set in " + zshrc,
+		"ℹ️ Run `alias npm pip pip3 poetry` to check which aliases are active in the current terminal. If an alias configured above is not found, reload your terminal.",
 	}
 	for _, want := range wantLines {
 		if !strings.Contains(output.String(), want+"\n") {

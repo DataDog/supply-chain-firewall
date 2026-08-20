@@ -187,39 +187,58 @@ func withAliasPoetry(t *testing.T, value bool) {
 
 func TestBuildManagedBlock(t *testing.T) {
 	withAliasPip(t, false)
-	if got := buildManagedBlock(); got != "" {
-		t.Fatalf("buildManagedBlock() = %q, want empty string", got)
+	want := `source <(scfw completion bash)` + "\n"
+	if got := buildManagedBlock("bash"); got != want {
+		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 
 	withAliasPip(t, true)
-	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n"
-	if got := buildManagedBlock(); got != want {
+	want += "unalias pip 2>/dev/null || true\n" +
+		"pip() {\n" +
+		"\tscfw run -- pip \"$@\"\n" +
+		"}\n" +
+		"unalias pip3 2>/dev/null || true\n" +
+		"pip3() {\n" +
+		"\tscfw run -- pip3 \"$@\"\n" +
+		"}\n"
+	if got := buildManagedBlock("bash"); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 }
 
 func TestBuildManagedBlock_AliasNpm(t *testing.T) {
 	withAliasNpm(t, false)
-	if got := buildManagedBlock(); got != "" {
-		t.Fatalf("buildManagedBlock() = %q, want empty string", got)
+	want := "if ! type compdef >/dev/null 2>&1; then\n" +
+		"\tautoload -Uz compinit && compinit\n" +
+		"fi\n" +
+		`source <(scfw completion zsh)` + "\n"
+	if got := buildManagedBlock("zsh"); got != want {
+		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 
 	withAliasNpm(t, true)
-	want := `alias npm="scfw run -- npm"` + "\n"
-	if got := buildManagedBlock(); got != want {
+	want += "unalias npm 2>/dev/null || true\n" +
+		"npm() {\n" +
+		"\tscfw run -- npm \"$@\"\n" +
+		"}\n"
+	if got := buildManagedBlock("zsh"); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 }
 
 func TestBuildManagedBlock_AliasPoetry(t *testing.T) {
 	withAliasPoetry(t, false)
-	if got := buildManagedBlock(); got != "" {
-		t.Fatalf("buildManagedBlock() = %q, want empty string", got)
+	want := `source <(scfw completion bash)` + "\n"
+	if got := buildManagedBlock("bash"); got != want {
+		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 
 	withAliasPoetry(t, true)
-	want := `alias poetry="scfw run -- poetry"` + "\n"
-	if got := buildManagedBlock(); got != want {
+	want += "unalias poetry 2>/dev/null || true\n" +
+		"poetry() {\n" +
+		"\tscfw run -- poetry \"$@\"\n" +
+		"}\n"
+	if got := buildManagedBlock("bash"); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 }
@@ -237,8 +256,11 @@ func TestBuildManagedBlock_IncludesDdSite(t *testing.T) {
 	withAliasPip(t, true)
 	withDdSite(t, "datadoghq.eu")
 
-	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n" + `export DD_SITE="datadoghq.eu"` + "\n"
-	if got := buildManagedBlock(); got != want {
+	want := `source <(scfw completion bash)` + "\n" +
+		"unalias pip 2>/dev/null || true\npip() {\n\tscfw run -- pip \"$@\"\n}\n" +
+		"unalias pip3 2>/dev/null || true\npip3() {\n\tscfw run -- pip3 \"$@\"\n}\n" +
+		`export DD_SITE="datadoghq.eu"` + "\n"
+	if got := buildManagedBlock("bash"); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 }
@@ -256,8 +278,12 @@ func TestBuildManagedBlock_IncludesScfwHome(t *testing.T) {
 	withAliasPip(t, true)
 	withScfwHome(t, "/tmp/scfw-home")
 
-	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n" + `export SCFW_HOME="/tmp/scfw-home"` + "\n"
-	if got := buildManagedBlock(); got != want {
+	want := "if ! type compdef >/dev/null 2>&1; then\n\tautoload -Uz compinit && compinit\nfi\n" +
+		`source <(scfw completion zsh)` + "\n" +
+		"unalias pip 2>/dev/null || true\npip() {\n\tscfw run -- pip \"$@\"\n}\n" +
+		"unalias pip3 2>/dev/null || true\npip3() {\n\tscfw run -- pip3 \"$@\"\n}\n" +
+		`export SCFW_HOME="/tmp/scfw-home"` + "\n"
+	if got := buildManagedBlock("zsh"); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 }
@@ -440,7 +466,7 @@ func TestRunConfigure_WritesScfwHomeExportWithoutCreatingDir(t *testing.T) {
 	}
 }
 
-func TestRunConfigure_TogglingOffRemovesExistingBlock(t *testing.T) {
+func TestRunConfigure_TogglingOffKeepsCompletion(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -459,11 +485,36 @@ func TestRunConfigure_TogglingOffRemovesExistingBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read %q: %v", path, err)
 	}
-	if strings.Contains(string(got), blockStart) {
-		t.Fatalf(".bashrc = %q, want the managed block removed", got)
-	}
-	if want := "export FOO=1\n"; string(got) != want {
+	want := "export FOO=1\n\n" + blockStart + "\n" +
+		"source <(scfw completion bash)\n" + blockEnd + "\n"
+	if string(got) != want {
 		t.Fatalf(".bashrc = %q, want %q", got, want)
+	}
+}
+
+func TestRunConfigure_UsesCompletionForEachShell(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	for _, name := range []string{".bashrc", ".zshrc"} {
+		if err := os.WriteFile(filepath.Join(home, name), nil, 0o644); err != nil {
+			t.Fatalf("failed to seed %q: %v", name, err)
+		}
+	}
+
+	if err := runConfigure(configureCmd, nil); err != nil {
+		t.Fatalf("runConfigure() returned unexpected error: %v", err)
+	}
+
+	for name, shell := range map[string]string{".bashrc": "bash", ".zshrc": "zsh"} {
+		got, err := os.ReadFile(filepath.Join(home, name))
+		if err != nil {
+			t.Fatalf("failed to read %q: %v", name, err)
+		}
+		want := fmt.Sprintf("source <(scfw completion %s)", shell)
+		if !strings.Contains(string(got), want) {
+			t.Fatalf("%s = %q, want it to contain %q", name, got, want)
+		}
 	}
 }
 

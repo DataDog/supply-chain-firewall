@@ -62,7 +62,7 @@ When passing these values via shell variables, e.g. in scripts, prefer this `=` 
 This does two things:
 
 1. Stores your Datadog API key and application key securely in your system's keychain, so credentials don't need to be kept in plaintext or supplied on every command.
-2. Adds shell aliases to your `.bashrc`, `.bash_profile`, `.zshrc`, and `.zprofile` (whichever already exist) so that `npm`, `pip`/`pip3`, and/or `poetry` transparently run through `scfw`. Restart your shell (or source the relevant rc file) for the aliases to take effect.
+2. Enables `scfw` shell completion and adds shell wrappers to your `.bashrc`, `.bash_profile`, `.zshrc`, and `.zprofile` (whichever already exist) so that `npm`, `pip`/`pip3`, and/or `poetry` transparently run through `scfw`. The wrappers preserve each package manager's existing completion integration. Restart your shell (or source the relevant rc file) for the changes to take effect.
 
 `scfw configure` is idempotent and may be re-run at any time to change your configuration. It manages its own clearly indicated block of your shell rc files and never touches anything else you've added.
 
@@ -73,9 +73,9 @@ Available `configure` options:
 | `--dd-api-key` | Datadog API key used for policy evaluation and reporting. |
 | `--dd-app-key` | Datadog application key used for policy evaluation and reporting. |
 | `--dd-site` | Datadog site parameter used for policy evaluation and reporting (default: `datadoghq.com`). |
-| `--alias-npm` | Add a shell alias to run all npm commands through `scfw`. |
-| `--alias-pip` | Add shell aliases to run all pip/pip3 commands through `scfw`. |
-| `--alias-poetry` | Add a shell alias to run all poetry commands through `scfw`. |
+| `--alias-npm` | Add a shell wrapper to run all npm commands through `scfw`. |
+| `--alias-pip` | Add shell wrappers to run all pip/pip3 commands through `scfw`. |
+| `--alias-poetry` | Add a shell wrapper to run all poetry commands through `scfw`. |
 | `--scfw-home` | Directory Supply Chain Firewall can use as a local cache. |
 | `--remove` | Remove all Supply Chain Firewall managed configuration. |
 
@@ -118,7 +118,7 @@ Package some-evil-package-1.0.0:
 The command was blocked. No changes have been made.
 ```
 
-Note that, once shell aliases have been configured via `scfw configure --alias-npm`/`--alias-pip`/`--alias-poetry`, the explicit `scfw run --` prefix is no longer needed: commands for these package managers run through `scfw` automatically.
+Note that, once shell wrappers have been configured via `scfw configure --alias-npm`/`--alias-pip`/`--alias-poetry`, the explicit `scfw run --` prefix is no longer needed: commands for these package managers run through `scfw` automatically.
 
 `scfw run` supports the following options:
 

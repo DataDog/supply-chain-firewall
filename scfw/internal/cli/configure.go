@@ -64,9 +64,9 @@ func registerConfigureArg[T configureArgType](name string, defaultValue T, help 
 
 func init() {
 	configureCmd.Flags().BoolVar(&remove, "remove", false, "Remove all Supply Chain Firewall managed configuration.")
-	registerConfigureArg("alias-npm", false, "Add shell aliases to run all npm commands through Supply Chain Firewall.", &aliasNpm)
-	registerConfigureArg("alias-pip", false, "Add shell aliases to run all pip commands through Supply Chain Firewall.", &aliasPip)
-	registerConfigureArg("alias-poetry", false, "Add shell aliases to run all poetry commands through Supply Chain Firewall.", &aliasPoetry)
+	registerConfigureArg("alias-npm", false, "Add a shell wrapper to run all npm commands through Supply Chain Firewall.", &aliasNpm)
+	registerConfigureArg("alias-pip", false, "Add shell wrappers to run all pip commands through Supply Chain Firewall.", &aliasPip)
+	registerConfigureArg("alias-poetry", false, "Add a shell wrapper to run all poetry commands through Supply Chain Firewall.", &aliasPoetry)
 	registerConfigureArg("dd-api-key", "", "Datadog API key used for policy evaluation and reporting.", &ddAPIKey)
 	registerConfigureArg("dd-app-key", "", "Datadog application key used for policy evaluation and reporting.", &ddAppKey)
 	registerConfigureArg("dd-site", "", "Datadog site parameter used for policy evaluation and reporting.", &ddSite)
@@ -74,10 +74,21 @@ func init() {
 	configureCmd.MarkFlagsOneRequired(configureArgNames...)
 }
 
-// configFiles lists the shell rc files, relative to the user's home
-// directory, that SCFW's managed block is written to. A file is skipped
-// entirely if it does not already exist.
-var configFiles = []string{".bashrc", ".bash_profile", ".zshrc", ".zprofile"}
+// configFile describes a shell rc file, relative to the user's home directory,
+// and the shell whose completion script should be installed in it.
+type configFile struct {
+	name  string
+	shell string
+}
+
+// configFiles lists the shell rc files that SCFW's managed block is written to.
+// A file is skipped entirely if it does not already exist.
+var configFiles = []configFile{
+	{name: ".bashrc", shell: "bash"},
+	{name: ".bash_profile", shell: "bash"},
+	{name: ".zshrc", shell: "zsh"},
+	{name: ".zprofile", shell: "zsh"},
+}
 
 func runConfigure(cmd *cobra.Command, args []string) error {
 	var errs []error
@@ -108,32 +119,35 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 		return errors.Join(errs...)
 	}
 
-	var content string
-	if !remove {
-		content = buildManagedBlock()
-	}
-
-	for _, name := range configFiles {
-		if err := updateConfigFile(filepath.Join(home, name), content); err != nil {
+	for _, file := range configFiles {
+		var content string
+		if !remove {
+			content = buildManagedBlock(file.shell)
+		}
+		if err := updateConfigFile(filepath.Join(home, file.name), content); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
 }
 
-// buildManagedBlock formats the currently selected configuration options
-// into the content of SCFW's managed block.
-func buildManagedBlock() string {
+// buildManagedBlock formats shell completion and the currently selected
+// configuration options into the content of SCFW's managed block.
+func buildManagedBlock(shell string) string {
 	var b strings.Builder
+	if shell == "zsh" {
+		b.WriteString("if ! type compdef >/dev/null 2>&1; then\n\tautoload -Uz compinit && compinit\nfi\n")
+	}
+	fmt.Fprintf(&b, "source <(scfw completion %s)\n", shell)
 	if aliasNpm {
-		b.WriteString(`alias npm="scfw run -- npm"` + "\n")
+		writePackageManagerFunction(&b, "npm")
 	}
 	if aliasPip {
-		b.WriteString(`alias pip="scfw run -- pip"` + "\n")
-		b.WriteString(`alias pip3="scfw run -- pip3"` + "\n")
+		writePackageManagerFunction(&b, "pip")
+		writePackageManagerFunction(&b, "pip3")
 	}
 	if aliasPoetry {
-		b.WriteString(`alias poetry="scfw run -- poetry"` + "\n")
+		writePackageManagerFunction(&b, "poetry")
 	}
 	if scfwHome != "" {
 		fmt.Fprintf(&b, "export SCFW_HOME=%q\n", scfwHome)
@@ -142,6 +156,13 @@ func buildManagedBlock() string {
 		fmt.Fprintf(&b, "export DD_SITE=%q\n", ddSite)
 	}
 	return b.String()
+}
+
+// writePackageManagerFunction adds a transparent package-manager wrapper. Shell
+// functions keep completion definitions registered for the original command name
+// working, unlike aliases that can be expanded before completion (notably in zsh).
+func writePackageManagerFunction(b *strings.Builder, name string) {
+	fmt.Fprintf(b, "unalias %s 2>/dev/null || true\n%s() {\n\tscfw run -- %s \"$@\"\n}\n", name, name, name)
 }
 
 // updateConfigFile merges content into path's managed block and writes the

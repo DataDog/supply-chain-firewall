@@ -37,8 +37,8 @@ const poetryTarget = "idna"
 // fetched from PyPI at collection time, to avoid flakiness from a new
 // release appearing mid-run.
 const (
-	poetryTargetLatest   = "3.18"
-	poetryTargetPrevious = "3.17"
+	poetryTargetLatest   = "3.19"
+	poetryTargetPrevious = "3.18"
 )
 
 var poetryTargetRepo = "https://github.com/kjd/idna"
@@ -47,8 +47,8 @@ var poetryTargetRepo = "https://github.com/kjd/idna"
 // versions used as test targets, confirmed against the PyPI registry, so that
 // expected targets can be asserted by full equality rather than field by field.
 var testPackagePublishDates = map[string]time.Time{
-	poetryTargetPrevious: time.Date(2026, 5, 28, 14, 32, 38, 550900000, time.UTC),
-	poetryTargetLatest:   time.Date(2026, 6, 2, 14, 34, 7, 794523000, time.UTC),
+	poetryTargetPrevious: time.Date(2026, 6, 2, 14, 34, 7, 794523000, time.UTC),
+	poetryTargetLatest:   time.Date(2026, 8, 18, 5, 14, 24, 270231000, time.UTC),
 }
 
 // poetryTargetPackage returns the expected resolved pm.Package for poetryTarget
@@ -192,8 +192,8 @@ func poetryProjectTargetPreviousLooseConstraint(t *testing.T) string {
 	}
 	text := string(data)
 	// Poetry >=2.0 declares dependencies as PEP 621 strings (e.g.
-	// "idna (==3.17)"), while Poetry <2.0 uses the legacy
-	// [tool.poetry.dependencies] table syntax (e.g. idna = "3.17").
+	// "idna (==3.18)"), while Poetry <2.0 uses the legacy
+	// [tool.poetry.dependencies] table syntax (e.g. idna = "3.18").
 	// Loosen whichever form is present.
 	text = strings.ReplaceAll(text, poetryTarget+" (=="+poetryTargetPrevious+")", poetryTarget)
 	text = strings.ReplaceAll(text, poetryTarget+` = "`+poetryTargetPrevious+`"`, poetryTarget+` = "*"`)

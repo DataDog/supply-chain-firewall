@@ -27,32 +27,34 @@ var doctorCmd = &cobra.Command{
 func runDoctor(cmd *cobra.Command, args []string) error {
 	apiKey, apiKeyCredentialSource, apiKeyErr := ddapi.ResolveDatadogAPIKey()
 	appKey, appKeyCredentialSource, appKeyErr := ddapi.ResolveDatadogAppKey()
-	reportCredential(cmd.OutOrStdout(), "API Key", apiKey, apiKeyCredentialSource, apiKeyErr)
-	reportCredential(cmd.OutOrStdout(), "Application Key", appKey, appKeyCredentialSource, appKeyErr)
+	apiKeyReportErr := reportCredential(cmd.OutOrStdout(), "API Key", apiKey, apiKeyCredentialSource, apiKeyErr)
+	appKeyReportErr := reportCredential(cmd.OutOrStdout(), "Application Key", appKey, appKeyCredentialSource, appKeyErr)
 	credentialErr := errors.Join(apiKeyErr, appKeyErr)
+	reportErr := errors.Join(apiKeyReportErr, appKeyReportErr)
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return errors.Join(credentialErr, fmt.Errorf("could not locate shell configuration: %w", err))
+		return errors.Join(credentialErr, reportErr, fmt.Errorf("could not locate shell configuration: %w", err))
 	}
 
 	if aliasErr := reportAliases(cmd, home); aliasErr != nil {
-		return errors.Join(credentialErr, aliasErr)
+		return errors.Join(credentialErr, reportErr, aliasErr)
 	}
 
-	return credentialErr
+	return errors.Join(credentialErr, reportErr)
 }
 
-func reportCredential(out io.Writer, name, value string, source ddapi.CredentialSource, err error) {
+func reportCredential(out io.Writer, name, value string, source ddapi.CredentialSource, err error) error {
 	if err != nil {
-		fmt.Fprintf(out, "❌ %s not found: %v\n", name, err)
-		return
+		_, writeErr := fmt.Fprintf(out, "❌ %s not found: %v\n", name, err)
+		return writeErr
 	}
 	if value == "" {
-		fmt.Fprintf(out, "❌ %s not found in keychain nor environment\n", name)
-		return
+		_, writeErr := fmt.Fprintf(out, "❌ %s not found in keychain nor environment\n", name)
+		return writeErr
 	}
-	fmt.Fprintf(out, "✅ %s found in %s\n", name, source)
+	_, writeErr := fmt.Fprintf(out, "✅ %s found in %s\n", name, source)
+	return writeErr
 }
 
 var availableAliases = []string{"npm", "pip", "pip3", "poetry"}

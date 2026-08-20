@@ -37,7 +37,7 @@ func RootCmd() *cobra.Command {
 		Long: `Supply Chain Firewall is a Datadog tool that prevents the installation of malicious software packages.
 
 Set SCFW_VERBOSE to enable detailed progress and diagnostic logging.`,
-		Example: `  scfw configure --alias-npm --alias-pip --alias-poetry
+		Example: `  scfw configure --dd-api-key=<your-api-key> --dd-app-key=<your-app-key> --alias-npm --alias-pip --alias-poetry
   scfw run -- npm install react
   scfw run -- pip install requests`,
 		Version: build.GetVersion(),

@@ -121,6 +121,19 @@ func TestMergeManagedBlock(t *testing.T) {
 			content:  "anything",
 			wantErr:  true,
 		},
+		{
+			name: "nested start marker is an error",
+			original: blockStart + "\n" + blockStart + "\n" +
+				blockEnd + "\n" + blockEnd + "\n",
+			content: "anything",
+			wantErr: true,
+		},
+		{
+			name:     "orphaned end before a valid block is an error",
+			original: blockEnd + "\n" + existingBlock + "\n",
+			content:  "anything",
+			wantErr:  true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -380,6 +393,24 @@ func TestReadManagedBlock(t *testing.T) {
 		{name: "empty managed block", content: blockStart + "\n" + blockEnd + "\n"},
 		{name: "missing end marker", content: blockStart + "\nalias npm=command\n", wantErr: true},
 		{name: "end marker without start", content: blockEnd + "\n", wantErr: true},
+		{
+			name: "end marker before valid block",
+			content: blockEnd + "\n" + blockStart + "\n" +
+				`alias npm="scfw run -- npm"` + "\n" + blockEnd + "\n",
+			wantErr: true,
+		},
+		{
+			name: "nested start marker",
+			content: blockStart + "\n" + blockStart + "\n" +
+				`alias npm="scfw run -- npm"` + "\n" + blockEnd + "\n" + blockEnd + "\n",
+			wantErr: true,
+		},
+		{
+			name: "extra end marker after valid block",
+			content: blockStart + "\n" + `alias npm="scfw run -- npm"` + "\n" +
+				blockEnd + "\n" + blockEnd + "\n",
+			wantErr: true,
+		},
 		{
 			name: "multiple blocks",
 			content: blockStart + "\n" + blockEnd + "\n" +

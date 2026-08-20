@@ -75,12 +75,18 @@ func reportAliases(cmd *cobra.Command, home string) error {
 	aliasLocations := make(map[string][]string)
 	invalidAliases := make(map[string][]invalidAlias)
 	var errs []error
+	out := cmd.OutOrStdout()
+	writeReport := func(format string, args ...any) {
+		if _, err := fmt.Fprintf(out, format, args...); err != nil {
+			errs = append(errs, err)
+		}
+	}
 
 	for _, configFile := range configFiles {
 		path := filepath.Join(home, configFile)
 		aliases, err := readManagedBlock(path)
 		if err != nil {
-			fmt.Fprintf(cmd.OutOrStdout(), "⚠️ Could not read aliases from %s: %v\n", path, err)
+			writeReport("⚠️ Could not read aliases from %s: %v\n", path, err)
 			errs = append(errs, err)
 			continue
 		}
@@ -97,15 +103,14 @@ func reportAliases(cmd *cobra.Command, home string) error {
 		locations := aliasLocations[name]
 		invalid := invalidAliases[name]
 		if len(locations) == 0 && len(invalid) == 0 {
-			fmt.Fprintf(cmd.OutOrStdout(), "❌ Alias %s is not set\n", name)
+			writeReport("❌ Alias %s is not set\n", name)
 			continue
 		}
 		if len(locations) > 0 {
-			fmt.Fprintf(cmd.OutOrStdout(), "✅ Alias %s is set in %s\n", name, strings.Join(locations, ", "))
+			writeReport("✅ Alias %s is set in %s\n", name, strings.Join(locations, ", "))
 		}
 		for _, alias := range invalid {
-			fmt.Fprintf(
-				cmd.OutOrStdout(),
+			writeReport(
 				"❌ Alias %s in %s targets %q; expected %q\n",
 				name,
 				alias.path,
@@ -115,8 +120,7 @@ func reportAliases(cmd *cobra.Command, home string) error {
 		}
 	}
 	aliasNames := strings.Join(availableAliases, " ")
-	fmt.Fprintf(
-		cmd.OutOrStdout(),
+	writeReport(
 		"ℹ️ Run `alias %s` to check which aliases are active in the current terminal. If an alias configured above is not found, reload your terminal.\n",
 		aliasNames,
 	)

@@ -23,7 +23,16 @@ Preserve the existing separation of concerns: the CLI orchestrates, `ddapi` comm
 
 ## Validation
 
-Run relevant unit tests while developing. The required build validation for every completed change is:
+Run relevant unit tests while developing. Before considering any change complete, run both repository lint targets and resolve every reported issue:
+
+```sh
+make lint
+make golangci-lint
+```
+
+Keep the local `golangci-lint` version aligned with the version used by CI. Do not skip linting because a change appears small or because focused tests pass.
+
+The required build validation for every completed change is:
 
 ```sh
 goreleaser build --snapshot --clean

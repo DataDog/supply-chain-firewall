@@ -61,7 +61,8 @@ func TestReportAliases(t *testing.T) {
 	zshrc := filepath.Join(home, ".zshrc")
 	if err := os.WriteFile(bashrc, []byte(blockStart+"\n"+
 		`alias npm="scfw run -- npm"`+"\n"+
-		`alias pip="scfw run -- pip"`+"\n"+blockEnd+"\n"), 0o644); err != nil {
+		`alias pip="scfw run -- pip"`+"\n"+
+		`alias pip3="scfw run -- pip3"`+"\n"+blockEnd+"\n"), 0o644); err != nil {
 		t.Fatalf("failed to seed %q: %v", bashrc, err)
 	}
 	if err := os.WriteFile(zshrc, []byte(blockStart+"\n"+
@@ -80,7 +81,7 @@ func TestReportAliases(t *testing.T) {
 	wantLines := []string{
 		"✅ Alias npm is set in " + bashrc + ", " + zshrc,
 		"✅ Alias pip is set in " + bashrc,
-		"❌ Alias pip3 is not set",
+		"✅ Alias pip3 is set in " + bashrc,
 		"✅ Alias poetry is set in " + zshrc,
 		"ℹ️ Run `alias npm pip pip3 poetry` to check which aliases are active in the current terminal. If an alias configured above is not found, reload your terminal.",
 	}
@@ -102,8 +103,8 @@ func TestReportAliases_RejectsAliasThatBypassesScfw(t *testing.T) {
 	var output bytes.Buffer
 	cmd := &cobra.Command{}
 	cmd.SetOut(&output)
-	if err := reportAliases(cmd, home); err != nil {
-		t.Fatalf("reportAliases() returned unexpected error: %v", err)
+	if err := reportAliases(cmd, home); err == nil {
+		t.Fatal("reportAliases() = nil error, want invalid-target error")
 	}
 
 	want := `❌ Alias npm in ` + bashrc + ` targets "npm"; expected "scfw run -- npm"`
@@ -112,6 +113,31 @@ func TestReportAliases_RejectsAliasThatBypassesScfw(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "✅ Alias npm") {
 		t.Errorf("reportAliases() marked bypassing npm alias healthy: %q", output.String())
+	}
+}
+
+func TestReportAliases_ReturnsErrorForMissingAlias(t *testing.T) {
+	home := t.TempDir()
+	bashrc := filepath.Join(home, ".bashrc")
+	if err := os.WriteFile(bashrc, []byte(blockStart+"\n"+
+		`alias npm="scfw run -- npm"`+"\n"+
+		`alias pip="scfw run -- pip"`+"\n"+
+		`alias pip3="scfw run -- pip3"`+"\n"+blockEnd+"\n"), 0o644); err != nil {
+		t.Fatalf("failed to seed %q: %v", bashrc, err)
+	}
+
+	var output bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&output)
+	err := reportAliases(cmd, home)
+	if err == nil {
+		t.Fatal("reportAliases() = nil error, want missing-alias error")
+	}
+	if !strings.Contains(err.Error(), "alias poetry is not set") {
+		t.Fatalf("reportAliases() error = %v, want missing poetry alias", err)
+	}
+	if !strings.Contains(output.String(), "❌ Alias poetry is not set\n") {
+		t.Errorf("reportAliases() output = %q, want missing poetry diagnostic", output.String())
 	}
 }
 

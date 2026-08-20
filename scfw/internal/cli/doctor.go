@@ -103,13 +103,22 @@ func reportAliases(cmd *cobra.Command, home string) error {
 		locations := aliasLocations[name]
 		invalid := invalidAliases[name]
 		if len(locations) == 0 && len(invalid) == 0 {
+			aliasErr := fmt.Errorf("alias %s is not set", name)
 			writeReport("❌ Alias %s is not set\n", name)
+			errs = append(errs, aliasErr)
 			continue
 		}
 		if len(locations) > 0 {
 			writeReport("✅ Alias %s is set in %s\n", name, strings.Join(locations, ", "))
 		}
 		for _, alias := range invalid {
+			aliasErr := fmt.Errorf(
+				"alias %s in %s targets %q; expected %q",
+				name,
+				alias.path,
+				alias.target,
+				expectedAliasTarget(name),
+			)
 			writeReport(
 				"❌ Alias %s in %s targets %q; expected %q\n",
 				name,
@@ -117,6 +126,7 @@ func reportAliases(cmd *cobra.Command, home string) error {
 				alias.target,
 				expectedAliasTarget(name),
 			)
+			errs = append(errs, aliasErr)
 		}
 	}
 	aliasNames := strings.Join(availableAliases, " ")

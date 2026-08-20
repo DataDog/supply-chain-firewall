@@ -57,10 +57,21 @@ func reportCredential(out io.Writer, name, value string, source ddapi.Credential
 
 var availableAliases = []string{"npm", "pip", "pip3", "poetry"}
 
+type invalidAlias struct {
+	path   string
+	target string
+}
+
+func expectedAliasTarget(name string) string {
+	return "scfw run -- " + name
+}
+
 // reportAliases reports whether every alias supported by scfw configure is
-// present in SCFW's managed block and lists each shell config that defines it.
+// present in SCFW's managed block, targets SCFW, and lists each shell config
+// that correctly defines it.
 func reportAliases(cmd *cobra.Command, home string) error {
 	aliasLocations := make(map[string][]string)
+	invalidAliases := make(map[string][]invalidAlias)
 	var errs []error
 
 	for _, configFile := range configFiles {
@@ -71,18 +82,35 @@ func reportAliases(cmd *cobra.Command, home string) error {
 			errs = append(errs, err)
 			continue
 		}
-		for name := range aliases {
+		for name, target := range aliases {
+			if target != expectedAliasTarget(name) {
+				invalidAliases[name] = append(invalidAliases[name], invalidAlias{path: path, target: target})
+				continue
+			}
 			aliasLocations[name] = append(aliasLocations[name], path)
 		}
 	}
 
 	for _, name := range availableAliases {
 		locations := aliasLocations[name]
-		if len(locations) == 0 {
+		invalid := invalidAliases[name]
+		if len(locations) == 0 && len(invalid) == 0 {
 			fmt.Fprintf(cmd.OutOrStdout(), "❌ Alias %s is not set\n", name)
 			continue
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "✅ Alias %s is set in %s\n", name, strings.Join(locations, ", "))
+		if len(locations) > 0 {
+			fmt.Fprintf(cmd.OutOrStdout(), "✅ Alias %s is set in %s\n", name, strings.Join(locations, ", "))
+		}
+		for _, alias := range invalid {
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"❌ Alias %s in %s targets %q; expected %q\n",
+				name,
+				alias.path,
+				alias.target,
+				expectedAliasTarget(name),
+			)
+		}
 	}
 	aliasNames := strings.Join(availableAliases, " ")
 	fmt.Fprintf(

@@ -87,6 +87,30 @@ func TestReportAliases(t *testing.T) {
 	}
 }
 
+func TestReportAliases_RejectsAliasThatBypassesScfw(t *testing.T) {
+	home := t.TempDir()
+	bashrc := filepath.Join(home, ".bashrc")
+	if err := os.WriteFile(bashrc, []byte(blockStart+"\n"+
+		`alias npm=npm`+"\n"+blockEnd+"\n"), 0o644); err != nil {
+		t.Fatalf("failed to seed %q: %v", bashrc, err)
+	}
+
+	var output bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&output)
+	if err := reportAliases(cmd, home); err != nil {
+		t.Fatalf("reportAliases() returned unexpected error: %v", err)
+	}
+
+	want := `❌ Alias npm in ` + bashrc + ` targets "npm"; expected "scfw run -- npm"`
+	if !strings.Contains(output.String(), want+"\n") {
+		t.Errorf("reportAliases() output = %q, want line %q", output.String(), want)
+	}
+	if strings.Contains(output.String(), "✅ Alias npm") {
+		t.Errorf("reportAliases() marked bypassing npm alias healthy: %q", output.String())
+	}
+}
+
 func TestReportAliases_ReportsUnreadableConfigAndContinues(t *testing.T) {
 	home := t.TempDir()
 	bashrc := filepath.Join(home, ".bashrc")

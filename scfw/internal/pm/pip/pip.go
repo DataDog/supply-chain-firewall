@@ -128,9 +128,9 @@ func (pip Pip) ResolveInstallTargets(ctx context.Context, command []string) (*pm
 	output, err := exec.CommandContext(ctx, pip.Executable(), dryRunArgs...).Output()
 	if err != nil {
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-			// Log the failure since it's otherwise indistinguishable from a
-			// legitimate no-op install.
-			slog.Warn("pip dry-run install failed; treating as no install targets", "command", dryRunArgs, "stderr", string(exitErr.Stderr))
+			// Keep the diagnostic available in verbose mode without printing the
+			// same package-manager error before the real command runs.
+			slog.Debug("pip dry-run install failed; treating as no install targets", "command", dryRunArgs, "stderr", string(exitErr.Stderr))
 			return pm.NewSet[pm.Package](), nil
 		}
 		return nil, fmt.Errorf("failed to run pip dry-run install: %w", err)

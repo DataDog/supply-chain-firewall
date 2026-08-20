@@ -107,6 +107,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 
 	cmdArgs := args[cmd.ArgsLenAtDash():]
 	packageManagerName := filepath.Base(cmdArgs[0])
+	slog.Debug("preparing package manager command", "package_manager", packageManagerName, "command", cmdArgs)
 
 	packageManagerFactory, ok := findPackageManagerFactory(packageManagerName)
 	if !ok {
@@ -117,6 +118,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scfw run: %w", err)
 	}
 
+	slog.Debug("resolving package installation targets", "package_manager", packageManagerName)
 	installTargets, err := packageManager.ResolveInstallTargets(cmd.Context(), cmdArgs[1:])
 	if err != nil {
 		return fmt.Errorf("scfw run: %w", err)
@@ -130,11 +132,13 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 		// there's nothing a policy decision could act on anyway.
 		evaluationReport = ddapi.ScfwPolicyEvaluationReport{Outcome: ddapi.OutcomeAllow, Results: []ddapi.PackageEvaluationResult{}}
 	} else {
+		slog.Debug("evaluating package installation targets", "count", installTargets.Len())
 		evaluationReport, err = ddapi.EvaluateInstallTargets(cmd.Context(), isInteractive, installTargets)
 		if err != nil {
 			return fmt.Errorf("scfw run: %w", err)
 		}
 	}
+	slog.Debug("resolved firewall policy outcome", "outcome", evaluationReport.Outcome)
 
 	// Explain the outcome before anything else, so the user sees why a command was
 	// blocked or flagged before any interactive prompt asks them to decide.
@@ -158,6 +162,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 
 	switch action {
 	case ddapi.OutcomeAllow:
+		slog.Debug("running approved package manager command", "package_manager", packageManagerName)
 		if err := packageManager.RunCommand(cmd.Context(), cmdArgs[1:]); err != nil {
 			// Preserve the wrapped command's own exit code.
 			if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {

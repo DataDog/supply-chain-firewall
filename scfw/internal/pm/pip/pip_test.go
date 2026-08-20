@@ -6,15 +6,52 @@
 package pip
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
+
+func TestResolveInstallTargets_DryRunFailureLogsOnlyAtDebug(t *testing.T) {
+	dir := t.TempDir()
+	executable := filepath.Join(dir, "pip")
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\necho 'no matching distribution' >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("failed to create fake pip: %v", err)
+	}
+	pip := Pip{executable: executable, version: minPipVersion}
+
+	previous := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	var warningOutput bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&warningOutput, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	if _, err := pip.ResolveInstallTargets(context.Background(), []string{"install", "missing==1.0"}); err != nil {
+		t.Fatalf("ResolveInstallTargets() returned unexpected error: %v", err)
+	}
+	if warningOutput.Len() != 0 {
+		t.Fatalf("default log output = %q, want dry-run failure suppressed to avoid duplicate package-manager errors", warningOutput.String())
+	}
+
+	var debugOutput bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&debugOutput, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	if _, err := pip.ResolveInstallTargets(context.Background(), []string{"install", "missing==1.0"}); err != nil {
+		t.Fatalf("ResolveInstallTargets() returned unexpected error: %v", err)
+	}
+	for _, want := range []string{"pip dry-run install failed", "no matching distribution"} {
+		if !strings.Contains(debugOutput.String(), want) {
+			t.Errorf("verbose log output %q does not contain %q", debugOutput.String(), want)
+		}
+	}
+}
 
 // testTarget is a small, stable, pinned PyPI package used as a dry-run
 // install target. Pinning avoids resolution drift over time.

@@ -186,13 +186,17 @@ func withAliasPoetry(t *testing.T, value bool) {
 	t.Cleanup(func() { aliasPoetry = original })
 }
 
+const expectedBashCompletionConfig = "if [[ $- == *i* ]]; then\n" +
+	"\tif type _get_comp_words_by_ref >/dev/null 2>&1; then\n" +
+	"\t\teval \"$(scfw completion bash)\"\n" +
+	"\telse\n" +
+	"\t\tprintf '%s\\n' 'SCFW: bash completion is unavailable; install and initialize bash-completion to enable it.' >&2\n" +
+	"\tfi\n" +
+	"fi\n"
+
 func TestBuildManagedBlock(t *testing.T) {
 	withAliasPip(t, false)
-	want := "if type _get_comp_words_by_ref >/dev/null 2>&1; then\n" +
-		"\teval \"$(scfw completion bash)\"\n" +
-		"else\n" +
-		"\tprintf '%s\\n' 'SCFW: bash completion is unavailable; install and initialize bash-completion to enable it.' >&2\n" +
-		"fi\n"
+	want := expectedBashCompletionConfig
 	if got := buildManagedBlock("bash"); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
@@ -233,11 +237,7 @@ func TestBuildManagedBlock_AliasNpm(t *testing.T) {
 
 func TestBuildManagedBlock_AliasPoetry(t *testing.T) {
 	withAliasPoetry(t, false)
-	want := "if type _get_comp_words_by_ref >/dev/null 2>&1; then\n" +
-		"\teval \"$(scfw completion bash)\"\n" +
-		"else\n" +
-		"\tprintf '%s\\n' 'SCFW: bash completion is unavailable; install and initialize bash-completion to enable it.' >&2\n" +
-		"fi\n"
+	want := expectedBashCompletionConfig
 	if got := buildManagedBlock("bash"); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
@@ -256,6 +256,8 @@ func TestBuildManagedBlock_BashCompletionDependency(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash is not installed")
 	}
+	withAliasPoetry(t, true)
+	withScfwHome(t, "/tmp/scfw-home")
 	fakeBinDir := t.TempDir()
 	fakeScfw := filepath.Join(fakeBinDir, "scfw")
 	if err := os.WriteFile(fakeScfw, []byte("#!/bin/sh\nprintf 'SCFW_COMPLETION_LOADED=1\\n'\n"), 0o755); err != nil {
@@ -264,28 +266,43 @@ func TestBuildManagedBlock_BashCompletionDependency(t *testing.T) {
 
 	block := buildManagedBlock("bash")
 	tests := []struct {
-		name       string
-		setup      string
-		assertion  string
-		wantOutput string
+		name         string
+		interactive  bool
+		setup        string
+		assertion    string
+		wantOutput   string
+		forbidOutput string
 	}{
 		{
-			name:      "sources completion when dependency is available",
-			setup:     "_get_comp_words_by_ref() { :; }\n",
-			assertion: `test "${SCFW_COMPLETION_LOADED:-}" = 1`,
+			name:        "sources completion when dependency is available",
+			interactive: true,
+			setup:       "_get_comp_words_by_ref() { :; }\n",
+			assertion:   `test "${SCFW_COMPLETION_LOADED:-}" = 1`,
 		},
 		{
-			name:       "warns and skips completion when dependency is missing",
-			setup:      "unset -f _get_comp_words_by_ref 2>/dev/null || true\n",
-			assertion:  `test -z "${SCFW_COMPLETION_LOADED:-}"`,
-			wantOutput: "SCFW: bash completion is unavailable",
+			name:        "warns and skips completion when dependency is missing",
+			interactive: true,
+			setup:       "unset -f _get_comp_words_by_ref 2>/dev/null || true\n",
+			assertion:   `test -z "${SCFW_COMPLETION_LOADED:-}"`,
+			wantOutput:  "SCFW: bash completion is unavailable",
+		},
+		{
+			name:         "skips completion silently in a non-interactive shell",
+			setup:        "unset -f _get_comp_words_by_ref 2>/dev/null || true\n",
+			assertion:    `test -z "${SCFW_COMPLETION_LOADED:-}"`,
+			forbidOutput: "SCFW: bash completion is unavailable",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			script := tc.setup + block + tc.assertion
-			cmd := exec.Command("bash", "--noprofile", "--norc", "-c", script)
+			script := tc.setup + block + tc.assertion +
+				` && test "$(type -t poetry)" = function && test "$SCFW_HOME" = /tmp/scfw-home`
+			args := []string{"--noprofile", "--norc"}
+			if tc.interactive {
+				args = append(args, "-i")
+			}
+			cmd := exec.Command("bash", append(args, "-c", script)...)
 			cmd.Env = append(os.Environ(), "PATH="+fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 			output, err := cmd.CombinedOutput()
 			if err != nil {
@@ -293,6 +310,9 @@ func TestBuildManagedBlock_BashCompletionDependency(t *testing.T) {
 			}
 			if tc.wantOutput != "" && !strings.Contains(string(output), tc.wantOutput) {
 				t.Fatalf("bash completion setup output = %q, want it to contain %q", output, tc.wantOutput)
+			}
+			if tc.forbidOutput != "" && strings.Contains(string(output), tc.forbidOutput) {
+				t.Fatalf("bash completion setup output = %q, want it not to contain %q", output, tc.forbidOutput)
 			}
 		})
 	}
@@ -311,11 +331,7 @@ func TestBuildManagedBlock_IncludesDdSite(t *testing.T) {
 	withAliasPip(t, true)
 	withDdSite(t, "datadoghq.eu")
 
-	want := "if type _get_comp_words_by_ref >/dev/null 2>&1; then\n" +
-		"\teval \"$(scfw completion bash)\"\n" +
-		"else\n" +
-		"\tprintf '%s\\n' 'SCFW: bash completion is unavailable; install and initialize bash-completion to enable it.' >&2\n" +
-		"fi\n" +
+	want := expectedBashCompletionConfig +
 		"unalias pip 2>/dev/null || true\npip() {\n\tscfw run -- pip \"$@\"\n}\n" +
 		"unalias pip3 2>/dev/null || true\npip3() {\n\tscfw run -- pip3 \"$@\"\n}\n" +
 		`export DD_SITE="datadoghq.eu"` + "\n"
@@ -545,11 +561,7 @@ func TestRunConfigure_TogglingOffKeepsCompletion(t *testing.T) {
 		t.Fatalf("failed to read %q: %v", path, err)
 	}
 	want := "export FOO=1\n\n" + blockStart + "\n" +
-		"if type _get_comp_words_by_ref >/dev/null 2>&1; then\n" +
-		"\teval \"$(scfw completion bash)\"\n" +
-		"else\n" +
-		"\tprintf '%s\\n' 'SCFW: bash completion is unavailable; install and initialize bash-completion to enable it.' >&2\n" +
-		"fi\n" + blockEnd + "\n"
+		expectedBashCompletionConfig + blockEnd + "\n"
 	if string(got) != want {
 		t.Fatalf(".bashrc = %q, want %q", got, want)
 	}

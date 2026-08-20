@@ -140,10 +140,12 @@ func buildManagedBlock(shell string) string {
 	var b strings.Builder
 	switch shell {
 	case "bash":
-		b.WriteString("if type _get_comp_words_by_ref >/dev/null 2>&1; then\n")
-		b.WriteString("\teval \"$(scfw completion bash)\"\n")
-		b.WriteString("else\n")
-		b.WriteString("\tprintf '%s\\n' 'SCFW: bash completion is unavailable; install and initialize bash-completion to enable it.' >&2\n")
+		b.WriteString("if [[ $- == *i* ]]; then\n")
+		b.WriteString("\tif type _get_comp_words_by_ref >/dev/null 2>&1; then\n")
+		b.WriteString("\t\teval \"$(scfw completion bash)\"\n")
+		b.WriteString("\telse\n")
+		b.WriteString("\t\tprintf '%s\\n' 'SCFW: bash completion is unavailable; install and initialize bash-completion to enable it.' >&2\n")
+		b.WriteString("\tfi\n")
 		b.WriteString("fi\n")
 	case "zsh":
 		b.WriteString("if ! type compdef >/dev/null 2>&1; then\n\tautoload -Uz compinit && compinit\nfi\n")

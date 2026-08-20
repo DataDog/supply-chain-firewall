@@ -75,19 +75,22 @@ func init() {
 }
 
 // configFile describes a shell rc file, relative to the user's home directory,
-// and the shell whose completion script should be installed in it.
+// and, when non-empty, the shell whose completion script should be installed in it.
 type configFile struct {
-	name  string
-	shell string
+	name            string
+	completionShell string
 }
 
 // configFiles lists the shell rc files that SCFW's managed block is written to.
 // A file is skipped entirely if it does not already exist.
 var configFiles = []configFile{
-	{name: ".bashrc", shell: "bash"},
-	{name: ".bash_profile", shell: "bash"},
-	{name: ".zshrc", shell: "zsh"},
-	{name: ".zprofile", shell: "zsh"},
+	{name: ".bashrc", completionShell: "bash"},
+	{name: ".bash_profile", completionShell: "bash"},
+	{name: ".zshrc", completionShell: "zsh"},
+	// .zprofile is also read by non-interactive login shells and runs before
+	// .zshrc. Keep wrappers and exports there, but initialize completion only
+	// after interactive-shell plugins have configured fpath in .zshrc.
+	{name: ".zprofile"},
 }
 
 func runConfigure(cmd *cobra.Command, args []string) error {
@@ -122,7 +125,7 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 	for _, file := range configFiles {
 		var content string
 		if !remove {
-			content = buildManagedBlock(file.shell)
+			content = buildManagedBlock(file.completionShell)
 		}
 		if err := updateConfigFile(filepath.Join(home, file.name), content); err != nil {
 			errs = append(errs, err)

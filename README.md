@@ -62,7 +62,7 @@ When passing these values via shell variables, e.g. in scripts, prefer this `=` 
 This does two things:
 
 1. Stores your Datadog API key and application key securely in your system's keychain, so credentials don't need to be kept in plaintext or supplied on every command.
-2. Enables `scfw` shell completion and adds shell wrappers to your `.bashrc`, `.bash_profile`, `.zshrc`, and `.zprofile` (whichever already exist) so that `npm`, `pip`/`pip3`, and/or `poetry` transparently run through `scfw`. The wrappers preserve each package manager's existing completion integration. Restart your shell (or source the relevant rc file) for the changes to take effect.
+2. Enables `scfw` shell completion (from `.zshrc` for zsh) and adds shell wrappers to your `.bashrc`, `.bash_profile`, `.zshrc`, and `.zprofile` (whichever already exist) so that `npm`, `pip`/`pip3`, and/or `poetry` transparently run through `scfw`. The wrappers preserve each package manager's existing completion integration. Restart your shell (or source the relevant rc file) for the changes to take effect.
 
 `scfw configure` is idempotent and may be re-run at any time to change your configuration. It manages its own clearly indicated block of your shell rc files and never touches anything else you've added.
 

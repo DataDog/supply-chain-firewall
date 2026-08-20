@@ -558,8 +558,10 @@ func TestRunConfigure_TogglingOffKeepsCompletion(t *testing.T) {
 func TestRunConfigure_UsesCompletionForEachShell(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	withAliasPoetry(t, true)
+	withScfwHome(t, "/tmp/scfw-home")
 
-	for _, name := range []string{".bashrc", ".zshrc"} {
+	for _, name := range []string{".bashrc", ".zshrc", ".zprofile"} {
 		if err := os.WriteFile(filepath.Join(home, name), nil, 0o644); err != nil {
 			t.Fatalf("failed to seed %q: %v", name, err)
 		}
@@ -579,6 +581,19 @@ func TestRunConfigure_UsesCompletionForEachShell(t *testing.T) {
 		}
 		if !strings.Contains(string(got), completionSetup) {
 			t.Fatalf("%s = %q, want it to contain %q", name, got, completionSetup)
+		}
+	}
+
+	zprofile, err := os.ReadFile(filepath.Join(home, ".zprofile"))
+	if err != nil {
+		t.Fatalf("failed to read .zprofile: %v", err)
+	}
+	if strings.Contains(string(zprofile), "scfw completion") || strings.Contains(string(zprofile), "compinit") {
+		t.Fatalf(".zprofile = %q, want no completion initialization", zprofile)
+	}
+	for _, want := range []string{"poetry() {", `export SCFW_HOME="/tmp/scfw-home"`} {
+		if !strings.Contains(string(zprofile), want) {
+			t.Fatalf(".zprofile = %q, want it to contain %q", zprofile, want)
 		}
 	}
 }

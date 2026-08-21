@@ -19,7 +19,7 @@ from scfw.package_managers.uv.temp_project import TemporaryUvProject
 
 _log = logging.getLogger(__name__)
 
-MIN_UV_VERSION = version_parse("0.4.1")
+MIN_UV_VERSION = version_parse("0.5.0")
 
 INSPECTED_SUBCOMMANDS: set[str] = {
     "sync",

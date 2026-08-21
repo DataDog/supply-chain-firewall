@@ -27,14 +27,17 @@ var configureCmd = &cobra.Command{
 }
 
 var (
-	aliasNpm    bool
-	aliasPip    bool
-	aliasPoetry bool
-	ddAPIKey    string
-	ddAppKey    string
-	ddSite      string
-	scfwHome    string
-	remove      bool
+	aliasNpm          bool
+	aliasPip          bool
+	aliasPoetry       bool
+	removeAliasNpm    bool
+	removeAliasPip    bool
+	removeAliasPoetry bool
+	ddAPIKey          string
+	ddAppKey          string
+	ddSite            string
+	scfwHome          string
+	remove            bool
 )
 
 // configureArgType is the set of flag value types registerConfigureArg
@@ -66,12 +69,18 @@ func registerConfigureArg[T configureArgType](name string, defaultValue T, help 
 func init() {
 	configureCmd.Flags().BoolVar(&remove, "remove", false, "Remove all Supply Chain Firewall managed configuration.")
 	registerConfigureArg("alias-npm", false, "Add shell aliases to run all npm commands through Supply Chain Firewall.", &aliasNpm)
+	registerConfigureArg("remove-alias-npm", false, "Remove Supply Chain Firewall's npm shell alias.", &removeAliasNpm)
 	registerConfigureArg("alias-pip", false, "Add shell aliases to run all pip commands through Supply Chain Firewall.", &aliasPip)
+	registerConfigureArg("remove-alias-pip", false, "Remove Supply Chain Firewall's pip shell aliases.", &removeAliasPip)
 	registerConfigureArg("alias-poetry", false, "Add shell aliases to run all poetry commands through Supply Chain Firewall.", &aliasPoetry)
+	registerConfigureArg("remove-alias-poetry", false, "Remove Supply Chain Firewall's poetry shell alias.", &removeAliasPoetry)
 	registerConfigureArg("dd-api-key", "", "Datadog API key used for policy evaluation and reporting.", &ddAPIKey)
 	registerConfigureArg("dd-app-key", "", "Datadog application key used for policy evaluation and reporting.", &ddAppKey)
 	registerConfigureArg("dd-site", "", "Datadog site parameter used for policy evaluation and reporting.", &ddSite)
 	registerConfigureArg("scfw-home", "", "Directory that Supply Chain Firewall can use as a local cache.", &scfwHome)
+	configureCmd.MarkFlagsMutuallyExclusive("alias-npm", "remove-alias-npm")
+	configureCmd.MarkFlagsMutuallyExclusive("alias-pip", "remove-alias-pip")
+	configureCmd.MarkFlagsMutuallyExclusive("alias-poetry", "remove-alias-poetry")
 	configureCmd.MarkFlagsOneRequired(configureArgNames...)
 }
 
@@ -109,13 +118,18 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 		return errors.Join(errs...)
 	}
 
-	var content string
-	if !remove {
-		content = buildManagedBlock()
-	}
-
 	for _, name := range configFiles {
-		if err := updateConfigFile(filepath.Join(home, name), content); err != nil {
+		path := filepath.Join(home, name)
+		var content string
+		if !remove {
+			existingAliases, err := readManagedBlock(path)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			content = buildManagedBlock(existingAliases)
+		}
+		if err := updateConfigFile(path, content); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -130,17 +144,18 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 }
 
 // buildManagedBlock formats the currently selected configuration options
-// into the content of SCFW's managed block.
-func buildManagedBlock() string {
+// into the content of SCFW's managed block. Previously configured aliases
+// remain enabled when their corresponding flags are omitted.
+func buildManagedBlock(existingAliases map[string]string) string {
 	var b strings.Builder
-	if aliasNpm {
+	if !removeAliasNpm && (aliasNpm || hasConfiguredAlias(existingAliases, "npm")) {
 		b.WriteString(`alias npm="scfw run -- npm"` + "\n")
 	}
-	if aliasPip {
+	if !removeAliasPip && (aliasPip || hasConfiguredAlias(existingAliases, "pip", "pip3")) {
 		b.WriteString(`alias pip="scfw run -- pip"` + "\n")
 		b.WriteString(`alias pip3="scfw run -- pip3"` + "\n")
 	}
-	if aliasPoetry {
+	if !removeAliasPoetry && (aliasPoetry || hasConfiguredAlias(existingAliases, "poetry")) {
 		b.WriteString(`alias poetry="scfw run -- poetry"` + "\n")
 	}
 	if scfwHome != "" {
@@ -150,6 +165,15 @@ func buildManagedBlock() string {
 		fmt.Fprintf(&b, "export DD_SITE=%q\n", ddSite)
 	}
 	return b.String()
+}
+
+func hasConfiguredAlias(existingAliases map[string]string, names ...string) bool {
+	for _, name := range names {
+		if existingAliases[name] == expectedAliasTarget(name) {
+			return true
+		}
+	}
+	return false
 }
 
 // updateConfigFile merges content into path's managed block and writes the

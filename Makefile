@@ -9,7 +9,7 @@ checks: typecheck lint test
 
 coverage: test coverage-report
 
-test: test-cli test-configure test-firewall test-loggers test-npm test-npm-class test-pip-executable test-pip test-pip-class test-poetry test-poetry-class test-report test-verifiers
+test: test-cli test-configure test-firewall test-loggers test-npm test-npm-class test-pip-executable test-pip test-pip-class test-poetry test-poetry-class test-uv test-uv-class test-report test-verifiers
 
 typecheck:
 	mypy --install-types --non-interactive examples/ scfw/ tests/
@@ -68,6 +68,7 @@ coverage-report:
 	.coverage.npm .coverage.npm.class \
 	.coverage.pip.executable .coverage.pip .coverage.pip.class \
 	.coverage.poetry .coverage.poetry.class \
+	.coverage.uv .coverage.uv.class \
 	.coverage.report .coverage.verifiers
 	coverage report
 

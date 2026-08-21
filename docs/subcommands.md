@@ -65,6 +65,8 @@ For `pip install` commands, packages will be installed in the same environment (
 
 For `poetry`, target resolution for `add`/`update` is based entirely on the project's `pyproject.toml`/`poetry.lock`. If a project's installed environment has drifted out of sync with its lock file (e.g. the lock was regenerated or checked in separately without running `poetry install`/`sync` afterward), `scfw` has no reliable way to detect that drift, since Poetry itself does not expose the actual installed version of a package independently of what the lock file says. Keeping a project's environment in sync with its lock file is out of scope for this tool.
 
+For `uv sync` commands, target resolution is based on exporting the projects `pyproject.toml`/`uv.lock` via `uv export`. Much like `poetry`, if a project's installed environment has drifted out of sync with its lock file, `scfw` has no reliable way to detect that drift, since this resolution is based entirely on the lock file's contents rather than the environment's actual state. Keeping a project's environment in sync with its lock file is out of scope for this tool.
+
 ```bash
 $ scfw run --help
 usage: scfw run [options] COMMAND

@@ -25,7 +25,7 @@ def uv_pip_list() -> str:
 
 def test_uv_version_output():
     """
-    Tests that `uv --version` has the required format and parses correctly.
+    Test that `uv --version` has the required format and parses correctly.
     """
     uv_version = subprocess.run(UV_COMMAND_PREFIX + ["--version"], check=True, text=True, capture_output=True)
     match = re.match(r"^uv\s+(\S+)", uv_version.stdout.strip())
@@ -64,7 +64,7 @@ def test_normalize_command(tmp_path: Path):
 )
 def test_uv_no_change_flags(command_line: list[str]):
     """
-    Tests that help and version flags execute without error
+    Test that help and version flags execute without error
     and do not modify the active environment state.
     """
     init_state = uv_pip_list()
@@ -81,7 +81,7 @@ def test_uv_no_change_flags(command_line: list[str]):
 )
 def test_uv_command_error(command_line: list[str]):
     """
-    Tests that invalid commands or flags raise a CalledProcessError.
+    Test that invalid commands or flags raise a CalledProcessError.
     """
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.run(command_line, check=True, capture_output=True)
@@ -120,7 +120,7 @@ def test_uv_export_requirements_format(tmp_path: Path):
 
 def test_uv_pip_list_json_format():
     """
-    Tests that `uv pip list --format json` produces valid, parseable JSON metadata.
+    Test that `uv pip list --format json` produces valid, parseable JSON metadata.
     """
     cmd = UV_COMMAND_PREFIX + ["pip", "list", "--format", "json"]
     proc = subprocess.run(cmd, check=True, text=True, capture_output=True)

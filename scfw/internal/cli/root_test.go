@@ -6,11 +6,51 @@
 package cli
 
 import (
+	"bytes"
+	"context"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 )
+
+func TestRootHelpIdentifiesDatadogAndIncludesExamples(t *testing.T) {
+	cmd := RootCmd()
+	defer cmd.RemoveCommand(configureCmd, runCmd)
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() returned unexpected error: %v", err)
+	}
+
+	for _, want := range []string{
+		"Datadog",
+		"Examples:",
+		"scfw configure --dd-api-key=<your-api-key> --dd-app-key=<your-app-key> --alias-npm --alias-pip --alias-poetry",
+		"scfw run -- npm install react",
+		"scfw run -- pip install requests",
+	} {
+		if !strings.Contains(output.String(), want) {
+			t.Errorf("help output %q does not contain %q", output.String(), want)
+		}
+	}
+}
+
+func TestConfigureLogging_VerboseEnvironmentEnablesDebug(t *testing.T) {
+	t.Setenv(verboseEnvVar, "true")
+	previous := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	if err := configureLogging("WARNING"); err != nil {
+		t.Fatalf("configureLogging() returned unexpected error: %v", err)
+	}
+	if !slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		t.Fatal("SCFW_VERBOSE did not enable debug logging")
+	}
+}
 
 func TestRejectFlagLikeValues(t *testing.T) {
 	newCmd := func() *cobra.Command {

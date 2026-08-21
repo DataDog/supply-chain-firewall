@@ -32,6 +32,32 @@ func TestDoctorCmdRejectsArguments(t *testing.T) {
 	}
 }
 
+func TestDoctorCmd_DiagnosticFailuresDoNotPrintUsage(t *testing.T) {
+	t.Setenv("DD_API_KEY", "api-key")
+	t.Setenv("DD_APP_KEY", "app-key")
+	t.Setenv("HOME", "")
+
+	origSilenceUsage := doctorCmd.SilenceUsage
+	t.Cleanup(func() { doctorCmd.SilenceUsage = origSilenceUsage })
+
+	cmd := RootCmd()
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	cmd.SetArgs([]string{"doctor"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() = nil error, want shell-configuration diagnostic error")
+	}
+	if !strings.Contains(err.Error(), "could not locate shell configuration") {
+		t.Fatalf("Execute() error = %q, want shell-configuration diagnostic", err)
+	}
+	if strings.Contains(output.String(), "Usage:") {
+		t.Fatalf("Execute() output contains usage for a diagnostic failure: %q", output.String())
+	}
+}
+
 func TestReportCredentialDistinguishesCredentialErrors(t *testing.T) {
 	var output bytes.Buffer
 	apiErr := errors.New("API key lookup failed")

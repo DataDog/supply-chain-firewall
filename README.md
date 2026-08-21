@@ -64,7 +64,7 @@ This does two things:
 1. Stores your Datadog API key and application key securely in your system's keychain, so credentials don't need to be kept in plaintext or supplied on every command.
 2. Adds shell aliases to your `.bashrc`, `.bash_profile`, `.zshrc`, and `.zprofile` (whichever already exist) so that `npm`, `pip`/`pip3`, and/or `poetry` transparently run through `scfw`. Restart your shell (or source the relevant rc file) for the aliases to take effect.
 
-`scfw configure` is idempotent and may be re-run at any time to change your configuration. It manages its own clearly indicated block of your shell rc files and never touches anything else you've added.
+`scfw configure` is idempotent and may be re-run at any time to change your configuration. Alias options are additive, so aliases configured by an earlier invocation remain in place unless their corresponding `--remove-alias-*` option is passed. The command manages its own clearly indicated block of your shell rc files and never touches anything else you've added.
 
 Available `configure` options:
 
@@ -74,8 +74,11 @@ Available `configure` options:
 | `--dd-app-key` | Datadog application key used for policy evaluation and reporting. |
 | `--dd-site` | Datadog site parameter used for policy evaluation and reporting (default: `datadoghq.com`). |
 | `--alias-npm` | Add a shell alias to run all npm commands through `scfw`. |
+| `--remove-alias-npm` | Remove the npm shell alias managed by `scfw`. |
 | `--alias-pip` | Add shell aliases to run all pip/pip3 commands through `scfw`. |
+| `--remove-alias-pip` | Remove the pip/pip3 shell aliases managed by `scfw`. |
 | `--alias-poetry` | Add a shell alias to run all poetry commands through `scfw`. |
+| `--remove-alias-poetry` | Remove the poetry shell alias managed by `scfw`. |
 | `--scfw-home` | Directory Supply Chain Firewall can use as a local cache. |
 | `--remove` | Remove all Supply Chain Firewall managed configuration. |
 

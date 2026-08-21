@@ -211,39 +211,39 @@ func withRemoveAliasPip(t *testing.T, value bool) {
 
 func TestBuildManagedBlock(t *testing.T) {
 	withAliasPip(t, false)
-	if got := buildManagedBlock(nil); got != "" {
+	if got := buildManagedBlock(managedConfiguration{}); got != "" {
 		t.Fatalf("buildManagedBlock() = %q, want empty string", got)
 	}
 
 	withAliasPip(t, true)
 	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n"
-	if got := buildManagedBlock(nil); got != want {
+	if got := buildManagedBlock(managedConfiguration{}); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 }
 
 func TestBuildManagedBlock_AliasNpm(t *testing.T) {
 	withAliasNpm(t, false)
-	if got := buildManagedBlock(nil); got != "" {
+	if got := buildManagedBlock(managedConfiguration{}); got != "" {
 		t.Fatalf("buildManagedBlock() = %q, want empty string", got)
 	}
 
 	withAliasNpm(t, true)
 	want := `alias npm="scfw run -- npm"` + "\n"
-	if got := buildManagedBlock(nil); got != want {
+	if got := buildManagedBlock(managedConfiguration{}); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 }
 
 func TestBuildManagedBlock_AliasPoetry(t *testing.T) {
 	withAliasPoetry(t, false)
-	if got := buildManagedBlock(nil); got != "" {
+	if got := buildManagedBlock(managedConfiguration{}); got != "" {
 		t.Fatalf("buildManagedBlock() = %q, want empty string", got)
 	}
 
 	withAliasPoetry(t, true)
 	want := `alias poetry="scfw run -- poetry"` + "\n"
-	if got := buildManagedBlock(nil); got != want {
+	if got := buildManagedBlock(managedConfiguration{}); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 }
@@ -262,7 +262,7 @@ func TestBuildManagedBlock_IncludesDdSite(t *testing.T) {
 	withDdSite(t, "datadoghq.eu")
 
 	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n" + `export DD_SITE="datadoghq.eu"` + "\n"
-	if got := buildManagedBlock(nil); got != want {
+	if got := buildManagedBlock(managedConfiguration{}); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 }
@@ -281,7 +281,7 @@ func TestBuildManagedBlock_IncludesScfwHome(t *testing.T) {
 	withScfwHome(t, "/tmp/scfw-home")
 
 	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n" + `export SCFW_HOME="/tmp/scfw-home"` + "\n"
-	if got := buildManagedBlock(nil); got != want {
+	if got := buildManagedBlock(managedConfiguration{}); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 }
@@ -605,6 +605,8 @@ func TestRunConfigure_RemovesOnlyRequestedAlias(t *testing.T) {
 		`alias pip="scfw run -- pip"` + "\n" +
 		`alias pip3="scfw run -- pip3"` + "\n" +
 		`alias poetry="scfw run -- poetry"` + "\n" +
+		`export SCFW_HOME="/tmp/scfw-home"` + "\n" +
+		`export DD_SITE="datadoghq.eu"` + "\n" +
 		blockEnd + "\n"
 	if err := os.WriteFile(path, []byte(seeded), 0o644); err != nil {
 		t.Fatalf("failed to seed %q: %v", path, err)
@@ -623,6 +625,11 @@ func TestRunConfigure_RemovesOnlyRequestedAlias(t *testing.T) {
 		t.Fatalf(".bashrc = %q, want the pip aliases removed", got)
 	}
 	for _, want := range []string{`alias npm="scfw run -- npm"`, `alias poetry="scfw run -- poetry"`} {
+		if !strings.Contains(string(got), want) {
+			t.Fatalf(".bashrc = %q, want it to preserve %q", got, want)
+		}
+	}
+	for _, want := range []string{`export SCFW_HOME="/tmp/scfw-home"`, `export DD_SITE="datadoghq.eu"`} {
 		if !strings.Contains(string(got), want) {
 			t.Fatalf(".bashrc = %q, want it to preserve %q", got, want)
 		}

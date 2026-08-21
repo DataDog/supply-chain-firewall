@@ -25,6 +25,10 @@ var doctorCmd = &cobra.Command{
 }
 
 func runDoctor(cmd *cobra.Command, args []string) error {
+	// Diagnostic failures describe an unhealthy installation rather than invalid
+	// command usage, so do not append Cobra's usage text when returning them.
+	cmd.SilenceUsage = true
+
 	apiKey, apiKeyCredentialSource, apiKeyErr := ddapi.ResolveDatadogAPIKey()
 	appKey, appKeyCredentialSource, appKeyErr := ddapi.ResolveDatadogAppKey()
 	apiKeyReportErr := reportCredential(cmd.OutOrStdout(), "API Key", apiKey, apiKeyCredentialSource, apiKeyErr)

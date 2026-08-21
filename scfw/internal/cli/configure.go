@@ -127,7 +127,11 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 				errs = append(errs, err)
 				continue
 			}
-			content = buildManagedBlock(existingConfig)
+			content = buildManagedBlock(
+				existingConfig,
+				cmd.Flags().Changed("scfw-home"),
+				cmd.Flags().Changed("dd-site"),
+			)
 		}
 		if err := updateConfigFile(path, content); err != nil {
 			errs = append(errs, err)
@@ -146,7 +150,7 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 // buildManagedBlock formats the currently selected configuration options
 // into the content of SCFW's managed block. Previously configured aliases
 // remain enabled when their corresponding flags are omitted.
-func buildManagedBlock(existingConfig managedConfiguration) string {
+func buildManagedBlock(existingConfig managedConfiguration, scfwHomeChanged, ddSiteChanged bool) string {
 	var b strings.Builder
 	if !removeAliasNpm && (aliasNpm || hasConfiguredAlias(existingConfig.aliases, "npm")) {
 		b.WriteString(`alias npm="scfw run -- npm"` + "\n")
@@ -158,16 +162,16 @@ func buildManagedBlock(existingConfig managedConfiguration) string {
 	if !removeAliasPoetry && (aliasPoetry || hasConfiguredAlias(existingConfig.aliases, "poetry")) {
 		b.WriteString(`alias poetry="scfw run -- poetry"` + "\n")
 	}
-	configuredScfwHome := scfwHome
-	if configuredScfwHome == "" {
-		configuredScfwHome = existingConfig.scfwHome
+	configuredScfwHome := existingConfig.scfwHome
+	if scfwHomeChanged || scfwHome != "" {
+		configuredScfwHome = scfwHome
 	}
 	if configuredScfwHome != "" {
 		fmt.Fprintf(&b, "export SCFW_HOME=%q\n", configuredScfwHome)
 	}
-	configuredDdSite := ddSite
-	if configuredDdSite == "" {
-		configuredDdSite = existingConfig.ddSite
+	configuredDdSite := existingConfig.ddSite
+	if ddSiteChanged || ddSite != "" {
+		configuredDdSite = ddSite
 	}
 	if configuredDdSite != "" {
 		fmt.Fprintf(&b, "export DD_SITE=%q\n", configuredDdSite)

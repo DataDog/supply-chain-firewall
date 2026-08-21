@@ -211,39 +211,39 @@ func withRemoveAliasPip(t *testing.T, value bool) {
 
 func TestBuildManagedBlock(t *testing.T) {
 	withAliasPip(t, false)
-	if got := buildManagedBlock(managedConfiguration{}); got != "" {
+	if got := buildManagedBlock(managedConfiguration{}, false, false); got != "" {
 		t.Fatalf("buildManagedBlock() = %q, want empty string", got)
 	}
 
 	withAliasPip(t, true)
 	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n"
-	if got := buildManagedBlock(managedConfiguration{}); got != want {
+	if got := buildManagedBlock(managedConfiguration{}, false, false); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 }
 
 func TestBuildManagedBlock_AliasNpm(t *testing.T) {
 	withAliasNpm(t, false)
-	if got := buildManagedBlock(managedConfiguration{}); got != "" {
+	if got := buildManagedBlock(managedConfiguration{}, false, false); got != "" {
 		t.Fatalf("buildManagedBlock() = %q, want empty string", got)
 	}
 
 	withAliasNpm(t, true)
 	want := `alias npm="scfw run -- npm"` + "\n"
-	if got := buildManagedBlock(managedConfiguration{}); got != want {
+	if got := buildManagedBlock(managedConfiguration{}, false, false); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 }
 
 func TestBuildManagedBlock_AliasPoetry(t *testing.T) {
 	withAliasPoetry(t, false)
-	if got := buildManagedBlock(managedConfiguration{}); got != "" {
+	if got := buildManagedBlock(managedConfiguration{}, false, false); got != "" {
 		t.Fatalf("buildManagedBlock() = %q, want empty string", got)
 	}
 
 	withAliasPoetry(t, true)
 	want := `alias poetry="scfw run -- poetry"` + "\n"
-	if got := buildManagedBlock(managedConfiguration{}); got != want {
+	if got := buildManagedBlock(managedConfiguration{}, false, false); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 }
@@ -262,7 +262,7 @@ func TestBuildManagedBlock_IncludesDdSite(t *testing.T) {
 	withDdSite(t, "datadoghq.eu")
 
 	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n" + `export DD_SITE="datadoghq.eu"` + "\n"
-	if got := buildManagedBlock(managedConfiguration{}); got != want {
+	if got := buildManagedBlock(managedConfiguration{}, false, false); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 }
@@ -281,7 +281,7 @@ func TestBuildManagedBlock_IncludesScfwHome(t *testing.T) {
 	withScfwHome(t, "/tmp/scfw-home")
 
 	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n" + `export SCFW_HOME="/tmp/scfw-home"` + "\n"
-	if got := buildManagedBlock(managedConfiguration{}); got != want {
+	if got := buildManagedBlock(managedConfiguration{}, false, false); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
 }
@@ -633,6 +633,62 @@ func TestRunConfigure_RemovesOnlyRequestedAlias(t *testing.T) {
 		if !strings.Contains(string(got), want) {
 			t.Fatalf(".bashrc = %q, want it to preserve %q", got, want)
 		}
+	}
+}
+
+func TestConfigureCmd_ExplicitEmptyExportRemovesExistingValue(t *testing.T) {
+	tests := []struct {
+		name          string
+		flag          string
+		removedExport string
+		keptExport    string
+	}{
+		{
+			name:          "scfw home",
+			flag:          "--scfw-home=",
+			removedExport: `export SCFW_HOME="/tmp/scfw-home"`,
+			keptExport:    `export DD_SITE="datadoghq.eu"`,
+		},
+		{
+			name:          "Datadog site",
+			flag:          "--dd-site=",
+			removedExport: `export DD_SITE="datadoghq.eu"`,
+			keptExport:    `export SCFW_HOME="/tmp/scfw-home"`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resetConfigureCmd(t)
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+
+			path := filepath.Join(home, ".bashrc")
+			seeded := blockStart + "\n" +
+				`alias npm="scfw run -- npm"` + "\n" +
+				`export SCFW_HOME="/tmp/scfw-home"` + "\n" +
+				`export DD_SITE="datadoghq.eu"` + "\n" +
+				blockEnd + "\n"
+			if err := os.WriteFile(path, []byte(seeded), 0o644); err != nil {
+				t.Fatalf("failed to seed %q: %v", path, err)
+			}
+
+			configureCmd.SetArgs([]string{tc.flag})
+			if err := configureCmd.Execute(); err != nil {
+				t.Fatalf("configureCmd.Execute() returned unexpected error: %v", err)
+			}
+
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("failed to read %q: %v", path, err)
+			}
+			if strings.Contains(string(got), tc.removedExport) {
+				t.Fatalf(".bashrc = %q, want it to remove %q", got, tc.removedExport)
+			}
+			if !strings.Contains(string(got), tc.keptExport) {
+				t.Fatalf(".bashrc = %q, want it to preserve %q", got, tc.keptExport)
+			}
+		})
 	}
 }
 

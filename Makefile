@@ -50,6 +50,12 @@ test-poetry:
 test-poetry-class:
 	COVERAGE_FILE=.coverage.poetry.class coverage run -m pytest tests/package_managers/test_poetry_class.py
 
+test-uv:
+	COVERAGE_FILE=.coverage.uv coverage run -m pytest tests/package_managers/test_uv.py
+
+test-uv-class:
+	COVERAGE_FILE=.coverage.uv.class coverage run -m pytest tests/package_managers/test_uv_class.py
+
 test-report:
 	COVERAGE_FILE=.coverage.report coverage run -m pytest tests/test_report.py
 

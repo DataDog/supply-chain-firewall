@@ -98,3 +98,11 @@ class UnsupportedVersionError(Exception):
     and run commands with unsupported versions of supported package managers.
     """
     pass
+
+
+class InstallTargetResolutionError(Exception):
+    """
+    An exception that occurs when a package manager command's installation
+    targets cannot be resolved safely for verification.
+    """
+    pass

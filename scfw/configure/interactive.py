@@ -59,6 +59,11 @@ def get_answers() -> dict:
             default=True
         ),
         inquirer.Confirm(
+            name="alias-uv",
+            message="Would you like to set a shell alias to run all uv commands through SCFW?",
+            default=True
+        ),
+        inquirer.Confirm(
             name="dd_agent_logger",
             message="If you have the Datadog Agent installed locally, would you like to forward SCFW logs to it?",
             default=False

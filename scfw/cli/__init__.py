@@ -78,6 +78,12 @@ def _add_configure_cli(parser: ArgumentParser):
     )
 
     parser.add_argument(
+        "--alias-uv",
+        action="store_true",
+        help="Add shell aliases to always run uv commands through Supply Chain Firewall"
+    )
+
+    parser.add_argument(
         "--dd-agent-port",
         type=str,
         default=None,

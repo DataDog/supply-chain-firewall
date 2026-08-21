@@ -10,12 +10,12 @@ Currently, `npm` audits do not take globally installed packages into considerati
 
 ```bash
 $ scfw audit --help
-usage: scfw audit [-h] [--executable PATH] {npm,pip,poetry}
+usage: scfw audit [-h] [--executable PATH] {npm,pip,poetry,uv}
 
 Audit installed packages using Supply Chain Firewall's verifiers.
 
 positional arguments:
-  {npm,pip,poetry}   The package manager whose installed packages should be verified
+  {npm,pip,poetry,uv}   The package manager whose installed packages should be verified
 
 options:
   -h, --help         show this help message and exit
@@ -44,6 +44,7 @@ options:
   --alias-npm           Add shell aliases to always run npm commands through Supply Chain Firewall
   --alias-pip           Add shell aliases to always run pip commands through Supply Chain Firewall
   --alias-poetry        Add shell aliases to always run Poetry commands through Supply Chain Firewall
+  --alias-uv            Add shell aliases to always run uv commands through Supply Chain Firewall
   --dd-agent-port PORT  Configure log forwarding to the local Datadog Agent on the given port
   --dd-api-key KEY      API key for forwarding logs to the Datadog HTTP API or Code Security
   --dd-app-key KEY      Application key for forwarding logs to Datadog Code Security

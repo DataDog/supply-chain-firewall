@@ -27,14 +27,17 @@ var configureCmd = &cobra.Command{
 }
 
 var (
-	aliasNpm    bool
-	aliasPip    bool
-	aliasPoetry bool
-	ddAPIKey    string
-	ddAppKey    string
-	ddSite      string
-	scfwHome    string
-	remove      bool
+	aliasNpm          bool
+	aliasPip          bool
+	aliasPoetry       bool
+	removeAliasNpm    bool
+	removeAliasPip    bool
+	removeAliasPoetry bool
+	ddAPIKey          string
+	ddAppKey          string
+	ddSite            string
+	scfwHome          string
+	remove            bool
 )
 
 // configureArgType is the set of flag value types registerConfigureArg
@@ -66,12 +69,18 @@ func registerConfigureArg[T configureArgType](name string, defaultValue T, help 
 func init() {
 	configureCmd.Flags().BoolVar(&remove, "remove", false, "Remove all Supply Chain Firewall managed configuration.")
 	registerConfigureArg("alias-npm", false, "Add shell aliases to run all npm commands through Supply Chain Firewall.", &aliasNpm)
+	registerConfigureArg("remove-alias-npm", false, "Remove Supply Chain Firewall's npm shell alias.", &removeAliasNpm)
 	registerConfigureArg("alias-pip", false, "Add shell aliases to run all pip commands through Supply Chain Firewall.", &aliasPip)
+	registerConfigureArg("remove-alias-pip", false, "Remove Supply Chain Firewall's pip shell aliases.", &removeAliasPip)
 	registerConfigureArg("alias-poetry", false, "Add shell aliases to run all poetry commands through Supply Chain Firewall.", &aliasPoetry)
+	registerConfigureArg("remove-alias-poetry", false, "Remove Supply Chain Firewall's poetry shell alias.", &removeAliasPoetry)
 	registerConfigureArg("dd-api-key", "", "Datadog API key used for policy evaluation and reporting.", &ddAPIKey)
 	registerConfigureArg("dd-app-key", "", "Datadog application key used for policy evaluation and reporting.", &ddAppKey)
 	registerConfigureArg("dd-site", "", "Datadog site parameter used for policy evaluation and reporting.", &ddSite)
 	registerConfigureArg("scfw-home", "", "Directory that Supply Chain Firewall can use as a local cache.", &scfwHome)
+	configureCmd.MarkFlagsMutuallyExclusive("alias-npm", "remove-alias-npm")
+	configureCmd.MarkFlagsMutuallyExclusive("alias-pip", "remove-alias-pip")
+	configureCmd.MarkFlagsMutuallyExclusive("alias-poetry", "remove-alias-poetry")
 	configureCmd.MarkFlagsOneRequired(configureArgNames...)
 }
 
@@ -109,13 +118,22 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 		return errors.Join(errs...)
 	}
 
-	var content string
-	if !remove {
-		content = buildManagedBlock()
-	}
-
 	for _, name := range configFiles {
-		if err := updateConfigFile(filepath.Join(home, name), content); err != nil {
+		path := filepath.Join(home, name)
+		var content string
+		if !remove {
+			existingConfig, err := readManagedConfiguration(path)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			content = buildManagedBlock(
+				existingConfig,
+				cmd.Flags().Changed("scfw-home"),
+				cmd.Flags().Changed("dd-site"),
+			)
+		}
+		if err := updateConfigFile(path, content); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -130,26 +148,44 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 }
 
 // buildManagedBlock formats the currently selected configuration options
-// into the content of SCFW's managed block.
-func buildManagedBlock() string {
+// into the content of SCFW's managed block. Previously configured aliases
+// remain enabled when their corresponding flags are omitted.
+func buildManagedBlock(existingConfig managedConfiguration, scfwHomeChanged, ddSiteChanged bool) string {
 	var b strings.Builder
-	if aliasNpm {
+	if !removeAliasNpm && (aliasNpm || hasConfiguredAlias(existingConfig.aliases, "npm")) {
 		b.WriteString(`alias npm="scfw run -- npm"` + "\n")
 	}
-	if aliasPip {
+	if !removeAliasPip && (aliasPip || hasConfiguredAlias(existingConfig.aliases, "pip", "pip3")) {
 		b.WriteString(`alias pip="scfw run -- pip"` + "\n")
 		b.WriteString(`alias pip3="scfw run -- pip3"` + "\n")
 	}
-	if aliasPoetry {
+	if !removeAliasPoetry && (aliasPoetry || hasConfiguredAlias(existingConfig.aliases, "poetry")) {
 		b.WriteString(`alias poetry="scfw run -- poetry"` + "\n")
 	}
-	if scfwHome != "" {
-		fmt.Fprintf(&b, "export SCFW_HOME=%q\n", scfwHome)
+	configuredScfwHome := existingConfig.scfwHome
+	if scfwHomeChanged || scfwHome != "" {
+		configuredScfwHome = scfwHome
 	}
-	if ddSite != "" {
-		fmt.Fprintf(&b, "export DD_SITE=%q\n", ddSite)
+	if configuredScfwHome != "" {
+		fmt.Fprintf(&b, "export SCFW_HOME=%q\n", configuredScfwHome)
+	}
+	configuredDdSite := existingConfig.ddSite
+	if ddSiteChanged || ddSite != "" {
+		configuredDdSite = ddSite
+	}
+	if configuredDdSite != "" {
+		fmt.Fprintf(&b, "export DD_SITE=%q\n", configuredDdSite)
 	}
 	return b.String()
+}
+
+func hasConfiguredAlias(existingAliases map[string]string, names ...string) bool {
+	for _, name := range names {
+		if existingAliases[name] == expectedAliasTarget(name) {
+			return true
+		}
+	}
+	return false
 }
 
 // updateConfigFile merges content into path's managed block and writes the
@@ -177,43 +213,71 @@ func updateConfigFile(path, content string) error {
 	return nil
 }
 
-// readManagedBlock returns the aliases defined in SCFW's managed
+type managedConfiguration struct {
+	aliases  map[string]string
+	scfwHome string
+	ddSite   string
+}
+
+// readManagedConfiguration returns the aliases and exports defined in SCFW's managed
 // block in path. Files without a managed block (including missing files)
-// contain no managed aliases.
-func readManagedBlock(path string) (map[string]string, error) {
+// contain no managed configuration.
+func readManagedConfiguration(path string) (managedConfiguration, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return managedConfiguration{}, nil
 		}
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return managedConfiguration{}, fmt.Errorf("%s: %w", path, err)
 	}
 
 	content := string(data)
 	block, err := parseManagedBlock(content)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return managedConfiguration{}, fmt.Errorf("%s: %w", path, err)
 	}
 	if !block.found {
-		return nil, nil
+		return managedConfiguration{}, nil
 	}
 
-	aliases := make(map[string]string)
+	config := managedConfiguration{aliases: make(map[string]string)}
 	for line := range strings.Lines(content[block.contentStart:block.contentEnd]) {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "alias ") {
+		if strings.HasPrefix(line, "alias ") {
+			name, value, ok := strings.Cut(strings.TrimSpace(strings.TrimPrefix(line, "alias ")), "=")
+			if name = strings.TrimSpace(name); ok && name != "" {
+				config.aliases[name] = unquoteConfigValue(value)
+			}
 			continue
 		}
-		name, value, ok := strings.Cut(strings.TrimSpace(strings.TrimPrefix(line, "alias ")), "=")
-		if name = strings.TrimSpace(name); ok && name != "" {
-			value = strings.TrimSpace(value)
-			if unquoted, err := strconv.Unquote(value); err == nil {
-				value = unquoted
+		if strings.HasPrefix(line, "export ") {
+			name, value, ok := strings.Cut(strings.TrimSpace(strings.TrimPrefix(line, "export ")), "=")
+			if !ok {
+				continue
 			}
-			aliases[name] = value
+			switch strings.TrimSpace(name) {
+			case "SCFW_HOME":
+				config.scfwHome = unquoteConfigValue(value)
+			case "DD_SITE":
+				config.ddSite = unquoteConfigValue(value)
+			}
 		}
 	}
-	return aliases, nil
+	return config, nil
+}
+
+// readManagedBlock returns the aliases defined in SCFW's managed block in path.
+func readManagedBlock(path string) (map[string]string, error) {
+	config, err := readManagedConfiguration(path)
+	return config.aliases, err
+}
+
+func unquoteConfigValue(value string) string {
+	value = strings.TrimSpace(value)
+	if unquoted, err := strconv.Unquote(value); err == nil {
+		return unquoted
+	}
+	return value
 }
 
 const (

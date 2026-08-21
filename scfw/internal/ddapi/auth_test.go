@@ -130,7 +130,7 @@ func TestDdCredentials_KeychainFallback(t *testing.T) {
 	}
 }
 
-func TestDdCredentials_EnvPreferredEvenWithPartialKeychain(t *testing.T) {
+func TestResolveDatadogCredentials_ReturnSources(t *testing.T) {
 	withEnv(t, ddAPIKeyVar, "env-api-key")
 	withEnv(t, ddAppKeyVar, "")
 	withKeyringGet(t, func(service, account string) (string, error) {
@@ -145,12 +145,16 @@ func TestDdCredentials_EnvPreferredEvenWithPartialKeychain(t *testing.T) {
 		}
 	})
 
-	apiKey, appKey, err := ddCredentials()
-	if err != nil {
-		t.Fatalf("ddCredentials() returned unexpected error: %v", err)
+	apiKey, apiKeySource, apiKeyErr := ResolveDatadogAPIKey()
+	appKey, appKeySource, appKeyErr := ResolveDatadogAppKey()
+	if err := errors.Join(apiKeyErr, appKeyErr); err != nil {
+		t.Fatalf("credential resolvers returned unexpected error: %v", err)
 	}
 	if apiKey != "env-api-key" || appKey != "keychain-app-key" {
-		t.Fatalf("ddCredentials() = (%q, %q), want (%q, %q)", apiKey, appKey, "env-api-key", "keychain-app-key")
+		t.Fatalf("credential resolvers returned (%q, %q), want (%q, %q)", apiKey, appKey, "env-api-key", "keychain-app-key")
+	}
+	if apiKeySource != CredentialSourceEnv || appKeySource != CredentialSourceKeychain {
+		t.Fatalf("credential resolver sources = (%q, %q), want (%q, %q)", apiKeySource, appKeySource, CredentialSourceEnv, CredentialSourceKeychain)
 	}
 }
 

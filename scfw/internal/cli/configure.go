@@ -119,7 +119,14 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 			errs = append(errs, err)
 		}
 	}
-	return errors.Join(errs...)
+	if err := errors.Join(errs...); err != nil {
+		return err
+	}
+
+	if _, err := fmt.Fprintln(cmd.OutOrStdout(), "Configuration updated. Restart your terminal for the changes to take effect."); err != nil {
+		return fmt.Errorf("scfw configure: write restart notice: %w", err)
+	}
+	return nil
 }
 
 // buildManagedBlock formats the currently selected configuration options

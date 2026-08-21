@@ -6,6 +6,7 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"maps"
@@ -483,6 +484,26 @@ func TestRunConfigure(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(home, name)); !os.IsNotExist(err) {
 			t.Fatalf("runConfigure() created %q, want it skipped since it didn't already exist", name)
 		}
+	}
+}
+
+func TestRunConfigure_TellsUserToRestartTerminal(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	withAliasPip(t, true)
+
+	if err := os.WriteFile(filepath.Join(home, ".zshrc"), nil, 0o644); err != nil {
+		t.Fatalf("failed to seed .zshrc: %v", err)
+	}
+
+	var output bytes.Buffer
+	cmd := *configureCmd
+	cmd.SetOut(&output)
+	if err := runConfigure(&cmd, nil); err != nil {
+		t.Fatalf("runConfigure() returned unexpected error: %v", err)
+	}
+	if want := "restart your terminal"; !strings.Contains(strings.ToLower(output.String()), want) {
+		t.Fatalf("configure output %q does not contain %q", output.String(), want)
 	}
 }
 

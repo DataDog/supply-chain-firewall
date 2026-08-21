@@ -28,18 +28,21 @@ var logLevels = map[string]slog.Level{
 
 var logLevel string
 
+const verboseEnvVar = "SCFW_VERBOSE"
+
 func RootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "scfw",
-		Short:   "Supply Chain Firewall, a tool for preventing the installation of malicious software packages.",
+		Use:   "scfw",
+		Short: "Supply Chain Firewall is a Datadog tool that prevents the installation of malicious software packages.",
+		Long: `Supply Chain Firewall is a Datadog tool that prevents the installation of malicious software packages.
+
+Set SCFW_VERBOSE to enable detailed progress and diagnostic logging.`,
+		Example: `  scfw configure --dd-api-key=<your-api-key> --dd-app-key=<your-app-key> --alias-npm --alias-pip --alias-poetry
+  scfw run -- npm install react
+  scfw run -- pip install requests`,
 		Version: build.GetVersion(),
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			level, ok := logLevels[logLevel]
-			if !ok {
-				return fmt.Errorf("invalid --log-level %q: must be one of %v", logLevel, slices.Sorted(maps.Keys(logLevels)))
-			}
-			slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
-			return nil
+			return configureLogging(logLevel)
 		},
 	}
 
@@ -52,6 +55,18 @@ func RootCmd() *cobra.Command {
 	)
 
 	return cmd
+}
+
+func configureLogging(logLevel string) error {
+	level, ok := logLevels[logLevel]
+	if !ok {
+		return fmt.Errorf("invalid --log-level %q: must be one of %v", logLevel, slices.Sorted(maps.Keys(logLevels)))
+	}
+	if os.Getenv(verboseEnvVar) != "" {
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+	return nil
 }
 
 // Raises error if any of cmd's string flags was given a value starting with "--",

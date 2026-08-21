@@ -59,7 +59,7 @@ def get_answers() -> dict:
             default=True
         ),
         inquirer.Confirm(
-            name="alias-uv",
+            name="alias_uv",
             message="Would you like to set a shell alias to run all uv commands through SCFW?",
             default=True
         ),

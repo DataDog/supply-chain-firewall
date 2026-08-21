@@ -31,7 +31,7 @@ def remove_config() -> int:
         "alias_npm": False,
         "alias_pip": False,
         "alias_poetry": False,
-        "alias-uv": False,
+        "alias_uv": False,
         "dd_agent_port": None,
         "dd_api_key": None,
         "dd_app_key": None,
@@ -112,7 +112,7 @@ def _format_answers(answers: dict) -> str:
         config += 'alias pip="scfw run pip"\n'
     if answers.get("alias_poetry"):
         config += 'alias poetry="scfw run poetry"\n'
-    if answers.get("alias-uv"):
+    if answers.get("alias_uv"):
         config += 'alias uv="scfw run uv"\n'
     if (dd_agent_port := answers.get("dd_agent_port")):
         config += f'export {DD_AGENT_PORT_VAR}="{dd_agent_port}"\n'

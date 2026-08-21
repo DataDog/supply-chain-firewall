@@ -49,7 +49,7 @@ def test_metadata():
 )
 def test_uv_command_resolve_install_targets(command_line: list[str], has_targets: bool, monkeypatch, tmp_path: Path):
     """
-    Tests that `Uv.resolve_install_targets` correctly identifies whether commands
+    Test that `Uv.resolve_install_targets` correctly identifies whether commands
     have installation targets or should be skipped via flags/subcommands,
     without modifying the environment.
     """
@@ -75,7 +75,7 @@ def test_uv_command_resolve_install_targets(command_line: list[str], has_targets
 
 def test_uv_get_installed_packages(monkeypatch):
     """
-    Tests that `Uv.get_installed_packages` returns the set of installed packages
+    Test that `Uv.get_installed_packages` returns the set of installed packages
     matching the environment state.
     """
     with TemporaryDirectory() as tmp:

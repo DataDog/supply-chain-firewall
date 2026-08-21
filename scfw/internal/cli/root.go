@@ -50,6 +50,7 @@ Set SCFW_VERBOSE to enable detailed progress and diagnostic logging.`,
 
 	cmd.AddCommand(
 		configureCmd,
+		doctorCmd,
 		runCmd,
 	)
 

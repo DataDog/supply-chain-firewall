@@ -30,31 +30,57 @@ const (
 	keychainBase64Prefix = "go-keyring-base64:"
 )
 
-// Return the configured Datadog API key and application key. Each is
+// Represents where the credential have been sourced from
+type CredentialSource string
+
+const (
+	CredentialSourceKeychain CredentialSource = "Keychain"
+	CredentialSourceEnv      CredentialSource = "Environment"
+)
+
+// Returns the configured Datadog API key and application key. Each is
 // resolved independently: the corresponding environment variable is
 // preferred, falling back to the system keychain if the environment
 // variable is unset or empty.
 func ddCredentials() (ddAPIKey, ddAppKey string, err error) {
-	if ddAPIKey, err = resolveCredential(KeychainAPIKeyAccount, ddAPIKeyVar); err != nil {
-		return "", "", fmt.Errorf("failed to resolve Datadog API key: %w", err)
+	if ddAPIKey, _, err = ResolveDatadogAPIKey(); err != nil {
+		return "", "", err
 	}
-	if ddAppKey, err = resolveCredential(KeychainAppKeyAccount, ddAppKeyVar); err != nil {
-		return "", "", fmt.Errorf("failed to resolve Datadog application key: %w", err)
+	if ddAppKey, _, err = ResolveDatadogAppKey(); err != nil {
+		return "", "", err
 	}
 	return ddAPIKey, ddAppKey, nil
 }
 
+// ResolveDatadogAPIKey returns the configured Datadog API key and its source.
+func ResolveDatadogAPIKey() (string, CredentialSource, error) {
+	value, source, err := resolveCredential(KeychainAPIKeyAccount, ddAPIKeyVar)
+	if err != nil {
+		return "", source, fmt.Errorf("failed to resolve Datadog API key: %w", err)
+	}
+	return value, source, nil
+}
+
+// ResolveDatadogAppKey returns the configured Datadog application key and its source.
+func ResolveDatadogAppKey() (string, CredentialSource, error) {
+	value, source, err := resolveCredential(KeychainAppKeyAccount, ddAppKeyVar)
+	if err != nil {
+		return "", source, fmt.Errorf("failed to resolve Datadog application key: %w", err)
+	}
+	return value, source, nil
+}
+
 // resolveCredential returns the value of a single credential, preferring
 // envVar and falling back to the system keychain if envVar is unset or empty.
-func resolveCredential(account, envVar string) (string, error) {
+func resolveCredential(account, envVar string) (string, CredentialSource, error) {
 	if value := os.Getenv(envVar); value != "" {
-		return value, nil
+		return value, CredentialSourceEnv, nil
 	}
 	value, err := keychainSecret(account)
 	if err != nil {
-		return "", fmt.Errorf("not found in %s or keychain: %w", envVar, err)
+		return "", CredentialSourceKeychain, fmt.Errorf("not found in %s or keychain: %w", envVar, err)
 	}
-	return value, nil
+	return value, CredentialSourceKeychain, nil
 }
 
 // keyringGet indirects through keyring.Get so tests can substitute a fake.

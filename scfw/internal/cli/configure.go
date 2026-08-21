@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -176,12 +177,102 @@ func updateConfigFile(path, content string) error {
 	return nil
 }
 
+// readManagedBlock returns the aliases defined in SCFW's managed
+// block in path. Files without a managed block (including missing files)
+// contain no managed aliases.
+func readManagedBlock(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+
+	content := string(data)
+	block, err := parseManagedBlock(content)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if !block.found {
+		return nil, nil
+	}
+
+	aliases := make(map[string]string)
+	for line := range strings.Lines(content[block.contentStart:block.contentEnd]) {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "alias ") {
+			continue
+		}
+		name, value, ok := strings.Cut(strings.TrimSpace(strings.TrimPrefix(line, "alias ")), "=")
+		if name = strings.TrimSpace(name); ok && name != "" {
+			value = strings.TrimSpace(value)
+			if unquoted, err := strconv.Unquote(value); err == nil {
+				value = unquoted
+			}
+			aliases[name] = value
+		}
+	}
+	return aliases, nil
+}
+
 const (
 	// Markers delimiting the block of shell configuration that SCFW manages
 	// within a user's rc file. Content outside the block is left untouched.
 	blockStart = "# BEGIN SCFW MANAGED BLOCK"
 	blockEnd   = "# END SCFW MANAGED BLOCK"
 )
+
+type managedBlock struct {
+	found                    bool
+	start, end               int
+	contentStart, contentEnd int
+}
+
+// parseManagedBlock validates marker ordering and returns the byte boundaries
+// of the single managed block, if present. Markers must occupy their own line.
+func parseManagedBlock(content string) (managedBlock, error) {
+	var block managedBlock
+	inside := false
+
+	for offset := 0; offset < len(content); {
+		lineStart := offset
+		lineEnd := len(content)
+		if newline := strings.IndexByte(content[offset:], '\n'); newline >= 0 {
+			lineEnd = offset + newline
+			offset = lineEnd + 1
+		} else {
+			offset = len(content)
+		}
+
+		marker := strings.TrimSpace(content[lineStart:lineEnd])
+		switch marker {
+		case blockStart:
+			if inside {
+				return managedBlock{}, fmt.Errorf("malformed SCFW managed block: nested start marker")
+			}
+			if block.found {
+				return managedBlock{}, fmt.Errorf("multiple SCFW managed blocks found")
+			}
+			block.found = true
+			block.start = lineStart
+			block.contentStart = offset
+			inside = true
+		case blockEnd:
+			if !inside {
+				return managedBlock{}, fmt.Errorf("malformed SCFW managed block: end marker without a start marker")
+			}
+			block.contentEnd = lineStart
+			block.end = offset
+			inside = false
+		}
+	}
+
+	if inside {
+		return managedBlock{}, fmt.Errorf("malformed SCFW managed block: missing end marker")
+	}
+	return block, nil
+}
 
 // mergeManagedBlock returns the contents of a shell rc file with SCFW's
 // managed block set to content. An empty content removes the block
@@ -193,11 +284,11 @@ func mergeManagedBlock(original, content string) (string, error) {
 		content = strings.TrimRight(content, "\n") + "\n"
 	}
 
-	start := strings.Index(original, blockStart)
-	if start == -1 {
-		if strings.Contains(original, blockEnd) {
-			return "", fmt.Errorf("malformed SCFW managed block: end marker without a start marker")
-		}
+	block, err := parseManagedBlock(original)
+	if err != nil {
+		return "", err
+	}
+	if !block.found {
 		if content == "" {
 			return original, nil
 		}
@@ -205,18 +296,7 @@ func mergeManagedBlock(original, content string) (string, error) {
 		return joinNonEmpty(original, blockStart+"\n"+content+blockEnd), nil
 	}
 
-	afterStart := start + len(blockStart)
-	endRel := strings.Index(original[afterStart:], blockEnd)
-	if endRel == -1 {
-		return "", fmt.Errorf("malformed SCFW managed block: missing end marker")
-	}
-	end := afterStart + endRel + len(blockEnd)
-
-	if strings.Contains(original[end:], blockStart) {
-		return "", fmt.Errorf("multiple SCFW managed blocks found")
-	}
-
-	before, after := original[:start], original[end:]
+	before, after := original[:block.start], original[block.end:]
 
 	if content == "" {
 		return joinNonEmpty(before, after), nil

@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -118,6 +119,19 @@ func TestMergeManagedBlock(t *testing.T) {
 		{
 			name:     "multiple blocks is an error",
 			original: existingBlock + "\n\n" + existingBlock,
+			content:  "anything",
+			wantErr:  true,
+		},
+		{
+			name: "nested start marker is an error",
+			original: blockStart + "\n" + blockStart + "\n" +
+				blockEnd + "\n" + blockEnd + "\n",
+			content: "anything",
+			wantErr: true,
+		},
+		{
+			name:     "orphaned end before a valid block is an error",
+			original: blockEnd + "\n" + existingBlock + "\n",
 			content:  "anything",
 			wantErr:  true,
 		},
@@ -353,6 +367,90 @@ func TestUpdateConfigFile_MalformedBlockIsError(t *testing.T) {
 
 	if err := updateConfigFile(path, "anything"); err == nil {
 		t.Fatal("updateConfigFile() = nil error, want error")
+	}
+}
+
+func TestReadManagedBlock(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    map[string]string
+		wantErr bool
+	}{
+		{name: "no managed block", content: "alias user_alias=command\n"},
+		{
+			name: "returns managed aliases and ignores other settings",
+			content: "export BEFORE=1\n" + blockStart + "\n" +
+				`alias npm="scfw run -- npm"` + "\n" +
+				"export DD_SITE=datadoghq.eu\n" +
+				`alias pip="scfw run -- pip"` + "\n" +
+				`alias pip3="scfw run -- pip3"` + "\n" + blockEnd + "\n",
+			want: map[string]string{
+				"npm":  "scfw run -- npm",
+				"pip":  "scfw run -- pip",
+				"pip3": "scfw run -- pip3",
+			},
+		},
+		{name: "empty managed block", content: blockStart + "\n" + blockEnd + "\n"},
+		{name: "missing end marker", content: blockStart + "\nalias npm=command\n", wantErr: true},
+		{name: "end marker without start", content: blockEnd + "\n", wantErr: true},
+		{
+			name: "end marker before valid block",
+			content: blockEnd + "\n" + blockStart + "\n" +
+				`alias npm="scfw run -- npm"` + "\n" + blockEnd + "\n",
+			wantErr: true,
+		},
+		{
+			name: "nested start marker",
+			content: blockStart + "\n" + blockStart + "\n" +
+				`alias npm="scfw run -- npm"` + "\n" + blockEnd + "\n" + blockEnd + "\n",
+			wantErr: true,
+		},
+		{
+			name: "extra end marker after valid block",
+			content: blockStart + "\n" + `alias npm="scfw run -- npm"` + "\n" +
+				blockEnd + "\n" + blockEnd + "\n",
+			wantErr: true,
+		},
+		{
+			name: "multiple blocks",
+			content: blockStart + "\n" + blockEnd + "\n" +
+				blockStart + "\n" + blockEnd + "\n",
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), ".zshrc")
+			if err := os.WriteFile(path, []byte(tc.content), 0o644); err != nil {
+				t.Fatalf("failed to seed %q: %v", path, err)
+			}
+
+			got, err := readManagedBlock(path)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("readManagedBlock() = %v, want error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("readManagedBlock() returned unexpected error: %v", err)
+			}
+			if !maps.Equal(got, tc.want) {
+				t.Fatalf("readManagedBlock() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestReadManagedBlock_MissingFile(t *testing.T) {
+	got, err := readManagedBlock(filepath.Join(t.TempDir(), ".bashrc"))
+	if err != nil {
+		t.Fatalf("readManagedBlock() returned unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("readManagedBlock() = %v, want nil", got)
 	}
 }
 

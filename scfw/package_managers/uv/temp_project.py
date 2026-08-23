@@ -1,5 +1,5 @@
 """
-Providers helpers for resolving uv project dependencies via requirements export,
+Provides helpers for resolving uv project dependencies via requirements export,
 along with a class for spinning up an ephemeral copy of a uv project to run them in.
 """
 
@@ -21,7 +21,7 @@ _log = logging.getLogger(__name__)
 class TemporaryUvProject:
     """
     Prepares a temporary uv project that duplicates a given one, allowing for executing
-    `uv` commands in the context of that project safely and withoiut affecting the original.
+    `uv` commands in the context of that project safely and without affecting the original.
 
     This class implements the context manager protocol, and indeed, the temporary resources
     needed by this class to run commands that exist only while inside a context. Invoking this

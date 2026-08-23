@@ -87,7 +87,7 @@ class Uv(PackageManager):
 
     def resolve_install_targets(self, command: list[str]) -> set[Package]:
         """
-        Resolve the installationj targets of the given `uv` command.
+        Resolve the installation targets of the given `uv` command.
 
         For `uv sync`, the project's requirements are exported via `uv export` and pip
         is used to determine what packages would actually be installed.
@@ -98,7 +98,7 @@ class Uv(PackageManager):
                 are to be resolved.
 
         Returns:
-            A `set[Package]` representing the package targets that would be instlled
+            A `set[Package]` representing the package targets that would be installed
             if `command` were run.
 
         Raises:
@@ -145,7 +145,7 @@ class Uv(PackageManager):
         Return the set of `PyPI` packages installed in the active `uv `environment.
 
         Returns:
-            A `set[Package]` representing al `PyPI` packages installed in the active
+            A `set[Package]` representing all `PyPI` packages installed in the active
             `uv` environment.
 
         Raises:

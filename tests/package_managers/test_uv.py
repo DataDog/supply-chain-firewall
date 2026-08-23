@@ -4,13 +4,13 @@ Tests of uv's command line behavior.
 
 import json
 import re
-from pathlib import Path
 import subprocess
-
-from scfw.package_managers.uv import Uv
+from pathlib import Path
 
 import packaging.version as version
 import pytest
+
+from scfw.package_managers.uv import Uv
 
 UV_COMMAND_PREFIX = ["uv"]
 
@@ -20,14 +20,18 @@ def uv_pip_list() -> str:
     Get the state of packages installed in an active environment via uv.
     """
     uv_command_list = UV_COMMAND_PREFIX + ["pip", "list", "--format", "freeze"]
-    return subprocess.run(uv_command_list, check=True, text=True, capture_output=True).stdout.lower()
+    return subprocess.run(
+        uv_command_list, check=True, text=True, capture_output=True
+    ).stdout.lower()
 
 
 def test_uv_version_output():
     """
     Test that `uv --version` has the required format and parses correctly.
     """
-    uv_version = subprocess.run(UV_COMMAND_PREFIX + ["--version"], check=True, text=True, capture_output=True)
+    uv_version = subprocess.run(
+        UV_COMMAND_PREFIX + ["--version"], check=True, text=True, capture_output=True
+    )
     match = re.match(r"^uv\s+(\S+)", uv_version.stdout.strip())
     assert match is not None
     parsed_version = version.parse(match.group(1))
@@ -60,6 +64,8 @@ def test_normalize_command(tmp_path: Path):
         UV_COMMAND_PREFIX + ["sync", "--help"],
         UV_COMMAND_PREFIX + ["export", "-h"],
         UV_COMMAND_PREFIX + ["export", "--help"],
+        UV_COMMAND_PREFIX + ["add", "-h"],
+        UV_COMMAND_PREFIX + ["add", "--help"],
     ],
 )
 def test_uv_no_change_flags(command_line: list[str]):
@@ -77,6 +83,7 @@ def test_uv_no_change_flags(command_line: list[str]):
     [
         UV_COMMAND_PREFIX + ["export", "--format", "invalid_format_type"],
         UV_COMMAND_PREFIX + ["sync", "--invalid=flag-abc"],
+        UV_COMMAND_PREFIX + ["add", "--invalid-option-xyz"],
     ],
 )
 def test_uv_command_error(command_line: list[str]):

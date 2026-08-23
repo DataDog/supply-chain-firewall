@@ -14,7 +14,11 @@ from packaging.version import InvalidVersion, Version, parse as version_parse
 
 from scfw.ecosystem import ECOSYSTEM
 from scfw.package import Package
-from scfw.package_manager import InstallTargetResolutionError, PackageManager, UnsupportedVersionError
+from scfw.package_manager import (
+    InstallTargetResolutionError,
+    PackageManager,
+    UnsupportedVersionError,
+)
 from scfw.package_managers.uv.temp_project import TemporaryUvProject
 
 _log = logging.getLogger(__name__)
@@ -22,6 +26,7 @@ _log = logging.getLogger(__name__)
 MIN_UV_VERSION = version_parse("0.5.0")
 
 INSPECTED_SUBCOMMANDS: set[str] = {
+    "add",
     "sync",
 }
 
@@ -43,6 +48,7 @@ class Uv(PackageManager):
             RuntimeError: A valid executable could not be resolved.
         """
         executable = executable if executable else shutil.which(self.name())
+
         if not executable:
             raise RuntimeError("Failed to resolve local uv executable: is uv installed?")
         if not os.path.isfile(executable):
@@ -106,10 +112,17 @@ class Uv(PackageManager):
             UnsupportedVersionError: The underlying `uv` executable is of an unsupported version.
         """
         normalized_command = self._normalize_command(command)
-        if not any(subcommand in normalized_command for subcommand in INSPECTED_SUBCOMMANDS):
-            return set()
 
-        self._check_version()
+        positional_args = [
+            arg
+            for arg in normalized_command[1:]
+            if not arg.startswith("-")
+        ]
+
+        subcommand = positional_args[0] if positional_args else None
+
+        if subcommand not in INSPECTED_SUBCOMMANDS:
+            return set()
 
         # https://docs.astral.sh/uv/reference/cli/
         common_flags: set[str] = {
@@ -119,12 +132,22 @@ class Uv(PackageManager):
             "--help",
             "--dry-run",
         }
+
         if any(opt in normalized_command for opt in common_flags):
             return set()
 
+        self._check_version()
+
         try:
             with TemporaryUvProject(self._executable) as temp_project:
-                return temp_project.resolve_via_export()
+                if subcommand == "add":
+                    return temp_project.resolve_add_targets(normalized_command)
+
+                if subcommand == "sync":
+                    return temp_project.resolve_sync_targets(normalized_command)
+
+                return set()
+
         except subprocess.CalledProcessError as e:
             _log.error(
                 "Encountered an error while resolving uv installation targets: %s",
@@ -155,26 +178,50 @@ class Uv(PackageManager):
         self._check_version()
 
         try:
-            uv_pip_list_command: list[str] = [self._executable, "pip", "list", "--format", "json"]
-            result = subprocess.run(uv_pip_list_command, check=True, capture_output=True, text=True)
+            uv_pip_list_command: list[str] = [
+                self._executable,
+                "pip",
+                "list",
+                "--format",
+                "json",
+            ]
+
+            result = subprocess.run(
+                uv_pip_list_command,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
 
             entries = json.loads(result.stdout)
+
             return {
-                Package(ECOSYSTEM.PyPI, entry["name"], entry["version"])
+                Package(
+                    ECOSYSTEM.PyPI,
+                    entry["name"],
+                    entry["version"],
+                )
                 for entry in entries
                 if entry.get("name") and entry.get("version")
             }
+
         except subprocess.CalledProcessError:
-            raise RuntimeError("Failed to determine uv installed packages")
+            raise RuntimeError(
+                "Failed to determine uv installed packages"
+            )
 
     def _check_version(self):
         """
         Check whether the underlying `uv` executable is of a supported version.
 
         Raises:
-            UnsupportedVersionError: The underlying `uv` executable is of an unsupported version.
+            UnsupportedVersionError:
+                The underlying `uv` executable is of an unsupported version.
         """
-        def get_uv_version(executable: str) -> Optional[Version]:
+
+        def get_uv_version(
+            executable: str,
+        ) -> Optional[Version]:
             try:
                 result = subprocess.run(
                     [executable, "--version"],
@@ -182,7 +229,12 @@ class Uv(PackageManager):
                     text=True,
                     capture_output=True,
                 )
-                match = re.match(r"^uv\s+(\S+)", result.stdout.strip())
+
+                match = re.match(
+                    r"^uv\s+(\S+)",
+                    result.stdout.strip(),
+                )
+
                 if not match:
                     return None
 

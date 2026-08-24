@@ -269,6 +269,73 @@ def test_packages_no_duplicates_after_clean_to_findings_promotion():
     assert report.packages() == {_PKG_A}
 
 
+def test_ignore_finding_reclassifies_as_clean():
+    """
+    `ignore()` removes a package's findings and reclassifies it as clean.
+    """
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _CRITICAL_FINDING)
+    report.ignore(_PKG_A)
+    assert report.get_findings() == {}
+    assert _PKG_A in report.get_clean()
+
+
+def test_ignore_unverifiable_reclassifies_as_clean():
+    """
+    `ignore()` removes a package's unverifiable results and reclassifies it as clean.
+    """
+    report = VerificationReport()
+    report.insert_unverifiable(_PKG_B, _ERROR_MESSAGE)
+    report.ignore(_PKG_B)
+    assert report.get_unverifiable() == {}
+    assert _PKG_B in report.get_clean()
+
+
+def test_ignore_removes_findings_and_unverifiable_together():
+    """
+    `ignore()` clears both findings and unverifiable results for the same package.
+    """
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _CRITICAL_FINDING)
+    report.insert_unverifiable(_PKG_A, _ERROR_MESSAGE)
+    report.ignore(_PKG_A)
+    assert report.get_findings() == {}
+    assert report.get_unverifiable() == {}
+    assert report.get_clean() == {_PKG_A}
+
+
+def test_ignore_only_affects_target_package():
+    """
+    `ignore()` leaves other packages' findings untouched.
+    """
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _CRITICAL_FINDING)
+    report.insert_finding(_PKG_B, _WARNING_FINDING)
+    report.ignore(_PKG_A)
+    assert report.get_findings() == {_PKG_B: {_WARNING_FINDING}}
+    assert report.get_clean() == {_PKG_A}
+
+
+def test_ignore_clean_package_is_noop():
+    """
+    Ignoring a package that is already clean leaves it clean.
+    """
+    report = VerificationReport()
+    report.insert_clean(_PKG_A)
+    report.ignore(_PKG_A)
+    assert report.get_clean() == {_PKG_A}
+
+
+def test_ignore_package_appears_in_packages():
+    """
+    An ignored package remains present in `packages()` as a clean package.
+    """
+    report = VerificationReport()
+    report.insert_finding(_PKG_A, _CRITICAL_FINDING)
+    report.ignore(_PKG_A)
+    assert report.packages() == {_PKG_A}
+
+
 def test_get_findings_returns_copy():
     """
     Mutating the set returned by `get_findings()` does not affect the report's internal state.

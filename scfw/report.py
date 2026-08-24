@@ -135,6 +135,24 @@ class VerificationReport:
         if package in self._clean:
             self._clean.remove(package)
 
+    def ignore(self, package: Package) -> None:
+        """
+        Suppress any findings or unverifiable results for a given package by
+        reclassifying it as clean.
+
+        Args:
+            package:
+                The `Package` whose findings should be suppressed.
+
+                This is intended to support temporarily ignoring a package the
+                user has explicitly chosen to trust, e.g. to bypass a false positive.
+                After this call, `package` is treated as clean regardless of any
+                findings or unverifiable results it previously had in the report.
+        """
+        self._findings.pop(package, None)
+        self._unverifiable.pop(package, None)
+        self._clean.add(package)
+
     def packages(self) -> set[Package]:
         """
         Return the set of packages contained in the report.

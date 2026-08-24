@@ -13,6 +13,7 @@ from typing import Optional
 from scfw.constants import ON_WARNING_VAR
 from scfw.logger import FirewallAction, FirewallRunSummary
 from scfw.loggers import FirewallLoggers
+from scfw.package import Package
 from scfw.package_manager import UnsupportedVersionError
 import scfw.package_managers as package_managers
 from scfw.report import FindingsReport, VerificationReport, show_reports
@@ -53,6 +54,10 @@ def run_firewall(args: Namespace) -> int:
             report = verifiers.verify_packages(install_targets)
         else:
             report = VerificationReport()
+
+        if (ignored := _apply_ignores(report, args.ignore)):
+            _log.warning(f"Ignoring findings for user-specified packages: [{', '.join(map(str, ignored))}]")
+            print(f"Ignoring findings for: {', '.join(sorted(map(str, ignored)))}")
 
         warning_action = _get_warning_action(args.allow_on_warning, args.block_on_warning)
         action, severity, relevant_findings = _determine_firewall_action(report, warning_action)
@@ -126,6 +131,41 @@ def run_firewall(args: Namespace) -> int:
             ),
         )
         return package_manager.run_command(args.command)
+
+
+def _apply_ignores(report: VerificationReport, ignore: Optional[list[str]]) -> set[Package]:
+    """
+    Suppress findings for any package in a report that the user has chosen to ignore.
+
+    Args:
+        report:
+            The `VerificationReport` to filter. Matching packages are reclassified as
+            clean in place so that their findings no longer drive the firewall action.
+        ignore:
+            The (possibly undefined) list of user-provided ignore specifications. A
+            package matches a specification when the latter equals either the package's
+            name (ignoring all versions of the package) or the package's full
+            ecosystem-formatted string, e.g. `dotenv-expand@5.1.0` for npm or
+            `requests-2.31.0` for PyPI (ignoring only that specific version).
+
+    Returns:
+        The `set[Package]` whose findings were suppressed. This is empty when no ignore
+        specifications were provided or none of them matched a package with findings.
+    """
+    if not ignore:
+        return set()
+
+    ignore_specs = set(ignore)
+    candidates = set(report.get_findings()) | set(report.get_unverifiable())
+
+    ignored = {
+        package for package in candidates
+        if package.name in ignore_specs or str(package) in ignore_specs
+    }
+    for package in ignored:
+        report.ignore(package)
+
+    return ignored
 
 
 def _determine_firewall_action(

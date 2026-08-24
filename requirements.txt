@@ -149,9 +149,9 @@ idna==3.18 ; python_version >= "3.10" and python_version < "4" \
 inquirer==3.4.1 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:60d169fddffe297e2f8ad54ab33698249ccfc3fc377dafb1e5cf01a0efb9cbe5 \
     --hash=sha256:717bf146d547b595d2495e7285fd55545cff85e5ce01decc7487d2ec6a605412
-jinxed==2.0.4 ; python_version >= "3.10" and python_version < "4" \
-    --hash=sha256:58ae0a4a2930b51e9de162208c356b382f5e25b3bc0ad73e2013b02a62d84e8b \
-    --hash=sha256:a92ac48923433c0a88577bb0479191788813fd5055ef17ff2b04a701a1b83f19
+jinxed==2.1.0 ; python_version >= "3.10" and python_version < "4" \
+    --hash=sha256:43b802d18b70e405d410fb66eb2837d1101e7e5ea922e666507bb43f34d11d09 \
+    --hash=sha256:7e755b831faa2443d44fb4ce7c0202eb9c3ed39bd5bf1193365888f4f6092b54
 packaging==26.2 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e \
     --hash=sha256:ff452ff5a3e828ce110190feff1178bb1f2ea2281fa2075aadb987c2fb221661

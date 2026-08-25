@@ -78,11 +78,17 @@ def test_uv_command_resolve_install_targets_sync(
     assert uv_pip_list() == init_state
 
 
-def test_uv_command_resolve_install_targets_add():
+def test_uv_command_resolve_install_targets_add(tmp_path: Path, monkeypatch):
     """
     Test that `Uv.resolve_install_targets` correctly resolves target packages
     for `uv add` commands via isolated temporary resolution environments.
     """
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "test-pkg"\nversion = "0.1.0"\n', encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+
     init_state = uv_pip_list()
 
     command_line = ["uv", "add", "requests==2.32.3"]
@@ -121,3 +127,35 @@ def test_uv_get_installed_packages(monkeypatch):
 
         target_package = Package(ECOSYSTEM.PyPI, "packaging", "24.0")
         assert target_package in installed_packages
+
+
+@pytest.mark.parametrize(
+    "command_line,has_targets",
+    [
+        (["uv", "run", "pytest"], False),
+        (["uv", "pip", "install", "requests"], False),
+        (["uv", "tool", "run", "ruff"], False),
+        (["uv", "export"], False),
+        (["uv", "add", "requests", "-h"], False),
+        (["uv", "add", "requests", "--help"], False),
+        (["uv", "add", "requests", "-V"], False),
+        (["uv", "add", "requests", "--version"], False),
+        (["uv", "add", "requests", "--dry-run"], False),
+        (["uv"], False),
+    ],
+)
+def test_uv_command_resolve_install_targets_early_returns(
+    command_line: list[str],
+    has_targets: bool,
+):
+    """
+    Test that `Uv.resolve_install_targets` returns empty sets for uninspected
+    subcommands, bare binary execution, and early-exit flags without spawning
+    resolution environments.
+    """
+    init_state = uv_pip_list()
+
+    targets = PACKAGE_MANAGER.resolve_install_targets(command_line)
+
+    assert (bool(targets)) == has_targets
+    assert uv_pip_list() == init_state

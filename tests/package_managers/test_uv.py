@@ -110,7 +110,7 @@ def test_uv_export_requirements_format(tmp_path: Path):
         "--format",
         "requirements.txt",
         "--no-hashes",
-        "--no-emit-project",
+        "--no-emit-workspace",
         "-o",
         str(requirements_file),
         "--project",

@@ -6,12 +6,16 @@ along with classes for spinning up ephemeral uv projects.
 import logging
 import shutil
 import subprocess
-import tomllib
 import uuid
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import TracebackType
 from typing import Optional
+
+try:
+    import tomllib  # type: ignore[import-not-found]
+except ImportError:
+    import tomli as tomllib  # type: ignore[no-redef]
 
 from packaging.requirements import Requirement
 from typing_extensions import Self

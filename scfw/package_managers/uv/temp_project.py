@@ -21,7 +21,6 @@ from scfw.package import Package
 from scfw.package_managers.uv.common import (
     PYTHON_VERSION_FILE,
     PYPROJECT_TOML,
-    UV_ADD_BOOLEAN_OPTIONS,
     UV_ADD_VALUE_OPTIONS,
     UV_LOCK,
 )
@@ -249,8 +248,8 @@ class TemporaryUvProject:
             command:
                 A normalized uv command beginning with the uv executable.
 
-            cwd:
-                Optional working directory. Defaults to the temporary project.
+        cwd:
+            Optional working directory. Defaults to the temporary project.
 
         Returns:
             The completed subprocess result.
@@ -285,7 +284,6 @@ class TemporaryUvProject:
             A set of resolved PyPI packages.
         """
         temp_dir_path = self._temp_path()
-
         requirements_file = (
             temp_dir_path
             / f".scfw-requirements-{uuid.uuid4().hex[:8]}.txt"
@@ -299,7 +297,7 @@ class TemporaryUvProject:
             "--format",
             "requirements.txt",
             "--no-hashes",
-            "--no-emit-project",
+            "--no-emit-workspace",
             *sync_flags,
             "-o",
             str(requirements_file),
@@ -309,21 +307,19 @@ class TemporaryUvProject:
 
         try:
             self._run_uv(export_command)
-
             if not requirements_file.is_file():
                 return set()
-
             return self._parse_requirements_file(requirements_file)
+        except subprocess.CalledProcessError as e:
+            _log.debug("Export failed during sync target resolution: %s", e.stderr)
+            return set()
         finally:
             requirements_file.unlink(missing_ok=True)
 
     def resolve_add_targets(self, command: list[str]) -> set[Package]:
         """
         Resolve the explicitly requested packages and their transitive
-        dependencies for `uv add`.
-
-        The dependency resolution is performed in an isolated temporary uv
-        project so that the user's project is never built or modified.
+        dependencies for `uv add` using the target project's context.
 
         Args:
             command:
@@ -333,36 +329,23 @@ class TemporaryUvProject:
             A set of resolved PyPI packages.
         """
         targets = self._extract_add_targets(command)
-
         if not targets:
             return set()
 
-        with TemporaryDirectory() as resolution_dir:
-            resolution_path = Path(resolution_dir)
-
-            self._run_uv(
-                [
-                    self._executable,
-                    "init",
-                    "--bare",
-                    "--name",
-                    "scfw-resolution",
-                ],
-                cwd=resolution_path,
-            )
-
+        temp_dir_path = self._temp_path()
+        try:
             add_command = [
                 self._executable,
                 "add",
+                "--no-sync",
                 *targets,
             ]
 
-            self._run_uv(
-                add_command,
-                cwd=resolution_path,
-            )
-
-            return self._export_project_targets(resolution_path)
+            self._run_uv(add_command, cwd=temp_dir_path)
+            return self._export_project_targets(temp_dir_path)
+        except subprocess.CalledProcessError as e:
+            _log.debug("Package resolution failed during `uv add`: %s", e.stderr)
+            return set()
 
     def _export_project_targets(self, project_path: Path) -> set[Package]:
         """
@@ -401,7 +384,9 @@ class TemporaryUvProject:
                 return set()
 
             return self._parse_requirements_file(requirements_file)
-
+        except subprocess.CalledProcessError as e:
+            _log.debug("Failed to export project targets: %s", e.stderr)
+            return set()
         finally:
             requirements_file.unlink(missing_ok=True)
 
@@ -463,11 +448,13 @@ class TemporaryUvProject:
                 targets.extend(args)
                 break
 
-            if arg in UV_ADD_VALUE_OPTIONS:
-                next(args, None)
-                continue
+            if arg.startswith("-"):
+                if "=" in arg:
+                    continue
 
-            if arg in UV_ADD_BOOLEAN_OPTIONS or arg.startswith("-"):
+                if arg in UV_ADD_VALUE_OPTIONS:
+                    next(args, None)
+
                 continue
 
             targets.append(arg)

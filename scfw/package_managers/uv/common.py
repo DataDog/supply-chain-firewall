@@ -19,15 +19,3 @@ UV_ADD_VALUE_OPTIONS: set[str] = {
     "--subdirectory",
     "--python",
 }
-
-# uv add options that do not consume a following argument
-UV_ADD_BOOLEAN_OPTIONS: set[str] = {
-    "--dev",
-    "--no-sync",
-    "--frozen",
-    "--locked",
-    "--active",
-    "--no-active",
-    "--preview",
-    "--no-preview",
-}

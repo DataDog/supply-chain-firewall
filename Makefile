@@ -9,7 +9,7 @@ checks: typecheck lint test
 
 coverage: test coverage-report
 
-test: test-cli test-configure test-firewall test-loggers test-npm test-npm-class test-pip-executable test-pip test-pip-class test-poetry test-poetry-class test-report test-verifiers
+test: test-cli test-configure test-firewall test-loggers test-npm test-npm-class test-pip-executable test-pip test-pip-class test-poetry test-poetry-class test-uv test-uv-class test-report test-verifiers
 
 typecheck:
 	mypy --install-types --non-interactive examples/ scfw/ tests/
@@ -50,6 +50,12 @@ test-poetry:
 test-poetry-class:
 	COVERAGE_FILE=.coverage.poetry.class coverage run -m pytest tests/package_managers/test_poetry_class.py
 
+test-uv:
+	COVERAGE_FILE=.coverage.uv coverage run -m pytest tests/package_managers/test_uv.py
+
+test-uv-class:
+	COVERAGE_FILE=.coverage.uv.class coverage run -m pytest tests/package_managers/test_uv_class.py
+
 test-report:
 	COVERAGE_FILE=.coverage.report coverage run -m pytest tests/test_report.py
 
@@ -62,6 +68,7 @@ coverage-report:
 	.coverage.npm .coverage.npm.class \
 	.coverage.pip.executable .coverage.pip .coverage.pip.class \
 	.coverage.poetry .coverage.poetry.class \
+	.coverage.uv .coverage.uv.class \
 	.coverage.report .coverage.verifiers
 	coverage report
 

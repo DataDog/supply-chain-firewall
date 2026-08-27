@@ -13,7 +13,7 @@ from typing import Optional
 from scfw.constants import ON_WARNING_VAR
 from scfw.logger import FirewallAction, FirewallRunSummary
 from scfw.loggers import FirewallLoggers
-from scfw.package_manager import UnsupportedVersionError
+from scfw.package_manager import InstallTargetResolutionError, UnsupportedVersionError
 import scfw.package_managers as package_managers
 from scfw.report import FindingsReport, VerificationReport, show_reports
 from scfw.verifier import FindingSeverity
@@ -126,6 +126,30 @@ def run_firewall(args: Namespace) -> int:
             ),
         )
         return package_manager.run_command(args.command)
+
+    except InstallTargetResolutionError as e:
+        _log.error(e)
+        _log.error(
+            "Failed to resolve install targets safely: blocking command to prevent unverified installs"
+        )
+
+        if package_manager:
+            loggers.log_firewall_run(
+                package_manager.ecosystem(),
+                package_manager.name(),
+                package_manager.executable(),
+                FirewallRunSummary(
+                    timestamp,
+                    args.command,
+                    install_targets=None,
+                    report=None,
+                    relevant_findings=None,
+                    warning=True,
+                    action=FirewallAction.BLOCK,
+                ),
+            )
+
+        return 1 if args.error_on_block else 0
 
 
 def _determine_firewall_action(

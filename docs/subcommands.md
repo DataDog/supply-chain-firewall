@@ -10,12 +10,12 @@ Currently, `npm` audits do not take globally installed packages into considerati
 
 ```bash
 $ scfw audit --help
-usage: scfw audit [-h] [--executable PATH] {npm,pip,poetry}
+usage: scfw audit [-h] [--executable PATH] {npm,pip,poetry,uv}
 
 Audit installed packages using Supply Chain Firewall's verifiers.
 
 positional arguments:
-  {npm,pip,poetry}   The package manager whose installed packages should be verified
+  {npm,pip,poetry,uv}   The package manager whose installed packages should be verified
 
 options:
   -h, --help         show this help message and exit
@@ -44,6 +44,7 @@ options:
   --alias-npm           Add shell aliases to always run npm commands through Supply Chain Firewall
   --alias-pip           Add shell aliases to always run pip commands through Supply Chain Firewall
   --alias-poetry        Add shell aliases to always run Poetry commands through Supply Chain Firewall
+  --alias-uv            Add shell aliases to always run uv commands through Supply Chain Firewall
   --dd-agent-port PORT  Configure log forwarding to the local Datadog Agent on the given port
   --dd-api-key KEY      API key for forwarding logs to the Datadog HTTP API or Code Security
   --dd-app-key KEY      Application key for forwarding logs to Datadog Code Security
@@ -63,6 +64,8 @@ All package targets that would be installed by running the given package manager
 For `pip install` commands, packages will be installed in the same environment (virtual or global) in which the command was run.
 
 For `poetry`, target resolution for `add`/`update` is based entirely on the project's `pyproject.toml`/`poetry.lock`. If a project's installed environment has drifted out of sync with its lock file (e.g. the lock was regenerated or checked in separately without running `poetry install`/`sync` afterward), `scfw` has no reliable way to detect that drift, since Poetry itself does not expose the actual installed version of a package independently of what the lock file says. Keeping a project's environment in sync with its lock file is out of scope for this tool.
+
+For `uv sync` commands, target resolution is based on exporting the projects `pyproject.toml`/`uv.lock` via `uv export`. Much like `poetry`, if a project's installed environment has drifted out of sync with its lock file, `scfw` has no reliable way to detect that drift, since this resolution is based entirely on the lock file's contents rather than the environment's actual state. Keeping a project's environment in sync with its lock file is out of scope for this tool.
 
 ```bash
 $ scfw run --help

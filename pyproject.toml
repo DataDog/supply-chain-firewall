@@ -54,6 +54,7 @@ packages = [
     "scfw.package_managers",
     "scfw.package_managers.npm",
     "scfw.package_managers.poetry",
+    "scfw.package_managers.uv",
     "scfw.verifiers",
     "scfw.verifiers.age_verifier",
     "scfw.verifiers.dd_verifier",

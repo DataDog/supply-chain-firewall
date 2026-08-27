@@ -9,11 +9,13 @@ from scfw.package_manager import PackageManager
 from scfw.package_managers.npm import Npm
 from scfw.package_managers.pip import Pip
 from scfw.package_managers.poetry import Poetry
+from scfw.package_managers.uv import Uv
 
 SUPPORTED_PACKAGE_MANAGERS = [
     Npm.name(),
     Pip.name(),
     Poetry.name(),
+    Uv.name(),
 ]
 """
 Contains the command line names of supported package managers.
@@ -43,5 +45,7 @@ def get_package_manager(name: str, executable: Optional[str] = None) -> PackageM
         return Pip(executable)
     if name == Poetry.name():
         return Poetry(executable)
+    if name == Uv.name():
+        return Uv(executable)
 
     raise ValueError(f"Unsupported package manager '{name}'")

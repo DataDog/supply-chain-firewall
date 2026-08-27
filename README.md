@@ -70,6 +70,7 @@ See the `configure` command [documentation](https://github.com/DataDog/supply-ch
 | npm               | >= 7.0                | `install` (including aliases)      |
 | pip               | >= 22.2               | `install`                          |
 | poetry            | >= 1.7                | `add`, `install`, `sync`, `update` |
+| uv                | >= 0.5.0              | `sync`                             |
 
 Supply Chain Firewall may only know how to inspect some of the "installish" subcommands for its supported package managers.  These are shown in the above table.  Any other subcommands are always allowed to run.
 

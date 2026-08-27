@@ -19,3 +19,15 @@ UV_ADD_VALUE_OPTIONS: set[str] = {
     "--subdirectory",
     "--python",
 }
+
+ALLOW_EXPORT_PREFIXES: tuple = (
+    "--extra",
+    "--all-extras",
+    "--no-extra",
+    "--group",
+    "--only-group",
+    "--no-group",
+    "--all-groups",
+    "--dev",
+    "--no-dev",
+)

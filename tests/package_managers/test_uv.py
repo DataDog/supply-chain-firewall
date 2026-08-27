@@ -10,7 +10,8 @@ from pathlib import Path
 import packaging.version as version
 import pytest
 
-from scfw.package_managers.uv import Uv
+from scfw.package_managers.uv import Uv, TemporaryUvProject
+from scfw.package import RemotePackageSource
 
 UV_COMMAND_PREFIX = ["uv"]
 
@@ -139,3 +140,56 @@ def test_uv_pip_list_json_format():
         first = entries[0]
         assert "name" in first
         assert "version" in first
+
+
+def test_parse_uv_lock(tmp_path: Path):
+    """
+    Test parsing uv.lock files into Package objects under various source configurations.
+    """
+    lock_file = tmp_path / "uv.lock"
+
+    assert TemporaryUvProject._parse_uv_lock(lock_file) == set()
+
+    lock_content = """
+version = 1
+revision = 1
+
+[[package]]
+name = "my-root-pkg"
+version = "0.1.0"
+source = { virtual = "." }
+
+[[package]]
+name = "wheel-pkg"
+version = "1.2.3"
+wheels = [
+    { url = "https://custom.index/wheels/wheel_pkg-1.2.3-py3-none-any.whl" }
+]
+
+[[package]]
+name = "sdist-pkg"
+version = "2.0.0"
+sdist = { url = "https://custom.index/sdist/sdist_pkg-2.0.0.tar.gz" }
+"""
+    lock_file.write_text(lock_content, encoding="utf-8")
+
+    packages = TemporaryUvProject._parse_uv_lock(lock_file)
+
+    assert len(packages) == 2
+
+    pkg_map = {pkg.name: pkg for pkg in packages}
+
+    assert pkg_map["wheel-pkg"].version == "1.2.3"
+    assert isinstance(pkg_map["wheel-pkg"].source, RemotePackageSource)
+    assert (
+        pkg_map["wheel-pkg"].source.remote_source
+        == "https://custom.index/wheels/wheel_pkg-1.2.3-py3-none-any.whl"
+    )
+
+    # Verify sdist source resolution
+    assert pkg_map["sdist-pkg"].version == "2.0.0"
+    assert isinstance(pkg_map["sdist-pkg"].source, RemotePackageSource)
+    assert (
+        pkg_map["sdist-pkg"].source.remote_source
+        == "https://custom.index/sdist/sdist_pkg-2.0.0.tar.gz"
+    )

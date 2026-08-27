@@ -17,12 +17,12 @@ try:
 except ImportError:
     import tomli as tomllib  # type: ignore[no-redef]
 
-from packaging.requirements import Requirement
 from typing_extensions import Self
 
 from scfw.ecosystem import ECOSYSTEM
-from scfw.package import Package
+from scfw.package import LocalPackageSource, Package, RemotePackageSource
 from scfw.package_managers.uv.common import (
+    ALLOW_EXPORT_PREFIXES,
     PYTHON_VERSION_FILE,
     PYPROJECT_TOML,
     UV_ADD_VALUE_OPTIONS,
@@ -288,12 +288,12 @@ class TemporaryUvProject:
             A set of resolved PyPI packages.
         """
         temp_dir_path = self._temp_path()
-        requirements_file = (
-            temp_dir_path
-            / f".scfw-requirements-{uuid.uuid4().hex[:8]}.txt"
-        )
+        requirements_file = temp_dir_path / f".scfw-reqs-{uuid.uuid4().hex[:8]}.txt"
 
-        sync_flags = [arg for arg in command[1:] if arg.startswith("-")]
+        export_flags = [
+            arg for arg in command[1:]
+            if any(arg.startswith(prefix) for prefix in ALLOW_EXPORT_PREFIXES)
+        ]
 
         export_command = [
             self._executable,
@@ -302,7 +302,7 @@ class TemporaryUvProject:
             "requirements.txt",
             "--no-hashes",
             "--no-emit-workspace",
-            *sync_flags,
+            *export_flags,
             "-o",
             str(requirements_file),
             "--project",
@@ -337,6 +337,11 @@ class TemporaryUvProject:
             return set()
 
         temp_dir_path = self._temp_path()
+        lock_file = temp_dir_path / UV_LOCK
+        packages_before: set[Package] = set()
+        if lock_file.is_file():
+            packages_before = self._parse_uv_lock(lock_file)
+
         try:
             add_command = [
                 self._executable,
@@ -346,53 +351,69 @@ class TemporaryUvProject:
             ]
 
             self._run_uv(add_command, cwd=temp_dir_path)
-            return self._export_project_targets(temp_dir_path)
+            packages_after = self._parse_uv_lock(lock_file)
+            before_map = {pkg.name: pkg.version for pkg in packages_before}
+
+            return {
+                pkg for pkg in packages_after
+                if pkg.name not in before_map or before_map[pkg.name] != pkg.version
+            }
         except subprocess.CalledProcessError as e:
             _log.debug("Package resolution failed during `uv add`: %s", e.stderr)
             return set()
 
-    def _export_project_targets(self, project_path: Path) -> set[Package]:
+    @staticmethod
+    def _parse_uv_lock(lock_file: Path) -> set[Package]:
         """
-        Export the resolved dependencies of a uv project and return them
-        as SCFW Package objects.
+        Parse a uv.lock file to extract resolved Package objects.
 
         Args:
-            project_path:
-                The root path of the project directory to export dependencies from.
+            lock_file: Path to the generated uv.lock file.
 
         Returns:
-            A set of resolved PyPI packages.
+            A set of resolved PyPI packages parsed from the lockfile data.
         """
-        requirements_file = (
-            project_path
-            / f".scfw-requirements-{uuid.uuid4().hex[:8]}.txt"
-        )
+        packages: set[Package] = set()
+        if not lock_file.is_file():
+            return packages
 
-        export_command = [
-            self._executable,
-            "export",
-            "--format",
-            "requirements.txt",
-            "--no-hashes",
-            "--no-emit-project",
-            "-o",
-            str(requirements_file),
-            "--project",
-            str(project_path),
-        ]
+        data = tomllib.loads(lock_file.read_text(encoding="utf-8"))
+        for pkg_data in data.get("package", []):
+            name = pkg_data.get("name")
+            version = pkg_data.get("version")
+            pkg_source = pkg_data.get("source", {})
 
-        try:
-            self._run_uv(export_command, cwd=project_path)
+            if not name or not version:
+                continue
 
-            if not requirements_file.is_file():
-                return set()
+            if isinstance(pkg_source, dict) and "virtual" in pkg_source:
+                continue
 
-            return self._parse_requirements_file(requirements_file)
-        except subprocess.CalledProcessError as e:
-            _log.debug("Failed to export project targets: %s", e.stderr)
-            return set()
-        finally:
-            requirements_file.unlink(missing_ok=True)
+            resolved_source: LocalPackageSource | RemotePackageSource | None = None
+            if wheels := pkg_data.get("wheels"):
+                if url := wheels[0].get("url"):
+                    resolved_source = RemotePackageSource(url)
+            elif sdist := pkg_data.get("sdist"):
+                if url := sdist.get("url"):
+                    resolved_source = RemotePackageSource(url)
+
+            # Fallback to registry URL
+            if resolved_source is None:
+                if isinstance(pkg_source, dict) and (registry_url := pkg_source.get("registry")):
+                    resolved_source = RemotePackageSource(registry_url)
+                else:
+                    resolved_source = RemotePackageSource("https://pypi.org/simple")
+
+            packages.add(
+                Package(
+                    ecosystem=ECOSYSTEM.PyPI,
+                    name=name,
+                    version=version,
+                    source=resolved_source,
+                )
+            )
+
+        return packages
 
     def _parse_requirements_file(self, requirements_file: Path) -> set[Package]:
         """
@@ -406,27 +427,27 @@ class TemporaryUvProject:
             A set of parsed SCFW Package targets.
         """
         packages: set[Package] = set()
+        default_source = RemotePackageSource("https://pypi.org/simple")
 
-        for raw_line in requirements_file.read_text(encoding="utf-8").splitlines():
-            line = raw_line.split("#", 1)[0].strip()
-
-            if not line or line.startswith("-"):
+        for line in requirements_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("-"):
                 continue
 
-            try:
-                req = Requirement(line)
-            except Exception:
-                _log.debug("Skipping unparseable uv requirement: %s", line)
-                continue
+            # Get package name and version
+            if "==" in line:
+                name, version = line.split("==", 1)
+                name = name.split("[")[0].strip()
+                version = version.split(";")[0].strip()
 
-            exact_versions = [
-                s.version for s in req.specifier if s.operator == "=="
-            ]
-
-            if len(exact_versions) == 1:
-                packages.add(Package(ECOSYSTEM.PyPI, req.name, exact_versions[0]))
-            else:
-                _log.debug("Skipping non-exact uv requirement: %s", line)
+                packages.add(
+                    Package(
+                        ecosystem=ECOSYSTEM.PyPI,
+                        name=name,
+                        version=version,
+                        source=default_source,
+                    )
+                )
 
         return packages
 

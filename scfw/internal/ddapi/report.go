@@ -162,7 +162,7 @@ func packageFindings(result PackageEvaluationResult) []ddFinding {
 func packageFailures(result PackageEvaluationResult) []ddFailure {
 	failures := make([]ddFailure, 0, len(result.Failures))
 	for _, f := range result.Failures {
-		failures = append(failures, ddFailure{Verifier: f.Verifier, Error: f.Error})
+		failures = append(failures, ddFailure(f))
 	}
 	return failures
 }

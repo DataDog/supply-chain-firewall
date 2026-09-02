@@ -1,0 +1,3 @@
+npm silly ADD node_modules/react
+npm silly ADD node_modules/loose-envify
+npm silly ADD node_modules/js-tokens

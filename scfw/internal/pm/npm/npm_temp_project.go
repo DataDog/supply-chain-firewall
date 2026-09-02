@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
@@ -40,9 +41,10 @@ var npmDependencySections = []string{"dependencies", "devDependencies", "optiona
 // affecting the original. Its resources exist only between
 // newNpmTempProject and cleanup.
 type npmTempProject struct {
-	executable  string
-	projectRoot string // empty if the current directory is not part of an npm project
-	dir         string
+	executable         string
+	projectRoot        string // empty if the current directory is not part of an npm project
+	dir                string
+	resolvePublishDate func(context.Context, pm.Package) (time.Time, error)
 }
 
 // newNpmTempProject resolves the current npm project root (if any) and
@@ -426,7 +428,7 @@ func (p *npmTempProject) resolveInstallCommandTargets(ctx context.Context, comma
 			return nil, err
 		}
 
-		publishDate, err := ecosystem.ResolvePublishDate(ctx, pkg.Ecosystem, pkg.Name, pkg.Version, pkg.Source)
+		publishDate, err := p.resolvePublishDate(ctx, pkg)
 		if err != nil {
 			slog.Warn("failed to resolve package publish date", "ecosystem", pkg.Ecosystem, "name", pkg.Name, "version", pkg.Version, "error", err)
 		} else {

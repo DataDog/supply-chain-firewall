@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
@@ -59,9 +60,17 @@ type pipInstallReportEntry struct {
 var PipExecutableNames = []string{"pip", "pip3"}
 
 type Pip struct {
-	executable string
-	version    pm.Version
-	versionErr error
+	executable         string
+	version            pm.Version
+	versionErr         error
+	resolvePublishDate func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error)
+}
+
+func (pip Pip) packagePublishDate(ctx context.Context, pkg pm.Package) (time.Time, error) {
+	if pip.resolvePublishDate != nil {
+		return pip.resolvePublishDate(ctx, pkg.Ecosystem, pkg.Name, pkg.Version, pkg.Source)
+	}
+	return ecosystem.ResolvePublishDate(ctx, pkg.Ecosystem, pkg.Name, pkg.Version, pkg.Source)
 }
 
 func NewPip(ctx context.Context, name, executable string) (Pip, error) {
@@ -148,7 +157,7 @@ func (pip Pip) ResolveInstallTargets(ctx context.Context, command []string) (*pm
 			return nil, fmt.Errorf("failed to parse pip install report entry: %w", err)
 		}
 
-		targetPublishDate, err := ecosystem.ResolvePublishDate(ctx, target.Ecosystem, target.Name, target.Version, target.Source)
+		targetPublishDate, err := pip.packagePublishDate(ctx, target)
 		if err != nil {
 			slog.Warn("failed to resolve package publish date", "ecosystem", target.Ecosystem, "name", target.Name, "version", target.Version, "error", err)
 		} else {

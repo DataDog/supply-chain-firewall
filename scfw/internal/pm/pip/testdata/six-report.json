@@ -1,0 +1,15 @@
+{
+  "version": "1",
+  "pip_version": "24.0",
+  "install": [
+    {
+      "download_info": {
+        "url": "https://files.pythonhosted.org/packages/d9/5a/e7c31adbe875f2abbb91bd84cf2dc52d792b5a01506781dbcf25c91daf11/six-1.16.0-py2.py3-none-any.whl"
+      },
+      "metadata": {
+        "name": "six",
+        "version": "1.16.0"
+      }
+    }
+  ]
+}

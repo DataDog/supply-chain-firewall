@@ -46,14 +46,16 @@ func TestPackageReports(t *testing.T) {
 			Findings: []ddFinding{
 				{Verifier: "org_policy", Finding: "no-requests"},
 			},
+			Failures: []ddFailure{},
 		},
 		{
 			Ecosystem: "npm",
 			Package:   "left-pad",
 			Version:   "1.3.0",
 			Warning:   true,
-			Findings: []ddFinding{
-				{Verifier: "datadog_policy", Finding: "advisory-db lookup timed out"},
+			Findings:  []ddFinding{},
+			Failures: []ddFailure{
+				{Verifier: "datadog_policy", Error: "advisory-db lookup timed out"},
 			},
 		},
 	}
@@ -135,7 +137,7 @@ func TestPackageFindings(t *testing.T) {
 		want   []ddFinding
 	}{
 		{
-			name:   "no matched policy or failures",
+			name:   "no matched policy",
 			result: PackageEvaluationResult{},
 			want:   []ddFinding{},
 		},
@@ -147,22 +149,11 @@ func TestPackageFindings(t *testing.T) {
 			want: []ddFinding{{Verifier: "org_policy", Finding: "no-foo"}},
 		},
 		{
-			name: "failures only",
+			name: "failures are not included",
 			result: PackageEvaluationResult{
 				Failures: []failure{{Verifier: "datadog_policy", Error: "timed out"}},
 			},
-			want: []ddFinding{{Verifier: "datadog_policy", Finding: "timed out"}},
-		},
-		{
-			name: "matched policy and failures combined, in order",
-			result: PackageEvaluationResult{
-				MatchedPolicy: []matchedPolicy{{Type: "org_policy", Rule: "no-foo"}},
-				Failures:      []failure{{Verifier: "datadog_policy", Error: "timed out"}},
-			},
-			want: []ddFinding{
-				{Verifier: "org_policy", Finding: "no-foo"},
-				{Verifier: "datadog_policy", Finding: "timed out"},
-			},
+			want: []ddFinding{},
 		},
 	}
 
@@ -170,6 +161,35 @@ func TestPackageFindings(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := packageFindings(tt.result); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("packageFindings() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPackageFailures(t *testing.T) {
+	tests := []struct {
+		name   string
+		result PackageEvaluationResult
+		want   []ddFailure
+	}{
+		{
+			name:   "no failures",
+			result: PackageEvaluationResult{},
+			want:   []ddFailure{},
+		},
+		{
+			name: "failures only",
+			result: PackageEvaluationResult{
+				Failures: []failure{{Verifier: "datadog_policy", Error: "timed out"}},
+			},
+			want: []ddFailure{{Verifier: "datadog_policy", Error: "timed out"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := packageFailures(tt.result); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("packageFailures() = %+v, want %+v", got, tt.want)
 			}
 		})
 	}

@@ -109,22 +109,41 @@ func TestDiscoverFromLinkedWorktree(t *testing.T) {
 	}
 }
 
-func TestDiscoverPreservesConfiguredOriginURL(t *testing.T) {
+func TestDiscoverSanitizesCredentialsWithoutRewritingOrigin(t *testing.T) {
 	tests := []struct {
 		name      string
 		originURL string
+		want      string
 	}{
 		{
-			name:      "HTTPS URL",
+			name:      "clean HTTPS URL is unchanged",
+			originURL: "https://example.com/acme/project.git",
+			want:      "https://example.com/acme/project.git",
+		},
+		{
+			name:      "HTTPS credentials and parameters are removed",
 			originURL: "https://user:secret@example.com/acme/project.git?token=secret#main",
+			want:      "https://example.com/acme/project.git",
 		},
 		{
-			name:      "file URL",
+			name:      "SSH URL credentials are removed",
+			originURL: "ssh://git:secret@example.com/acme/project.git",
+			want:      "ssh://example.com/acme/project.git",
+		},
+		{
+			name:      "SCP-style URL is unchanged",
+			originURL: "git@example.com:acme/project.git",
+			want:      "git@example.com:acme/project.git",
+		},
+		{
+			name:      "file URL is unchanged",
 			originURL: "file:///private/project.git",
+			want:      "file:///private/project.git",
 		},
 		{
-			name:      "local path",
+			name:      "local path is unchanged",
 			originURL: "../project.git",
+			want:      "../project.git",
 		},
 	}
 
@@ -147,8 +166,8 @@ func TestDiscoverPreservesConfiguredOriginURL(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Discover() returned unexpected error: %v", err)
 			}
-			if metadata.RepositoryURL != tt.originURL {
-				t.Fatalf("Discover().RepositoryURL = %q, want %q", metadata.RepositoryURL, tt.originURL)
+			if metadata.RepositoryURL != tt.want {
+				t.Fatalf("Discover().RepositoryURL = %q, want %q", metadata.RepositoryURL, tt.want)
 			}
 		})
 	}

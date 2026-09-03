@@ -9,6 +9,8 @@ package git
 import (
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
 	gogit "github.com/go-git/go-git/v5"
 )
@@ -45,8 +47,33 @@ func Discover(path string) (Metadata, error) {
 		return Metadata{}, nil
 	}
 
-	// Preserve the configured value exactly, matching
-	// `git config --get remote.origin.url`. The API is responsible for resolving
-	// this raw value to a normalized SCM repository identifier.
-	return Metadata{RepositoryURL: urls[0]}, nil
+	repositoryURL, err := sanitizeRemoteURL(urls[0])
+	if err != nil {
+		return Metadata{}, fmt.Errorf("failed to sanitize Git origin URL: %w", err)
+	}
+
+	return Metadata{RepositoryURL: repositoryURL}, nil
+}
+
+// sanitizeRemoteURL removes components that may contain credentials from URL-form
+// origins. Other origin forms, including SCP-style and local paths, are returned
+// unchanged so the result otherwise matches `git config --get remote.origin.url`.
+func sanitizeRemoteURL(remoteURL string) (string, error) {
+	if !strings.Contains(remoteURL, "://") {
+		return remoteURL, nil
+	}
+
+	parsed, err := url.Parse(remoteURL)
+	if err != nil {
+		return "", errors.New("invalid Git origin URL")
+	}
+	if parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == "" {
+		return remoteURL, nil
+	}
+
+	parsed.User = nil
+	parsed.RawQuery = ""
+	parsed.ForceQuery = false
+	parsed.Fragment = ""
+	return parsed.String(), nil
 }

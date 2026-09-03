@@ -103,6 +103,10 @@ func (poetry Poetry) Executable() string {
 	return poetry.executable
 }
 
+func (poetry Poetry) ProjectDirectory(command []string) (string, error) {
+	return resolvePoetryProjectDir(command)
+}
+
 func (poetry Poetry) RunCommand(ctx context.Context, command []string) error {
 	child := exec.CommandContext(ctx, poetry.Executable(), command...)
 	child.Stdin = os.Stdin

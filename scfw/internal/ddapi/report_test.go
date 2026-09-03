@@ -6,9 +6,27 @@
 package ddapi
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 )
+
+func TestDDReportAttributesMarshalsRepository(t *testing.T) {
+	attributes := ddReportAttributes{Repository: "https://example.com/acme/project.git"}
+
+	body, err := json.Marshal(attributes)
+	if err != nil {
+		t.Fatalf("json.Marshal() returned unexpected error: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("json.Unmarshal() returned unexpected error: %v", err)
+	}
+	if got["repository"] != attributes.Repository {
+		t.Fatalf("repository = %v, want %q", got["repository"], attributes.Repository)
+	}
+}
 
 func TestPackageReports(t *testing.T) {
 	evaluationReport := ScfwPolicyEvaluationReport{

@@ -155,7 +155,8 @@ func TestParsePoetryLockFile_MissingFile(t *testing.T) {
 	}
 }
 
-func TestResolvePoetryProjectDir_AllFlagForms(t *testing.T) {
+func TestPoetryProjectDirectory_AllFlagForms(t *testing.T) {
+	poetry := Poetry{}
 	tests := []struct {
 		name    string
 		command []string
@@ -169,29 +170,30 @@ func TestResolvePoetryProjectDir_AllFlagForms(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := resolvePoetryProjectDir(tc.command)
+			got, err := poetry.ProjectDirectory(tc.command)
 			if err != nil {
-				t.Fatalf("resolvePoetryProjectDir(%v) returned unexpected error: %v", tc.command, err)
+				t.Fatalf("ProjectDirectory(%v) returned unexpected error: %v", tc.command, err)
 			}
 			if want := "/tmp/proj"; got != want {
-				t.Fatalf("resolvePoetryProjectDir(%v) = %q, want %q", tc.command, got, want)
+				t.Fatalf("ProjectDirectory(%v) = %q, want %q", tc.command, got, want)
 			}
 		})
 	}
 }
 
-func TestResolvePoetryProjectDir_NoFlagFallsBackToCwd(t *testing.T) {
+func TestPoetryProjectDirectory_NoFlagFallsBackToCwd(t *testing.T) {
+	poetry := Poetry{}
 	want, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("os.Getwd() failed: %v", err)
 	}
 
-	got, err := resolvePoetryProjectDir([]string{"update"})
+	got, err := poetry.ProjectDirectory([]string{"update"})
 	if err != nil {
-		t.Fatalf("resolvePoetryProjectDir() returned unexpected error: %v", err)
+		t.Fatalf("ProjectDirectory() returned unexpected error: %v", err)
 	}
 	if got != want {
-		t.Fatalf("resolvePoetryProjectDir() = %q, want %q", got, want)
+		t.Fatalf("ProjectDirectory() = %q, want %q", got, want)
 	}
 }
 

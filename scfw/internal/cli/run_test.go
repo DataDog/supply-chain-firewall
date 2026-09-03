@@ -11,8 +11,40 @@ import (
 	"strings"
 	"testing"
 
+	gogit "github.com/go-git/go-git/v5"
+	gitconfig "github.com/go-git/go-git/v5/config"
+
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ddapi"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/poetry"
 )
+
+func TestDiscoverGitMetadataUsesPackageManagerProjectDirectory(t *testing.T) {
+	callerRepositoryDir := t.TempDir()
+	projectRepositoryDir := t.TempDir()
+
+	for directory, originURL := range map[string]string{
+		callerRepositoryDir:  "https://example.com/acme/caller.git",
+		projectRepositoryDir: "https://example.com/acme/project.git",
+	} {
+		repository, err := gogit.PlainInit(directory, false)
+		if err != nil {
+			t.Fatalf("PlainInit(%q) returned unexpected error: %v", directory, err)
+		}
+		_, err = repository.CreateRemote(&gitconfig.RemoteConfig{
+			Name: gogit.DefaultRemoteName,
+			URLs: []string{originURL},
+		})
+		if err != nil {
+			t.Fatalf("CreateRemote(%q) returned unexpected error: %v", originURL, err)
+		}
+	}
+
+	t.Chdir(callerRepositoryDir)
+	metadata := discoverGitMetadata(poetry.Poetry{}, []string{"install", "--directory", projectRepositoryDir})
+	if want := "https://example.com/acme/project.git"; metadata.RepositoryURL != want {
+		t.Fatalf("discoverGitMetadata().RepositoryURL = %q, want %q", metadata.RepositoryURL, want)
+	}
+}
 
 func TestDecideFirewallAction(t *testing.T) {
 	tests := []struct {

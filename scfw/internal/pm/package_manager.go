@@ -12,6 +12,7 @@ import (
 
 type PackageManager interface {
 	Executable() string
+	ProjectDirectory(command []string) (string, error)
 	RunCommand(ctx context.Context, command []string) error
 	ResolveInstallTargets(ctx context.Context, command []string) (*Set[Package], error)
 }

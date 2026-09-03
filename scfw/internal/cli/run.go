@@ -23,6 +23,7 @@ import (
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ddapi"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/git"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
 // onWarningVar is the environment variable that resolves the firewall's on-warning
@@ -148,10 +149,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 	}
 
 	action := decideFirewallAction(isInteractive, evaluationReport.Outcome)
-	gitMetadata, err := git.Discover(".")
-	if err != nil {
-		slog.Debug("failed to discover Git repository metadata", "error", err)
-	}
+	gitMetadata := discoverGitMetadata(packageManager, cmdArgs[1:])
 
 	if err := ddapi.ReportFirewallOutcome(
 		cmd.Context(),
@@ -185,6 +183,21 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 		}
 		return nil
 	}
+}
+
+func discoverGitMetadata(packageManager pm.PackageManager, command []string) git.Metadata {
+	projectDirectory, err := packageManager.ProjectDirectory(command)
+	if err != nil {
+		slog.Debug("failed to resolve package manager project directory", "error", err)
+		return git.Metadata{}
+	}
+
+	metadata, err := git.Discover(projectDirectory)
+	if err != nil {
+		slog.Debug("failed to discover Git repository metadata", "error", err)
+		return git.Metadata{}
+	}
+	return metadata
 }
 
 // decideFirewallAction resolves a policy evaluation Outcome into the firewall's action.

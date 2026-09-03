@@ -22,6 +22,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ddapi"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/git"
 )
 
 // onWarningVar is the environment variable that resolves the firewall's on-warning
@@ -147,6 +148,10 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 	}
 
 	action := decideFirewallAction(isInteractive, evaluationReport.Outcome)
+	gitMetadata, err := git.Discover(".")
+	if err != nil {
+		slog.Debug("failed to discover Git repository metadata", "error", err)
+	}
 
 	if err := ddapi.ReportFirewallOutcome(
 		cmd.Context(),
@@ -154,6 +159,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 		cmdArgs,
 		packageManagerName,
 		packageManager.Executable(),
+		gitMetadata.RepositoryURL,
 		evaluationReport,
 		action,
 	); err != nil {

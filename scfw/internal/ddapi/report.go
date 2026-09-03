@@ -34,6 +34,7 @@ type ddReportAttributes struct {
 	InstallTimestamp string            `json:"install_timestamp"`
 	PackageManager   string            `json:"package_manager"`
 	Command          string            `json:"command"`
+	Repository       string            `json:"repository"`
 	Outcome          string            `json:"outcome"`
 	Reports          []ddPackageReport `json:"reports"`
 }
@@ -59,7 +60,7 @@ func ReportFirewallOutcome(
 	ctx context.Context,
 	installTimestamp time.Time,
 	command []string,
-	packageManagerName, executable string,
+	packageManagerName, executable, repository string,
 	evaluationReport ScfwPolicyEvaluationReport,
 	resolvedOutcome Outcome,
 ) error {
@@ -87,6 +88,7 @@ func ReportFirewallOutcome(
 				InstallTimestamp: installTimestamp.Format(time.RFC3339),
 				PackageManager:   packageManagerName,
 				Command:          strings.Join(command, " "),
+				Repository:       repository,
 				Outcome:          string(resolvedOutcome),
 				Reports:          packageReports(reportedResults(evaluationReport, resolvedOutcome)),
 			},

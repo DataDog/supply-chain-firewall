@@ -1,0 +1,12 @@
+[[package]]
+name = "idna"
+version = "3.19"
+
+[[package]]
+name = "six"
+version = "1.16.0"
+
+[metadata]
+lock-version = "2.0"
+python-versions = ">=3.11"
+content-hash = "fixture-updated"

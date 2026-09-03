@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
@@ -57,9 +58,17 @@ func resolvePoetryVersion(ctx context.Context, executable string) (pm.Version, e
 var PoetryExecutableNames = []string{"poetry"}
 
 type Poetry struct {
-	executable string
-	version    pm.Version
-	versionErr error
+	executable         string
+	version            pm.Version
+	versionErr         error
+	resolvePublishDate func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error)
+}
+
+func (poetry Poetry) packagePublishDate(ctx context.Context, pkg pm.Package) (time.Time, error) {
+	if poetry.resolvePublishDate != nil {
+		return poetry.resolvePublishDate(ctx, pkg.Ecosystem, pkg.Name, pkg.Version, pkg.Source)
+	}
+	return ecosystem.ResolvePublishDate(ctx, pkg.Ecosystem, pkg.Name, pkg.Version, pkg.Source)
 }
 
 func NewPoetry(ctx context.Context, name, executable string) (Poetry, error) {
@@ -163,7 +172,7 @@ func (poetry Poetry) resolveDryRunTargets(ctx context.Context, command []string)
 	for pkg := range targets.Items() {
 		pkg.Source = sourceMap[poetryPackageKey{name: pkg.Name, version: pkg.Version}]
 
-		publishDate, err := ecosystem.ResolvePublishDate(ctx, pkg.Ecosystem, pkg.Name, pkg.Version, pkg.Source)
+		publishDate, err := poetry.packagePublishDate(ctx, pkg)
 		if err != nil {
 			slog.Warn("failed to resolve package publish date", "ecosystem", pkg.Ecosystem, "name", pkg.Name, "version", pkg.Version, "error", err)
 		} else {
@@ -233,7 +242,7 @@ func (poetry Poetry) resolveLockRegenTargets(ctx context.Context, command []stri
 
 		pkg := pm.Package{Ecosystem: ecosystem.PYPI, Name: key.name, Version: key.version, Source: source}
 
-		publishDate, err := ecosystem.ResolvePublishDate(ctx, pkg.Ecosystem, pkg.Name, pkg.Version, pkg.Source)
+		publishDate, err := poetry.packagePublishDate(ctx, pkg)
 		if err != nil {
 			slog.Warn("failed to resolve package publish date", "ecosystem", pkg.Ecosystem, "name", pkg.Name, "version", pkg.Version, "error", err)
 		} else {

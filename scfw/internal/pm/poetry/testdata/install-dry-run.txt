@@ -1,0 +1,3 @@
+Installing the current project: foo (0.1.0)
+Installing idna (3.19)
+Installing six (1.16.0)

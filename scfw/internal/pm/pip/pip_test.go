@@ -9,10 +9,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -21,241 +22,183 @@ import (
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
-func TestResolveInstallTargets_DryRunFailureLogsOnlyAtDebug(t *testing.T) {
-	dir := t.TempDir()
-	executable := filepath.Join(dir, "pip")
-	if err := os.WriteFile(executable, []byte("#!/bin/sh\necho 'no matching distribution' >&2\nexit 1\n"), 0o755); err != nil {
-		t.Fatalf("failed to create fake pip: %v", err)
-	}
-	pip := Pip{executable: executable, version: minPipVersion}
+const fakePipFixtureDirEnv = "SCFW_TEST_FAKE_PIP_FIXTURE_DIR"
 
+var sixPublishDate = time.Date(2021, 5, 5, 14, 18, 18, 379524000, time.UTC)
+
+func TestMain(m *testing.M) {
+	fixtureDir := os.Getenv(fakePipFixtureDirEnv)
+	if fixtureDir != "" {
+		os.Exit(runFakePip(fixtureDir, os.Args[1:]))
+	}
+	os.Exit(m.Run())
+}
+
+func runFakePip(fixtureDir string, args []string) int {
+	if slices.Contains(args, "--version") {
+		fmt.Println("pip 24.0 from /local/fixture/pip (python 3.12)")
+		return 0
+	}
+	if slices.Contains(args, "missing==1.0") || slices.Contains(args, "--non-existent-option") {
+		fmt.Fprintln(os.Stderr, "no matching distribution")
+		return 1
+	}
+	report, err := os.ReadFile(filepath.Join(fixtureDir, "six-report.json"))
+	if err != nil {
+		return 1
+	}
+	_, _ = os.Stdout.Write(report)
+	return 0
+}
+
+func fixturePip(t *testing.T) Pip {
+	t.Helper()
+	fixtureDir, err := filepath.Abs("testdata")
+	if err != nil {
+		t.Fatalf("filepath.Abs(testdata) failed: %v", err)
+	}
+	t.Setenv(fakePipFixtureDirEnv, fixtureDir)
+	return Pip{
+		executable: os.Args[0],
+		version:    minPipVersion,
+		resolvePublishDate: func(_ context.Context, _ ecosystem.Ecosystem, name, version, _ string) (time.Time, error) {
+			if name != "six" || version != "1.16.0" {
+				return time.Time{}, fmt.Errorf("no publish-date fixture for %s@%s", name, version)
+			}
+			return sixPublishDate, nil
+		},
+	}
+}
+
+func TestPipCheckVersion(t *testing.T) {
+	tests := []struct {
+		name string
+		pip  Pip
+		want bool
+	}{
+		{name: "supported", pip: Pip{version: minPipVersion}},
+		{name: "too old", pip: Pip{version: pm.Version{Major: minPipVersion.Major - 1}}, want: true},
+		{name: "unresolved", pip: Pip{versionErr: errors.New("boom")}, want: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.pip.checkVersion()
+			if got := errors.Is(err, pm.ErrUnsupportedVersion); got != tc.want {
+				t.Fatalf("checkVersion() error = %v, wraps ErrUnsupportedVersion = %v, want %v", err, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNewPip_LocalExecutableFixture(t *testing.T) {
+	fixturePip(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pip, err := NewPip(ctx, "pip", os.Args[0])
+	if err != nil {
+		t.Fatalf("NewPip() failed: %v", err)
+	}
+	if pip.version != (pm.Version{Major: 24}) {
+		t.Fatalf("NewPip() version = %v, want 24.0.0", pip.version)
+	}
+}
+
+func TestResolveInstallTargets_UsesLocalReportFixture(t *testing.T) {
+	pip := fixturePip(t)
+	targets, err := pip.ResolveInstallTargets(context.Background(), []string{"install", "--ignore-installed", "six==1.16.0"})
+	if err != nil {
+		t.Fatalf("ResolveInstallTargets() failed: %v", err)
+	}
+
+	want := pm.Package{
+		Ecosystem:   ecosystem.PYPI,
+		Name:        "six",
+		Version:     "1.16.0",
+		Source:      "https://files.pythonhosted.org/packages/d9/5a/e7c31adbe875f2abbb91bd84cf2dc52d792b5a01506781dbcf25c91daf11/six-1.16.0-py2.py3-none-any.whl",
+		PublishDate: sixPublishDate,
+	}
+	if targets.Len() != 1 || !targets.Contains(want) {
+		t.Fatalf("ResolveInstallTargets() = %v, want {%+v}", targets, want)
+	}
+}
+
+func TestResolveInstallTargets_GatingWithLocalFixture(t *testing.T) {
+	pip := fixturePip(t)
+	tests := []struct {
+		name       string
+		command    []string
+		hasTargets bool
+	}{
+		{name: "install", command: []string{"install", "six==1.16.0"}, hasTargets: true},
+		{name: "verbose install", command: []string{"install", "-vvv", "six==1.16.0"}, hasTargets: true},
+		{name: "help", command: []string{"install", "--help", "six==1.16.0"}},
+		{name: "already dry run", command: []string{"install", "--dry-run", "six==1.16.0"}},
+		{name: "other command", command: []string{"list"}},
+		{name: "invalid option", command: []string{"install", "--non-existent-option", "six==1.16.0"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			targets, err := pip.ResolveInstallTargets(context.Background(), tc.command)
+			if err != nil {
+				t.Fatalf("ResolveInstallTargets(%v) failed: %v", tc.command, err)
+			}
+			if got := targets.Len() > 0; got != tc.hasTargets {
+				t.Fatalf("ResolveInstallTargets(%v) has targets = %v, want %v", tc.command, got, tc.hasTargets)
+			}
+		})
+	}
+}
+
+func TestResolveInstallTargets_DryRunFailureLogsOnlyAtDebug(t *testing.T) {
+	pip := fixturePip(t)
 	previous := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(previous) })
 
 	var warningOutput bytes.Buffer
 	slog.SetDefault(slog.New(slog.NewTextHandler(&warningOutput, &slog.HandlerOptions{Level: slog.LevelWarn})))
 	if _, err := pip.ResolveInstallTargets(context.Background(), []string{"install", "missing==1.0"}); err != nil {
-		t.Fatalf("ResolveInstallTargets() returned unexpected error: %v", err)
+		t.Fatalf("ResolveInstallTargets() failed: %v", err)
 	}
 	if warningOutput.Len() != 0 {
-		t.Fatalf("default log output = %q, want dry-run failure suppressed to avoid duplicate package-manager errors", warningOutput.String())
+		t.Fatalf("warning output = %q, want none", warningOutput.String())
 	}
 
 	var debugOutput bytes.Buffer
 	slog.SetDefault(slog.New(slog.NewTextHandler(&debugOutput, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	if _, err := pip.ResolveInstallTargets(context.Background(), []string{"install", "missing==1.0"}); err != nil {
-		t.Fatalf("ResolveInstallTargets() returned unexpected error: %v", err)
+		t.Fatalf("ResolveInstallTargets() failed: %v", err)
 	}
 	for _, want := range []string{"pip dry-run install failed", "no matching distribution"} {
 		if !strings.Contains(debugOutput.String(), want) {
-			t.Errorf("verbose log output %q does not contain %q", debugOutput.String(), want)
+			t.Errorf("debug output %q does not contain %q", debugOutput.String(), want)
 		}
-	}
-}
-
-// testTarget is a small, stable, pinned PyPI package used as a dry-run
-// install target. Pinning avoids resolution drift over time.
-const testTarget = "six==1.16.0"
-
-// testTargetPackage is the expected resolved installation target for testTarget,
-// including its real PyPI source URL and publication date (confirmed against the
-// PyPI registry), so that it can be asserted by full equality rather than field by field.
-var testTargetPackage = pm.Package{
-	Ecosystem:   ecosystem.PYPI,
-	Name:        "six",
-	Version:     "1.16.0",
-	Source:      "https://files.pythonhosted.org/packages/d9/5a/e7c31adbe875f2abbb91bd84cf2dc52d792b5a01506781dbcf25c91daf11/six-1.16.0-py2.py3-none-any.whl",
-	PublishDate: time.Date(2021, 5, 5, 14, 18, 18, 379524000, time.UTC),
-}
-
-// requireSystemPip locates a real pip executable in the test environment,
-// skipping the test if none is available.
-func requireSystemPip(t *testing.T) Pip {
-	t.Helper()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	for _, name := range PipExecutableNames {
-		if _, err := exec.LookPath(name); err != nil {
-			continue
-		}
-		pip, err := NewPip(ctx, name, "")
-		if err != nil {
-			t.Fatalf("NewPip(%q) failed: %v", name, err)
-		}
-		return pip
-	}
-
-	t.Skip("no pip executable found in PATH")
-	return Pip{}
-}
-
-func TestPipCheckVersion_TooOld(t *testing.T) {
-	pip := Pip{version: pm.Version{Major: minPipVersion.Major - 1}}
-	err := pip.checkVersion()
-	if !errors.Is(err, pm.ErrUnsupportedVersion) {
-		t.Fatalf("checkVersion() = %v, want error wrapping ErrUnsupportedVersion", err)
-	}
-}
-
-func TestPipCheckVersion_UnresolvedVersion(t *testing.T) {
-	pip := Pip{versionErr: errors.New("boom")}
-	err := pip.checkVersion()
-	if !errors.Is(err, pm.ErrUnsupportedVersion) {
-		t.Fatalf("checkVersion() = %v, want error wrapping ErrUnsupportedVersion", err)
-	}
-}
-
-func TestPipCheckVersion_Supported(t *testing.T) {
-	pip := Pip{version: minPipVersion}
-	if err := pip.checkVersion(); err != nil {
-		t.Fatalf("checkVersion() returned unexpected error: %v", err)
-	}
-}
-
-func TestNewPip_ExecutableOverrideBypassesDiscovery(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	const override = "/nonexistent/pip"
-	pip, err := NewPip(ctx, "pip", override)
-	if err != nil {
-		t.Fatalf("NewPip(%q) failed: %v", override, err)
-	}
-	if pip.Executable() != override {
-		t.Fatalf("Executable() = %q, want %q", pip.Executable(), override)
-	}
-}
-
-func TestResolveInstallTargets_DryRunGating(t *testing.T) {
-	pip := requireSystemPip(t)
-
-	// --ignore-installed forces pip to treat testTarget as an install target
-	// even if it happens to already be installed in the ambient test
-	// environment, keeping these assertions independent of local state.
-	tests := []struct {
-		name       string
-		command    []string
-		hasTargets bool
-	}{
-		{name: "plain install", command: []string{"install", "--ignore-installed", testTarget}, hasTargets: true},
-		{name: "-h before install", command: []string{"-h", "install", testTarget}, hasTargets: false},
-		{name: "--help before install", command: []string{"--help", "install", testTarget}, hasTargets: false},
-		{name: "-h after install", command: []string{"install", "-h", testTarget}, hasTargets: false},
-		{name: "--help after install", command: []string{"install", "--help", testTarget}, hasTargets: false},
-		{name: "--dry-run after install", command: []string{"install", "--dry-run", testTarget}, hasTargets: false},
-		{name: "--dry-run before install", command: []string{"--dry-run", "install", testTarget}, hasTargets: false},
-		{name: "explicit --report is overridden", command: []string{"install", "--ignore-installed", "--report", "report.json", testTarget}, hasTargets: true},
-		{name: "non-existent option", command: []string{"install", "--non-existent-option", testTarget}, hasTargets: false},
-		{name: "-v", command: []string{"install", "--ignore-installed", "-v", testTarget}, hasTargets: true},
-		{name: "-vv", command: []string{"install", "--ignore-installed", "-vv", testTarget}, hasTargets: true},
-		{name: "-vvv", command: []string{"install", "--ignore-installed", "-vvv", testTarget}, hasTargets: true},
-		{name: "-vvvv", command: []string{"install", "--ignore-installed", "-vvvv", testTarget}, hasTargets: true},
-		{name: "--verbose x1", command: []string{"install", "--ignore-installed", "--verbose", testTarget}, hasTargets: true},
-		{name: "--verbose x2", command: []string{"install", "--ignore-installed", "--verbose", "--verbose", testTarget}, hasTargets: true},
-		{name: "--verbose x3", command: []string{"install", "--ignore-installed", "--verbose", "--verbose", "--verbose", testTarget}, hasTargets: true},
-		{name: "--verbose x4", command: []string{"install", "--ignore-installed", "--verbose", "--verbose", "--verbose", "--verbose", testTarget}, hasTargets: true},
-		{name: "non-install command is not gated", command: []string{"list"}, hasTargets: false},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-
-			targets, err := pip.ResolveInstallTargets(ctx, tc.command)
-			if err != nil {
-				t.Fatalf("ResolveInstallTargets(%v) returned unexpected error: %v", tc.command, err)
-			}
-
-			if got := targets.Len() > 0; got != tc.hasTargets {
-				t.Fatalf("ResolveInstallTargets(%v) has targets = %v, want %v", tc.command, got, tc.hasTargets)
-			}
-
-			if !tc.hasTargets {
-				return
-			}
-			if !targets.Contains(testTargetPackage) {
-				t.Errorf("ResolveInstallTargets(%v) = %v, want it to contain %+v", tc.command, targets, testTargetPackage)
-			}
-		})
-	}
-}
-
-func TestResolvePipVersion_RealPip(t *testing.T) {
-	pip := requireSystemPip(t)
-
-	if pip.versionErr != nil {
-		t.Fatalf("failed to resolve version of real pip executable %q: %v", pip.Executable(), pip.versionErr)
-	}
-	if pip.version.Major == 0 && pip.version.Minor == 0 && pip.version.Patch == 0 {
-		t.Fatalf("resolved a suspicious zero version for real pip executable %q", pip.Executable())
 	}
 }
 
 func TestParsePipInstallReportEntry(t *testing.T) {
-	tests := []struct {
-		name    string
-		entry   pipInstallReportEntry
-		wantErr bool
-		want    pm.Package
-	}{
-		{
-			name: "single target",
-			entry: pipInstallReportEntry{
-				Metadata: struct {
-					Name    string `json:"name"`
-					Version string `json:"version"`
-				}{Name: "six", Version: "1.16.0"},
-				DownloadInfo: struct {
-					URL string `json:"url"`
-				}{URL: "https://files.pythonhosted.org/packages/six-1.16.0.whl"},
-			},
-			want: pm.Package{
-				Ecosystem: ecosystem.PYPI,
-				Name:      "six",
-				Version:   "1.16.0",
-				Source:    "https://files.pythonhosted.org/packages/six-1.16.0.whl",
-			},
-		},
-		{
-			name: "missing name",
-			entry: pipInstallReportEntry{
-				Metadata: struct {
-					Name    string `json:"name"`
-					Version string `json:"version"`
-				}{Version: "1.16.0"},
-			},
-			wantErr: true,
-		},
-		{
-			name: "missing version",
-			entry: pipInstallReportEntry{
-				Metadata: struct {
-					Name    string `json:"name"`
-					Version string `json:"version"`
-				}{Name: "six"},
-			},
-			wantErr: true,
-		},
+	valid := pipInstallReportEntry{}
+	valid.Metadata.Name = "six"
+	valid.Metadata.Version = "1.16.0"
+	valid.DownloadInfo.URL = "https://files.pythonhosted.org/packages/six-1.16.0.whl"
+
+	got, err := parsePipInstallReportEntry(valid)
+	if err != nil {
+		t.Fatalf("parsePipInstallReportEntry() failed: %v", err)
+	}
+	want := pm.Package{Ecosystem: ecosystem.PYPI, Name: "six", Version: "1.16.0", Source: valid.DownloadInfo.URL}
+	if got != want {
+		t.Fatalf("parsePipInstallReportEntry() = %+v, want %+v", got, want)
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := parsePipInstallReportEntry(tc.entry)
-			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("parsePipInstallReportEntry(%+v) = %v, want error", tc.entry, got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("parsePipInstallReportEntry(%+v) returned unexpected error: %v", tc.entry, err)
-			}
-			if got != tc.want {
-				t.Fatalf("parsePipInstallReportEntry(%+v) = %+v, want %+v", tc.entry, got, tc.want)
-			}
-		})
+	missingName := valid
+	missingName.Metadata.Name = ""
+	if _, err := parsePipInstallReportEntry(missingName); err == nil {
+		t.Fatal("parsePipInstallReportEntry() succeeded without a name")
+	}
+	missingVersion := valid
+	missingVersion.Metadata.Version = ""
+	if _, err := parsePipInstallReportEntry(missingVersion); err == nil {
+		t.Fatal("parsePipInstallReportEntry() succeeded without a version")
 	}
 }

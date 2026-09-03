@@ -1,0 +1,11 @@
+[project]
+name = "foo"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "idna==3.18"
+]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

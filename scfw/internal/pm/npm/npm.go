@@ -12,7 +12,9 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
@@ -42,9 +44,17 @@ func resolveNpmVersion(ctx context.Context, executable string) (pm.Version, erro
 var NpmExecutableNames = []string{"npm"}
 
 type Npm struct {
-	executable string
-	version    pm.Version
-	versionErr error
+	executable         string
+	version            pm.Version
+	versionErr         error
+	resolvePublishDate func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error)
+}
+
+func (npm Npm) packagePublishDate(ctx context.Context, pkg pm.Package) (time.Time, error) {
+	if npm.resolvePublishDate != nil {
+		return npm.resolvePublishDate(ctx, pkg.Ecosystem, pkg.Name, pkg.Version, pkg.Source)
+	}
+	return ecosystem.ResolvePublishDate(ctx, pkg.Ecosystem, pkg.Name, pkg.Version, pkg.Source)
 }
 
 func NewNpm(ctx context.Context, name, executable string) (Npm, error) {
@@ -109,6 +119,7 @@ func (npm Npm) ResolveInstallTargets(ctx context.Context, command []string) (*pm
 		return nil, fmt.Errorf("failed to resolve npm installation targets: %w", err)
 	}
 	defer proj.cleanup()
+	proj.resolvePublishDate = npm.packagePublishDate
 
 	return proj.resolveInstallCommandTargets(ctx, command)
 }

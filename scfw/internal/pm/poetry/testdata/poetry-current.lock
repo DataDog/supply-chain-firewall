@@ -1,0 +1,8 @@
+[[package]]
+name = "idna"
+version = "3.18"
+
+[metadata]
+lock-version = "2.0"
+python-versions = ">=3.11"
+content-hash = "fixture-current"

@@ -44,14 +44,8 @@ type ddPackageReport struct {
 	Package         string            `json:"package"`
 	Version         string            `json:"version"`
 	Warning         bool              `json:"warning"`
-	Findings        []ddFinding       `json:"findings"`
 	Failures        []ddFailure       `json:"failures"`
 	MatchedPolicies []ddMatchedPolicy `json:"matched_policies"`
-}
-
-type ddFinding struct {
-	Verifier string `json:"verifier"`
-	Finding  string `json:"finding"`
 }
 
 type ddFailure struct {
@@ -143,21 +137,11 @@ func packageReports(results []PackageEvaluationResult) []ddPackageReport {
 			Package:         result.PackageName,
 			Version:         result.PackageVersion,
 			Warning:         result.Outcome == OutcomeWarn,
-			Findings:        packageFindings(result),
 			Failures:        packageFailures(result),
 			MatchedPolicies: packageMatchedPolicies(result),
 		})
 	}
 	return reports
-}
-
-// Generate the findings for a single package evaluation result's matched policies.
-func packageFindings(result PackageEvaluationResult) []ddFinding {
-	findings := make([]ddFinding, 0, len(result.MatchedPolicy))
-	for _, policy := range result.MatchedPolicy {
-		findings = append(findings, ddFinding{Verifier: policy.Type, Finding: policy.Rule})
-	}
-	return findings
 }
 
 // Generate the failures for a single package evaluation result's verifier failures.

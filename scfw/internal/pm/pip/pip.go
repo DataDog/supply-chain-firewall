@@ -105,6 +105,10 @@ func (pip Pip) Executable() string {
 	return pip.executable
 }
 
+func (pip Pip) ProjectDirectory(_ []string) (string, error) {
+	return os.Getwd()
+}
+
 func (pip Pip) RunCommand(ctx context.Context, command []string) error {
 	child := exec.CommandContext(ctx, pip.Executable(), command...)
 	child.Stdin = os.Stdin

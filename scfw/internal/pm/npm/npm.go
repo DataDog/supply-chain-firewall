@@ -89,6 +89,10 @@ func (npm Npm) Executable() string {
 	return npm.executable
 }
 
+func (npm Npm) ProjectDirectory(_ []string) (string, error) {
+	return os.Getwd()
+}
+
 func (npm Npm) RunCommand(ctx context.Context, command []string) error {
 	child := exec.CommandContext(ctx, npm.Executable(), command...)
 	child.Stdin = os.Stdin

@@ -595,6 +595,130 @@ func TestRunConfigure_PreservesExistingAliases(t *testing.T) {
 	}
 }
 
+func TestRunConfigure_EnablesCompletionAndPreservesPackageManagerAliases(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	tests := []struct {
+		name                string
+		completion          string
+		interactiveGuard    string
+		idempotencyGuard    string
+		completionInitGuard string
+		wantCompletion      bool
+	}{
+		{
+			name: ".bashrc", completion: "bash", interactiveGuard: "[[ $- == *i* ]]",
+			idempotencyGuard: "! complete -p scfw", wantCompletion: true,
+		},
+		{
+			name: ".bash_profile", completion: "bash", interactiveGuard: "[[ $- == *i* ]]",
+			idempotencyGuard: "! complete -p scfw", wantCompletion: true,
+		},
+		{
+			name: ".zshrc", completion: "zsh", interactiveGuard: "[[ -o interactive ]]",
+			idempotencyGuard: "${_comps[scfw]-}", completionInitGuard: "$+functions[compdef]", wantCompletion: true,
+		},
+		{name: ".zprofile", completion: "zsh"},
+	}
+	for _, tc := range tests {
+		if err := os.WriteFile(filepath.Join(home, tc.name), nil, 0o644); err != nil {
+			t.Fatalf("failed to seed %q: %v", tc.name, err)
+		}
+	}
+
+	withAliasNpm(t, true)
+	withAliasPip(t, true)
+	withAliasPoetry(t, true)
+	if err := runConfigure(configureCmd, nil); err != nil {
+		t.Fatalf("runConfigure() returned unexpected error: %v", err)
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := os.ReadFile(filepath.Join(home, tc.name))
+			if err != nil {
+				t.Fatalf("failed to read %q: %v", tc.name, err)
+			}
+			for _, want := range []string{
+				`alias npm="scfw run -- npm"`,
+				`alias pip="scfw run -- pip"`,
+				`alias pip3="scfw run -- pip3"`,
+				`alias poetry="scfw run -- poetry"`,
+			} {
+				if !strings.Contains(string(got), want) {
+					t.Errorf("%s = %q, want it to contain %q", tc.name, got, want)
+				}
+			}
+			completion := "source <(scfw completion " + tc.completion + ")"
+			if tc.wantCompletion {
+				for _, want := range []string{completion, tc.interactiveGuard, tc.idempotencyGuard, tc.completionInitGuard} {
+					if want == "" {
+						continue
+					}
+					if !strings.Contains(string(got), want) {
+						t.Errorf("%s = %q, want it to contain %q", tc.name, got, want)
+					}
+				}
+			} else if strings.Contains(string(got), completion) {
+				t.Errorf("%s = %q, want completion configured only in the preferred rc file", tc.name, got)
+			}
+		})
+	}
+}
+
+func TestRunConfigure_EnablesGuardedCompletionInProfileOnlySetups(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	tests := []struct {
+		name                string
+		completion          string
+		interactiveGuard    string
+		idempotencyGuard    string
+		completionInitGuard string
+	}{
+		{
+			name: ".bash_profile", completion: "bash", interactiveGuard: "[[ $- == *i* ]]",
+			idempotencyGuard: "! complete -p scfw",
+		},
+		{
+			name: ".zprofile", completion: "zsh", interactiveGuard: "[[ -o interactive ]]",
+			idempotencyGuard: "${_comps[scfw]-}", completionInitGuard: "$+functions[compdef]",
+		},
+	}
+	for _, tc := range tests {
+		if err := os.WriteFile(filepath.Join(home, tc.name), nil, 0o644); err != nil {
+			t.Fatalf("failed to seed %q: %v", tc.name, err)
+		}
+	}
+
+	withAliasNpm(t, true)
+	if err := runConfigure(configureCmd, nil); err != nil {
+		t.Fatalf("runConfigure() returned unexpected error: %v", err)
+	}
+
+	for _, tc := range tests {
+		got, err := os.ReadFile(filepath.Join(home, tc.name))
+		if err != nil {
+			t.Fatalf("failed to read %q: %v", tc.name, err)
+		}
+		for _, want := range []string{
+			"source <(scfw completion " + tc.completion + ")",
+			tc.interactiveGuard,
+			tc.idempotencyGuard,
+			tc.completionInitGuard,
+		} {
+			if want == "" {
+				continue
+			}
+			if !strings.Contains(string(got), want) {
+				t.Errorf("%s = %q, want it to contain %q", tc.name, got, want)
+			}
+		}
+	}
+}
+
 func TestRunConfigure_RemovesOnlyRequestedAlias(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

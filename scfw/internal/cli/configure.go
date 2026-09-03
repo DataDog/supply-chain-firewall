@@ -117,6 +117,7 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 		errs = append(errs, fmt.Errorf("scfw configure: %w", err))
 		return errors.Join(errs...)
 	}
+	completionFiles := shellCompletionFiles(home)
 
 	for _, name := range configFiles {
 		path := filepath.Join(home, name)
@@ -132,6 +133,9 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 				cmd.Flags().Changed("scfw-home"),
 				cmd.Flags().Changed("dd-site"),
 			)
+			if completionFiles[name] {
+				content += shellCompletionConfig(name)
+			}
 		}
 		if err := updateConfigFile(path, content); err != nil {
 			errs = append(errs, err)
@@ -145,6 +149,44 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scfw configure: write restart notice: %w", err)
 	}
 	return nil
+}
+
+// shellCompletionFiles selects every Bash startup file because interactive
+// login shells may not source .bashrc. Zsh sources .zshrc for every interactive
+// shell, so .zprofile is only needed as a fallback for profile-only setups.
+func shellCompletionFiles(home string) map[string]bool {
+	selected := map[string]bool{".bashrc": true, ".bash_profile": true}
+	zshFile := ".zshrc"
+	if _, err := os.Stat(filepath.Join(home, zshFile)); os.IsNotExist(err) {
+		zshFile = ".zprofile"
+	}
+	selected[zshFile] = true
+	return selected
+}
+
+// shellCompletionConfig enables Cobra completion for the shell that sources
+// the configuration file. Package-manager aliases keep their own command names,
+// so their existing npm, pip, and Poetry completion definitions remain active.
+func shellCompletionConfig(configFile string) string {
+	switch configFile {
+	case ".bashrc", ".bash_profile":
+		return `if [[ $- == *i* ]] && ! complete -p scfw >/dev/null 2>&1; then
+  source <(scfw completion bash)
+fi
+`
+	case ".zshrc", ".zprofile":
+		return `if [[ -o interactive ]]; then
+  if (( ! $+functions[compdef] )); then
+    autoload -U compinit && compinit
+  fi
+  if [[ -z ${_comps[scfw]-} ]]; then
+    source <(scfw completion zsh)
+  fi
+fi
+`
+	default:
+		return ""
+	}
 }
 
 // buildManagedBlock formats the currently selected configuration options

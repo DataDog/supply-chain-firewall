@@ -39,16 +39,29 @@ type ddReportAttributes struct {
 }
 
 type ddPackageReport struct {
-	Ecosystem string      `json:"ecosystem"`
-	Package   string      `json:"package"`
-	Version   string      `json:"version"`
-	Warning   bool        `json:"warning"`
-	Findings  []ddFinding `json:"findings"`
+	Ecosystem       string            `json:"ecosystem"`
+	Package         string            `json:"package"`
+	Version         string            `json:"version"`
+	Warning         bool              `json:"warning"`
+	Findings        []ddFinding       `json:"findings"`
+	Failures        []ddFailure       `json:"failures"`
+	MatchedPolicies []ddMatchedPolicy `json:"matched_policies"`
 }
 
 type ddFinding struct {
 	Verifier string `json:"verifier"`
 	Finding  string `json:"finding"`
+}
+
+type ddFailure struct {
+	Verifier string `json:"verifier"`
+	Error    string `json:"error"`
+}
+
+type ddMatchedPolicy struct {
+	Type    string `json:"type"`
+	Rule    string `json:"rule,omitempty"`
+	Outcome string `json:"outcome"`
 }
 
 // Report the firewall's ultimate decision to the Code Security API. resolvedOutcome is
@@ -124,25 +137,41 @@ func packageReports(results []PackageEvaluationResult) []ddPackageReport {
 	reports := make([]ddPackageReport, 0, len(results))
 	for _, result := range results {
 		reports = append(reports, ddPackageReport{
-			Ecosystem: result.Ecosystem,
-			Package:   result.PackageName,
-			Version:   result.PackageVersion,
-			Warning:   result.Outcome == OutcomeWarn,
-			Findings:  packageFindings(result),
+			Ecosystem:       result.Ecosystem,
+			Package:         result.PackageName,
+			Version:         result.PackageVersion,
+			Warning:         result.Outcome == OutcomeWarn,
+			Findings:        packageFindings(result),
+			Failures:        packageFailures(result),
+			MatchedPolicies: packageMatchedPolicies(result),
 		})
 	}
 	return reports
 }
 
-// Generate the findings for a single package evaluation result, combining its matched
-// policies and any verifier failures.
+// Generate the findings for a single package evaluation result's matched policies.
 func packageFindings(result PackageEvaluationResult) []ddFinding {
-	findings := make([]ddFinding, 0, len(result.MatchedPolicy)+len(result.Failures))
+	findings := make([]ddFinding, 0, len(result.MatchedPolicy))
 	for _, policy := range result.MatchedPolicy {
 		findings = append(findings, ddFinding{Verifier: policy.Type, Finding: policy.Rule})
 	}
-	for _, f := range result.Failures {
-		findings = append(findings, ddFinding{Verifier: f.Verifier, Finding: f.Error})
-	}
 	return findings
+}
+
+// Generate the failures for a single package evaluation result's verifier failures.
+func packageFailures(result PackageEvaluationResult) []ddFailure {
+	failures := make([]ddFailure, 0, len(result.Failures))
+	for _, f := range result.Failures {
+		failures = append(failures, ddFailure(f))
+	}
+	return failures
+}
+
+// Generate the matched policies for a single package evaluation result.
+func packageMatchedPolicies(result PackageEvaluationResult) []ddMatchedPolicy {
+	policies := make([]ddMatchedPolicy, 0, len(result.MatchedPolicy))
+	for _, p := range result.MatchedPolicy {
+		policies = append(policies, ddMatchedPolicy{Type: p.Type, Rule: p.Rule, Outcome: string(p.Outcome)})
+	}
+	return policies
 }

@@ -21,7 +21,6 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/ddapi"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/git"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
@@ -103,6 +102,13 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scfw run: %w", err)
 	}
 
+	mode, err := resolveEvaluationMode()
+	if err != nil {
+		return fmt.Errorf("scfw run: %w", err)
+	}
+	noteLocalEvaluation(mode)
+	reporter := newReporter(mode)
+
 	// Captured before any package installation work, for reporting.
 	installTimestamp := time.Now().UTC()
 
@@ -136,7 +142,11 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 		evaluationReport = evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow, Results: []evaluation.PackageEvaluationResult{}}
 	} else {
 		slog.Debug("evaluating package installation targets", "count", installTargets.Len())
-		evaluationReport, err = ddapi.Evaluator{}.EvaluateInstallTargets(cmd.Context(), isInteractive, installTargets)
+		evaluator, err := newEvaluator(cmd.Context(), mode)
+		if err != nil {
+			return fmt.Errorf("scfw run: %w", err)
+		}
+		evaluationReport, err = evaluator.EvaluateInstallTargets(cmd.Context(), isInteractive, installTargets)
 		if err != nil {
 			return fmt.Errorf("scfw run: %w", err)
 		}
@@ -152,7 +162,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 	action := decideFirewallAction(isInteractive, evaluationReport.Outcome)
 	gitMetadata := discoverGitMetadata(packageManager, cmdArgs[1:])
 
-	if err := (ddapi.Reporter{}).ReportFirewallOutcome(
+	if err := reporter.ReportFirewallOutcome(
 		cmd.Context(),
 		installTimestamp,
 		cmdArgs,
@@ -266,6 +276,9 @@ func formatEvaluationDetails(report evaluation.ScfwPolicyEvaluationReport) strin
 		}
 		for _, f := range result.Failures {
 			fmt.Fprintf(&b, "      %s: failed to evaluate (%s)\n", f.Verifier, f.Error)
+		}
+		for _, f := range result.Findings {
+			fmt.Fprintf(&b, "      %s [%s]: %s\n", f.Verifier, f.Severity, strings.ReplaceAll(f.Text, "\n", "\n      "))
 		}
 	}
 	return b.String()

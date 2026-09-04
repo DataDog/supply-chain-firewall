@@ -11,11 +11,16 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
 // Code Security API endpoint for evaluating installation targets against policy.
 const ddPolicyEvaluateEndpoint = "api/v2/static-analysis-sca/scfw/policy/evaluate"
+
+// Evaluator evaluates installation targets against policy via the Datadog
+// Code Security API. It implements evaluation.Evaluator.
+type Evaluator struct{}
 
 type postScfwPolicyEvaluateRequest struct {
 	Data postScfwPolicyEvaluateRequestData `json:"data"`
@@ -32,60 +37,21 @@ type postScfwPolicyEvaluateRequestAttributes struct {
 	IsInteractive bool         `json:"is_interactive"`
 }
 
-// Outcome is the decision for a matchedPolicy, a packageEvaluationResult, or a whole
-// postScfwPolicyEvaluateResponse. Org policy rules only ever decide block or allow;
-// warn/error can only come from Datadog advisory-db matches.
-type Outcome string
-
-const (
-	OutcomeAllow Outcome = "ALLOW"
-	OutcomeBlock Outcome = "BLOCK"
-	OutcomeWarn  Outcome = "WARN"
-	OutcomeError Outcome = "ERROR"
-)
-
 type postScfwPolicyEvaluateResponse struct {
 	Data postScfwPolicyEvaluateResponseData `json:"data"`
 }
 
 type postScfwPolicyEvaluateResponseData struct {
-	ID         string                     `json:"id,omitempty"`
-	Attributes ScfwPolicyEvaluationReport `json:"attributes"`
+	ID         string                                `json:"id,omitempty"`
+	Attributes evaluation.ScfwPolicyEvaluationReport `json:"attributes"`
 }
 
-type ScfwPolicyEvaluationReport struct {
-	Outcome Outcome                   `json:"outcome"`
-	Results []PackageEvaluationResult `json:"results"`
-}
-
-// packageEvaluationResult is the decision for one evaluated package.
-type PackageEvaluationResult struct {
-	Ecosystem      string          `json:"ecosystem"`
-	PackageName    string          `json:"package_name"`
-	PackageVersion string          `json:"package_version"`
-	Outcome        Outcome         `json:"outcome"`
-	MatchedPolicy  []matchedPolicy `json:"matched_policy,omitempty"`
-	Failures       []failure       `json:"failures,omitempty"`
-}
-
-// failure records a verifier that could not be evaluated for a package.
-type failure struct {
-	Verifier string `json:"verifier"`
-	Error    string `json:"error"`
-}
-
-// matchedPolicy is one policy source (org and/or datadog) that contributed to a
-// packageEvaluationResult.
-type matchedPolicy struct {
-	Type    string  `json:"type"`
-	Rule    string  `json:"rule,omitempty"`
-	Outcome Outcome `json:"outcome"`
-}
-
-func EvaluateInstallTargets(ctx context.Context, isInteractive bool, installTargets *pm.Set[pm.Package]) (ScfwPolicyEvaluationReport, error) {
+// EvaluateInstallTargets evaluates the given installation targets against
+// policy via the Code Security API and returns the evaluation report.
+func (Evaluator) EvaluateInstallTargets(ctx context.Context, isInteractive bool, installTargets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 	requestID, err := newRequestID()
 	if err != nil {
-		return ScfwPolicyEvaluationReport{}, fmt.Errorf("failed to generate policy evaluation request ID: %w", err)
+		return evaluation.ScfwPolicyEvaluationReport{}, fmt.Errorf("failed to generate policy evaluation request ID: %w", err)
 	}
 
 	payload := postScfwPolicyEvaluateRequest{
@@ -101,17 +67,17 @@ func EvaluateInstallTargets(ctx context.Context, isInteractive bool, installTarg
 
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return ScfwPolicyEvaluationReport{}, fmt.Errorf("failed to marshal policy evaluation request payload: %w", err)
+		return evaluation.ScfwPolicyEvaluationReport{}, fmt.Errorf("failed to marshal policy evaluation request payload: %w", err)
 	}
 
 	respBody, err := postDatadogAPI(ctx, ddPolicyEvaluateEndpoint, body)
 	if err != nil {
-		return ScfwPolicyEvaluationReport{}, err
+		return evaluation.ScfwPolicyEvaluationReport{}, err
 	}
 
 	var result postScfwPolicyEvaluateResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return ScfwPolicyEvaluationReport{}, fmt.Errorf("failed to decode policy evaluation response: %w", err)
+		return evaluation.ScfwPolicyEvaluationReport{}, fmt.Errorf("failed to decode policy evaluation response: %w", err)
 	}
 
 	return result.Data.Attributes, nil

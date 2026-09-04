@@ -12,10 +12,16 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 )
 
 // Code Security API endpoint for submitting SCFW run reports.
 const ddCodeSecurityAPIEndpoint = "api/v2/static-analysis-sca/scfw/report"
+
+// Reporter reports firewall outcomes to the Datadog Code Security API. It
+// implements evaluation.Reporter.
+type Reporter struct{}
 
 type ddReportRequest struct {
 	Data ddReportRequestData `json:"data"`
@@ -59,17 +65,18 @@ type ddMatchedPolicy struct {
 	Outcome string `json:"outcome"`
 }
 
-// Report the firewall's ultimate decision to the Code Security API. resolvedOutcome is
-// the outcome actually acted on (ALLOW or BLOCK): the /report endpoint does not accept
-// WARN, so a WARN (or ERROR, which is coerced to WARN) returned by /evaluate must be
-// resolved locally before it's reported here.
-func ReportFirewallOutcome(
+// ReportFirewallOutcome reports the firewall's ultimate decision to the Code
+// Security API. resolvedOutcome is the outcome actually acted on (ALLOW or
+// BLOCK): the /report endpoint does not accept WARN, so a WARN (or ERROR,
+// which is coerced to WARN) returned by /evaluate must be resolved locally
+// before it's reported here.
+func (Reporter) ReportFirewallOutcome(
 	ctx context.Context,
 	installTimestamp time.Time,
 	command []string,
 	packageManagerName, executable, repository string,
-	evaluationReport ScfwPolicyEvaluationReport,
-	resolvedOutcome Outcome,
+	evaluationReport evaluation.ScfwPolicyEvaluationReport,
+	resolvedOutcome evaluation.Outcome,
 ) error {
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -114,12 +121,12 @@ func ReportFirewallOutcome(
 // reportedResults selects which Results to report for a resolved outcome. Results are
 // reported as-is unless /evaluate returned WARN/ERROR and that was resolved locally to
 // BLOCK, in which case only the Results that caused it are reported.
-func reportedResults(evaluationReport ScfwPolicyEvaluationReport, resolvedOutcome Outcome) []PackageEvaluationResult {
-	if resolvedOutcome == OutcomeAllow || evaluationReport.Outcome == OutcomeBlock {
+func reportedResults(evaluationReport evaluation.ScfwPolicyEvaluationReport, resolvedOutcome evaluation.Outcome) []evaluation.PackageEvaluationResult {
+	if resolvedOutcome == evaluation.OutcomeAllow || evaluationReport.Outcome == evaluation.OutcomeBlock {
 		return evaluationReport.Results
 	}
 
-	filtered := make([]PackageEvaluationResult, 0, len(evaluationReport.Results))
+	filtered := make([]evaluation.PackageEvaluationResult, 0, len(evaluationReport.Results))
 	for _, result := range evaluationReport.Results {
 		if result.Outcome == evaluationReport.Outcome {
 			filtered = append(filtered, result)
@@ -129,14 +136,14 @@ func reportedResults(evaluationReport ScfwPolicyEvaluationReport, resolvedOutcom
 }
 
 // Generate package reports for a set of policy evaluation results.
-func packageReports(results []PackageEvaluationResult) []ddPackageReport {
+func packageReports(results []evaluation.PackageEvaluationResult) []ddPackageReport {
 	reports := make([]ddPackageReport, 0, len(results))
 	for _, result := range results {
 		reports = append(reports, ddPackageReport{
 			Ecosystem:       result.Ecosystem,
 			Package:         result.PackageName,
 			Version:         result.PackageVersion,
-			Warning:         result.Outcome == OutcomeWarn,
+			Warning:         result.Outcome == evaluation.OutcomeWarn,
 			Failures:        packageFailures(result),
 			MatchedPolicies: packageMatchedPolicies(result),
 		})
@@ -145,16 +152,16 @@ func packageReports(results []PackageEvaluationResult) []ddPackageReport {
 }
 
 // Generate the failures for a single package evaluation result's verifier failures.
-func packageFailures(result PackageEvaluationResult) []ddFailure {
+func packageFailures(result evaluation.PackageEvaluationResult) []ddFailure {
 	failures := make([]ddFailure, 0, len(result.Failures))
 	for _, f := range result.Failures {
-		failures = append(failures, ddFailure(f))
+		failures = append(failures, ddFailure{Verifier: f.Verifier, Error: f.Error})
 	}
 	return failures
 }
 
 // Generate the matched policies for a single package evaluation result.
-func packageMatchedPolicies(result PackageEvaluationResult) []ddMatchedPolicy {
+func packageMatchedPolicies(result evaluation.PackageEvaluationResult) []ddMatchedPolicy {
 	policies := make([]ddMatchedPolicy, 0, len(result.MatchedPolicy))
 	for _, p := range result.MatchedPolicy {
 		policies = append(policies, ddMatchedPolicy{Type: p.Type, Rule: p.Rule, Outcome: string(p.Outcome)})

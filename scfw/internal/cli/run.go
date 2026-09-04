@@ -22,6 +22,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ddapi"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/git"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
@@ -33,7 +34,7 @@ const onWarningVar = "SCFW_ON_WARNING"
 // onWarning is the resolved firewall action for a WARN outcome, computed by
 // resolveOnWarning from --allow-on-warning/--block-on-warning and SCFW_ON_WARNING.
 // WARN means neither was set, deferring to the interactive/non-interactive fallback.
-var onWarning = ddapi.OutcomeWarn
+var onWarning = evaluation.OutcomeWarn
 
 var runCmd = &cobra.Command{
 	Use:     "run [flags] -- <command>",
@@ -62,18 +63,18 @@ func init() {
 // SCFW_ON_WARNING, which takes precedence over the flags when set.
 func resolveOnWarning() error {
 	if allowOnWarning {
-		onWarning = ddapi.OutcomeAllow
+		onWarning = evaluation.OutcomeAllow
 	}
 	if blockOnWarning {
-		onWarning = ddapi.OutcomeBlock
+		onWarning = evaluation.OutcomeBlock
 	}
 
 	switch val := strings.ToLower(os.Getenv(onWarningVar)); val {
 	case "":
-	case strings.ToLower(string(ddapi.OutcomeAllow)):
-		onWarning = ddapi.OutcomeAllow
-	case strings.ToLower(string(ddapi.OutcomeBlock)):
-		onWarning = ddapi.OutcomeBlock
+	case strings.ToLower(string(evaluation.OutcomeAllow)):
+		onWarning = evaluation.OutcomeAllow
+	case strings.ToLower(string(evaluation.OutcomeBlock)):
+		onWarning = evaluation.OutcomeBlock
 	default:
 		return fmt.Errorf("invalid %s value %q (must be \"allow\" or \"block\")", onWarningVar, val)
 	}
@@ -128,14 +129,14 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 
 	slog.Info("resolved install targets", "targets", slices.Collect(installTargets.Items()))
 
-	var evaluationReport ddapi.ScfwPolicyEvaluationReport
+	var evaluationReport evaluation.ScfwPolicyEvaluationReport
 	if installTargets.Len() == 0 {
 		// Nothing to evaluate: the API requires a non-empty packages list, and
 		// there's nothing a policy decision could act on anyway.
-		evaluationReport = ddapi.ScfwPolicyEvaluationReport{Outcome: ddapi.OutcomeAllow, Results: []ddapi.PackageEvaluationResult{}}
+		evaluationReport = evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow, Results: []evaluation.PackageEvaluationResult{}}
 	} else {
 		slog.Debug("evaluating package installation targets", "count", installTargets.Len())
-		evaluationReport, err = ddapi.EvaluateInstallTargets(cmd.Context(), isInteractive, installTargets)
+		evaluationReport, err = ddapi.Evaluator{}.EvaluateInstallTargets(cmd.Context(), isInteractive, installTargets)
 		if err != nil {
 			return fmt.Errorf("scfw run: %w", err)
 		}
@@ -151,7 +152,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 	action := decideFirewallAction(isInteractive, evaluationReport.Outcome)
 	gitMetadata := discoverGitMetadata(packageManager, cmdArgs[1:])
 
-	if err := ddapi.ReportFirewallOutcome(
+	if err := (ddapi.Reporter{}).ReportFirewallOutcome(
 		cmd.Context(),
 		installTimestamp,
 		cmdArgs,
@@ -165,7 +166,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 	}
 
 	switch action {
-	case ddapi.OutcomeAllow:
+	case evaluation.OutcomeAllow:
 		slog.Debug("running approved package manager command", "package_manager", packageManagerName)
 		if err := packageManager.RunCommand(cmd.Context(), cmdArgs[1:]); err != nil {
 			// Preserve the wrapped command's own exit code.
@@ -204,20 +205,20 @@ func discoverGitMetadata(packageManager pm.PackageManager, command []string) git
 // ALLOW and BLOCK pass through unchanged. ERROR is coerced to WARN, and WARN is
 // resolved interactively: BLOCK in a non-interactive context, otherwise the user is
 // prompted to decide. Anything else is coerced to BLOCK.
-func decideFirewallAction(isInteractive bool, outcome ddapi.Outcome) ddapi.Outcome {
-	if outcome == ddapi.OutcomeError {
+func decideFirewallAction(isInteractive bool, outcome evaluation.Outcome) evaluation.Outcome {
+	if outcome == evaluation.OutcomeError {
 		slog.Info("received an ERROR outcome; coercing to WARN")
-		outcome = ddapi.OutcomeWarn
+		outcome = evaluation.OutcomeWarn
 	}
 
 	switch outcome {
-	case ddapi.OutcomeAllow, ddapi.OutcomeBlock:
+	case evaluation.OutcomeAllow, evaluation.OutcomeBlock:
 		return outcome
-	case ddapi.OutcomeWarn:
+	case evaluation.OutcomeWarn:
 		return resolveWarningAction(isInteractive)
 	default:
 		slog.Warn("received an unexpected policy evaluation outcome; blocking the command", "outcome", outcome)
-		return ddapi.OutcomeBlock
+		return evaluation.OutcomeBlock
 	}
 }
 
@@ -225,14 +226,14 @@ func decideFirewallAction(isInteractive bool, outcome ddapi.Outcome) ddapi.Outco
 // If onWarning was resolved from --allow-on-warning/--block-on-warning or
 // SCFW_ON_WARNING, that decision is used. Otherwise, in a non-interactive context,
 // it always blocks; otherwise it prompts the user to decide.
-func resolveWarningAction(isInteractive bool) ddapi.Outcome {
-	if onWarning != ddapi.OutcomeWarn {
+func resolveWarningAction(isInteractive bool) evaluation.Outcome {
+	if onWarning != evaluation.OutcomeWarn {
 		return onWarning
 	}
 
 	if !isInteractive {
 		slog.Warn("received a WARN outcome in a non-interactive context; blocking the command")
-		return ddapi.OutcomeBlock
+		return evaluation.OutcomeBlock
 	}
 
 	fmt.Fprint(os.Stderr, "Proceed with installation? [y/N]: ")
@@ -244,8 +245,8 @@ func resolveWarningAction(isInteractive bool) ddapi.Outcome {
 // for ALLOW, and a non-empty explanation for anything else (BLOCK, WARN, or an unexpected
 // outcome), erring on the side of surfacing detail whenever the outcome isn't
 // affirmatively ALLOW.
-func formatEvaluationDetails(report ddapi.ScfwPolicyEvaluationReport) string {
-	if report.Outcome == ddapi.OutcomeAllow {
+func formatEvaluationDetails(report evaluation.ScfwPolicyEvaluationReport) string {
+	if report.Outcome == evaluation.OutcomeAllow {
 		return ""
 	}
 
@@ -273,17 +274,17 @@ func formatEvaluationDetails(report ddapi.ScfwPolicyEvaluationReport) string {
 // parseInstallConfirmation reads a single line from r and interprets it as the user's
 // answer to the installation confirmation prompt. Anything other than "y"/"yes"
 // (case-insensitive), or a read error, is treated as a decline.
-func parseInstallConfirmation(r io.Reader) ddapi.Outcome {
+func parseInstallConfirmation(r io.Reader) evaluation.Outcome {
 	answer, err := bufio.NewReader(r).ReadString('\n')
 	if err != nil {
 		slog.Warn("failed to read installation confirmation; blocking the command", "error", err)
-		return ddapi.OutcomeBlock
+		return evaluation.OutcomeBlock
 	}
 
 	switch strings.ToLower(strings.TrimSpace(answer)) {
 	case "y", "yes":
-		return ddapi.OutcomeAllow
+		return evaluation.OutcomeAllow
 	default:
-		return ddapi.OutcomeBlock
+		return evaluation.OutcomeBlock
 	}
 }

@@ -147,7 +147,7 @@ func TestVerifyRejectsUnsupportedPackages(t *testing.T) {
 
 func TestIgnoreListFiltersAdvisoriesButNeverMAL(t *testing.T) {
 	ignoreFile := filepath.Join(t.TempDir(), "ignore.txt")
-	if err := os.WriteFile(ignoreFile, []byte("GHSA-1234-5678-9abc\n\n"), 0o644); err != nil {
+	if err := os.WriteFile(ignoreFile, []byte("GHSA-1234-5678-9abc\n.*\n\n"), 0o644); err != nil {
 		t.Fatalf("failed to write ignore list: %v", err)
 	}
 
@@ -176,8 +176,8 @@ func TestIgnoreListFiltersAdvisoriesButNeverMAL(t *testing.T) {
 			}
 		}
 	}
-	if strings.Join(ids, ",") != "GHSA-9999-8888-7777,MAL-2024-0001" {
-		t.Errorf("reported advisory IDs = %v, want the unignored GHSA and the MAL advisory", ids)
+	if strings.Join(ids, ",") != "MAL-2024-0001" {
+		t.Errorf("reported advisory IDs = %v, want the MAL advisory only when a broad pattern ignores non-MAL advisories", ids)
 	}
 }
 

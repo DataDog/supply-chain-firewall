@@ -175,7 +175,7 @@ func (v Verifier) Verify(ctx context.Context, pkg pm.Package) ([]evaluation.Find
 
 	var findings []evaluation.Finding
 	for _, vulnID := range vulns {
-		if !slices.ContainsFunc(v.ignoredIDs, func(pattern *regexp.Regexp) bool {
+		if strings.HasPrefix(vulnID, "MAL") || !slices.ContainsFunc(v.ignoredIDs, func(pattern *regexp.Regexp) bool {
 			return pattern.MatchString(vulnID)
 		}) {
 			findings = append(findings, v.finding(pkg, vulnID))

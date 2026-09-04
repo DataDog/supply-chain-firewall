@@ -14,7 +14,7 @@ import (
 	gogit "github.com/go-git/go-git/v5"
 	gitconfig "github.com/go-git/go-git/v5/config"
 
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/ddapi"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/poetry"
 )
 
@@ -48,14 +48,14 @@ func TestDiscoverGitMetadataUsesPackageManagerProjectDirectory(t *testing.T) {
 
 func TestDecideFirewallAction(t *testing.T) {
 	tests := []struct {
-		outcome ddapi.Outcome
-		want    ddapi.Outcome
+		outcome evaluation.Outcome
+		want    evaluation.Outcome
 	}{
-		{ddapi.OutcomeAllow, ddapi.OutcomeAllow},
-		{ddapi.OutcomeBlock, ddapi.OutcomeBlock},
-		{ddapi.OutcomeWarn, ddapi.OutcomeBlock},
-		{ddapi.OutcomeError, ddapi.OutcomeBlock},
-		{ddapi.Outcome("UNKNOWN"), ddapi.OutcomeBlock},
+		{evaluation.OutcomeAllow, evaluation.OutcomeAllow},
+		{evaluation.OutcomeBlock, evaluation.OutcomeBlock},
+		{evaluation.OutcomeWarn, evaluation.OutcomeBlock},
+		{evaluation.OutcomeError, evaluation.OutcomeBlock},
+		{evaluation.Outcome("UNKNOWN"), evaluation.OutcomeBlock},
 	}
 
 	for _, tt := range tests {
@@ -71,15 +71,15 @@ func TestResolveOnWarning(t *testing.T) {
 		allowOnWarning bool
 		blockOnWarning bool
 		env            string
-		wantOnWarning  ddapi.Outcome
+		wantOnWarning  evaluation.Outcome
 		wantErr        bool
 	}{
-		{name: "no flags no env", wantOnWarning: ddapi.OutcomeWarn},
-		{name: "allow flag", allowOnWarning: true, wantOnWarning: ddapi.OutcomeAllow},
-		{name: "block flag", blockOnWarning: true, wantOnWarning: ddapi.OutcomeBlock},
-		{name: "env allow overrides block flag", blockOnWarning: true, env: "allow", wantOnWarning: ddapi.OutcomeAllow},
-		{name: "env block overrides allow flag", allowOnWarning: true, env: "block", wantOnWarning: ddapi.OutcomeBlock},
-		{name: "env value is case-insensitive", env: "ALLOW", wantOnWarning: ddapi.OutcomeAllow},
+		{name: "no flags no env", wantOnWarning: evaluation.OutcomeWarn},
+		{name: "allow flag", allowOnWarning: true, wantOnWarning: evaluation.OutcomeAllow},
+		{name: "block flag", blockOnWarning: true, wantOnWarning: evaluation.OutcomeBlock},
+		{name: "env allow overrides block flag", blockOnWarning: true, env: "allow", wantOnWarning: evaluation.OutcomeAllow},
+		{name: "env block overrides allow flag", allowOnWarning: true, env: "block", wantOnWarning: evaluation.OutcomeBlock},
+		{name: "env value is case-insensitive", env: "ALLOW", wantOnWarning: evaluation.OutcomeAllow},
 		{name: "invalid env value", env: "nonsense", wantErr: true},
 	}
 
@@ -87,7 +87,7 @@ func TestResolveOnWarning(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			allowOnWarning = tt.allowOnWarning
 			blockOnWarning = tt.blockOnWarning
-			onWarning = ddapi.OutcomeWarn
+			onWarning = evaluation.OutcomeWarn
 			if tt.env != "" {
 				os.Setenv(onWarningVar, tt.env)
 			} else {
@@ -96,7 +96,7 @@ func TestResolveOnWarning(t *testing.T) {
 			t.Cleanup(func() {
 				allowOnWarning = false
 				blockOnWarning = false
-				onWarning = ddapi.OutcomeWarn
+				onWarning = evaluation.OutcomeWarn
 				os.Unsetenv(onWarningVar)
 			})
 
@@ -121,17 +121,17 @@ func TestParseInstallConfirmation(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
-		want  ddapi.Outcome
+		want  evaluation.Outcome
 	}{
-		{name: "y", input: "y\n", want: ddapi.OutcomeAllow},
-		{name: "yes", input: "yes\n", want: ddapi.OutcomeAllow},
-		{name: "uppercase Y", input: "Y\n", want: ddapi.OutcomeAllow},
-		{name: "mixed case Yes", input: "Yes\n", want: ddapi.OutcomeAllow},
-		{name: "trims surrounding whitespace", input: "  yes  \n", want: ddapi.OutcomeAllow},
-		{name: "n", input: "n\n", want: ddapi.OutcomeBlock},
-		{name: "empty line", input: "\n", want: ddapi.OutcomeBlock},
-		{name: "garbage", input: "sure\n", want: ddapi.OutcomeBlock},
-		{name: "no trailing newline (read error)", input: "yes", want: ddapi.OutcomeBlock},
+		{name: "y", input: "y\n", want: evaluation.OutcomeAllow},
+		{name: "yes", input: "yes\n", want: evaluation.OutcomeAllow},
+		{name: "uppercase Y", input: "Y\n", want: evaluation.OutcomeAllow},
+		{name: "mixed case Yes", input: "Yes\n", want: evaluation.OutcomeAllow},
+		{name: "trims surrounding whitespace", input: "  yes  \n", want: evaluation.OutcomeAllow},
+		{name: "n", input: "n\n", want: evaluation.OutcomeBlock},
+		{name: "empty line", input: "\n", want: evaluation.OutcomeBlock},
+		{name: "garbage", input: "sure\n", want: evaluation.OutcomeBlock},
+		{name: "no trailing newline (read error)", input: "yes", want: evaluation.OutcomeBlock},
 	}
 
 	for _, tt := range tests {
@@ -239,22 +239,22 @@ func TestRunCmd_AcceptsLegitimateFlagValues(t *testing.T) {
 func TestFormatEvaluationDetails(t *testing.T) {
 	tests := []struct {
 		name        string
-		report      ddapi.ScfwPolicyEvaluationReport
+		report      evaluation.ScfwPolicyEvaluationReport
 		wantContain []string
 		wantOmit    []string
 	}{
 		{
 			name:     "allow prints nothing",
-			report:   ddapi.ScfwPolicyEvaluationReport{Outcome: ddapi.OutcomeAllow},
+			report:   evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow},
 			wantOmit: []string{"ALLOW"},
 		},
 		{
 			name: "block prints only the blocking package and its matched policy",
-			report: ddapi.ScfwPolicyEvaluationReport{
-				Outcome: ddapi.OutcomeBlock,
-				Results: []ddapi.PackageEvaluationResult{
-					{Ecosystem: "npm", PackageName: "left-pad", PackageVersion: "1.0.0", Outcome: ddapi.OutcomeAllow},
-					{Ecosystem: "npm", PackageName: "evil-pkg", PackageVersion: "6.6.6", Outcome: ddapi.OutcomeBlock},
+			report: evaluation.ScfwPolicyEvaluationReport{
+				Outcome: evaluation.OutcomeBlock,
+				Results: []evaluation.PackageEvaluationResult{
+					{Ecosystem: "npm", PackageName: "left-pad", PackageVersion: "1.0.0", Outcome: evaluation.OutcomeAllow},
+					{Ecosystem: "npm", PackageName: "evil-pkg", PackageVersion: "6.6.6", Outcome: evaluation.OutcomeBlock},
 				},
 			},
 			wantContain: []string{"BLOCK", "evil-pkg@6.6.6"},
@@ -262,12 +262,12 @@ func TestFormatEvaluationDetails(t *testing.T) {
 		},
 		{
 			name:        "error outcome still prints",
-			report:      ddapi.ScfwPolicyEvaluationReport{Outcome: ddapi.OutcomeError},
+			report:      evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeError},
 			wantContain: []string{"ERROR"},
 		},
 		{
 			name:        "unexpected outcome still prints",
-			report:      ddapi.ScfwPolicyEvaluationReport{Outcome: ddapi.Outcome("UNKNOWN")},
+			report:      evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.Outcome("UNKNOWN")},
 			wantContain: []string{"UNKNOWN"},
 		},
 	}
@@ -292,20 +292,20 @@ func TestFormatEvaluationDetails(t *testing.T) {
 
 func TestResolveWarningAction_UsesResolvedOnWarning(t *testing.T) {
 	tests := []struct {
-		onWarning     ddapi.Outcome
+		onWarning     evaluation.Outcome
 		isInteractive bool
-		want          ddapi.Outcome
+		want          evaluation.Outcome
 	}{
-		{ddapi.OutcomeAllow, false, ddapi.OutcomeAllow},
-		{ddapi.OutcomeBlock, false, ddapi.OutcomeBlock},
-		{ddapi.OutcomeAllow, true, ddapi.OutcomeAllow},
-		{ddapi.OutcomeBlock, true, ddapi.OutcomeBlock},
+		{evaluation.OutcomeAllow, false, evaluation.OutcomeAllow},
+		{evaluation.OutcomeBlock, false, evaluation.OutcomeBlock},
+		{evaluation.OutcomeAllow, true, evaluation.OutcomeAllow},
+		{evaluation.OutcomeBlock, true, evaluation.OutcomeBlock},
 	}
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s/isInteractive=%v", tt.onWarning, tt.isInteractive), func(t *testing.T) {
 			onWarning = tt.onWarning
-			t.Cleanup(func() { onWarning = ddapi.OutcomeWarn })
+			t.Cleanup(func() { onWarning = evaluation.OutcomeWarn })
 
 			if got := resolveWarningAction(tt.isInteractive); got != tt.want {
 				t.Errorf("resolveWarningAction(%v) = %q, want %q", tt.isInteractive, got, tt.want)

@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 )
 
 func TestDDReportAttributesMarshalsRepository(t *testing.T) {
@@ -29,24 +31,24 @@ func TestDDReportAttributesMarshalsRepository(t *testing.T) {
 }
 
 func TestPackageReports(t *testing.T) {
-	evaluationReport := ScfwPolicyEvaluationReport{
-		Outcome: OutcomeBlock,
-		Results: []PackageEvaluationResult{
+	evaluationReport := evaluation.ScfwPolicyEvaluationReport{
+		Outcome: evaluation.OutcomeBlock,
+		Results: []evaluation.PackageEvaluationResult{
 			{
 				Ecosystem:      "PyPI",
 				PackageName:    "requests",
 				PackageVersion: "2.31.0",
-				Outcome:        OutcomeBlock,
-				MatchedPolicy: []matchedPolicy{
-					{Type: "org_policy", Rule: "no-requests", Outcome: OutcomeBlock},
+				Outcome:        evaluation.OutcomeBlock,
+				MatchedPolicy: []evaluation.MatchedPolicy{
+					{Type: "org_policy", Rule: "no-requests", Outcome: evaluation.OutcomeBlock},
 				},
 			},
 			{
 				Ecosystem:      "npm",
 				PackageName:    "left-pad",
 				PackageVersion: "1.3.0",
-				Outcome:        OutcomeWarn,
-				Failures: []failure{
+				Outcome:        evaluation.OutcomeWarn,
+				Failures: []evaluation.Failure{
 					{Verifier: "datadog_policy", Error: "advisory-db lookup timed out"},
 				},
 			},
@@ -86,8 +88,8 @@ func TestPackageReports(t *testing.T) {
 func TestPackageReports_DoesNotFilterResults(t *testing.T) {
 	// packageReports reports whatever results it's given, regardless of their outcome;
 	// callers (reportedResults) are responsible for any filtering.
-	results := []PackageEvaluationResult{
-		{Ecosystem: "PyPI", PackageName: "six", PackageVersion: "1.17.0", Outcome: OutcomeAllow},
+	results := []evaluation.PackageEvaluationResult{
+		{Ecosystem: "PyPI", PackageName: "six", PackageVersion: "1.17.0", Outcome: evaluation.OutcomeAllow},
 	}
 
 	got := packageReports(results)
@@ -97,45 +99,45 @@ func TestPackageReports_DoesNotFilterResults(t *testing.T) {
 }
 
 func TestReportedResults(t *testing.T) {
-	warnResult := PackageEvaluationResult{Ecosystem: "npm", PackageName: "left-pad", PackageVersion: "1.3.0", Outcome: OutcomeWarn}
-	allowResult := PackageEvaluationResult{Ecosystem: "PyPI", PackageName: "six", PackageVersion: "1.17.0", Outcome: OutcomeAllow}
-	errorResult := PackageEvaluationResult{Ecosystem: "npm", PackageName: "flaky", PackageVersion: "1.0.0", Outcome: OutcomeError}
+	warnResult := evaluation.PackageEvaluationResult{Ecosystem: "npm", PackageName: "left-pad", PackageVersion: "1.3.0", Outcome: evaluation.OutcomeWarn}
+	allowResult := evaluation.PackageEvaluationResult{Ecosystem: "PyPI", PackageName: "six", PackageVersion: "1.17.0", Outcome: evaluation.OutcomeAllow}
+	errorResult := evaluation.PackageEvaluationResult{Ecosystem: "npm", PackageName: "flaky", PackageVersion: "1.0.0", Outcome: evaluation.OutcomeError}
 
 	tests := []struct {
 		name             string
-		evaluationReport ScfwPolicyEvaluationReport
-		resolvedOutcome  Outcome
-		want             []PackageEvaluationResult
+		evaluationReport evaluation.ScfwPolicyEvaluationReport
+		resolvedOutcome  evaluation.Outcome
+		want             []evaluation.PackageEvaluationResult
 	}{
 		{
 			name:             "ALLOW from evaluate: reported as-is",
-			evaluationReport: ScfwPolicyEvaluationReport{Outcome: OutcomeAllow, Results: []PackageEvaluationResult{allowResult}},
-			resolvedOutcome:  OutcomeAllow,
-			want:             []PackageEvaluationResult{allowResult},
+			evaluationReport: evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow, Results: []evaluation.PackageEvaluationResult{allowResult}},
+			resolvedOutcome:  evaluation.OutcomeAllow,
+			want:             []evaluation.PackageEvaluationResult{allowResult},
 		},
 		{
 			name:             "BLOCK from evaluate: reported as-is, even if a result's own outcome differs",
-			evaluationReport: ScfwPolicyEvaluationReport{Outcome: OutcomeBlock, Results: []PackageEvaluationResult{allowResult}},
-			resolvedOutcome:  OutcomeBlock,
-			want:             []PackageEvaluationResult{allowResult},
+			evaluationReport: evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeBlock, Results: []evaluation.PackageEvaluationResult{allowResult}},
+			resolvedOutcome:  evaluation.OutcomeBlock,
+			want:             []evaluation.PackageEvaluationResult{allowResult},
 		},
 		{
 			name:             "WARN from evaluate, resolved to ALLOW: reported as-is",
-			evaluationReport: ScfwPolicyEvaluationReport{Outcome: OutcomeWarn, Results: []PackageEvaluationResult{allowResult, warnResult}},
-			resolvedOutcome:  OutcomeAllow,
-			want:             []PackageEvaluationResult{allowResult, warnResult},
+			evaluationReport: evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeWarn, Results: []evaluation.PackageEvaluationResult{allowResult, warnResult}},
+			resolvedOutcome:  evaluation.OutcomeAllow,
+			want:             []evaluation.PackageEvaluationResult{allowResult, warnResult},
 		},
 		{
 			name:             "WARN from evaluate, resolved to BLOCK: only the WARN results",
-			evaluationReport: ScfwPolicyEvaluationReport{Outcome: OutcomeWarn, Results: []PackageEvaluationResult{allowResult, warnResult}},
-			resolvedOutcome:  OutcomeBlock,
-			want:             []PackageEvaluationResult{warnResult},
+			evaluationReport: evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeWarn, Results: []evaluation.PackageEvaluationResult{allowResult, warnResult}},
+			resolvedOutcome:  evaluation.OutcomeBlock,
+			want:             []evaluation.PackageEvaluationResult{warnResult},
 		},
 		{
 			name:             "ERROR from evaluate, resolved to BLOCK: only the ERROR results",
-			evaluationReport: ScfwPolicyEvaluationReport{Outcome: OutcomeError, Results: []PackageEvaluationResult{allowResult, errorResult}},
-			resolvedOutcome:  OutcomeBlock,
-			want:             []PackageEvaluationResult{errorResult},
+			evaluationReport: evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeError, Results: []evaluation.PackageEvaluationResult{allowResult, errorResult}},
+			resolvedOutcome:  evaluation.OutcomeBlock,
+			want:             []evaluation.PackageEvaluationResult{errorResult},
 		},
 	}
 
@@ -151,18 +153,18 @@ func TestReportedResults(t *testing.T) {
 func TestPackageFailures(t *testing.T) {
 	tests := []struct {
 		name   string
-		result PackageEvaluationResult
+		result evaluation.PackageEvaluationResult
 		want   []ddFailure
 	}{
 		{
 			name:   "no failures",
-			result: PackageEvaluationResult{},
+			result: evaluation.PackageEvaluationResult{},
 			want:   []ddFailure{},
 		},
 		{
 			name: "failures only",
-			result: PackageEvaluationResult{
-				Failures: []failure{{Verifier: "datadog_policy", Error: "timed out"}},
+			result: evaluation.PackageEvaluationResult{
+				Failures: []evaluation.Failure{{Verifier: "datadog_policy", Error: "timed out"}},
 			},
 			want: []ddFailure{{Verifier: "datadog_policy", Error: "timed out"}},
 		},
@@ -180,18 +182,18 @@ func TestPackageFailures(t *testing.T) {
 func TestPackageMatchedPolicies(t *testing.T) {
 	tests := []struct {
 		name   string
-		result PackageEvaluationResult
+		result evaluation.PackageEvaluationResult
 		want   []ddMatchedPolicy
 	}{
 		{
 			name:   "no matched policy",
-			result: PackageEvaluationResult{},
+			result: evaluation.PackageEvaluationResult{},
 			want:   []ddMatchedPolicy{},
 		},
 		{
 			name: "matched policy only",
-			result: PackageEvaluationResult{
-				MatchedPolicy: []matchedPolicy{{Type: "org_policy", Rule: "no-foo", Outcome: OutcomeBlock}},
+			result: evaluation.PackageEvaluationResult{
+				MatchedPolicy: []evaluation.MatchedPolicy{{Type: "org_policy", Rule: "no-foo", Outcome: evaluation.OutcomeBlock}},
 			},
 			want: []ddMatchedPolicy{{Type: "org_policy", Rule: "no-foo", Outcome: "BLOCK"}},
 		},

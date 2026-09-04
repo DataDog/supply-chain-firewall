@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
@@ -55,8 +56,8 @@ func TestPostScfwPolicyEvaluateResponse_UnmarshalsRealSample(t *testing.T) {
 	if got.Data.ID != "7f18eaa7-4c74-4475-b217-d0146480e1b3" {
 		t.Errorf("Data.ID = %q, want %q", got.Data.ID, "7f18eaa7-4c74-4475-b217-d0146480e1b3")
 	}
-	if got.Data.Attributes.Outcome != OutcomeAllow {
-		t.Errorf("Data.Attributes.Outcome = %q, want %q", got.Data.Attributes.Outcome, OutcomeAllow)
+	if got.Data.Attributes.Outcome != evaluation.OutcomeAllow {
+		t.Errorf("Data.Attributes.Outcome = %q, want %q", got.Data.Attributes.Outcome, evaluation.OutcomeAllow)
 	}
 	if len(got.Data.Attributes.Results) != 2 {
 		t.Fatalf("len(Data.Attributes.Results) = %d, want 2", len(got.Data.Attributes.Results))
@@ -64,7 +65,7 @@ func TestPostScfwPolicyEvaluateResponse_UnmarshalsRealSample(t *testing.T) {
 
 	first := got.Data.Attributes.Results[0]
 	if first.Ecosystem != "PyPI" || first.PackageName != "python-dateutil" ||
-		first.PackageVersion != "2.9.0.post0" || first.Outcome != OutcomeAllow {
+		first.PackageVersion != "2.9.0.post0" || first.Outcome != evaluation.OutcomeAllow {
 		t.Errorf("Results[0] = %+v, want ecosystem PyPI, package_name python-dateutil, package_version 2.9.0.post0, outcome ALLOW", first)
 	}
 }
@@ -91,7 +92,7 @@ func TestPackageEvaluationResult_UnmarshalsMatchedPolicyAndFailures(t *testing.T
 		`"matched_policy":[{"type":"org_policy","rule":"no-requests","outcome":"BLOCK"}],` +
 		`"failures":[{"verifier":"datadog_policy","error":"advisory-db lookup timed out"}]}`
 
-	var got PackageEvaluationResult
+	var got evaluation.PackageEvaluationResult
 	if err := json.Unmarshal([]byte(sample), &got); err != nil {
 		t.Fatalf("json.Unmarshal() returned unexpected error: %v", err)
 	}
@@ -99,7 +100,7 @@ func TestPackageEvaluationResult_UnmarshalsMatchedPolicyAndFailures(t *testing.T
 	if len(got.MatchedPolicy) != 1 {
 		t.Fatalf("len(MatchedPolicy) = %d, want 1", len(got.MatchedPolicy))
 	}
-	wantPolicy := matchedPolicy{Type: "org_policy", Rule: "no-requests", Outcome: OutcomeBlock}
+	wantPolicy := evaluation.MatchedPolicy{Type: "org_policy", Rule: "no-requests", Outcome: evaluation.OutcomeBlock}
 	if got.MatchedPolicy[0] != wantPolicy {
 		t.Errorf("MatchedPolicy[0] = %+v, want %+v", got.MatchedPolicy[0], wantPolicy)
 	}
@@ -107,7 +108,7 @@ func TestPackageEvaluationResult_UnmarshalsMatchedPolicyAndFailures(t *testing.T
 	if len(got.Failures) != 1 {
 		t.Fatalf("len(Failures) = %d, want 1", len(got.Failures))
 	}
-	wantFailure := failure{Verifier: "datadog_policy", Error: "advisory-db lookup timed out"}
+	wantFailure := evaluation.Failure{Verifier: "datadog_policy", Error: "advisory-db lookup timed out"}
 	if got.Failures[0] != wantFailure {
 		t.Errorf("Failures[0] = %+v, want %+v", got.Failures[0], wantFailure)
 	}

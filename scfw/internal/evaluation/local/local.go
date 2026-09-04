@@ -3,7 +3,7 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2024-present Datadog, Inc.
 
-// Package local implements keyless, local package evaluation and outcome
+// Package local implements local package evaluation and outcome
 // reporting: evaluation by running package verifiers against public data
 // sources, and reporting of run outcomes to a local JSON Lines log file.
 package local

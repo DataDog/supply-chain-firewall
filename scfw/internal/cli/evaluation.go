@@ -86,7 +86,7 @@ func newEvaluator(ctx context.Context, mode evaluationMode) (evaluation.Evaluato
 		slog.Debug("evaluating packages via the Datadog Code Security API")
 		return ddapi.Evaluator{}, nil
 	case evaluationModeLocal:
-		slog.Info("evaluating packages with local verifiers (keyless mode)")
+		slog.Info("evaluating packages with local verifiers")
 		return localevaluation.NewEvaluator(ctx)
 	default:
 		return nil, fmt.Errorf("unknown evaluation mode %q", mode)

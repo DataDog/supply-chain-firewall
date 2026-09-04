@@ -6,7 +6,8 @@ FROM node:alpine
 ENV SCFW_VERSION="v4.0.0"
 ENV SCFW_CHECKSUM="2ab70f95c83d774cc5ec804be8e0e2996f43fa87104c7801663e933413287419"
 ENV ARCH="arm64"
-ENV DD_SITE="datadoghq.com"
+ARG DD_SITE="datadoghq.com"
+ENV DD_SITE="${DD_SITE}"
 
 # Install curl to download SCFW
 RUN apk add curl
@@ -26,4 +27,4 @@ ADD package-lock.json .
 
 # This run mount the secrets which will be available only for that command, SCFW will read those to connect to Datadog
 RUN --mount=type=secret,id=dd_api_key,env=DD_API_KEY --mount=type=secret,id=dd_app_key,env=DD_APP_KEY \
-    scfw run -- npm install
+    scfw run --error-on-block -- npm install

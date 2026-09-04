@@ -18,6 +18,20 @@ const (
 	PYPI Ecosystem = "PyPI"
 )
 
+// HasRegistrySource reports whether source is a known registry URL in the given
+// ecosystem, dispatching to the ecosystem-specific implementation. An empty source
+// is treated as unknown, and callers decide how to handle it.
+func HasRegistrySource(ecosystem Ecosystem, source string) bool {
+	switch ecosystem {
+	case NPM:
+		return isNpmRegistrySource(source)
+	case PYPI:
+		return isPyPIRegistrySource(source)
+	default:
+		return false
+	}
+}
+
 // ResolvePublishDate resolves the publish date of the given package name/version/source
 // in the given ecosystem, dispatching to the ecosystem-specific implementation.
 func ResolvePublishDate(ctx context.Context, ecosystem Ecosystem, name, version, source string) (time.Time, error) {

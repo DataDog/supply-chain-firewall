@@ -68,6 +68,7 @@ type PackageEvaluationResult struct {
 	PackageVersion string          `json:"package_version"`
 	Outcome        Outcome         `json:"outcome"`
 	MatchedPolicy  []MatchedPolicy `json:"matched_policy,omitempty"`
+	Findings       []Finding       `json:"findings,omitempty"`
 	Failures       []Failure       `json:"failures,omitempty"`
 }
 

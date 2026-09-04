@@ -63,10 +63,10 @@ func TestReportCredentialDistinguishesCredentialErrors(t *testing.T) {
 	apiErr := errors.New("API key lookup failed")
 	appErr := errors.New("application key lookup failed")
 
-	if err := reportCredential(&output, "API Key", "", ddapi.CredentialSourceKeychain, apiErr); err != nil {
+	if err := reportCredential(&output, "API Key", "", ddapi.CredentialSourceKeychain, apiErr, evaluationModeDatadog); err != nil {
 		t.Fatalf("reportCredential() returned unexpected error: %v", err)
 	}
-	if err := reportCredential(&output, "Application Key", "", ddapi.CredentialSourceKeychain, appErr); err != nil {
+	if err := reportCredential(&output, "Application Key", "", ddapi.CredentialSourceKeychain, appErr, evaluationModeDatadog); err != nil {
 		t.Fatalf("reportCredential() returned unexpected error: %v", err)
 	}
 

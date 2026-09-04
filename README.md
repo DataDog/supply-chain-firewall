@@ -134,6 +134,21 @@ Note that, once shell aliases have been configured via `scfw configure --alias-n
 
 The `SCFW_ON_WARNING` environment variable (`allow` or `block`) has the same effect as `--allow-on-warning`/`--block-on-warning` and takes precedence over them when set, which is useful for enforcing a consistent policy across a CI environment without changing every invocation. In a non-interactive context (no attached terminal), a warning-level result is blocked by default unless one of these mechanisms is used, so a warning can never be silently ignored.
 
+## Local evaluation (without Datadog credentials)
+
+When no Datadog credentials are configured, `scfw` automatically falls back to local, keyless evaluation: packages are verified on your machine against public data sources instead of the Datadog Code Security API, and run outcomes are reported to a local JSON Lines log file (`SCFW_LOG_FILE`, or `scfw.log` in SCFW's home directory) instead of being sent to Datadog. The `SCFW_MODE` environment variable (`datadog` or `local`) overrides this detection when set; `scfw doctor` reports the active mode.
+
+SCFW's home directory holds cached verification data and the local log. It defaults to `scfw` within your user cache directory (`~/Library/Caches` on macOS, `~/.cache` on Linux) and can be relocated with `SCFW_HOME` or `scfw configure --scfw-home`. Paths below are written relative to it.
+
+Local evaluation runs the following verifiers, matching the classic (pre-v4) SCFW behavior:
+
+- **Datadog malicious packages**: blocks packages listed in Datadog Security Research's public [malicious-software-packages-dataset](https://github.com/DataDog/malicious-software-packages-dataset), cached under `dd_verifier/`. SCFW fails closed if this dataset cannot be obtained.
+- **OSV.dev advisories**: blocks packages with an OSV.dev malicious package (`MAL`) advisory and warns on all other advisories. Advisory IDs can be ignored via `SCFW_OSV_VERIFIER_IGNORE` or `osv_verifier/ignore.txt` (never `MAL` advisories).
+- **Package age**: warns on packages published less than `SCFW_PACKAGE_MINIMUM_AGE` hours ago (default 24; `0` disables the check).
+- **Findings lists**: applies your own findings, declared in YAML files under `list_verifier/`.
+
+Local evaluation has no access to Datadog org policy rules or the Datadog advisory intelligence configured in Code Security; it is intended for use without a Datadog setup.
+
 ## Datadog Code Security integration
 
 [Datadog Code Security](https://www.datadoghq.com/product/code-security/) integrates with Supply Chain Firewall to provide a way of defining custom `ALLOW` or `BLOCK` policies that apply to all of your SCFW deployment from within the Datadog app. The outcomes of completed runs of the `scfw` CLI are also reported into Code Security, providing valuable observability into how package managers and third-party code are used across your fleet. Datadog only sees package metadata (ecosystem, name, version, artifact source) and the commands being run: no package source code is ever reported to Datadog by Supply Chain Firewall.

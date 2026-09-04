@@ -24,7 +24,7 @@ Supply Chain Firewall (`scfw`) is a Go command-line application that protects pa
 
 Keep this guide accurate as part of every structural change. In the same change that creates, removes, renames, moves, or materially repurposes a package or top-level directory, update the structure section above to state its responsibility and boundaries. A new package must have one clear, cohesive responsibility, live at the narrowest appropriate scope, and avoid duplicating responsibilities already assigned here. If its purpose cannot be described in one concise sentence, reconsider the package boundary before adding it.
 
-Preserve the existing separation of concerns: the CLI orchestrates, `ddapi` communicates with Datadog, `ecosystem` communicates with registries, `pm` provides shared domain abstractions, and each `pm/<manager>` package implements one package-manager adapter. Do not put manager-specific parsing in `pm`, API transport in `cli`, or CLI presentation in lower-level packages.
+Preserve the existing separation of concerns: the CLI orchestrates (including evaluation-mode selection), `evaluation` provides shared evaluation/reporting abstractions, `ddapi` communicates with Datadog, `evaluation/local` and `verifier` implement keyless local evaluation, `ecosystem` communicates with registries, `pm` provides shared domain abstractions, and each `pm/<manager>` package implements one package-manager adapter. Do not put manager-specific parsing in `pm`, API transport in `cli`, or CLI presentation in lower-level packages.
 
 ## Validation
 

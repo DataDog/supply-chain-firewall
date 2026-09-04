@@ -33,7 +33,6 @@ const (
 
 	// URL prefixes used in finding and failure messages.
 	osvVulnerabilityURLPrefix = "https://osv.dev/vulnerability"
-	osvListURLPrefix          = "https://osv.dev/list"
 
 	// The environment variable under which the verifier looks for a file of OSV
 	// advisory ID patterns to ignore.
@@ -146,9 +145,8 @@ type queryResponse struct {
 // Verify queries the given package against the OSV.dev advisory database.
 //
 // The returned error is non-nil only when the package is outside the verifier's
-// purview (unsupported ecosystem or non-registry artifact source). A failure to
-// reach or parse the OSV.dev API is reported as a WARNING finding advising the
-// user to check the OSV.dev website before proceeding, rather than as an error.
+// purview (unsupported ecosystem or non-registry artifact source) or when the
+// package could not be verified against the OSV.dev API.
 func (v Verifier) Verify(ctx context.Context, pkg pm.Package) ([]evaluation.Finding, error) {
 	if pkg.Ecosystem != ecosystem.NPM && pkg.Ecosystem != ecosystem.PYPI {
 		return nil, fmt.Errorf("package ecosystem %s is not supported", pkg.Ecosystem)
@@ -160,17 +158,7 @@ func (v Verifier) Verify(ctx context.Context, pkg pm.Package) ([]evaluation.Find
 	vulns, err := v.queryAdvisories(ctx, pkg)
 	if err != nil {
 		slog.Warn("Failed to query the OSV.dev API", "package", pkg.Name, "error", err)
-		return []evaluation.Finding{{
-			Verifier: v.Name(),
-			Severity: evaluation.SeverityWarning,
-			Text: fmt.Sprintf(
-				"Failed to verify package %s %s@%s via the OSV.dev API.\n"+
-					"Before proceeding, please check the OSV.dev website for advisories related to this package.\n"+
-					"DO NOT PROCEED if the package has advisories with a MAL ID: it is very likely malicious.\n"+
-					"  * %s?q=%s&ecosystem=%s",
-				pkg.Ecosystem, pkg.Name, pkg.Version, osvListURLPrefix, pkg.Name, pkg.Ecosystem,
-			),
-		}}, nil
+		return nil, err
 	}
 
 	var findings []evaluation.Finding

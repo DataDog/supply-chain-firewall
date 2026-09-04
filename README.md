@@ -10,11 +10,26 @@
 
 Supply Chain Firewall (SCFW) is a command-line tool for preventing the installation of malicious npm and PyPI packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
 
-Given a command for a supported package manager, Supply Chain Firewall collects all package targets that would be installed by the command and evaluates them against Datadog Security Research's threat intelligence feed on known-malicious and compromised open source packages. It also applies custom policy rules configured within your Datadog organization under the [Datadog Code Security](https://www.datadoghq.com/product/code-security/) integration with Supply Chain Firewall. The command is allowed or blocked from running on the basis of this policy evaluation. In cases where only warning-level findings are indicated, they are presented to the user along with a prompt confirming intent to proceed with the command.
+Given a command for a supported package manager, Supply Chain Firewall collects all package targets that would be installed by the command and evaluates them against known-malicious and compromised open source packages. 
 
 ---
 ### Interested in SCFW for your business use-case? [Enroll](https://docs.google.com/forms/d/1Xqh5h1n3-jC7au2t30fdTq732dkTJqt_cb7C7T-AkPc/edit) as a design partner.
 ---
+
+## Operation modes
+
+### Local
+
+In local mode, SCFW identifies malicious packages using the open-source [malicious-software-packages-dataset](https://github.com/DataDog/malicious-software-packages-dataset/) and [OSV.dev](https://osv.dev/) API. Local mode is useful for experimenting, single-developer mode.
+
+### Datadog Code Security
+
+SCFW can use [Datadog Code Security](https://www.datadoghq.com/product/code-security/) as a backend, allowing you to define custom `ALLOW` or `BLOCK` policies that apply to all of your SCFW deployment from Datadog. The outcomes of completed runs of the `scfw` CLI are also reported into Code Security, providing valuable observability into how package managers and third-party code are used across your fleet. Datadog only sees package metadata (ecosystem, name, version, artifact source) and the commands being run: no package source code is ever reported to Datadog by Supply Chain Firewall.
+
+Features:
+- Datadog Security Research's threat intelligence feed, in addition to public ones.
+- Centralized policy management allowing to manage in which situations to allow or block a package installation across a fleet of developer endpoints.
+- Centralized logging, so you can be alerted when a developer attempts to install a malicious package that gets blocked.
 
 ## Getting started
 
@@ -45,24 +60,25 @@ Available Commands:
 
 ### Post-installation steps
 
-To get the most out of Supply Chain Firewall, it is strongly recommended to run the `scfw configure` command after installation to configure the environment with necessary Datadog credentials. Via this command, users can also ensure that all commands for supported package managers are passively run through `scfw`.
+To get the most out of Supply Chain Firewall, run the `scfw configure` command after installation to configure the environment. Via this command, users can also ensure that all commands for supported package managers are passively run through `scfw`.
 
 ```bash
+# --dd-* parameters are optional
 $ scfw configure \
-    --dd-api-key=<your-api-key> \
-    --dd-app-key=<your-app-key> \
-    --dd-site=<your-dd-site> \
     --alias-npm \
     --alias-pip \
-    --alias-poetry
+    --alias-poetry \
+    --dd-api-key=<your-api-key>  \
+    --dd-app-key=<your-app-key>  \
+    --dd-site=<your-dd-site>
 ```
 
 When passing these values via shell variables, e.g. in scripts, prefer this `=` form: `--dd-api-key=$DD_API_KEY --dd-app-key=$DD_APP_KEY --dd-site=$DD_SITE`.
 
 This does two things:
 
-1. Stores your Datadog API key and application key securely in your system's keychain, so credentials don't need to be kept in plaintext or supplied on every command.
-2. Adds shell aliases to your `.bashrc`, `.bash_profile`, `.zshrc`, and `.zprofile` (whichever already exist) so that `npm`, `pip`/`pip3`, and/or `poetry` transparently run through `scfw`. Restart your shell (or source the relevant rc file) for the aliases to take effect.
+1. Adds shell aliases to your `.bashrc`, `.bash_profile`, `.zshrc`, and `.zprofile` (whichever already exist) so that `npm`, `pip`/`pip3`, and/or `poetry` transparently run through `scfw`. Restart your shell (or source the relevant rc file) for the aliases to take effect.
+2. Optionally, if provided, stores your Datadog API key and application key securely in your system's keychain, so credentials don't need to be kept in plaintext or supplied on every command.
 
 `scfw configure` is idempotent and may be re-run at any time to change your configuration. Alias options are additive, so aliases configured by an earlier invocation remain in place unless their corresponding `--remove-alias-*` option is passed. The command manages its own clearly indicated block of your shell rc files and never touches anything else you've added.
 
@@ -70,9 +86,6 @@ Available `configure` options:
 
 | Flag | Description |
 | --- | --- |
-| `--dd-api-key` | Datadog API key used for policy evaluation and reporting. |
-| `--dd-app-key` | Datadog application key used for policy evaluation and reporting. |
-| `--dd-site` | Datadog site parameter used for policy evaluation and reporting (default: `datadoghq.com`). |
 | `--alias-npm` | Add a shell alias to run all npm commands through `scfw`. |
 | `--remove-alias-npm` | Remove the npm shell alias managed by `scfw`. |
 | `--alias-pip` | Add shell aliases to run all pip/pip3 commands through `scfw`. |
@@ -81,6 +94,9 @@ Available `configure` options:
 | `--remove-alias-poetry` | Remove the poetry shell alias managed by `scfw`. |
 | `--scfw-home` | Directory Supply Chain Firewall can use as a local cache. |
 | `--remove` | Remove all Supply Chain Firewall managed configuration. |
+| `--dd-api-key` | Datadog API key used for policy evaluation and reporting. |
+| `--dd-app-key` | Datadog application key used for policy evaluation and reporting. |
+| `--dd-site` | Datadog site parameter used for policy evaluation and reporting (default: `datadoghq.com`). |
 
 When inspecting package manager commands, Datadog credentials and the Datadog site parameter may alternatively be provided via environment variables `DD_API_KEY`, `DD_APP_KEY`, and `DD_SITE`, respectively. This is particularly useful in CI environments where secrets are injected per job. Environment variables always take precedence over stored credentials sourced from the system keychain.
 
@@ -133,25 +149,6 @@ Note that, once shell aliases have been configured via `scfw configure --alias-n
 | `--block-on-warning` | Non-interactively block commands with only warning-level findings, instead of prompting. |
 
 The `SCFW_ON_WARNING` environment variable (`allow` or `block`) has the same effect as `--allow-on-warning`/`--block-on-warning` and takes precedence over them when set, which is useful for enforcing a consistent policy across a CI environment without changing every invocation. In a non-interactive context (no attached terminal), a warning-level result is blocked by default unless one of these mechanisms is used, so a warning can never be silently ignored.
-
-## Local evaluation (without Datadog credentials)
-
-When no Datadog credentials are configured, `scfw` automatically falls back to local, keyless evaluation: packages are verified on your machine against public data sources instead of the Datadog Code Security API, and run outcomes are reported to a local JSON Lines log file (`SCFW_LOG_FILE`, or `scfw.log` in SCFW's home directory) instead of being sent to Datadog. The `SCFW_MODE` environment variable (`datadog` or `local`) overrides this detection when set; `scfw doctor` reports the active mode.
-
-SCFW's home directory holds cached verification data and the local log. It defaults to `scfw` within your user cache directory (`~/Library/Caches` on macOS, `~/.cache` on Linux) and can be relocated with `SCFW_HOME` or `scfw configure --scfw-home`. Paths below are written relative to it.
-
-Local evaluation runs the following verifiers, matching the classic (pre-v4) SCFW behavior:
-
-- **Datadog malicious packages**: blocks packages listed in Datadog Security Research's public [malicious-software-packages-dataset](https://github.com/DataDog/malicious-software-packages-dataset), cached under `dd_verifier/`. SCFW fails closed if this dataset cannot be obtained.
-- **OSV.dev advisories**: blocks packages with an OSV.dev malicious package (`MAL`) advisory and warns on all other advisories. Advisory IDs can be ignored via `SCFW_OSV_VERIFIER_IGNORE` or `osv_verifier/ignore.txt` (never `MAL` advisories).
-- **Package age**: warns on packages published less than `SCFW_PACKAGE_MINIMUM_AGE` hours ago (default 24; `0` disables the check).
-- **Findings lists**: applies your own findings, declared in YAML files under `list_verifier/`.
-
-Local evaluation has no access to Datadog org policy rules or the Datadog advisory intelligence configured in Code Security; it is intended for use without a Datadog setup.
-
-## Datadog Code Security integration
-
-[Datadog Code Security](https://www.datadoghq.com/product/code-security/) integrates with Supply Chain Firewall to provide a way of defining custom `ALLOW` or `BLOCK` policies that apply to all of your SCFW deployment from within the Datadog app. The outcomes of completed runs of the `scfw` CLI are also reported into Code Security, providing valuable observability into how package managers and third-party code are used across your fleet. Datadog only sees package metadata (ecosystem, name, version, artifact source) and the commands being run: no package source code is ever reported to Datadog by Supply Chain Firewall.
 
 ## Development
 

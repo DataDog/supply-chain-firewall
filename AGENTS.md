@@ -9,6 +9,7 @@ Supply Chain Firewall (`scfw`) is a Go command-line application that protects pa
 - `scfw/internal/build` owns build-time metadata such as the application version. Release builds inject these values through GoReleaser.
 - `scfw/internal/ddapi` owns Datadog authentication, HTTP transport, and the Code Security API implementation of the `evaluation` interfaces (policy evaluation and run reporting). Package-manager-specific behavior does not belong here.
 - `scfw/internal/evaluation` defines the policy evaluation and reporting domain: shared outcome/report types and the `Evaluator`/`Reporter` interfaces that the Datadog and local backends implement.
+- `scfw/internal/home` resolves SCFW's home directory (`SCFW_HOME`, else a directory under the user's cache directory), where verification data is cached and the local log is written.
 - `scfw/internal/ecosystem` owns registry/ecosystem operations that are independent of a particular package-manager executable, such as resolving npm or PyPI publication data.
 - `scfw/internal/git` discovers local Git repository metadata and removes credentials before reporting.
 - `scfw/internal/pm` owns the shared package and package-manager abstractions, version handling, and reusable collections. Keep this package independent of concrete package managers.

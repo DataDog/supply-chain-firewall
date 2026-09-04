@@ -4,9 +4,10 @@
 // Copyright 2024-present Datadog, Inc.
 
 // Package evaluation defines Supply Chain Firewall's policy evaluation and
-// reporting domain: the shared types describing package evaluation outcomes
-// and reports, and the interfaces that concrete evaluation and
-// reporting backends implement.
+// reporting domain: the shared types describing package evaluation outcomes,
+// findings, and reports, and the interfaces that concrete evaluation and
+// reporting backends (Datadog Code Security API, local keyless verification)
+// implement.
 package evaluation
 
 import (
@@ -18,7 +19,7 @@ import (
 
 // Outcome is the decision for a MatchedPolicy, a PackageEvaluationResult, or a
 // whole ScfwPolicyEvaluationReport. Org policy rules only ever decide block or
-// allow; warn/error can only come from Datadog advisory-db matches.
+// allow; warn/error can only come from advisory matches or verifier behavior.
 type Outcome string
 
 const (
@@ -27,6 +28,24 @@ const (
 	OutcomeWarn  Outcome = "WARN"
 	OutcomeError Outcome = "ERROR"
 )
+
+// Severity levels that package verifiers attach to their findings. A CRITICAL
+// finding causes the firewall to block; a WARNING finding defers to the
+// configured or interactive warning action.
+type Severity string
+
+const (
+	SeverityCritical Severity = "CRITICAL"
+	SeverityWarning  Severity = "WARNING"
+)
+
+// Finding is a single security finding reported by a package verifier for one
+// package.
+type Finding struct {
+	Verifier string   `json:"verifier"`
+	Severity Severity `json:"severity"`
+	Text     string   `json:"text"`
+}
 
 // MatchedPolicy is one policy source (org and/or Datadog) that contributed to a
 // PackageEvaluationResult.

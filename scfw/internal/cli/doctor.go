@@ -29,12 +29,23 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	// command usage, so do not append Cobra's usage text when returning them.
 	cmd.SilenceUsage = true
 
+	mode, modeErr := resolveEvaluationMode()
+	if modeErr != nil {
+		_, modeReportErr := fmt.Fprintln(cmd.OutOrStdout(), "❌ Could not determine evaluation mode:", modeErr)
+		return errors.Join(modeErr, modeReportErr)
+	}
+	_, modeReportErr := fmt.Fprintf(cmd.OutOrStdout(), "ℹ️ Evaluation mode: %s\n", mode)
+
 	apiKey, apiKeyCredentialSource, apiKeyErr := ddapi.ResolveDatadogAPIKey()
 	appKey, appKeyCredentialSource, appKeyErr := ddapi.ResolveDatadogAppKey()
-	apiKeyReportErr := reportCredential(cmd.OutOrStdout(), "API Key", apiKey, apiKeyCredentialSource, apiKeyErr)
-	appKeyReportErr := reportCredential(cmd.OutOrStdout(), "Application Key", appKey, appKeyCredentialSource, appKeyErr)
-	credentialErr := errors.Join(apiKeyErr, appKeyErr)
-	reportErr := errors.Join(apiKeyReportErr, appKeyReportErr)
+	apiKeyReportErr := reportCredential(cmd.OutOrStdout(), "API Key", apiKey, apiKeyCredentialSource, apiKeyErr, mode)
+	appKeyReportErr := reportCredential(cmd.OutOrStdout(), "Application Key", appKey, appKeyCredentialSource, appKeyErr, mode)
+	// Missing credentials are only an error when evaluation requires them.
+	var credentialErr error
+	if mode == evaluationModeDatadog {
+		credentialErr = errors.Join(apiKeyErr, appKeyErr)
+	}
+	reportErr := errors.Join(modeReportErr, apiKeyReportErr, appKeyReportErr)
 
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -48,7 +59,15 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	return errors.Join(credentialErr, reportErr)
 }
 
-func reportCredential(out io.Writer, name, value string, source ddapi.CredentialSource, err error) error {
+func reportCredential(out io.Writer, name, value string, source ddapi.CredentialSource, err error, mode evaluationMode) error {
+	if mode == evaluationModeLocal {
+		if err != nil || value == "" {
+			_, writeErr := fmt.Fprintf(out, "ℹ️ %s not found: not required in local evaluation mode\n", name)
+			return writeErr
+		}
+		_, writeErr := fmt.Fprintf(out, "✅ %s found in %s (not required in local evaluation mode)\n", name, source)
+		return writeErr
+	}
 	if err != nil {
 		_, writeErr := fmt.Fprintf(out, "❌ %s not found: %v\n", name, err)
 		return writeErr

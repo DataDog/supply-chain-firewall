@@ -7,6 +7,7 @@ package local
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
@@ -32,6 +33,27 @@ func (v fakeVerifier) Verify(context.Context, pm.Package) ([]evaluation.Finding,
 // packageKey identifies a package in evaluation assertions.
 func packageKey(pkg pm.Package) string {
 	return string(pkg.Ecosystem) + "/" + pkg.Name + "@" + pkg.Version
+}
+
+func TestNewEvaluatorContinuesWhenDefaultVerifierCannotInitialize(t *testing.T) {
+	original := newDatadogMaliciousPackagesVerifier
+	newDatadogMaliciousPackagesVerifier = func(context.Context) (verifier.Verifier, error) {
+		return nil, errors.New("dataset unavailable")
+	}
+	t.Cleanup(func() { newDatadogMaliciousPackagesVerifier = original })
+
+	e, err := NewEvaluator(context.Background())
+	if err != nil {
+		t.Fatalf("NewEvaluator() returned unexpected error: %v", err)
+	}
+	if len(e.verifiers) != 3 {
+		t.Fatalf("len(verifiers) = %d, want 3 default verifiers after skipping Datadog malware verifier", len(e.verifiers))
+	}
+	for _, v := range e.verifiers {
+		if v.Name() == "DatadogMaliciousPackagesVerifier" {
+			t.Fatal("Datadog malicious packages verifier was included despite initialization failure")
+		}
+	}
 }
 
 func TestEvaluatorAggregatesVerifierResults(t *testing.T) {
@@ -61,11 +83,11 @@ func TestEvaluatorAggregatesVerifierResults(t *testing.T) {
 			wantOutcome: evaluation.OutcomeWarn,
 		},
 		{
-			name: "warn on verification failures",
+			name: "allow despite verification failures",
 			verifiers: []verifier.Verifier{
 				fakeVerifier{name: "fails", err: errFakeVerification{}},
 			},
-			wantOutcome: evaluation.OutcomeWarn,
+			wantOutcome: evaluation.OutcomeAllow,
 		},
 	}
 
@@ -142,8 +164,8 @@ func TestEvaluatorRecordsFailuresWithVerifierNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EvaluateInstallTargets() returned unexpected error: %v", err)
 	}
-	if report.Outcome != evaluation.OutcomeWarn {
-		t.Fatalf("report.Outcome = %q, want WARN", report.Outcome)
+	if report.Outcome != evaluation.OutcomeAllow {
+		t.Fatalf("report.Outcome = %q, want ALLOW", report.Outcome)
 	}
 	result := report.Results[0]
 	if len(result.Failures) != 1 || result.Failures[0].Verifier != "failing" {
@@ -178,9 +200,9 @@ func TestPackageOutcome(t *testing.T) {
 			want: evaluation.OutcomeWarn,
 		},
 		{
-			name:   "failures warn",
+			name:   "failures allow",
 			result: evaluation.PackageEvaluationResult{Failures: []evaluation.Failure{{Verifier: "v", Error: "e"}}},
-			want:   evaluation.OutcomeWarn,
+			want:   evaluation.OutcomeAllow,
 		},
 	}
 	for _, tt := range tests {

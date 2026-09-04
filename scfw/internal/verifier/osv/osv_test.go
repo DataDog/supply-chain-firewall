@@ -110,7 +110,7 @@ func TestVerifyFollowsPagination(t *testing.T) {
 	}
 }
 
-func TestVerifyFailsOpenToWarningOnAPIFailure(t *testing.T) {
+func TestVerifyReportsFailureOnAPIFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
@@ -118,14 +118,11 @@ func TestVerifyFailsOpenToWarningOnAPIFailure(t *testing.T) {
 
 	v := newTestVerifier(t, server.URL, "")
 	findings, err := v.Verify(context.Background(), pm.Package{Ecosystem: ecosystem.NPM, Name: "left-pad", Version: "1.3.0"})
-	if err != nil {
-		t.Fatalf("Verify() returned unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("Verify() succeeded despite API failure, want error recorded by local evaluator")
 	}
-	if len(findings) != 1 || findings[0].Severity != evaluation.SeverityWarning {
-		t.Fatalf("findings = %+v, want a single WARNING finding", findings)
-	}
-	if !strings.Contains(findings[0].Text, "check the OSV.dev website") {
-		t.Errorf("failure finding does not direct the user to the OSV.dev website: %q", findings[0].Text)
+	if len(findings) != 0 {
+		t.Fatalf("findings = %+v, want no findings for API failure", findings)
 	}
 }
 

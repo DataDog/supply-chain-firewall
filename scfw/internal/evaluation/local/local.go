@@ -28,29 +28,37 @@ import (
 // maxConcurrentVerifications bounds the number of concurrent verifier calls.
 const maxConcurrentVerifications = 8
 
+// newDatadogMaliciousPackagesVerifier is indirected through so tests can
+// substitute a fake initializer.
+var newDatadogMaliciousPackagesVerifier = func(ctx context.Context) (verifier.Verifier, error) {
+	return ddmalware.New(ctx)
+}
+
 // Evaluator evaluates installation targets by running the local package
-// verifiers against them. Any CRITICAL finding blocks; WARNING findings and
-// verification failures warn; everything else allows.
+// verifiers against them. Any CRITICAL finding blocks; WARNING findings warn;
+// verifier failures are recorded but do not affect the outcome.
 type Evaluator struct {
 	verifiers []verifier.Verifier
 }
 
 // NewEvaluator returns a local Evaluator running SCFW's default verifiers:
 // the Datadog malicious-software-packages-dataset, OSV.dev, package age, and
-// user-provided findings lists. An error means a verifier could not be
-// initialized, which fails evaluation rather than leaving packages unverified.
+// user-provided findings lists. Default verifiers are best-effort: if one
+// cannot be initialized, SCFW logs the failure and continues with the others.
 func NewEvaluator(ctx context.Context) (*Evaluator, error) {
-	datadogVerifier, err := ddmalware.New(ctx)
+	datadogVerifier, err := newDatadogMaliciousPackagesVerifier(ctx)
+	verifiers := []verifier.Verifier{
+		osv.New(),
+		age.New(),
+		list.New(),
+	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize Datadog malicious packages verifier: %w", err)
+		slog.Warn("failed to initialize Datadog malicious packages verifier", "error", err)
+	} else {
+		verifiers = append([]verifier.Verifier{datadogVerifier}, verifiers...)
 	}
 	return &Evaluator{
-		verifiers: []verifier.Verifier{
-			datadogVerifier,
-			osv.New(),
-			age.New(),
-			list.New(),
-		},
+		verifiers: verifiers,
 	}, nil
 }
 
@@ -103,8 +111,9 @@ func (e *Evaluator) EvaluateInstallTargets(ctx context.Context, _ bool, installT
 }
 
 // packageResult aggregates one package's verifications into its evaluation
-// result. Any CRITICAL finding yields BLOCK; WARNING findings or verification
-// failures yield WARN; otherwise the package is ALLOWed.
+// result. Any CRITICAL finding yields BLOCK; WARNING findings yield WARN;
+// otherwise the package is ALLOWed. Verification failures are recorded without
+// affecting the outcome.
 func packageResult(pkg pm.Package, verifications []verification) evaluation.PackageEvaluationResult {
 	result := evaluation.PackageEvaluationResult{
 		Ecosystem:      string(pkg.Ecosystem),
@@ -131,17 +140,13 @@ func packageResult(pkg pm.Package, verifications []verification) evaluation.Pack
 	return result
 }
 
-// packageOutcome resolves a package result's outcome from its findings and
-// failures.
+// packageOutcome resolves a package result's outcome from its findings.
 func packageOutcome(result evaluation.PackageEvaluationResult) evaluation.Outcome {
 	outcome := evaluation.OutcomeAllow
 	for _, finding := range result.Findings {
 		if finding.Severity == evaluation.SeverityCritical {
 			return evaluation.OutcomeBlock
 		}
-		outcome = evaluation.OutcomeWarn
-	}
-	if len(result.Failures) > 0 {
 		outcome = evaluation.OutcomeWarn
 	}
 	return outcome

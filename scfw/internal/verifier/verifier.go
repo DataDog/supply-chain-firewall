@@ -3,7 +3,7 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2024-present Datadog, Inc.
 
-// Package verifier defines the local, keyless package verification framework:
+// Package verifier defines the local package verification framework:
 // the Verifier interface that concrete verifiers (OSV.dev, the Datadog
 // malicious-software-packages-dataset, package age, findings lists) implement.
 package verifier

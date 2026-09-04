@@ -9,6 +9,9 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
 func TestDDReportAttributesMarshalsRepository(t *testing.T) {
@@ -29,6 +32,20 @@ func TestDDReportAttributesMarshalsRepository(t *testing.T) {
 }
 
 func TestPackageReports(t *testing.T) {
+	installTargets := pm.NewSet(
+		pm.Package{
+			Ecosystem: ecosystem.PYPI,
+			Name:      "requests",
+			Version:   "2.31.0",
+			Source:    "https://files.pythonhosted.org/packages/requests-2.31.0.whl",
+		},
+		pm.Package{
+			Ecosystem: ecosystem.NPM,
+			Name:      "left-pad",
+			Version:   "1.3.0",
+			Source:    "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz",
+		},
+	)
 	evaluationReport := ScfwPolicyEvaluationReport{
 		Outcome: OutcomeBlock,
 		Results: []PackageEvaluationResult{
@@ -53,24 +70,26 @@ func TestPackageReports(t *testing.T) {
 		},
 	}
 
-	got := packageReports(evaluationReport.Results)
+	got := packageReports(evaluationReport.Results, installTargets)
 
 	want := []ddPackageReport{
 		{
-			Ecosystem: "PyPI",
-			Package:   "requests",
-			Version:   "2.31.0",
-			Warning:   false,
-			Failures:  []ddFailure{},
+			Ecosystem:             "PyPI",
+			Package:               "requests",
+			Version:               "2.31.0",
+			PackageArtifactSource: "https://files.pythonhosted.org/packages/requests-2.31.0.whl",
+			Warning:               false,
+			Failures:              []ddFailure{},
 			MatchedPolicies: []ddMatchedPolicy{
 				{Type: "org_policy", Rule: "no-requests", Outcome: "BLOCK"},
 			},
 		},
 		{
-			Ecosystem: "npm",
-			Package:   "left-pad",
-			Version:   "1.3.0",
-			Warning:   true,
+			Ecosystem:             "npm",
+			Package:               "left-pad",
+			Version:               "1.3.0",
+			PackageArtifactSource: "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz",
+			Warning:               true,
 			Failures: []ddFailure{
 				{Verifier: "datadog_policy", Error: "advisory-db lookup timed out"},
 			},
@@ -90,9 +109,44 @@ func TestPackageReports_DoesNotFilterResults(t *testing.T) {
 		{Ecosystem: "PyPI", PackageName: "six", PackageVersion: "1.17.0", Outcome: OutcomeAllow},
 	}
 
-	got := packageReports(results)
+	got := packageReports(results, pm.NewSet[pm.Package]())
 	if len(got) != 1 {
 		t.Fatalf("len(packageReports()) = %d, want 1", len(got))
+	}
+}
+
+func TestPackageReports_OmitsAmbiguousPackageArtifactSource(t *testing.T) {
+	installTargets := pm.NewSet(
+		pm.Package{Ecosystem: ecosystem.NPM, Name: "example", Version: "1.0.0", Source: "https://registry.example.com/example.tgz"},
+		pm.Package{Ecosystem: ecosystem.NPM, Name: "example", Version: "1.0.0", Source: "file:///local/example"},
+	)
+	results := []PackageEvaluationResult{
+		{Ecosystem: "npm", PackageName: "example", PackageVersion: "1.0.0", Outcome: OutcomeAllow},
+	}
+
+	got := packageReports(results, installTargets)
+	if len(got) != 1 {
+		t.Fatalf("len(packageReports()) = %d, want 1", len(got))
+	}
+	if got[0].PackageArtifactSource != "" {
+		t.Fatalf("PackageArtifactSource = %q, want empty for ambiguous package coordinates", got[0].PackageArtifactSource)
+	}
+}
+
+func TestDDPackageReportMarshalsPackageArtifactSource(t *testing.T) {
+	report := ddPackageReport{PackageArtifactSource: "https://example.com/package.tgz"}
+
+	body, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("json.Marshal() returned unexpected error: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("json.Unmarshal() returned unexpected error: %v", err)
+	}
+	if got["package_artifact_source"] != report.PackageArtifactSource {
+		t.Fatalf("package_artifact_source = %v, want %q", got["package_artifact_source"], report.PackageArtifactSource)
 	}
 }
 

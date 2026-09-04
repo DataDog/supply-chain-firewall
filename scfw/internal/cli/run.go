@@ -158,6 +158,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 		packageManagerName,
 		packageManager.Executable(),
 		gitMetadata.RepositoryURL,
+		installTargets,
 		evaluationReport,
 		action,
 	); err != nil {

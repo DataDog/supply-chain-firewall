@@ -6,7 +6,7 @@
 // Package evaluation defines Supply Chain Firewall's policy evaluation and
 // reporting domain: the shared types describing package evaluation outcomes,
 // findings, and reports, and the interfaces that concrete evaluation and
-// reporting backends (Datadog Code Security API, local keyless verification)
+// reporting backends (Datadog Code Security API, local verification)
 // implement.
 package evaluation
 

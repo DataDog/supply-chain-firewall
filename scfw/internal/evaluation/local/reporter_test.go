@@ -77,6 +77,13 @@ func TestFileReporterAppendsJSONLines(t *testing.T) {
 	if !strings.HasPrefix(records[0].Timestamp, "20") {
 		t.Errorf("record timestamp = %q, want an RFC3339 timestamp", records[0].Timestamp)
 	}
+	info, err := os.Stat(logFile)
+	if err != nil {
+		t.Fatalf("failed to stat log file: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("log file permissions = %o, want 600", perm)
+	}
 }
 
 func TestFileReporterDefaultsToScfwHome(t *testing.T) {

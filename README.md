@@ -59,10 +59,11 @@ $ scfw configure \
 
 When passing these values via shell variables, e.g. in scripts, prefer this `=` form: `--dd-api-key=$DD_API_KEY --dd-app-key=$DD_APP_KEY --dd-site=$DD_SITE`.
 
-This does two things:
+This does three things:
 
 1. Stores your Datadog API key and application key securely in your system's keychain, so credentials don't need to be kept in plaintext or supplied on every command.
 2. Adds shell aliases to your `.bashrc`, `.bash_profile`, `.zshrc`, and `.zprofile` (whichever already exist) so that `npm`, `pip`/`pip3`, and/or `poetry` transparently run through `scfw`. Restart your shell (or source the relevant rc file) for the aliases to take effect.
+3. Enables `scfw` command completion for Bash and Zsh. The package-manager aliases keep using the existing npm, pip, and Poetry completions installed in your shell.
 
 `scfw configure` is idempotent and may be re-run at any time to change your configuration. Alias options are additive, so aliases configured by an earlier invocation remain in place unless their corresponding `--remove-alias-*` option is passed. The command manages its own clearly indicated block of your shell rc files and never touches anything else you've added.
 

@@ -12,6 +12,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
 // Code Security API endpoint for submitting SCFW run reports.
@@ -40,12 +42,13 @@ type ddReportAttributes struct {
 }
 
 type ddPackageReport struct {
-	Ecosystem       string            `json:"ecosystem"`
-	Package         string            `json:"package"`
-	Version         string            `json:"version"`
-	Warning         bool              `json:"warning"`
-	Failures        []ddFailure       `json:"failures"`
-	MatchedPolicies []ddMatchedPolicy `json:"matched_policies"`
+	Ecosystem             string            `json:"ecosystem"`
+	Package               string            `json:"package"`
+	Version               string            `json:"version"`
+	PackageArtifactSource string            `json:"package_artifact_source,omitempty"`
+	Warning               bool              `json:"warning"`
+	Failures              []ddFailure       `json:"failures"`
+	MatchedPolicies       []ddMatchedPolicy `json:"matched_policies"`
 }
 
 type ddFailure struct {
@@ -68,6 +71,7 @@ func ReportFirewallOutcome(
 	installTimestamp time.Time,
 	command []string,
 	packageManagerName, executable, repository string,
+	installTargets *pm.Set[pm.Package],
 	evaluationReport ScfwPolicyEvaluationReport,
 	resolvedOutcome Outcome,
 ) error {
@@ -97,7 +101,7 @@ func ReportFirewallOutcome(
 				Command:          strings.Join(command, " "),
 				Repository:       repository,
 				Outcome:          string(resolvedOutcome),
-				Reports:          packageReports(reportedResults(evaluationReport, resolvedOutcome)),
+				Reports:          packageReports(reportedResults(evaluationReport, resolvedOutcome), installTargets),
 			},
 		},
 	}
@@ -129,19 +133,49 @@ func reportedResults(evaluationReport ScfwPolicyEvaluationReport, resolvedOutcom
 }
 
 // Generate package reports for a set of policy evaluation results.
-func packageReports(results []PackageEvaluationResult) []ddPackageReport {
+func packageReports(results []PackageEvaluationResult, installTargets *pm.Set[pm.Package]) []ddPackageReport {
+	artifactSources := make(map[packageCoordinates]string, installTargets.Len())
+	ambiguousCoordinates := make(map[packageCoordinates]struct{})
+	for target := range installTargets.Items() {
+		coordinates := packageCoordinates{
+			ecosystem: string(target.Ecosystem),
+			name:      target.Name,
+			version:   target.Version,
+		}
+		if _, ambiguous := ambiguousCoordinates[coordinates]; ambiguous {
+			continue
+		}
+		if source, found := artifactSources[coordinates]; found && source != target.Source {
+			delete(artifactSources, coordinates)
+			ambiguousCoordinates[coordinates] = struct{}{}
+			continue
+		}
+		artifactSources[coordinates] = target.Source
+	}
+
 	reports := make([]ddPackageReport, 0, len(results))
 	for _, result := range results {
 		reports = append(reports, ddPackageReport{
-			Ecosystem:       result.Ecosystem,
-			Package:         result.PackageName,
-			Version:         result.PackageVersion,
+			Ecosystem: result.Ecosystem,
+			Package:   result.PackageName,
+			Version:   result.PackageVersion,
+			PackageArtifactSource: artifactSources[packageCoordinates{
+				ecosystem: result.Ecosystem,
+				name:      result.PackageName,
+				version:   result.PackageVersion,
+			}],
 			Warning:         result.Outcome == OutcomeWarn,
 			Failures:        packageFailures(result),
 			MatchedPolicies: packageMatchedPolicies(result),
 		})
 	}
 	return reports
+}
+
+type packageCoordinates struct {
+	ecosystem string
+	name      string
+	version   string
 }
 
 // Generate the failures for a single package evaluation result's verifier failures.

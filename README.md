@@ -8,6 +8,9 @@
   <img src="https://github.com/DataDog/supply-chain-firewall/blob/v4/images/logo.png?raw=true" alt="Supply Chain Firewall" width="300" />
 </p>
 
+> [!NOTE]
+> The Python version of SCFW is deprecated and is maintained only for security updates. It remains available on the [`v3` branch](https://github.com/DataDog/supply-chain-firewall/tree/v3).
+
 Supply Chain Firewall (SCFW) is a command-line tool for preventing the installation of malicious npm and PyPI packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
 
 Given a command for a supported package manager, Supply Chain Firewall collects all package targets that would be installed by the command and evaluates them against Datadog Security Research's threat intelligence feed on known-malicious and compromised open source packages. It also applies custom policy rules configured within your Datadog organization under the [Datadog Code Security](https://www.datadoghq.com/product/code-security/) integration with Supply Chain Firewall. The command is allowed or blocked from running on the basis of this policy evaluation. In cases where only warning-level findings are indicated, they are presented to the user along with a prompt confirming intent to proceed with the command.

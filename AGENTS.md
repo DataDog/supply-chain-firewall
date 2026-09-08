@@ -14,7 +14,7 @@ Supply Chain Firewall (`scfw`) is a Go command-line application that protects pa
 - `scfw/internal/pm/npm`, `scfw/internal/pm/pip`, and `scfw/internal/pm/poetry` each own integration with that executable: supported commands and versions, dry-run or temporary-project behavior, output parsing, and conversion into the shared `pm.Package` model.
 - Tests live beside the code they cover as `*_test.go` files. Add or update focused tests with every behavioral change.
 - `.goreleaser.yml` is the authoritative cross-platform release-build configuration. Root-level files such as `go.mod`, `go.sum`, `Makefile`, and `.golangci.yml` define dependencies and development tooling.
-- `.github` contains CI, release, and repository automation; `images` contains documentation assets.
+- `.github` contains CI, release, and repository automation; `examples` contains installation examples organized by target environment; `images` contains documentation assets.
 
 ## Structure maintenance rule
 

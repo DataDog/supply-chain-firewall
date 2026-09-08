@@ -8,6 +8,9 @@
   <img src="https://github.com/DataDog/supply-chain-firewall/blob/v4/images/logo.png?raw=true" alt="Supply Chain Firewall" width="300" />
 </p>
 
+> [!NOTE]
+> The Python version of SCFW is deprecated and is maintained only for security updates. It remains available on the [`v3` branch](https://github.com/DataDog/supply-chain-firewall/tree/v3).
+
 Supply Chain Firewall (SCFW) is a command-line tool for preventing the installation of malicious npm and PyPI packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
 
 Given a command for a supported package manager, Supply Chain Firewall collects all package targets that would be installed by the command and evaluates them against Datadog Security Research's threat intelligence feed on known-malicious and compromised open source packages. It also applies custom policy rules configured within your Datadog organization under the [Datadog Code Security](https://www.datadoghq.com/product/code-security/) integration with Supply Chain Firewall. The command is allowed or blocked from running on the basis of this policy evaluation. In cases where only warning-level findings are indicated, they are presented to the user along with a prompt confirming intent to proceed with the command.
@@ -20,7 +23,51 @@ Given a command for a supported package manager, Supply Chain Firewall collects 
 
 ### Installation
 
-Supply Chain Firewall is distributed as a single Go binary with no runtime dependencies. The recommended way to install it is via `go install` (requires Go 1.26+):
+Supply Chain Firewall is distributed as a single Go binary with no runtime dependencies.
+
+#### Github release
+
+Download the binary for your operating system and architecture from the [latest GitHub release](https://github.com/DataDog/supply-chain-firewall/releases/latest). Before running these commands, replace the value of `scfw_expected_checksum` with the SHA-256 checksum published for that binary on the release page:
+
+```bash
+# Replace this placeholder with the checksum from the release page.
+$ scfw_expected_checksum="<expected-sha256-checksum>"
+
+# Detect the operating system used in the release artifact name.
+$ case "$(uname -s)" in
+    Darwin) scfw_os=darwin ;;
+    Linux)  scfw_os=linux ;;
+    *) echo "Unsupported operating system: $(uname -s)" >&2; exit 1 ;;
+  esac
+
+# Detect the CPU architecture used in the release artifact name.
+$ case "$(uname -m)" in
+    x86_64)        scfw_arch=amd64 ;;
+    arm64|aarch64) scfw_arch=arm64 ;;
+    *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+  esac
+
+# Download the binary for the detected platform.
+$ scfw_binary="scfw-${scfw_os}-${scfw_arch}"
+$ curl -fLO "https://github.com/DataDog/supply-chain-firewall/releases/latest/download/${scfw_binary}"
+
+# Calculate the downloaded binary's checksum.
+$ scfw_actual_checksum=$(sha256sum "${scfw_binary}" | awk '{print $1}')
+
+# Stop if the downloaded binary does not match the published checksum.
+$ if [ "${scfw_actual_checksum}" != "${scfw_expected_checksum}" ]; then
+    echo "Checksum verification failed" >&2
+    exit 1
+  fi
+
+# Install the verified binary in a directory on PATH.
+$ chmod +x "${scfw_binary}"
+$ sudo install "${scfw_binary}" /usr/local/bin/scfw
+```
+
+#### Through go install
+
+If Go 1.26 or later is installed, install SCFW with `go install`:
 
 ```bash
 $ go install github.com/DataDog/supply-chain-firewall/scfw@latest

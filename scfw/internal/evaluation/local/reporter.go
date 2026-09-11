@@ -16,6 +16,7 @@ import (
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/home"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
 const (
@@ -53,6 +54,7 @@ func (r *FileReporter) ReportFirewallOutcome(
 	installTimestamp time.Time,
 	command []string,
 	packageManagerName, executable, repository string,
+	_ *pm.Set[pm.Package],
 	evaluationReport evaluation.ScfwPolicyEvaluationReport,
 	resolvedOutcome evaluation.Outcome,
 ) error {

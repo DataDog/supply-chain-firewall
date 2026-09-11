@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
 func TestFileReporterAppendsJSONLines(t *testing.T) {
@@ -34,12 +35,12 @@ func TestFileReporterAppendsJSONLines(t *testing.T) {
 	}
 
 	err := r.ReportFirewallOutcome(context.Background(), time.Now(), []string{"npm", "install", "evil"},
-		"npm", "/usr/bin/npm", "https://example.com/repo.git", report, evaluation.OutcomeBlock)
+		"npm", "/usr/bin/npm", "https://example.com/repo.git", pm.NewSet[pm.Package](), report, evaluation.OutcomeBlock)
 	if err != nil {
 		t.Fatalf("ReportFirewallOutcome() returned unexpected error: %v", err)
 	}
 	err = r.ReportFirewallOutcome(context.Background(), time.Now(), []string{"npm", "install", "ok"},
-		"npm", "/usr/bin/npm", "", evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, evaluation.OutcomeAllow)
+		"npm", "/usr/bin/npm", "", pm.NewSet[pm.Package](), evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, evaluation.OutcomeAllow)
 	if err != nil {
 		t.Fatalf("ReportFirewallOutcome() returned unexpected error: %v", err)
 	}
@@ -93,7 +94,7 @@ func TestFileReporterDefaultsToScfwHome(t *testing.T) {
 
 	r := NewFileReporter()
 	err := r.ReportFirewallOutcome(context.Background(), time.Now(), []string{"npm", "install"},
-		"npm", "npm", "", evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, evaluation.OutcomeAllow)
+		"npm", "npm", "", pm.NewSet[pm.Package](), evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, evaluation.OutcomeAllow)
 	if err != nil {
 		t.Fatalf("ReportFirewallOutcome() returned unexpected error: %v", err)
 	}

@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ddapi"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	localevaluation "github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation/local"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
 // evaluationModeVar is the environment variable that selects how SCFW
@@ -116,6 +117,7 @@ func (nopReporter) ReportFirewallOutcome(
 	_ time.Time,
 	_ []string,
 	_, _, _ string,
+	_ *pm.Set[pm.Package],
 	_ evaluation.ScfwPolicyEvaluationReport,
 	_ evaluation.Outcome,
 ) error {

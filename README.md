@@ -1,67 +1,151 @@
 # Supply Chain Firewall
 
-![Test](https://github.com/DataDog/supply-chain-firewall/actions/workflows/test.yaml/badge.svg)
-![Code quality](https://github.com/DataDog/supply-chain-firewall/actions/workflows/code_quality.yaml/badge.svg)
+![Build](https://github.com/DataDog/supply-chain-firewall/actions/workflows/build.yml/badge.svg)
+![Test](https://github.com/DataDog/supply-chain-firewall/actions/workflows/test.yml/badge.svg)
+![Code quality](https://github.com/DataDog/supply-chain-firewall/actions/workflows/code-quality.yml/badge.svg)
 
 <p align="center">
-  <img src="https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/logo.png?raw=true" alt="Supply Chain Firewall" width="300" />
+  <img src="https://github.com/DataDog/supply-chain-firewall/blob/v4/images/logo.png?raw=true" alt="Supply Chain Firewall" width="300" />
 </p>
 
-Supply Chain Firewall is a command-line tool for preventing the installation of malicious npm and PyPI packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
+> [!NOTE]
+> The Python version of SCFW is deprecated and is maintained only for security updates. It remains available on the [`v3` branch](https://github.com/DataDog/supply-chain-firewall/tree/v3).
 
-![scfw demo usage](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/demo.gif?raw=true)
+Supply Chain Firewall (SCFW) is a command-line tool for preventing the installation of malicious npm and PyPI packages.  It is intended primarily for use by engineers to protect their development workstations from compromise in a supply-chain attack.
 
-Given a command for a supported package manager, Supply Chain Firewall collects all package targets that would be installed by the command and verifies them against reputable sources of data on open source malware and vulnerabilities.  The command is automatically blocked from running when any verifier returns critical findings for any target, generally indicating that the target in question is malicious.  In cases where a verifier reports warnings for a target, they are presented to the user along with a prompt confirming intent to proceed with the installation.
-
-Supply Chain Firewall includes default verifiers for the following data sources:
-
-- Datadog Security Research's public [malicious packages dataset](https://github.com/DataDog/malicious-software-packages-dataset)
-- [OSV.dev](https://osv.dev) advisories, both for malicious packages as well as vulnerabilities
-- Package registry metadata, warning when a package was published very recently
-- User-provided lists of custom findings for specific packages
-
-Documentation specific to each default verifier and the configurable options they support may be found [here](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/verifiers.md).
-
-Users may also implement their own custom verifiers for alternative data sources. A template for implementating a custom verifier may be found in `examples/verifier.py`. Details may also be found in the API documentation.
-
-The principal goal of Supply Chain Firewall is to block 100% of installations of known-malicious packages within the purview of its data sources.
+Given a command for a supported package manager, Supply Chain Firewall collects all package targets that would be installed by the command and evaluates them against known-malicious and compromised open source packages. 
 
 ---
 ### Interested in SCFW for your business use-case? [Enroll](https://docs.google.com/forms/d/1Xqh5h1n3-jC7au2t30fdTq732dkTJqt_cb7C7T-AkPc/edit) as a design partner.
-### Check out the new Datadog Agent [integration](https://docs.datadoghq.com/integrations/supply-chain-firewall/) and Cloud SIEM [content pack](https://app.datadoghq.com/security/siem/content-packs?query=Supply%20Chain%20Firewall) for SCFW.
 ---
+
+## Operation modes
+
+### Local
+
+In local mode, SCFW identifies malicious packages using the open-source [malicious-software-packages-dataset](https://github.com/DataDog/malicious-software-packages-dataset/) and [OSV.dev](https://osv.dev/) API. Local mode is useful for experimenting, single-developer mode.
+
+### Datadog Code Security
+
+SCFW can use [Datadog Code Security](https://www.datadoghq.com/product/code-security/) as a backend, allowing you to define custom `ALLOW` or `BLOCK` policies that apply to all of your SCFW deployment from Datadog. The outcomes of completed runs of the `scfw` CLI are also reported into Code Security, providing valuable observability into how package managers and third-party code are used across your fleet. Datadog only sees package metadata (ecosystem, name, version, artifact source) and the commands being run: no package source code is ever reported to Datadog by Supply Chain Firewall.
+
+Features:
+- Datadog Security Research's threat intelligence feed, in addition to public ones.
+- Centralized policy management allowing to manage in which situations to allow or block a package installation across a fleet of developer endpoints.
+- Centralized logging, so you can be alerted when a developer attempts to install a malicious package that gets blocked.
 
 ## Getting started
 
 ### Installation
 
-The recommended way to install Supply Chain Firewall is via [`pipx`](https://pipx.pypa.io/):
+Supply Chain Firewall is distributed as a single Go binary with no runtime dependencies.
+
+#### Github release
+
+Download the binary for your operating system and architecture from the [latest GitHub release](https://github.com/DataDog/supply-chain-firewall/releases/latest). Before running these commands, replace the value of `scfw_expected_checksum` with the SHA-256 checksum published for that binary on the release page:
 
 ```bash
-$ pipx install scfw
+# Replace this placeholder with the checksum from the release page.
+$ scfw_expected_checksum="<expected-sha256-checksum>"
+
+# Detect the operating system used in the release artifact name.
+$ case "$(uname -s)" in
+    Darwin) scfw_os=darwin ;;
+    Linux)  scfw_os=linux ;;
+    *) echo "Unsupported operating system: $(uname -s)" >&2; exit 1 ;;
+  esac
+
+# Detect the CPU architecture used in the release artifact name.
+$ case "$(uname -m)" in
+    x86_64)        scfw_arch=amd64 ;;
+    arm64|aarch64) scfw_arch=arm64 ;;
+    *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+  esac
+
+# Download the binary for the detected platform.
+$ scfw_binary="scfw-${scfw_os}-${scfw_arch}"
+$ curl -fLO "https://github.com/DataDog/supply-chain-firewall/releases/latest/download/${scfw_binary}"
+
+# Calculate the downloaded binary's checksum.
+$ scfw_actual_checksum=$(sha256sum "${scfw_binary}" | awk '{print $1}')
+
+# Stop if the downloaded binary does not match the published checksum.
+$ if [ "${scfw_actual_checksum}" != "${scfw_expected_checksum}" ]; then
+    echo "Checksum verification failed" >&2
+    exit 1
+  fi
+
+# Install the verified binary in a directory on PATH.
+$ chmod +x "${scfw_binary}"
+$ sudo install "${scfw_binary}" /usr/local/bin/scfw
 ```
 
-This will install the `scfw` command-line program into an isolated Python environment on your system and make it available in any other Python environment, including ephemeral ones created with `venv` or `virtualenv`.  `pipx` may be installed via Homebrew on macOS or via the system package manager on major Linux distributions.  Be sure to run `pipx ensurepath` after installation to properly configure your `PATH`.
+#### Through go install
 
-Supply Chain Firewall can also be installed via `pip install scfw` directly into the active Python environment.
+If Go 1.26 or later is installed, install SCFW with `go install`:
+
+```bash
+$ go install github.com/DataDog/supply-chain-firewall/scfw@latest
+```
+
+This installs the `scfw` binary to `$(go env GOPATH)/bin`; be sure that directory is on your `PATH`.
 
 To check whether the installation succeeded, run the following command and verify that you see output similar to the following.
 
 ```bash
-$ scfw --version
-3.1.0
+$ scfw --help
+Supply Chain Firewall, a tool for preventing the installation of malicious software packages.
+
+Usage:
+  scfw [command]
+
+Available Commands:
+  configure   Configure the environment for using Supply Chain Firewall.
+  run         Run a package manager command through Supply Chain Firewall.
+...
 ```
 
 ### Post-installation steps
 
-To get the most out of Supply Chain Firewall, it is recommended to run the `scfw configure` command after installation.  This script will walk you through configuring your environment so that all commands for supported package managers are passively run through `scfw` as well as enabling Datadog logging, described in more detail below.
+To get the most out of Supply Chain Firewall, run the `scfw configure` command after installation to configure the environment. Via this command, users can also ensure that all commands for supported package managers are passively run through `scfw`.
 
 ```bash
-$ scfw configure
-...
+# --dd-* parameters are optional
+$ scfw configure \
+    --alias-npm \
+    --alias-pip \
+    --alias-poetry \
+    --dd-api-key=<your-api-key>  \
+    --dd-app-key=<your-app-key>  \
+    --dd-site=<your-dd-site>
 ```
 
-See the `configure` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands.md#scfw-configure) for details and command-line options.
+When passing these values via shell variables, e.g. in scripts, prefer this `=` form: `--dd-api-key=$DD_API_KEY --dd-app-key=$DD_APP_KEY --dd-site=$DD_SITE`.
+
+This does two things:
+
+1. Adds shell aliases to your `.bashrc`, `.bash_profile`, `.zshrc`, and `.zprofile` (whichever already exist) so that `npm`, `pip`/`pip3`, and/or `poetry` transparently run through `scfw`. Restart your shell (or source the relevant rc file) for the aliases to take effect.
+2. Optionally, if provided, stores your Datadog API key and application key securely in your system's keychain, so credentials don't need to be kept in plaintext or supplied on every command.
+
+`scfw configure` is idempotent and may be re-run at any time to change your configuration. Alias options are additive, so aliases configured by an earlier invocation remain in place unless their corresponding `--remove-alias-*` option is passed. The command manages its own clearly indicated block of your shell rc files and never touches anything else you've added.
+
+Available `configure` options:
+
+| Flag | Description |
+| --- | --- |
+| `--alias-npm` | Add a shell alias to run all npm commands through `scfw`. |
+| `--remove-alias-npm` | Remove the npm shell alias managed by `scfw`. |
+| `--alias-pip` | Add shell aliases to run all pip/pip3 commands through `scfw`. |
+| `--remove-alias-pip` | Remove the pip/pip3 shell aliases managed by `scfw`. |
+| `--alias-poetry` | Add a shell alias to run all poetry commands through `scfw`. |
+| `--remove-alias-poetry` | Remove the poetry shell alias managed by `scfw`. |
+| `--scfw-home` | Directory Supply Chain Firewall can use as a local cache. |
+| `--remove` | Remove all Supply Chain Firewall managed configuration. |
+| `--dd-api-key` | Datadog API key used for policy evaluation and reporting. |
+| `--dd-app-key` | Datadog application key used for policy evaluation and reporting. |
+| `--dd-site` | Datadog site parameter used for policy evaluation and reporting (default: `datadoghq.com`). |
+
+When inspecting package manager commands, Datadog credentials and the Datadog site parameter may alternatively be provided via environment variables `DD_API_KEY`, `DD_APP_KEY`, and `DD_SITE`, respectively. This is particularly useful in CI environments where secrets are injected per job. Environment variables always take precedence over stored credentials sourced from the system keychain.
 
 ### Compatibility and limitations
 
@@ -71,101 +155,60 @@ See the `configure` command [documentation](https://github.com/DataDog/supply-ch
 | pip               | >= 22.2               | `install`                          |
 | poetry            | >= 1.7                | `add`, `install`, `sync`, `update` |
 
-Supply Chain Firewall may only know how to inspect some of the "installish" subcommands for its supported package managers.  These are shown in the above table.  Any other subcommands are always allowed to run.
+Supply Chain Firewall may only know how to inspect some of the "installish" subcommands for its supported package managers. These are shown in the above table. Any other subcommands are always allowed to run.
 
-By default, `scfw` will refuse to run inspected subcommands with an unsupported version of a supported package manager.  This is in keeping with its goal of blocking 100% of known-malicious package installations.  In order to get the most out of `scfw`, please verify that you are running a supported version of your package manager and upgrade accordingly before using this tool.
-
-Currently, Supply Chain Firewall is only fully supported on macOS systems, though it should run as intended on common Linux distributions.  It is currently not supported on Windows.
+Note that `scfw` will refuse to run inspected subcommands on an unsupported version of a supported package manager. In order to get the most out of `scfw`, please verify that you are running a supported version of your package manager and upgrade accordingly before using this tool.
 
 ### Uninstalling Supply Chain Firewall
 
-Supply Chain Firewall may be uninstalled via `pip(x) uninstall scfw`.  Before doing so, be sure to run the command `scfw configure --remove` to remove any Supply Chain Firewall-managed configuration you may have previously added to your environment.
+Before uninstalling, be sure to run `scfw configure --remove` to remove any Supply Chain Firewall-managed configuration you may have previously added to your environment.
 
 ```bash
 $ scfw configure --remove
-...
 ```
+
+Then remove the `scfw` binary, e.g. by deleting it from `$(go env GOPATH)/bin` if it was installed via `go install`.
 
 ## Usage
 
-```bash
-$ scfw --help
-usage: scfw [-h] [-v] [--log-level LEVEL] {audit,configure,run} ...
-
-A tool for preventing the installation of malicious npm and PyPI packages.
-
-positional arguments:
-  {audit,configure,run}
-
-options:
-  -h, --help            show this help message and exit
-  -v, --version         show program's version number and exit
-  --log-level LEVEL     Desired logging level (default: WARNING, options: DEBUG, INFO, WARNING, ERROR)
-```
-
-### Inspect package manager commands
-
-To use Supply Chain Firewall to inspect a package manager command, simply prepend `scfw run` to the command you intend to run:
+To inspect a package manager command with Supply Chain Firewall, prepend `scfw run --` to the command you intend to run:
 
 ```
-$ scfw run npm install react
+$ scfw run -- npm install react
 added 1 package in 226ms
 
-$ scfw run pip install -r requirements.txt
-Package urllib3-2.6.2:
-  - An OSV.dev advisory exists for package urllib3-2.6.2:
-      * [High] https://osv.dev/vulnerability/GHSA-38jv-5279-wg99
-[?] Proceed with installation? (y/N):
-The installation request was aborted. No changes have been made.
+$ scfw run -- pip install some-evil-package
+Package some-evil-package-1.0.0:
+  - Datadog Security Research has determined that package some-evil-package-1.0.0 is malicious.
+
+The command was blocked. No changes have been made.
 ```
 
-See the `run` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands.md#scfw-run) for details and command-line options.
+Note that, once shell aliases have been configured via `scfw configure --alias-npm`/`--alias-pip`/`--alias-poetry`, the explicit `scfw run --` prefix is no longer needed: commands for these package managers run through `scfw` automatically.
 
-### Audit installed packages
+`scfw run` supports the following options:
 
-Supply Chain Firewall can also use its verifiers to audit installed packages:
+| Flag | Description |
+| --- | --- |
+| `--executable` | Package manager executable to use for running commands (default: environmentally determined). |
+| `--error-on-block` | Treat blocked commands as errors, i.e. exit non-zero (useful for scripting and CI). |
+| `--allow-on-warning` | Non-interactively allow commands with only warning-level findings, instead of prompting. |
+| `--block-on-warning` | Non-interactively block commands with only warning-level findings, instead of prompting. |
 
-```
-$ scfw audit npm
-No issues found.
-
-$ scfw audit --executable venv/bin/pip pip
-Package pip-23.0.1:
-  - An OSV.dev advisory exists for package pip-23.0.1:
-      * [Medium] https://osv.dev/vulnerability/GHSA-mq26-g339-26xf
-  - An OSV.dev advisory exists for package pip-23.0.1:
-      * [Low] https://osv.dev/vulnerability/PYSEC-2023-228
-Package setuptools-65.5.0:
-  - An OSV.dev advisory exists for package setuptools-65.5.0:
-      * [High] https://osv.dev/vulnerability/GHSA-cx63-2mw6-8hw5
-  - An OSV.dev advisory exists for package setuptools-65.5.0:
-      * [High] https://osv.dev/vulnerability/GHSA-5rjg-fvgr-3xxf
-  - An OSV.dev advisory exists for package setuptools-65.5.0:
-      * [High] https://osv.dev/vulnerability/GHSA-r9hx-vwmv-q579
-  - An OSV.dev advisory exists for package setuptools-65.5.0:
-      * https://osv.dev/vulnerability/PYSEC-2022-43012
-```
-
-See the `audit` command [documentation](https://github.com/DataDog/supply-chain-firewall/tree/main/docs/subcommands.md#scfw-audit) for details and command-line options.
-
-## Datadog Log Management integration
-
-Supply Chain Firewall can optionally send logs of blocked and successful installations to Datadog.
-
-![scfw datadog log](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/images/datadog_log.png?raw=true)
-
-Logs may be forwarded to Datadog via the HTTP API or a local Datadog Agent process.  A Datadog API key is required to enable log forwarding.  Documentation on how to enable and configure these loggers may be found [here](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/loggers.md).
-
-Supply Chain Firewall can maintain a local JSON Lines log file that records all completed `run` and `audit` executions.  Users are strongly encouraged to [enable](https://github.com/DataDog/supply-chain-firewall/blob/main/docs/loggers.md#local-file-logger) this logger, as having a centralized record of executed package manager commands, their outcomes, and installed packages over time can be useful in incident response scenarios.  Once file logging has been enabled, users may separately [configure](https://docs.datadoghq.com/agent/logs/?tab=tailfiles#custom-log-collection) the local Datadog Agent to tail this file and thereby ingest logs from SCFW with no additional overhead.
-
-Supply Chain Firewall can also integrate with user-supplied loggers.  A template for implementating a custom logger may be found in `examples/logger.py`. Refer to the API documentation for details.
+The `SCFW_ON_WARNING` environment variable (`allow` or `block`) has the same effect as `--allow-on-warning`/`--block-on-warning` and takes precedence over them when set, which is useful for enforcing a consistent policy across a CI environment without changing every invocation. In a non-interactive context (no attached terminal), a warning-level result is blocked by default unless one of these mechanisms is used, so a warning can never be silently ignored.
 
 ## Development
 
-We welcome community contributions to Supply Chain Firewall.  Refer to the [CONTRIBUTING](https://github.com/DataDog/supply-chain-firewall/blob/main/CONTRIBUTING.md) guide for instructions on building the API documentation and setting up for development.
+We welcome contributions to Supply Chain Firewall.  Refer to the [CONTRIBUTING](https://github.com/DataDog/supply-chain-firewall/blob/v4/CONTRIBUTING.md) guide for instructions on setting up for development.
+
+## Authors
+
+* [Ian Kretz](https://github.com/ikretz)
+* [Tesnim Hamdouni](https://github.com/tesnim5hamdouni)
+* [Sebastian Obregoso](https://www.linkedin.com/in/sebastianobregoso/)
 
 ## Maintainers
 
-- [Ian Kretz](https://github.com/ikretz)
-- [Tesnim Hamdouni](https://github.com/tesnim5hamdouni)
-- [Sebastian Obregoso](https://www.linkedin.com/in/sebastianobregoso/)
+* [Marc Wieser](https://github.com/marcwieserdev)
+* [Daniel Strong](https://github.com/dastrong)
+* [Ian Kretz](https://github.com/ikretz)

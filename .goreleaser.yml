@@ -1,0 +1,32 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: scfw
+    main: ./scfw
+    binary: scfw
+    goarch:
+      - amd64
+      - arm64
+    goos:
+      - darwin
+      - linux
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - '-X github.com/DataDog/supply-chain-firewall/scfw/internal/build.Version={{ .Version }}'
+
+archives:
+  - formats: ["binary"]
+    name_template: "scfw-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: "scfw_SHA256SUMS"
+  algorithm: sha256
+
+release:
+  draft: true

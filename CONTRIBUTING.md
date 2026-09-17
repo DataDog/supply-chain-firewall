@@ -2,40 +2,33 @@
 
 ## :hammer_and_wrench: Setting up for development
 
-To set up for development and testing, create a fresh `virtualenv`,
-activate it and run the following sequence of commands:
+To set up for development and testing, clone the repository and ensure you
+can build the `scfw` binary:
 
 ```bash
 git clone https://github.com/DataDog/supply-chain-firewall.git
 cd supply-chain-firewall
-make install-dev
+git checkout v4
+make
 ```
 
-This will install `scfw` as well as its development dependencies into
-your development environment.
+## :test_tube: Testing
 
-### Documentation
+Execute the full test suite by running `make test`. There are also recipes
+for specific test suites (e.g., CLI tests, npm tests, etc.).  Refer to the
+Makefile for details.
 
-API documentation may be built via `pdoc` by running `make docs` in
-your development environment.  This will automatically open the
-documentation in your system's default browser.
+## :mag: Linting
 
-### Testing
+Before opening a pull request, run `make lint`, which checks formatting
+(`gofmt`) and runs `go vet`, as well as `make golangci-lint`, which runs
+[`golangci-lint`][golangci-lint-install]. `golangci-lint` is not installed
+automatically, so install it yourself, following the instructions at the
+link above. It is strongly recommended to keep your local `golangci-lint`
+version reasonably in sync with whatever version CI uses, so that
+`make golangci-lint` behaves consistently in both places.
 
-Execute the test suite by running `make test` in your development
-environment.  To additionally view code coverage, run `make coverage`.
-
-### Code quality
-
-The test suite contains code quality checks in the form of
-type-checking and linting.  Run `make typecheck` or `make lint`,
-respectively, in your development environment.
-
-You can run `make checks` to execute all tests and code quality
-checks.  Up to matrix testing across `pip` and `npm` versions, this is
-the same set of checks that run in the repository's CI for pull
-requests.  The repository also contains a pre-commit hook to run these
-checks on each commit, if so desired.
+[golangci-lint-install]: https://golangci-lint.run/docs/welcome/install/
 
 ## :bug: Creating issues
 

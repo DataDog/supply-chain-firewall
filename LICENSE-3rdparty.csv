@@ -1,9 +1,6 @@
 Component,Origin,License,Copyright
-cvss,PyPI,LGPL-3.0,Stanislav Kontar
-datadog-api-client,PyPI,Apache-2.0,Datadog Inc.
-inquirer,PyPI,MIT,Miguel Angel Garcia
-packaging,PyPI,Apache-2.0,Donald Stufft
-python-dotenv,PyPI,BSD-3-Clause,Saurabh Kumar
-pyyaml,PyPI,MIT,Kirill Simonov
-requests,PyPI,Apache-2.0,Kenneth Reitz
-tomli,PyPI,MIT,Taneli Hukkinen
+go-toml,Go,MIT,Thomas Pelletier
+cobra,Go,Apache-2.0,The Cobra Authors
+go-keyring,Go,MIT,Zalando SE
+pflag,Go,BSD-3-Clause,Alex Ogier and The Go Authors
+term,Go,BSD-3-Clause,The Go Authors

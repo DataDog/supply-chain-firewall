@@ -86,6 +86,7 @@ Usage:
 
 Available Commands:
   configure   Configure the environment for using Supply Chain Firewall.
+  proxy       Run npm through an experimental local registry proxy.
   run         Run a package manager command through Supply Chain Firewall.
 ...
 ```
@@ -180,6 +181,53 @@ Note that, once shell aliases have been configured via `scfw configure --alias-n
 | `--block-on-warning` | Non-interactively block commands with only warning-level findings, instead of prompting. |
 
 The `SCFW_ON_WARNING` environment variable (`allow` or `block`) has the same effect as `--allow-on-warning`/`--block-on-warning` and takes precedence over them when set, which is useful for enforcing a consistent policy across a CI environment without changing every invocation. In a non-interactive context (no attached terminal), a warning-level result is blocked by default unless one of these mechanisms is used, so a warning can never be silently ignored.
+
+### Experimental npm registry proxy
+
+To observe the registry requests made by an npm command, run it through the
+experimental proxy mode:
+
+```bash
+$ scfw proxy -- npm install react
+[1] REQUEST GET https://registry.npmjs.org/react
+[1] RESPONSE 200 GET https://registry.npmjs.org/react
+[1] RESPONSE BODY "{\"name\":\"react\",...}"
+```
+
+To test npm's behavior for a registry failure without contacting the registry,
+return a chosen status for every intercepted request:
+
+```bash
+$ scfw proxy --http-status 503 -- npm install react
+[1] REQUEST GET https://registry.npmjs.org/react
+[1] RESPONSE 503 GET https://registry.npmjs.org/react
+```
+
+`--http-status` accepts final HTTP response codes from 200 through 599. Synthetic
+responses have empty bodies.
+
+Proxy mode requires npm 8 or later. Registry, npmrc-location, prefix, and
+authentication configuration must be supplied through npmrc files or environment
+variables rather than npm command-line options. Effective global and project
+configuration locations are rejected explicitly because proxy mode cannot safely
+isolate writes to those files without changing npm's command semantics.
+
+SCFW reads npm's effective default and scoped registry configuration, starts a
+reverse proxy on an ephemeral loopback port, and applies the proxy registry only
+to the spawned npm process. Requests, response status codes, and bounded JSON
+response bodies are logged to standard output and forwarded to their configured
+registry. Known secrets and URL credentials are redacted. Oversized or non-JSON
+bodies such as package tarballs receive an explicit omission marker, avoiding
+private source leakage and install backpressure. Body logging also has a bounded
+command-wide budget and uses a nonblocking queue; if stdout cannot keep up, a
+dropped-record count is emitted instead of delaying registry traffic. Registry
+and tarball URLs in responses are routed back through the proxy so subsequent
+downloads are observed as well. Ephemeral proxy URLs are omitted from generated
+npm lockfiles.
+
+Proxy mode does not edit global, user, or project npm configuration files. This
+process-local override means npm retains its original configuration after normal
+completion, interruption, or an abrupt SCFW exit.
 
 ## Datadog Code Security integration
 

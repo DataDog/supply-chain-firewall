@@ -38,8 +38,10 @@ func RootCmd() *cobra.Command {
 
 Set SCFW_VERBOSE to enable detailed progress and diagnostic logging.`,
 		Example: `  scfw configure --dd-api-key=<your-api-key> --dd-app-key=<your-app-key> --alias-npm --alias-pip --alias-poetry
-  scfw run -- npm install react
-  scfw run -- pip install requests`,
+	  scfw run -- npm install react
+	  scfw run -- pip install requests
+	  scfw proxy -- npm install react
+	  scfw proxy --http-status 503 -- npm install react`,
 		Version: build.GetVersion(),
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			return configureLogging(logLevel)
@@ -51,6 +53,7 @@ Set SCFW_VERBOSE to enable detailed progress and diagnostic logging.`,
 	cmd.AddCommand(
 		configureCmd,
 		doctorCmd,
+		proxyCmd,
 		runCmd,
 	)
 

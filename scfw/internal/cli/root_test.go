@@ -17,7 +17,7 @@ import (
 
 func TestRootHelpIdentifiesDatadogAndIncludesExamples(t *testing.T) {
 	cmd := RootCmd()
-	defer cmd.RemoveCommand(configureCmd, runCmd)
+	defer cmd.RemoveCommand(configureCmd, doctorCmd, proxyCmd, runCmd)
 	var output bytes.Buffer
 	cmd.SetOut(&output)
 	cmd.SetArgs([]string{"--help"})
@@ -32,6 +32,8 @@ func TestRootHelpIdentifiesDatadogAndIncludesExamples(t *testing.T) {
 		"scfw configure --dd-api-key=<your-api-key> --dd-app-key=<your-app-key> --alias-npm --alias-pip --alias-poetry",
 		"scfw run -- npm install react",
 		"scfw run -- pip install requests",
+		"scfw proxy -- npm install react",
+		"scfw proxy --http-status 503 -- npm install react",
 	} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("help output %q does not contain %q", output.String(), want)

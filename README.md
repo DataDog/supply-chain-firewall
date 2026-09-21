@@ -86,7 +86,7 @@ Usage:
 
 Available Commands:
   configure   Configure the environment for using Supply Chain Firewall.
-  proxy       Run npm through an experimental local registry proxy.
+  proxy       Run a package manager through an experimental local registry proxy.
   run         Run a package manager command through Supply Chain Firewall.
 ...
 ```
@@ -182,16 +182,25 @@ Note that, once shell aliases have been configured via `scfw configure --alias-n
 
 The `SCFW_ON_WARNING` environment variable (`allow` or `block`) has the same effect as `--allow-on-warning`/`--block-on-warning` and takes precedence over them when set, which is useful for enforcing a consistent policy across a CI environment without changing every invocation. In a non-interactive context (no attached terminal), a warning-level result is blocked by default unless one of these mechanisms is used, so a warning can never be silently ignored.
 
-### Experimental npm registry proxy
+### Experimental package registry proxy
 
-To observe the registry requests made by an npm command, run it through the
-experimental proxy mode:
+To observe the registry requests made by npm, Yarn, pnpm, Bun, pip, Poetry, or
+uv, run the package manager through the experimental proxy mode (Twine and
+publishing workflows are intentionally not supported):
 
 ```bash
 $ scfw proxy -- npm install react
 [1] REQUEST GET https://registry.npmjs.org/react
 [1] RESPONSE 200 GET https://registry.npmjs.org/react
 [1] RESPONSE BODY "{\"name\":\"react\",...}"
+```
+
+For example, Python installation commands use the same interface:
+
+```bash
+$ scfw proxy -- pip install requests
+$ scfw proxy -- poetry install
+$ scfw proxy -- uv sync
 ```
 
 To test npm's behavior for a registry failure without contacting the registry,
@@ -206,28 +215,48 @@ $ scfw proxy --http-status 503 -- npm install react
 `--http-status` accepts final HTTP response codes from 200 through 599. Synthetic
 responses have empty bodies.
 
-Proxy mode requires npm 8 or later. Registry, npmrc-location, prefix, and
+Proxy mode accepts installation operations only. For managers other than npm,
+SCFW uses the manager's immutable/frozen-lockfile mode (or Yarn Classic's
+pure-lockfile mode) so an ephemeral loopback URL is never persisted. Registry,
+index, and config-file overrides on the wrapped command line are rejected; put
+those values in the manager's normal configuration so SCFW can discover and
+route every configured registry.
+
+The npm adapter requires npm 8 or later. Registry, npmrc-location, prefix, and
 authentication configuration must be supplied through npmrc files or environment
 variables rather than npm command-line options. Effective global and project
 configuration locations are rejected explicitly because proxy mode cannot safely
 isolate writes to those files without changing npm's command semantics.
 
-SCFW reads npm's effective default and scoped registry configuration, starts a
-reverse proxy on an ephemeral loopback port, and applies the proxy registry only
-to the spawned npm process. Requests, response status codes, and bounded JSON
-response bodies are logged to standard output and forwarded to their configured
+Each package-manager adapter reads its effective default and named/scoped index
+configuration. SCFW then starts a reverse proxy on an ephemeral loopback port
+and applies local registry URLs only to the spawned process. Requests, response
+status codes, and bounded JSON or text response bodies are logged to standard
+output and forwarded to their configured
 registry. Known secrets and URL credentials are redacted. Oversized or non-JSON
 bodies such as package tarballs receive an explicit omission marker, avoiding
 private source leakage and install backpressure. Body logging also has a bounded
 command-wide budget and uses a nonblocking queue; if stdout cannot keep up, a
 dropped-record count is emitted instead of delaying registry traffic. Registry
-and tarball URLs in responses are routed back through the proxy so subsequent
-downloads are observed as well. Ephemeral proxy URLs are omitted from generated
-npm lockfiles.
+and package download URLs in npm packuments, Python simple-index HTML, and PEP
+691 JSON responses are routed back through the proxy so subsequent downloads are
+observed as well. Ephemeral proxy URLs are omitted from generated npm lockfiles.
+When a distribution download is requested, the npm or PyPI handler derives its
+package name and version and evaluates that package with the configured Datadog
+policy. Non-allow decisions and evaluation failures return HTTP 403 without
+contacting the artifact host. Repeated concurrent downloads of the same package
+share one evaluation.
 
-Proxy mode does not edit global, user, or project npm configuration files. This
-process-local override means npm retains its original configuration after normal
-completion, interruption, or an abrupt SCFW exit.
+Proxy mode does not edit global, user, or project package-manager configuration
+files. npm uses an inherited protected descriptor, Bun and Poetry use temporary
+configuration/bootstrap files, and the remaining managers use child-process
+arguments or environment variables. Consequently the original configuration
+survives normal completion, interruption, or an abrupt SCFW exit.
+
+Private registries are supported through npmrc/Yarn/Bun credentials, URL or
+netrc credentials for Python managers, and uv's credentials store. Unsafe TLS
+exceptions and keyring modes that cannot be scoped safely through the proxy are
+rejected with an explanatory error; configure a trusted CA bundle instead.
 
 ## Datadog Code Security integration
 

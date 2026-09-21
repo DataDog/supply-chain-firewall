@@ -21,6 +21,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	proxyecosystem "github.com/DataDog/supply-chain-firewall/scfw/internal/proxy/ecosystem"
 )
 
 const defaultNPMRegistry = "https://registry.npmjs.org/"
@@ -28,9 +30,20 @@ const defaultNPMRegistry = "https://registry.npmjs.org/"
 // NPMConfig contains the effective npm registry configuration needed to route
 // requests received by the local proxy.
 type NPMConfig struct {
-	Registry                     *url.URL
-	ScopedRegistries             map[string]*url.URL
+	Registry         *url.URL
+	ScopedRegistries map[string]*url.URL
+	// ResponseHandler implements the registry protocol. A nil handler selects
+	// npm for backwards compatibility.
+	ResponseHandler proxyecosystem.Handler
+	// AllowUnauthenticatedLocalRequests is intended for managers that cannot
+	// attach a private bearer token without exposing it in argv or the
+	// environment. Registry routes still contain an unguessable capability.
+	AllowUnauthenticatedLocalRequests bool
+	// ForwardAuthorization preserves credentials supplied by a manager for a
+	// named repository. Routes are unguessable and bound to one upstream.
+	ForwardAuthorization         bool
 	credentials                  map[string]npmCredentials
+	basicCredentials             map[string]basicCredential
 	configFiles                  []string
 	userConfigFile               string
 	supportsSafeLockfileOmission bool
@@ -58,6 +71,11 @@ type npmCredentials struct {
 	keyFile         string
 }
 
+type basicCredential struct {
+	username string
+	password string
+}
+
 // LoadNPMConfig asks npm for its effective configuration. npm has already
 // applied global, user, project, and environment precedence when it emits JSON.
 func LoadNPMConfig(ctx context.Context, executable string) (NPMConfig, error) {
@@ -74,7 +92,13 @@ func LoadNPMConfig(ctx context.Context, executable string) (NPMConfig, error) {
 		return NPMConfig{}, fmt.Errorf("dump npm configuration: %w", err)
 	}
 
-	config, err := parseNPMConfig(stdout.Bytes())
+	return LoadNPMConfigData(ctx, executable, stdout.Bytes())
+}
+
+// LoadNPMConfigData completes npm configuration discovery from the JSON
+// fetched by the npm manager adapter.
+func LoadNPMConfigData(ctx context.Context, executable string, data []byte) (NPMConfig, error) {
+	config, err := parseNPMConfig(data)
 	if err != nil {
 		return NPMConfig{}, fmt.Errorf("dump npm configuration: %w", err)
 	}
@@ -390,6 +414,12 @@ func (config NPMConfig) credentialsFor(destination *url.URL) (string, npmCredent
 func (config NPMConfig) authorize(request *http.Request) {
 	_, credential, ok := config.credentialsFor(request.URL)
 	if !ok {
+		if request.URL.User != nil {
+			password, _ := request.URL.User.Password()
+			request.SetBasicAuth(request.URL.User.Username(), password)
+		} else if credential, exists := config.basicCredentials[strings.ToLower(request.URL.Hostname())]; exists {
+			request.SetBasicAuth(credential.username, credential.password)
+		}
 		return
 	}
 	switch {

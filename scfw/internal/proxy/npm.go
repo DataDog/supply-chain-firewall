@@ -62,11 +62,17 @@ func (writer *synchronizedWriter) Write(data []byte) (int, error) {
 // RunNPM starts an ephemeral registry proxy and runs npm with process-local
 // registry overrides that route default and scoped registry traffic through it.
 func RunNPM(ctx context.Context, executable string, args []string, streams Streams, options Options) (returnErr error) {
-	if err := validateNPMProxyArgs(args); err != nil {
-		return err
-	}
 	config, err := LoadNPMConfig(ctx, executable)
 	if err != nil {
+		return err
+	}
+	return RunNPMWithConfig(ctx, executable, args, streams, options, config)
+}
+
+// RunNPMWithConfig runs npm using configuration discovered by the npm manager
+// adapter while retaining npm's protected-descriptor and lifecycle isolation.
+func RunNPMWithConfig(ctx context.Context, executable string, args []string, streams Streams, options Options, config NPMConfig) (returnErr error) {
+	if err := validateNPMProxyArgs(args); err != nil {
 		return err
 	}
 	if err := validateNPMConfigMode(config); err != nil {

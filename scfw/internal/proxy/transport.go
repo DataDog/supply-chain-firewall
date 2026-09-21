@@ -36,13 +36,13 @@ func (config NPMConfig) transport() (*http.Transport, error) {
 		if config.caFile != "" {
 			contents, err := os.ReadFile(config.caFile)
 			if err != nil {
-				return nil, fmt.Errorf("read npm cafile %s: %w", config.caFile, err)
+				return nil, fmt.Errorf("read registry CA file %s: %w", config.caFile, err)
 			}
 			certificates = append(certificates, string(contents))
 		}
 		for _, certificate := range certificates {
 			if strings.TrimSpace(certificate) != "" && !roots.AppendCertsFromPEM([]byte(certificate)) {
-				return nil, errors.New("parse certificate from npm CA configuration")
+				return nil, errors.New("parse certificate from registry CA configuration")
 			}
 		}
 		tlsConfig.RootCAs = roots

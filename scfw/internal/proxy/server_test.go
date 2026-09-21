@@ -21,6 +21,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
 func closeProxy(t *testing.T, server *Server) {
@@ -113,6 +115,32 @@ func TestServerRoutesDefaultAndScopedRegistries(t *testing.T) {
 	}
 }
 
+func TestServerLogsTextResponseBodyAndRedactsURLSecrets(t *testing.T) {
+	registry := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(writer, `<a href="https://files.example/pkg.whl?token=secret#fragment">pkg</a>`)
+	}))
+	defer registry.Close()
+	var output bytes.Buffer
+	server, err := Start(NPMConfig{Registry: mustParseURL(t, registry.URL+"/")}, &output)
+	if err != nil {
+		t.Fatalf("Start(): %v", err)
+	}
+	response, err := proxyGet(server, server.URL()+"pkg")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, response.Body)
+	response.Body.Close()
+	closeProxy(t, server)
+	if !strings.Contains(output.String(), `RESPONSE BODY`) || !strings.Contains(output.String(), `https://files.example/pkg.whl`) {
+		t.Errorf("log does not contain redacted text body: %q", output.String())
+	}
+	if strings.Contains(output.String(), "secret") || strings.Contains(output.String(), "fragment") {
+		t.Errorf("log leaks URL secret: %q", output.String())
+	}
+}
+
 func TestServerRejectsCallerWithOnlyRegistryURL(t *testing.T) {
 	upstreamCalled := make(chan struct{}, 1)
 	registry := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -182,6 +210,100 @@ func TestServerSynthesizesConfiguredHTTPStatusWithoutCallingRegistry(t *testing.
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("log %q does not contain %q", output.String(), want)
 		}
+	}
+}
+
+func TestProxyURLPreservesArtifactFilenameAndHash(t *testing.T) {
+	baseURL := mustParseURL(t, "http://127.0.0.1:1234/registry/")
+	server := &Server{baseURL: baseURL, forwardPrefix: "/forward/"}
+	destination := mustParseURL(t, "https://files.example/pkg-1.0.whl?signature=secret#sha256=abc")
+	rewritten := server.proxyURLForPackage(destination, nil)
+	parsed := mustParseURL(t, rewritten)
+	if !strings.HasSuffix(parsed.Path, "/pkg-1.0.whl") || parsed.Fragment != "sha256=abc" {
+		t.Errorf("proxy URL = %q, want filename and hash fragment", rewritten)
+	}
+	resolved, err := server.destination(parsed)
+	if err != nil {
+		t.Fatalf("destination() error = %v", err)
+	}
+	if got, want := resolved.String(), "https://files.example/pkg-1.0.whl?signature=secret"; got != want {
+		t.Errorf("destination = %q, want %q", got, want)
+	}
+}
+
+func TestServerBlocksDistributionRejectedByEvaluator(t *testing.T) {
+	upstreamCalled := false
+	registry := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { upstreamCalled = true }))
+	defer registry.Close()
+	var evaluated pm.Package
+	server, err := StartWithOptions(NPMConfig{Registry: mustParseURL(t, registry.URL+"/")}, io.Discard, Options{
+		Evaluate: func(_ context.Context, pkg pm.Package) error {
+			evaluated = pkg
+			return errors.New("blocked")
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartWithOptions(): %v", err)
+	}
+	response, err := proxyGet(server, server.URL()+"pkg/-/pkg-1.2.3.tgz")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	response.Body.Close()
+	closeProxy(t, server)
+	if response.StatusCode != http.StatusForbidden || upstreamCalled {
+		t.Errorf("status = %d, upstreamCalled = %t", response.StatusCode, upstreamCalled)
+	}
+	if evaluated.Name != "pkg" || evaluated.Version != "1.2.3" {
+		t.Errorf("evaluated package = %+v", evaluated)
+	}
+}
+
+func TestServerEvaluatesPackumentMappedNonstandardTarball(t *testing.T) {
+	artifactCalled := false
+	artifact := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { artifactCalled = true }))
+	defer artifact.Close()
+	registry := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(writer, `{"name":"private-pkg","versions":{"7.8.9":{"dist":{"tarball":%q}}}}`, artifact.URL+"/opaque-download")
+	}))
+	defer registry.Close()
+	var evaluated pm.Package
+	server, err := StartWithOptions(NPMConfig{Registry: mustParseURL(t, registry.URL+"/")}, io.Discard, Options{
+		Evaluate: func(_ context.Context, pkg pm.Package) error {
+			evaluated = pkg
+			return errors.New("blocked")
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartWithOptions(): %v", err)
+	}
+	metadata, err := proxyGet(server, server.URL()+"private-pkg")
+	if err != nil {
+		t.Fatalf("metadata GET: %v", err)
+	}
+	var document struct {
+		Versions map[string]struct {
+			Dist struct {
+				Tarball string `json:"tarball"`
+			} `json:"dist"`
+		} `json:"versions"`
+	}
+	if err := json.NewDecoder(metadata.Body).Decode(&document); err != nil {
+		t.Fatalf("decode metadata: %v", err)
+	}
+	metadata.Body.Close()
+	download, err := proxyGet(server, document.Versions["7.8.9"].Dist.Tarball)
+	if err != nil {
+		t.Fatalf("download GET: %v", err)
+	}
+	download.Body.Close()
+	closeProxy(t, server)
+	if download.StatusCode != http.StatusForbidden || artifactCalled {
+		t.Errorf("status = %d, artifactCalled = %t", download.StatusCode, artifactCalled)
+	}
+	if evaluated.Name != "private-pkg" || evaluated.Version != "7.8.9" {
+		t.Errorf("evaluated package = %+v", evaluated)
 	}
 }
 
@@ -321,6 +443,63 @@ func TestServerForwardsRegistryAuthentication(t *testing.T) {
 	closeProxy(t, server)
 	if authorization != "Bearer registry-token" {
 		t.Errorf("Authorization = %q", authorization)
+	}
+}
+
+func TestServerDoesNotForwardRegistryAuthorizationToArtifactHost(t *testing.T) {
+	var authorization string
+	artifact := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		authorization = request.Header.Get("Authorization")
+		fmt.Fprint(writer, "artifact")
+	}))
+	defer artifact.Close()
+	server, err := Start(NPMConfig{
+		Registry:                          mustParseURL(t, "https://registry.example/"),
+		AllowUnauthenticatedLocalRequests: true,
+		ForwardAuthorization:              true,
+	}, io.Discard)
+	if err != nil {
+		t.Fatalf("Start(): %v", err)
+	}
+	request, _ := http.NewRequest(http.MethodGet, server.proxyURLForPackage(mustParseURL(t, artifact.URL+"/pkg.tgz"), nil), nil)
+	request.Header.Set("Authorization", "Bearer registry-secret")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("artifact request: %v", err)
+	}
+	response.Body.Close()
+	closeProxy(t, server)
+	if authorization != "" {
+		t.Errorf("artifact Authorization = %q, want empty", authorization)
+	}
+}
+
+func TestServerForwardsAuthorizationToSameOriginArtifact(t *testing.T) {
+	var authorization string
+	registry := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		authorization = request.Header.Get("Authorization")
+		fmt.Fprint(writer, "artifact")
+	}))
+	defer registry.Close()
+	registryURL := mustParseURL(t, registry.URL+"/")
+	server, err := Start(NPMConfig{
+		Registry:                          registryURL,
+		AllowUnauthenticatedLocalRequests: true,
+		ForwardAuthorization:              true,
+	}, io.Discard)
+	if err != nil {
+		t.Fatalf("Start(): %v", err)
+	}
+	request, _ := http.NewRequest(http.MethodGet, server.proxyURLForPackage(mustParseURL(t, registry.URL+"/pkg.tgz"), nil), nil)
+	request.Header.Set("Authorization", "Bearer registry-secret")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("artifact request: %v", err)
+	}
+	response.Body.Close()
+	closeProxy(t, server)
+	if authorization != "Bearer registry-secret" {
+		t.Errorf("artifact Authorization = %q", authorization)
 	}
 }
 

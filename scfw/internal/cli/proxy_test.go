@@ -21,13 +21,21 @@ func TestProxyCommandValidation(t *testing.T) {
 		{name: "missing separator", args: []string{"npm", "install"}, wantErr: "missing"},
 		{name: "argument before separator", args: []string{"unexpected", "--", "npm", "install"}, wantErr: "unexpected"},
 		{name: "missing command", args: []string{"--"}, wantErr: "no command"},
-		{name: "unsupported command", args: []string{"--", "pip", "install"}, wantErr: "only npm"},
+		{name: "unsupported command", args: []string{"--", "twine", "upload"}, wantErr: "supported package managers"},
 		{name: "explicit zero status", args: []string{"--http-status", "0", "--", "npm", "install"}, wantErr: "between 200 and 599"},
 		{name: "status below final response range", args: []string{"--http-status", "199", "--", "npm", "install"}, wantErr: "between 200 and 599"},
 		{name: "status above response range", args: []string{"--http-status=600", "--", "npm", "install"}, wantErr: "between 200 and 599"},
 		{name: "npm accepted", args: []string{"--", "npm", "install"}},
 		{name: "synthetic status accepted", args: []string{"--http-status", "503", "--", "npm", "install"}},
 		{name: "npm path accepted", args: []string{"--", "/usr/local/bin/npm", "install"}},
+		{name: "all managers accepted", args: []string{"--", "uv", "sync"}},
+		{name: "pip accepted", args: []string{"--", "pip", "install", "requests"}},
+		{name: "publish rejected", args: []string{"--", "npm", "publish"}, wantErr: "install-only"},
+		{name: "twine rejected", args: []string{"--", "twine", "upload"}, wantErr: "supported package managers"},
+		{name: "index override rejected", args: []string{"--", "pip", "install", "--index-url", "https://example", "requests"}, wantErr: "registry option"},
+		{name: "short index override rejected", args: []string{"--", "pip", "install", "-i", "https://example", "requests"}, wantErr: "registry option"},
+		{name: "npm run bypass rejected", args: []string{"--", "npm", "run", "install"}, wantErr: "not an installation"},
+		{name: "uv run bypass rejected", args: []string{"--", "uv", "run", "pip", "install", "requests"}, wantErr: "not an installation"},
 	}
 
 	for _, test := range tests {

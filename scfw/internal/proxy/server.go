@@ -239,8 +239,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		http.Error(writer, "registry proxy authentication required", http.StatusUnauthorized)
 		return
 	}
-	forwardedArtifact := strings.HasPrefix(request.URL.Path, s.forwardPrefix)
-	destination, err := s.destination(request.URL)
+	destination, forwardedArtifact, err := s.resolveDestination(request.URL)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusBadRequest)
 		return
@@ -376,22 +375,10 @@ func (s *Server) transportFor(destination *url.URL) http.RoundTripper {
 	return s.transport
 }
 
-func (s *Server) destination(requestURL *url.URL) (*url.URL, error) {
+func (s *Server) resolveDestination(requestURL *url.URL) (*url.URL, bool, error) {
 	if strings.HasPrefix(requestURL.Path, s.forwardPrefix) {
-		remainder := strings.TrimPrefix(requestURL.Path, s.forwardPrefix)
-		encoded, _, _ := strings.Cut(remainder, "/")
-		if encoded == "" {
-			return nil, errors.New("invalid forwarded npm registry URL")
-		}
-		data, err := base64.RawURLEncoding.DecodeString(encoded)
-		if err != nil {
-			return nil, errors.New("invalid forwarded npm registry URL")
-		}
-		destination, err := url.Parse(string(data))
-		if err != nil || (destination.Scheme != "http" && destination.Scheme != "https") || destination.Host == "" {
-			return nil, errors.New("invalid forwarded npm registry URL")
-		}
-		return destination, nil
+		destination, err := s.forwardDestination(requestURL)
+		return destination, true, err
 	}
 
 	for route, registry := range s.registryRoutes {
@@ -403,16 +390,40 @@ func (s *Server) destination(requestURL *url.URL) (*url.URL, error) {
 			} else {
 				routedURL.RawPath = ""
 			}
+			// npm can apply replace-registry-host to a rewritten tarball URL,
+			// rebasing the internal forwarding path below the configured local
+			// registry route. Unwrap it before joining it to the upstream registry.
+			if strings.HasPrefix(routedURL.Path, s.forwardPrefix) {
+				destination, err := s.forwardDestination(routedURL)
+				return destination, true, err
+			}
 			if lockfileDestination, ok := s.config.lockfileDestinations[lockfileDestinationKey(routedURL)]; ok {
-				return cloneURL(lockfileDestination), nil
+				return cloneURL(lockfileDestination), false, nil
 			}
 			destination := cloneURL(registry)
 			destination.Path, destination.RawPath = joinURLPath(registry, routedURL)
 			destination.RawQuery = joinQueries(registry.RawQuery, requestURL.RawQuery)
-			return destination, nil
+			return destination, false, nil
 		}
 	}
-	return nil, errors.New("invalid registry proxy route")
+	return nil, false, errors.New("invalid registry proxy route")
+}
+
+func (s *Server) forwardDestination(requestURL *url.URL) (*url.URL, error) {
+	remainder := strings.TrimPrefix(requestURL.Path, s.forwardPrefix)
+	encoded, _, _ := strings.Cut(remainder, "/")
+	if encoded == "" {
+		return nil, errors.New("invalid forwarded npm registry URL")
+	}
+	data, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, errors.New("invalid forwarded npm registry URL")
+	}
+	destination, err := url.Parse(string(data))
+	if err != nil || (destination.Scheme != "http" && destination.Scheme != "https") || destination.Host == "" {
+		return nil, errors.New("invalid forwarded npm registry URL")
+	}
+	return destination, nil
 }
 
 func isJSONMediaType(mediaType string) bool {

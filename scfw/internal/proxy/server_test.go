@@ -215,19 +215,73 @@ func TestServerSynthesizesConfiguredHTTPStatusWithoutCallingRegistry(t *testing.
 
 func TestProxyURLPreservesArtifactFilenameAndHash(t *testing.T) {
 	baseURL := mustParseURL(t, "http://127.0.0.1:1234/registry/")
-	server := &Server{baseURL: baseURL, forwardPrefix: "/forward/"}
+	server := &Server{
+		baseURL:        baseURL,
+		forwardPrefix:  "/forward/",
+		registryRoutes: map[string]*url.URL{"/registry/": mustParseURL(t, "https://registry.example/")},
+	}
 	destination := mustParseURL(t, "https://files.example/pkg-1.0.whl?signature=secret#sha256=abc")
 	rewritten := server.proxyURLForPackage(destination, nil)
 	parsed := mustParseURL(t, rewritten)
 	if !strings.HasSuffix(parsed.Path, "/pkg-1.0.whl") || parsed.Fragment != "sha256=abc" {
 		t.Errorf("proxy URL = %q, want filename and hash fragment", rewritten)
 	}
-	resolved, err := server.destination(parsed)
+	resolved, forwarded, err := server.resolveDestination(parsed)
 	if err != nil {
-		t.Fatalf("destination() error = %v", err)
+		t.Fatalf("resolveDestination() error = %v", err)
+	}
+	if !forwarded {
+		t.Error("direct forwarding URL was not marked as forwarded")
 	}
 	if got, want := resolved.String(), "https://files.example/pkg-1.0.whl?signature=secret"; got != want {
 		t.Errorf("destination = %q, want %q", got, want)
+	}
+
+	// npm's replace-registry-host setting can rebase the forwarding path under
+	// the configured local registry URL. It must still resolve to the encoded
+	// artifact rather than being sent as a path on the upstream registry.
+	rebased := cloneURL(baseURL)
+	rebased.Path += strings.TrimPrefix(parsed.Path, "/")
+	resolved, forwarded, err = server.resolveDestination(rebased)
+	if err != nil {
+		t.Fatalf("resolveDestination(rebased URL) error = %v", err)
+	}
+	if !forwarded {
+		t.Error("rebased forwarding URL was not marked as forwarded")
+	}
+	if got, want := resolved.String(), "https://files.example/pkg-1.0.whl?signature=secret"; got != want {
+		t.Errorf("rebased destination = %q, want %q", got, want)
+	}
+}
+
+func TestServerStripsAuthorizationFromRebasedForwardURL(t *testing.T) {
+	var authorization string
+	artifact := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		authorization = request.Header.Get("Authorization")
+		fmt.Fprint(writer, "artifact")
+	}))
+	defer artifact.Close()
+	registry := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("forwarded artifact was sent to the registry")
+	}))
+	defer registry.Close()
+	server, err := Start(NPMConfig{
+		Registry:             mustParseURL(t, registry.URL+"/"),
+		ForwardAuthorization: true,
+	}, io.Discard)
+	if err != nil {
+		t.Fatalf("Start(): %v", err)
+	}
+	rewritten := mustParseURL(t, server.proxyURLForPackage(mustParseURL(t, artifact.URL+"/pkg.tgz"), nil))
+	rebasedURL := server.URL() + strings.TrimPrefix(rewritten.Path, "/")
+	response, err := proxyGet(server, rebasedURL)
+	if err != nil {
+		t.Fatalf("rebased artifact request: %v", err)
+	}
+	response.Body.Close()
+	closeProxy(t, server)
+	if authorization != "" {
+		t.Errorf("forwarded Authorization header = %q, want empty", authorization)
 	}
 }
 

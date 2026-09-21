@@ -1,0 +1,26 @@
+flowchart TD
+      A["scfw proxy -- npm install package"] --> B["Package-manager adapter<br/>reads registry configuration"]
+      B --> C["SCFW starts proxy<br/>on an ephemeral local port"]
+      C --> D["SCFW launches package manager<br/>with process-local registry overrides"]
+
+      D --> E["Package manager requests<br/>package metadata"]
+      E --> F["Local SCFW proxy"]
+      F --> G["Forward request to<br/>original registry"]
+      G --> H["Registry metadata response"]
+      H --> I["Rewrite download URLs<br/>to pass through the proxy"]
+      I --> D
+
+      D --> J["Package manager requests<br/>package artifact"]
+      J --> F
+      F --> K["Identify package<br/>name and version"]
+      K --> L["Evaluate package<br/>against Datadog policy"]
+
+      L -->|Allow| M["Download artifact<br/>from original host"]
+      M --> N["Return artifact to<br/>package manager"]
+      N --> O["Package manager installs package"]
+
+      L -->|Block or error| P["Return HTTP 403<br/>artifact is not downloaded"]
+
+      O --> Q["Command exits"]
+      P --> Q
+      Q --> R["Stop proxy and remove<br/>temporary configuration"]

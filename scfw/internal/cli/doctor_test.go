@@ -86,14 +86,19 @@ func TestReportAliases(t *testing.T) {
 	bashrc := filepath.Join(home, ".bashrc")
 	zshrc := filepath.Join(home, ".zshrc")
 	if err := os.WriteFile(bashrc, []byte(blockStart+"\n"+
-		`alias npm="scfw run -- npm"`+"\n"+
-		`alias pip="scfw run -- pip"`+"\n"+
-		`alias pip3="scfw run -- pip3"`+"\n"+blockEnd+"\n"), 0o644); err != nil {
+		`alias npm="scfw proxy -- npm"`+"\n"+
+		`alias yarn="scfw proxy -- yarn"`+"\n"+
+		`alias yarnpkg="scfw proxy -- yarnpkg"`+"\n"+
+		`alias pnpm="scfw proxy -- pnpm"`+"\n"+
+		`alias bun="scfw proxy -- bun"`+"\n"+
+		`alias pip="scfw proxy -- pip"`+"\n"+
+		`alias pip3="scfw proxy -- pip3"`+"\n"+blockEnd+"\n"), 0o644); err != nil {
 		t.Fatalf("failed to seed %q: %v", bashrc, err)
 	}
 	if err := os.WriteFile(zshrc, []byte(blockStart+"\n"+
-		`alias npm="scfw run -- npm"`+"\n"+
-		`alias poetry="scfw run -- poetry"`+"\n"+blockEnd+"\n"), 0o644); err != nil {
+		`alias npm="scfw proxy -- npm"`+"\n"+
+		`alias poetry="scfw proxy -- poetry"`+"\n"+
+		`alias uv="scfw proxy -- uv"`+"\n"+blockEnd+"\n"), 0o644); err != nil {
 		t.Fatalf("failed to seed %q: %v", zshrc, err)
 	}
 
@@ -106,10 +111,15 @@ func TestReportAliases(t *testing.T) {
 
 	wantLines := []string{
 		"✅ Alias npm is set in " + bashrc + ", " + zshrc,
+		"✅ Alias yarn is set in " + bashrc,
+		"✅ Alias yarnpkg is set in " + bashrc,
+		"✅ Alias pnpm is set in " + bashrc,
+		"✅ Alias bun is set in " + bashrc,
 		"✅ Alias pip is set in " + bashrc,
 		"✅ Alias pip3 is set in " + bashrc,
 		"✅ Alias poetry is set in " + zshrc,
-		"ℹ️ Run `alias npm pip pip3 poetry` to check which aliases are active in the current terminal. If an alias configured above is not found, reload your terminal.",
+		"✅ Alias uv is set in " + zshrc,
+		"ℹ️ Run `alias npm yarn yarnpkg pnpm bun pip pip3 poetry uv` to check which aliases are active in the current terminal. If an alias configured above is not found, reload your terminal.",
 	}
 	for _, want := range wantLines {
 		if !strings.Contains(output.String(), want+"\n") {
@@ -133,7 +143,7 @@ func TestReportAliases_RejectsAliasThatBypassesScfw(t *testing.T) {
 		t.Fatal("reportAliases() = nil error, want invalid-target error")
 	}
 
-	want := `❌ Alias npm in ` + bashrc + ` targets "npm"; expected "scfw run -- npm"`
+	want := `❌ Alias npm in ` + bashrc + ` targets "npm"; expected "scfw proxy -- npm"`
 	if !strings.Contains(output.String(), want+"\n") {
 		t.Errorf("reportAliases() output = %q, want line %q", output.String(), want)
 	}
@@ -146,9 +156,9 @@ func TestReportAliases_ReturnsErrorForMissingAlias(t *testing.T) {
 	home := t.TempDir()
 	bashrc := filepath.Join(home, ".bashrc")
 	if err := os.WriteFile(bashrc, []byte(blockStart+"\n"+
-		`alias npm="scfw run -- npm"`+"\n"+
-		`alias pip="scfw run -- pip"`+"\n"+
-		`alias pip3="scfw run -- pip3"`+"\n"+blockEnd+"\n"), 0o644); err != nil {
+		`alias npm="scfw proxy -- npm"`+"\n"+
+		`alias pip="scfw proxy -- pip"`+"\n"+
+		`alias pip3="scfw proxy -- pip3"`+"\n"+blockEnd+"\n"), 0o644); err != nil {
 		t.Fatalf("failed to seed %q: %v", bashrc, err)
 	}
 

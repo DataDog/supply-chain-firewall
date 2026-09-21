@@ -30,12 +30,16 @@ func TestProxyCommandValidation(t *testing.T) {
 		{name: "npm path accepted", args: []string{"--", "/usr/local/bin/npm", "install"}},
 		{name: "all managers accepted", args: []string{"--", "uv", "sync"}},
 		{name: "pip accepted", args: []string{"--", "pip", "install", "requests"}},
-		{name: "publish rejected", args: []string{"--", "npm", "publish"}, wantErr: "install-only"},
+		{name: "publish accepted", args: []string{"--", "npm", "publish"}},
+		{name: "missing operation accepted", args: []string{"--", "npm"}},
 		{name: "twine rejected", args: []string{"--", "twine", "upload"}, wantErr: "supported package managers"},
 		{name: "index override rejected", args: []string{"--", "pip", "install", "--index-url", "https://example", "requests"}, wantErr: "registry option"},
 		{name: "short index override rejected", args: []string{"--", "pip", "install", "-i", "https://example", "requests"}, wantErr: "registry option"},
-		{name: "npm run bypass rejected", args: []string{"--", "npm", "run", "install"}, wantErr: "not an installation"},
-		{name: "uv run bypass rejected", args: []string{"--", "uv", "run", "pip", "install", "requests"}, wantErr: "not an installation"},
+		{name: "npm run accepted", args: []string{"--", "npm", "run", "install"}},
+		{name: "bare yarn defaults to install", args: []string{"--", "yarn"}},
+		{name: "yarn add accepted", args: []string{"--", "yarn", "add", "react"}},
+		{name: "uv run accepted", args: []string{"--", "uv", "run", "pip", "install", "requests"}},
+		{name: "unknown operation accepted", args: []string{"--", "pnpm", "future-command"}},
 	}
 
 	for _, test := range tests {

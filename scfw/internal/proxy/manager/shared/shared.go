@@ -111,6 +111,42 @@ func InsertOptions(args, options []string) []string {
 	return append(result, args[separator:]...)
 }
 
+// Operation returns the first positional argument after process-wide options.
+// optionsWithValue lists options whose following argument must also be skipped.
+// It is used only to apply command-safety settings; proxy routing and policy
+// evaluation are independent of the returned operation.
+func Operation(args []string, optionsWithValue map[string]bool) string {
+	positionals := PositionalArguments(args, optionsWithValue)
+	if len(positionals) == 0 {
+		return ""
+	}
+	return positionals[0]
+}
+
+// PositionalArguments returns lowercase positional arguments after removing
+// options and the values of known value-taking options.
+func PositionalArguments(args []string, optionsWithValue map[string]bool) []string {
+	positionals := make([]string, 0, len(args))
+	for index := 0; index < len(args); index++ {
+		argument := args[index]
+		if argument == "--" {
+			for _, positional := range args[index+1:] {
+				positionals = append(positionals, strings.ToLower(positional))
+			}
+			break
+		}
+		if !strings.HasPrefix(argument, "-") || argument == "-" {
+			positionals = append(positionals, strings.ToLower(argument))
+			continue
+		}
+		name, _, inlineValue := strings.Cut(strings.ToLower(argument), "=")
+		if !inlineValue && optionsWithValue[name] {
+			index++
+		}
+	}
+	return positionals
+}
+
 func SortedNamedOptions(named map[string]string, format func(string, string) string) []string {
 	names := make([]string, 0, len(named))
 	for name := range named {

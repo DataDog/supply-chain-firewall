@@ -259,6 +259,41 @@ func TestServerBlocksDistributionRejectedByEvaluator(t *testing.T) {
 	}
 }
 
+func TestServerForwardsArtifactWritesWithoutEvaluation(t *testing.T) {
+	var upstreamMethod string
+	registry := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		upstreamMethod = request.Method
+		writer.WriteHeader(http.StatusCreated)
+	}))
+	defer registry.Close()
+	evaluations := 0
+	server, err := StartWithOptions(NPMConfig{
+		Registry:                          mustParseURL(t, registry.URL+"/"),
+		AllowUnauthenticatedLocalRequests: true,
+	}, io.Discard, Options{
+		Evaluate: func(context.Context, pm.Package) error {
+			evaluations++
+			return errors.New("must not evaluate a write")
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartWithOptions(): %v", err)
+	}
+	request, err := http.NewRequest(http.MethodPut, server.URL()+"pkg/-/pkg-1.2.3.tgz", strings.NewReader("published package"))
+	if err != nil {
+		t.Fatalf("NewRequest(): %v", err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("PUT: %v", err)
+	}
+	response.Body.Close()
+	closeProxy(t, server)
+	if response.StatusCode != http.StatusCreated || upstreamMethod != http.MethodPut || evaluations != 0 {
+		t.Errorf("status = %d, upstreamMethod = %q, evaluations = %d", response.StatusCode, upstreamMethod, evaluations)
+	}
+}
+
 func TestServerEvaluatesPackumentMappedNonstandardTarball(t *testing.T) {
 	artifactCalled := false
 	artifact := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { artifactCalled = true }))

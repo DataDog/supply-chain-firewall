@@ -29,6 +29,17 @@ func TestPrepareRemovesRegistryEnvironment(t *testing.T) {
 	}
 }
 
+func TestPrepareDoesNotFreezeUnrelatedCommand(t *testing.T) {
+	prepared, err := (&Manager{configuration: map[string]any{}}).Prepare("bun", []string{"publish"}, "http://proxy/", nil)
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	t.Cleanup(func() { _ = prepared.Cleanup() })
+	if strings.Contains(strings.Join(prepared.Args, " "), "--frozen-lockfile") {
+		t.Errorf("args = %v, should not force frozen lockfile", prepared.Args)
+	}
+}
+
 func TestMergeMapsPreservesUnrelatedInstallConfiguration(t *testing.T) {
 	destination := map[string]any{"install": map[string]any{"cache": true}}
 	mergeMaps(destination, map[string]any{"install": map[string]any{"exact": true}})

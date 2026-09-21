@@ -39,3 +39,23 @@ func TestInsertOptionsBeforeSeparator(t *testing.T) {
 		}
 	}
 }
+
+func TestOperationSkipsGlobalOptions(t *testing.T) {
+	optionsWithValue := map[string]bool{"--cwd": true}
+	tests := []struct {
+		args []string
+		want string
+	}{
+		{args: []string{"install"}, want: "install"},
+		{args: []string{"--silent", "INSTALL"}, want: "install"},
+		{args: []string{"--cwd", "project", "install"}, want: "install"},
+		{args: []string{"--cwd=project", "install"}, want: "install"},
+		{args: []string{"--", "install"}, want: "install"},
+		{args: []string{"--silent"}, want: ""},
+	}
+	for _, test := range tests {
+		if got := Operation(test.args, optionsWithValue); got != test.want {
+			t.Errorf("Operation(%v) = %q, want %q", test.args, got, test.want)
+		}
+	}
+}

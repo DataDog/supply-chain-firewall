@@ -253,7 +253,10 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(s.options.HTTPStatus)
 		return
 	}
-	if s.options.Evaluate != nil {
+	// Only a distribution download is an installation decision point. Metadata,
+	// authentication, publishing, and other registry traffic is forwarded
+	// without evaluation; ecosystem handlers identify GET artifact URLs.
+	if request.Method == http.MethodGet && s.options.Evaluate != nil {
 		pkg, ok := s.artifactPackage(destination)
 		if !ok {
 			pkg, ok = s.responseHandler.Package(destination)
@@ -293,6 +296,9 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 				}
 			} else {
 				s.logResponseBodyOmitted(requestID, mediaType, response.ContentLength)
+			}
+			if request.Method != http.MethodGet && request.Method != http.MethodHead {
+				return nil
 			}
 			registries := make([]*url.URL, 0, len(s.config.ScopedRegistries)+1)
 			registries = append(registries, s.config.Registry)

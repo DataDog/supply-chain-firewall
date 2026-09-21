@@ -34,6 +34,19 @@ func TestPrepareUsesURLsAndFreezesSync(t *testing.T) {
 	}
 }
 
+func TestPrepareRecognizesSyncAfterGlobalOptions(t *testing.T) {
+	prepared, err := (Manager{}).Prepare("uv", []string{"--offline", "sync"}, "http://proxy/default/", map[string]string{"private": "http://proxy/private/"})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	if !strings.Contains(strings.Join(prepared.Args, " "), "--frozen") {
+		t.Errorf("args = %v, want --frozen", prepared.Args)
+	}
+	if environment := strings.Join(prepared.Env, "\n"); !strings.Contains(environment, "UV_INDEX=private=http://proxy/private/") {
+		t.Errorf("environment does not preserve named project index: %s", environment)
+	}
+}
+
 func TestRegistriesUsesLegacyEnvironmentPrecedence(t *testing.T) {
 	config := filepath.Join(t.TempDir(), "uv.toml")
 	if err := os.WriteFile(config, []byte("default-index = 'https://configured.example/simple'\n"), 0o600); err != nil {
@@ -55,6 +68,28 @@ func TestRegistriesUsesLegacyEnvironmentPrecedence(t *testing.T) {
 	}
 	if got := configuration.Named["index-a"].String(); got != "https://extra.example/simple/" {
 		t.Errorf("extra registry = %q", got)
+	}
+}
+
+func TestRegistriesRecognizesPipAfterGlobalOptions(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "uv.toml")
+	contents := "default-index = 'https://project.example/simple'\n[pip]\nindex-url = 'https://pip.example/simple'\n"
+	if err := os.WriteFile(config, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("UV_CONFIG_FILE", config)
+	t.Setenv("UV_INDEX_URL", "")
+	t.Setenv("UV_DEFAULT_INDEX", "")
+	t.Setenv("UV_INDEX", "")
+	t.Setenv("UV_EXTRA_INDEX_URL", "")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+
+	configuration, err := (Manager{}).Registries(t.Context(), "uv", []string{"--offline", "pip", "install", "demo"})
+	if err != nil {
+		t.Fatalf("Registries() error = %v", err)
+	}
+	if got := configuration.Default.String(); got != "https://pip.example/simple/" {
+		t.Errorf("default registry = %q, want pip registry", got)
 	}
 }
 

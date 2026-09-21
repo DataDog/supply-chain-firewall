@@ -49,9 +49,49 @@ func (Manager) Registries(ctx context.Context, executable string, _ []string) (p
 }
 
 func (Manager) Prepare(_ string, args []string, registryURL string, named map[string]string) (proxy.PreparedCommand, error) {
-	options := []string{"--registry=" + registryURL, "--frozen-lockfile"}
+	options := []string{"--registry=" + registryURL}
+	positionals := shared.PositionalArguments(args, pnpmOptionsWithValue)
+	if pnpmInstallOperation(positionals) {
+		options = append(options, "--frozen-lockfile")
+	}
 	options = append(options, shared.SortedNamedOptions(named, func(name, value string) string {
 		return "--" + name + ":registry=" + value
 	})...)
 	return proxy.PreparedCommand{Args: shared.InsertOptions(args, options)}, nil
+}
+
+var pnpmOptionsWithValue = map[string]bool{
+	"--config-dir":            true,
+	"--dir":                   true,
+	"--filter":                true,
+	"--global-bin-dir":        true,
+	"--global-dir":            true,
+	"--package-import-method": true,
+	"--registry":              true,
+	"--reporter":              true,
+	"--state-dir":             true,
+	"--store-dir":             true,
+	"--virtual-store-dir":     true,
+	"--workspace-concurrency": true,
+	"-c":                      true,
+	"-f":                      true,
+}
+
+func pnpmInstallOperation(positionals []string) bool {
+	if len(positionals) == 0 {
+		return false
+	}
+	switch positionals[0] {
+	case "install", "i", "install-test", "it":
+		return true
+	case "recursive":
+		if len(positionals) < 2 {
+			return false
+		}
+		switch positionals[1] {
+		case "install", "i", "install-test", "it":
+			return true
+		}
+	}
+	return false
 }

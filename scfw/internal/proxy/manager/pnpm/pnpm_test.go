@@ -22,3 +22,27 @@ func TestPrepareUsesProxyAndFrozenLockfile(t *testing.T) {
 		}
 	}
 }
+
+func TestPrepareDoesNotFreezeUnrelatedCommand(t *testing.T) {
+	prepared, err := (Manager{}).Prepare("pnpm", []string{"list"}, "http://proxy/default/", nil)
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	joined := strings.Join(prepared.Args, " ")
+	if strings.Contains(joined, "--frozen-lockfile") {
+		t.Errorf("args = %q, should not force frozen lockfile", joined)
+	}
+	if !strings.Contains(joined, "--registry=http://proxy/default/") {
+		t.Errorf("args = %q, missing proxy registry", joined)
+	}
+}
+
+func TestPrepareFreezesInstallAfterValueOption(t *testing.T) {
+	prepared, err := (Manager{}).Prepare("pnpm", []string{"--store-dir", "/tmp/store", "install"}, "http://proxy/default/", nil)
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	if !strings.Contains(strings.Join(prepared.Args, " "), "--frozen-lockfile") {
+		t.Errorf("args = %v, want frozen lockfile", prepared.Args)
+	}
+}

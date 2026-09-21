@@ -38,7 +38,7 @@ var proxyCmd = &cobra.Command{
 }
 
 func init() {
-	proxyCmd.Flags().Int("http-status", 0, "Return this HTTP status for intercepted requests without contacting the registry")
+	proxyCmd.Flags().Int("http-status", 0, "Return this HTTP status for proxied requests without contacting the registry")
 }
 
 func validateProxyArgs(cmd *cobra.Command, args []string) error {
@@ -63,7 +63,7 @@ func validateProxyArgs(cmd *cobra.Command, args []string) error {
 	if !supportedProxyManager(managerName) {
 		return fmt.Errorf("scfw proxy: unsupported command %q: supported package managers are npm, yarn, pnpm, bun, pip, poetry, and uv", args[dash])
 	}
-	if err := validateProxyOperation(managerName, args[dash+1:]); err != nil {
+	if err := validateProxyInvocation(managerName, args[dash+1:]); err != nil {
 		return fmt.Errorf("scfw proxy: %w", err)
 	}
 	return nil
@@ -141,53 +141,20 @@ func supportedProxyManager(name string) bool {
 	}
 }
 
-func validateProxyOperation(manager string, args []string) error {
-	if len(args) == 0 {
-		return errors.New("missing package-manager operation")
-	}
-	allowed := map[string]map[string]bool{
-		"npm":     {"install": true, "i": true, "ci": true, "add": true, "update": true, "up": true},
-		"yarn":    {"install": true},
-		"yarnpkg": {"install": true},
-		"pnpm":    {"install": true, "i": true},
-		"bun":     {"install": true},
-		"pip":     {"install": true},
-		"pip3":    {"install": true},
-		"poetry":  {"install": true, "sync": true},
-		"uv":      {"install": true, "sync": true},
-	}
-	conflictingOptions := map[string]bool{
-		"--registry": true, "--userconfig": true, "--globalconfig": true,
-		"--config": true, "--config-file": true, "--index": true,
-		"--default-index": true, "--index-url": true, "--extra-index-url": true,
-		"-i": true, "--cwd": true, "--dir": true, "--config-dir": true,
-		"--directory": true, "--project": true,
-	}
-	forbiddenOperations := map[string]bool{
-		"publish": true, "upload": true, "config": true, "login": true,
-		"logout": true, "token": true, "owner": true, "deprecate": true,
-	}
+func validateProxyInvocation(manager string, args []string) error {
 	for _, argument := range args {
 		name, _, _ := strings.Cut(strings.ToLower(argument), "=")
-		if conflictingOptions[name] || argument == "-C" || strings.HasPrefix(name, "--@") && strings.HasSuffix(name, ":registry") {
+		if conflictingProxyOptions[name] || argument == "-C" || strings.HasPrefix(name, "--@") && strings.HasSuffix(name, ":registry") {
 			return fmt.Errorf("%s proxy mode does not support command-line registry option %q", manager, argument)
 		}
 	}
-	operation := strings.ToLower(args[0])
-	if strings.HasPrefix(operation, "-") {
-		return fmt.Errorf("%s proxy mode requires the installation operation before command options", manager)
-	}
-	if forbiddenOperations[operation] {
-		return fmt.Errorf("%s operation %q is not supported in install-only proxy mode", manager, args[0])
-	}
-	if manager == "uv" && operation == "pip" {
-		if len(args) > 1 && strings.EqualFold(args[1], "install") {
-			return nil
-		}
-		return errors.New("uv proxy mode supports only uv pip install or uv sync")
-	}
-	if allowed[manager][operation] {
-		return nil
-	}
-	return fmt.Errorf("%s operation is not an installation command", manager)
+	return nil
+}
+
+var conflictingProxyOptions = map[string]bool{
+	"--registry": true, "--userconfig": true, "--globalconfig": true,
+	"--config": true, "--config-file": true, "--index": true,
+	"--default-index": true, "--index-url": true, "--extra-index-url": true,
+	"-i": true, "--cwd": true, "--dir": true, "--config-dir": true,
+	"--directory": true, "--project": true,
 }

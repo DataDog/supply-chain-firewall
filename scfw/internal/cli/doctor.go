@@ -61,7 +61,7 @@ func reportCredential(out io.Writer, name, value string, source ddapi.Credential
 	return writeErr
 }
 
-var availableAliases = []string{"npm", "pip", "pip3", "poetry"}
+var availableAliases = []string{"npm", "yarn", "yarnpkg", "pnpm", "bun", "pip", "pip3", "poetry", "uv"}
 
 type invalidAlias struct {
 	path   string
@@ -69,7 +69,7 @@ type invalidAlias struct {
 }
 
 func expectedAliasTarget(name string) string {
-	return "scfw run -- " + name
+	return "scfw proxy -- " + name
 }
 
 // reportAliases reports whether every alias supported by scfw configure is

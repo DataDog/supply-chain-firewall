@@ -101,8 +101,12 @@ $ scfw configure \
     --dd-app-key=<your-app-key> \
     --dd-site=<your-dd-site> \
     --alias-npm \
+    --alias-yarn \
+    --alias-pnpm \
+    --alias-bun \
     --alias-pip \
-    --alias-poetry
+    --alias-poetry \
+    --alias-uv
 ```
 
 When passing these values via shell variables, e.g. in scripts, prefer this `=` form: `--dd-api-key=$DD_API_KEY --dd-app-key=$DD_APP_KEY --dd-site=$DD_SITE`.
@@ -110,7 +114,7 @@ When passing these values via shell variables, e.g. in scripts, prefer this `=` 
 This does two things:
 
 1. Stores your Datadog API key and application key securely in your system's keychain, so credentials don't need to be kept in plaintext or supplied on every command.
-2. Adds shell aliases to your `.bashrc`, `.bash_profile`, `.zshrc`, and `.zprofile` (whichever already exist) so that `npm`, `pip`/`pip3`, and/or `poetry` transparently run through `scfw`. Restart your shell (or source the relevant rc file) for the aliases to take effect.
+2. Adds shell aliases to your `.bashrc`, `.bash_profile`, `.zshrc`, and `.zprofile` (whichever already exist) so that npm, Yarn, pnpm, Bun, pip, Poetry, and/or uv transparently run through `scfw proxy`. Every command receives process-local registry configuration; registry requests are forwarded through the proxy, while commands that make no registry requests run normally. Restart your shell (or source the relevant rc file) for the aliases to take effect.
 
 `scfw configure` is idempotent and may be re-run at any time to change your configuration. Alias options are additive, so aliases configured by an earlier invocation remain in place unless their corresponding `--remove-alias-*` option is passed. The command manages its own clearly indicated block of your shell rc files and never touches anything else you've added.
 
@@ -121,12 +125,20 @@ Available `configure` options:
 | `--dd-api-key` | Datadog API key used for policy evaluation and reporting. |
 | `--dd-app-key` | Datadog application key used for policy evaluation and reporting. |
 | `--dd-site` | Datadog site parameter used for policy evaluation and reporting (default: `datadoghq.com`). |
-| `--alias-npm` | Add a shell alias to run all npm commands through `scfw`. |
+| `--alias-npm` | Add a shell alias to run npm through `scfw proxy`. |
 | `--remove-alias-npm` | Remove the npm shell alias managed by `scfw`. |
-| `--alias-pip` | Add shell aliases to run all pip/pip3 commands through `scfw`. |
+| `--alias-yarn` | Add shell aliases for Yarn's `yarn` and `yarnpkg` executables. |
+| `--remove-alias-yarn` | Remove the Yarn shell aliases managed by `scfw`. |
+| `--alias-pnpm` | Add a shell alias to run pnpm through `scfw proxy`. |
+| `--remove-alias-pnpm` | Remove the pnpm shell alias managed by `scfw`. |
+| `--alias-bun` | Add a shell alias to run Bun through `scfw proxy`. |
+| `--remove-alias-bun` | Remove the Bun shell alias managed by `scfw`. |
+| `--alias-pip` | Add shell aliases to run pip/pip3 through `scfw proxy`. |
 | `--remove-alias-pip` | Remove the pip/pip3 shell aliases managed by `scfw`. |
-| `--alias-poetry` | Add a shell alias to run all poetry commands through `scfw`. |
+| `--alias-poetry` | Add a shell alias to run Poetry through `scfw proxy`. |
 | `--remove-alias-poetry` | Remove the poetry shell alias managed by `scfw`. |
+| `--alias-uv` | Add a shell alias to run uv through `scfw proxy`. |
+| `--remove-alias-uv` | Remove the uv shell alias managed by `scfw`. |
 | `--scfw-home` | Directory Supply Chain Firewall can use as a local cache. |
 | `--remove` | Remove all Supply Chain Firewall managed configuration. |
 
@@ -169,7 +181,7 @@ Package some-evil-package-1.0.0:
 The command was blocked. No changes have been made.
 ```
 
-Note that, once shell aliases have been configured via `scfw configure --alias-npm`/`--alias-pip`/`--alias-poetry`, the explicit `scfw run --` prefix is no longer needed: commands for these package managers run through `scfw` automatically.
+Once a package manager's shell alias has been configured, an explicit `scfw proxy --` prefix is no longer needed. Every invocation uses the registry proxy. The ecosystem handler evaluates recognized distribution downloads, while metadata, authentication, publishing, and unrecognized registry requests are forwarded without policy evaluation.
 
 `scfw run` supports the following options:
 
@@ -185,8 +197,10 @@ The `SCFW_ON_WARNING` environment variable (`allow` or `block`) has the same eff
 ### Experimental package registry proxy
 
 To observe the registry requests made by npm, Yarn, pnpm, Bun, pip, Poetry, or
-uv, run the package manager through the experimental proxy mode (Twine and
-publishing workflows are intentionally not supported):
+uv, run the package manager through the experimental proxy mode. Twine is not a
+supported proxy manager. Commands unknown to SCFW still receive the same
+process-local registry overrides, and requests they send to a configured
+package index are forwarded through the proxy:
 
 ```bash
 $ scfw proxy -- npm install react
@@ -215,12 +229,24 @@ $ scfw proxy --http-status 503 -- npm install react
 `--http-status` accepts final HTTP response codes from 200 through 599. Synthetic
 responses have empty bodies.
 
-Proxy mode accepts installation operations only. For managers other than npm,
-SCFW uses the manager's immutable/frozen-lockfile mode (or Yarn Classic's
-pure-lockfile mode) so an ephemeral loopback URL is never persisted. Registry,
+Proxy mode does not classify package-manager commands. It applies process-local
+registry overrides to every invocation and forwards every registry request. The
+npm and PyPI ecosystem handlers recognize distribution-download GET requests
+and evaluate the identified package before contacting the artifact host. Other
+requests—including metadata, authentication, writes, and unknown registry
+routes—are forwarded without policy evaluation. Install and sync operations use
+the manager's immutable/frozen-lockfile mode (or Yarn Classic's pure-lockfile
+mode) so an ephemeral loopback URL is not persisted by those operations. Registry,
 index, and config-file overrides on the wrapped command line are rejected; put
 those values in the manager's normal configuration so SCFW can discover and
 route every configured registry.
+
+This reverse-proxy experiment overrides package-download indexes, not every
+possible service endpoint a package manager may use. A separately configured
+publish repository may therefore be contacted directly. Dependency-mutating
+commands such as `add`, `update`, or `lock` are proxied, but can persist an
+ephemeral proxy URL if they rewrite a lockfile; use the immutable install/sync
+workflows when testing policy evaluation.
 
 The npm adapter requires npm 8 or later. Registry, npmrc-location, prefix, and
 authentication configuration must be supplied through npmrc files or environment

@@ -196,8 +196,13 @@ func (manager *Manager) Prepare(_ string, args []string, registryURL string, nam
 	if err := file.Close(); err != nil {
 		return proxy.PreparedCommand{}, errors.Join(err, os.Remove(file.Name()))
 	}
+	options := []string(nil)
+	operation := shared.Operation(args, map[string]bool{"--config": true, "--cwd": true})
+	if operation == "install" || operation == "i" {
+		options = append(options, "--frozen-lockfile")
+	}
 	return proxy.PreparedCommand{
-		Args:    append([]string{"--config=" + file.Name()}, shared.InsertOptions(args, []string{"--frozen-lockfile"})...),
+		Args:    append([]string{"--config=" + file.Name()}, shared.InsertOptions(args, options)...),
 		Env:     shared.OverrideEnvironment(nil, "BUN_CONFIG_REGISTRY"),
 		Cleanup: func() error { return os.Remove(file.Name()) },
 	}, nil

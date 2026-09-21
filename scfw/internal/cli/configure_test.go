@@ -216,7 +216,7 @@ func TestBuildManagedBlock(t *testing.T) {
 	}
 
 	withAliasPip(t, true)
-	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n"
+	want := `alias pip="scfw proxy -- pip"` + "\n" + `alias pip3="scfw proxy -- pip3"` + "\n"
 	if got := buildManagedBlock(managedConfiguration{}, false, false); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
@@ -229,7 +229,7 @@ func TestBuildManagedBlock_AliasNpm(t *testing.T) {
 	}
 
 	withAliasNpm(t, true)
-	want := `alias npm="scfw run -- npm"` + "\n"
+	want := `alias npm="scfw proxy -- npm"` + "\n"
 	if got := buildManagedBlock(managedConfiguration{}, false, false); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
@@ -242,7 +242,32 @@ func TestBuildManagedBlock_AliasPoetry(t *testing.T) {
 	}
 
 	withAliasPoetry(t, true)
-	want := `alias poetry="scfw run -- poetry"` + "\n"
+	want := `alias poetry="scfw proxy -- poetry"` + "\n"
+	if got := buildManagedBlock(managedConfiguration{}, false, false); got != want {
+		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
+	}
+}
+
+func TestBuildManagedBlock_AllProxyAliases(t *testing.T) {
+	original := []bool{aliasNpm, aliasYarn, aliasPnpm, aliasBun, aliasPip, aliasPoetry, aliasUV}
+	aliasNpm, aliasYarn, aliasPnpm, aliasBun, aliasPip, aliasPoetry, aliasUV = true, true, true, true, true, true, true
+	t.Cleanup(func() {
+		aliasNpm, aliasYarn, aliasPnpm, aliasBun, aliasPip, aliasPoetry, aliasUV =
+			original[0], original[1], original[2], original[3], original[4], original[5], original[6]
+	})
+
+	want := strings.Join([]string{
+		`alias npm="scfw proxy -- npm"`,
+		`alias yarn="scfw proxy -- yarn"`,
+		`alias yarnpkg="scfw proxy -- yarnpkg"`,
+		`alias pnpm="scfw proxy -- pnpm"`,
+		`alias bun="scfw proxy -- bun"`,
+		`alias pip="scfw proxy -- pip"`,
+		`alias pip3="scfw proxy -- pip3"`,
+		`alias poetry="scfw proxy -- poetry"`,
+		`alias uv="scfw proxy -- uv"`,
+		"",
+	}, "\n")
 	if got := buildManagedBlock(managedConfiguration{}, false, false); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
@@ -261,7 +286,7 @@ func TestBuildManagedBlock_IncludesDdSite(t *testing.T) {
 	withAliasPip(t, true)
 	withDdSite(t, "datadoghq.eu")
 
-	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n" + `export DD_SITE="datadoghq.eu"` + "\n"
+	want := `alias pip="scfw proxy -- pip"` + "\n" + `alias pip3="scfw proxy -- pip3"` + "\n" + `export DD_SITE="datadoghq.eu"` + "\n"
 	if got := buildManagedBlock(managedConfiguration{}, false, false); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
@@ -280,7 +305,7 @@ func TestBuildManagedBlock_IncludesScfwHome(t *testing.T) {
 	withAliasPip(t, true)
 	withScfwHome(t, "/tmp/scfw-home")
 
-	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n" + `export SCFW_HOME="/tmp/scfw-home"` + "\n"
+	want := `alias pip="scfw proxy -- pip"` + "\n" + `alias pip3="scfw proxy -- pip3"` + "\n" + `export SCFW_HOME="/tmp/scfw-home"` + "\n"
 	if got := buildManagedBlock(managedConfiguration{}, false, false); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
@@ -587,10 +612,10 @@ func TestRunConfigure_PreservesExistingAliases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read %q: %v", path, err)
 	}
-	if !strings.Contains(string(got), `alias npm="scfw run -- npm"`) {
+	if !strings.Contains(string(got), `alias npm="scfw proxy -- npm"`) {
 		t.Fatalf(".bashrc = %q, want the newly configured npm alias", got)
 	}
-	if !strings.Contains(string(got), `alias pip="scfw run -- pip"`) {
+	if !strings.Contains(string(got), `alias pip="scfw proxy -- pip"`) {
 		t.Fatalf(".bashrc = %q, want the existing pip alias preserved", got)
 	}
 }
@@ -624,7 +649,7 @@ func TestRunConfigure_RemovesOnlyRequestedAlias(t *testing.T) {
 	if strings.Contains(string(got), `alias pip=`) || strings.Contains(string(got), `alias pip3=`) {
 		t.Fatalf(".bashrc = %q, want the pip aliases removed", got)
 	}
-	for _, want := range []string{`alias npm="scfw run -- npm"`, `alias poetry="scfw run -- poetry"`} {
+	for _, want := range []string{`alias npm="scfw proxy -- npm"`, `alias poetry="scfw proxy -- poetry"`} {
 		if !strings.Contains(string(got), want) {
 			t.Fatalf(".bashrc = %q, want it to preserve %q", got, want)
 		}
@@ -979,12 +1004,12 @@ func resetConfigureCmd(t *testing.T) {
 
 	t.Cleanup(func() {
 		configureCmd.SilenceUsage, configureCmd.SilenceErrors = origSilenceUsage, origSilenceErrors
-		aliasNpm, aliasPip, aliasPoetry = false, false, false
-		removeAliasNpm, removeAliasPip, removeAliasPoetry = false, false, false
+		aliasNpm, aliasYarn, aliasPnpm, aliasBun, aliasPip, aliasPoetry, aliasUV = false, false, false, false, false, false, false
+		removeAliasNpm, removeAliasYarn, removeAliasPnpm, removeAliasBun, removeAliasPip, removeAliasPoetry, removeAliasUV = false, false, false, false, false, false, false
 		ddAPIKey, ddAppKey, ddSite, scfwHome, remove = "", "", "", "", false
 		for _, name := range []string{
-			"alias-npm", "alias-pip", "alias-poetry",
-			"remove-alias-npm", "remove-alias-pip", "remove-alias-poetry",
+			"alias-npm", "alias-yarn", "alias-pnpm", "alias-bun", "alias-pip", "alias-poetry", "alias-uv",
+			"remove-alias-npm", "remove-alias-yarn", "remove-alias-pnpm", "remove-alias-bun", "remove-alias-pip", "remove-alias-poetry", "remove-alias-uv",
 			"dd-api-key", "dd-app-key", "dd-site", "scfw-home", "remove",
 		} {
 			configureCmd.Flags().Lookup(name).Changed = false
@@ -998,11 +1023,19 @@ func TestConfigureCmd_MutualExclusivityIsEnforced(t *testing.T) {
 		args []string
 	}{
 		{name: "remove and alias-npm", args: []string{"--remove", "--alias-npm"}},
+		{name: "remove and alias-yarn", args: []string{"--remove", "--alias-yarn"}},
+		{name: "remove and alias-pnpm", args: []string{"--remove", "--alias-pnpm"}},
+		{name: "remove and alias-bun", args: []string{"--remove", "--alias-bun"}},
 		{name: "remove and alias-pip", args: []string{"--remove", "--alias-pip"}},
 		{name: "remove and alias-poetry", args: []string{"--remove", "--alias-poetry"}},
+		{name: "remove and alias-uv", args: []string{"--remove", "--alias-uv"}},
 		{name: "remove and remove-alias-npm", args: []string{"--remove", "--remove-alias-npm"}},
+		{name: "remove and remove-alias-yarn", args: []string{"--remove", "--remove-alias-yarn"}},
+		{name: "remove and remove-alias-pnpm", args: []string{"--remove", "--remove-alias-pnpm"}},
+		{name: "remove and remove-alias-bun", args: []string{"--remove", "--remove-alias-bun"}},
 		{name: "remove and remove-alias-pip", args: []string{"--remove", "--remove-alias-pip"}},
 		{name: "remove and remove-alias-poetry", args: []string{"--remove", "--remove-alias-poetry"}},
+		{name: "remove and remove-alias-uv", args: []string{"--remove", "--remove-alias-uv"}},
 		{name: "remove and dd-api-key", args: []string{"--remove", "--dd-api-key", "some-key"}},
 		{name: "remove and dd-app-key", args: []string{"--remove", "--dd-app-key", "some-key"}},
 		{name: "remove and dd-site", args: []string{"--remove", "--dd-site", "some-site"}},
@@ -1022,7 +1055,7 @@ func TestConfigureCmd_MutualExclusivityIsEnforced(t *testing.T) {
 }
 
 func TestConfigureCmd_AliasAdditionAndRemovalAreMutuallyExclusive(t *testing.T) {
-	for _, packageManager := range []string{"npm", "pip", "poetry"} {
+	for _, packageManager := range []string{"npm", "yarn", "pnpm", "bun", "pip", "poetry", "uv"} {
 		t.Run(packageManager, func(t *testing.T) {
 			resetConfigureCmd(t)
 

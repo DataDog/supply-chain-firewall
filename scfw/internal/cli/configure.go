@@ -28,11 +28,19 @@ var configureCmd = &cobra.Command{
 
 var (
 	aliasNpm          bool
+	aliasYarn         bool
+	aliasPnpm         bool
+	aliasBun          bool
 	aliasPip          bool
 	aliasPoetry       bool
+	aliasUV           bool
 	removeAliasNpm    bool
+	removeAliasYarn   bool
+	removeAliasPnpm   bool
+	removeAliasBun    bool
 	removeAliasPip    bool
 	removeAliasPoetry bool
+	removeAliasUV     bool
 	ddAPIKey          string
 	ddAppKey          string
 	ddSite            string
@@ -68,19 +76,31 @@ func registerConfigureArg[T configureArgType](name string, defaultValue T, help 
 
 func init() {
 	configureCmd.Flags().BoolVar(&remove, "remove", false, "Remove all Supply Chain Firewall managed configuration.")
-	registerConfigureArg("alias-npm", false, "Add shell aliases to run all npm commands through Supply Chain Firewall.", &aliasNpm)
+	registerConfigureArg("alias-npm", false, "Add a shell alias to run npm through Supply Chain Firewall's proxy.", &aliasNpm)
 	registerConfigureArg("remove-alias-npm", false, "Remove Supply Chain Firewall's npm shell alias.", &removeAliasNpm)
-	registerConfigureArg("alias-pip", false, "Add shell aliases to run all pip commands through Supply Chain Firewall.", &aliasPip)
+	registerConfigureArg("alias-yarn", false, "Add shell aliases to run Yarn through Supply Chain Firewall's proxy.", &aliasYarn)
+	registerConfigureArg("remove-alias-yarn", false, "Remove Supply Chain Firewall's Yarn shell aliases.", &removeAliasYarn)
+	registerConfigureArg("alias-pnpm", false, "Add a shell alias to run pnpm through Supply Chain Firewall's proxy.", &aliasPnpm)
+	registerConfigureArg("remove-alias-pnpm", false, "Remove Supply Chain Firewall's pnpm shell alias.", &removeAliasPnpm)
+	registerConfigureArg("alias-bun", false, "Add a shell alias to run Bun through Supply Chain Firewall's proxy.", &aliasBun)
+	registerConfigureArg("remove-alias-bun", false, "Remove Supply Chain Firewall's Bun shell alias.", &removeAliasBun)
+	registerConfigureArg("alias-pip", false, "Add shell aliases to run pip through Supply Chain Firewall's proxy.", &aliasPip)
 	registerConfigureArg("remove-alias-pip", false, "Remove Supply Chain Firewall's pip shell aliases.", &removeAliasPip)
-	registerConfigureArg("alias-poetry", false, "Add shell aliases to run all poetry commands through Supply Chain Firewall.", &aliasPoetry)
+	registerConfigureArg("alias-poetry", false, "Add a shell alias to run Poetry through Supply Chain Firewall's proxy.", &aliasPoetry)
 	registerConfigureArg("remove-alias-poetry", false, "Remove Supply Chain Firewall's poetry shell alias.", &removeAliasPoetry)
+	registerConfigureArg("alias-uv", false, "Add a shell alias to run uv through Supply Chain Firewall's proxy.", &aliasUV)
+	registerConfigureArg("remove-alias-uv", false, "Remove Supply Chain Firewall's uv shell alias.", &removeAliasUV)
 	registerConfigureArg("dd-api-key", "", "Datadog API key used for policy evaluation and reporting.", &ddAPIKey)
 	registerConfigureArg("dd-app-key", "", "Datadog application key used for policy evaluation and reporting.", &ddAppKey)
 	registerConfigureArg("dd-site", "", "Datadog site parameter used for policy evaluation and reporting.", &ddSite)
 	registerConfigureArg("scfw-home", "", "Directory that Supply Chain Firewall can use as a local cache.", &scfwHome)
 	configureCmd.MarkFlagsMutuallyExclusive("alias-npm", "remove-alias-npm")
+	configureCmd.MarkFlagsMutuallyExclusive("alias-yarn", "remove-alias-yarn")
+	configureCmd.MarkFlagsMutuallyExclusive("alias-pnpm", "remove-alias-pnpm")
+	configureCmd.MarkFlagsMutuallyExclusive("alias-bun", "remove-alias-bun")
 	configureCmd.MarkFlagsMutuallyExclusive("alias-pip", "remove-alias-pip")
 	configureCmd.MarkFlagsMutuallyExclusive("alias-poetry", "remove-alias-poetry")
+	configureCmd.MarkFlagsMutuallyExclusive("alias-uv", "remove-alias-uv")
 	configureCmd.MarkFlagsOneRequired(configureArgNames...)
 }
 
@@ -153,14 +173,27 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 func buildManagedBlock(existingConfig managedConfiguration, scfwHomeChanged, ddSiteChanged bool) string {
 	var b strings.Builder
 	if !removeAliasNpm && (aliasNpm || hasConfiguredAlias(existingConfig.aliases, "npm")) {
-		b.WriteString(`alias npm="scfw run -- npm"` + "\n")
+		writeManagedAlias(&b, "npm")
+	}
+	if !removeAliasYarn && (aliasYarn || hasConfiguredAlias(existingConfig.aliases, "yarn", "yarnpkg")) {
+		writeManagedAlias(&b, "yarn")
+		writeManagedAlias(&b, "yarnpkg")
+	}
+	if !removeAliasPnpm && (aliasPnpm || hasConfiguredAlias(existingConfig.aliases, "pnpm")) {
+		writeManagedAlias(&b, "pnpm")
+	}
+	if !removeAliasBun && (aliasBun || hasConfiguredAlias(existingConfig.aliases, "bun")) {
+		writeManagedAlias(&b, "bun")
 	}
 	if !removeAliasPip && (aliasPip || hasConfiguredAlias(existingConfig.aliases, "pip", "pip3")) {
-		b.WriteString(`alias pip="scfw run -- pip"` + "\n")
-		b.WriteString(`alias pip3="scfw run -- pip3"` + "\n")
+		writeManagedAlias(&b, "pip")
+		writeManagedAlias(&b, "pip3")
 	}
 	if !removeAliasPoetry && (aliasPoetry || hasConfiguredAlias(existingConfig.aliases, "poetry")) {
-		b.WriteString(`alias poetry="scfw run -- poetry"` + "\n")
+		writeManagedAlias(&b, "poetry")
+	}
+	if !removeAliasUV && (aliasUV || hasConfiguredAlias(existingConfig.aliases, "uv")) {
+		writeManagedAlias(&b, "uv")
 	}
 	configuredScfwHome := existingConfig.scfwHome
 	if scfwHomeChanged || scfwHome != "" {
@@ -179,9 +212,14 @@ func buildManagedBlock(existingConfig managedConfiguration, scfwHomeChanged, ddS
 	return b.String()
 }
 
+func writeManagedAlias(builder *strings.Builder, name string) {
+	fmt.Fprintf(builder, "alias %s=%q\n", name, expectedAliasTarget(name))
+}
+
 func hasConfiguredAlias(existingAliases map[string]string, names ...string) bool {
 	for _, name := range names {
-		if existingAliases[name] == expectedAliasTarget(name) {
+		target := existingAliases[name]
+		if target == expectedAliasTarget(name) || target == "scfw run -- "+name {
 			return true
 		}
 	}

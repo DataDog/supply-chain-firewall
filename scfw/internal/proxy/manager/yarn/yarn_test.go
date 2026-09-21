@@ -46,3 +46,47 @@ func TestPrepareModernPreservesScopeAuthentication(t *testing.T) {
 		t.Fatalf("YARN_NPM_SCOPES did not replace registry: %s", environment)
 	}
 }
+
+func TestPrepareModernDoesNotForceImmutableOnUnrelatedCommand(t *testing.T) {
+	manager := &Manager{modern: true, modernScopes: map[string]map[string]any{}}
+	prepared, err := manager.Prepare("yarn", []string{"npm", "whoami"}, "http://proxy/default/", nil)
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	if strings.Contains(strings.Join(prepared.Args, " "), "--immutable") {
+		t.Errorf("args = %v, should not force immutable mode", prepared.Args)
+	}
+}
+
+func TestPrepareModernDoesNotForceImmutableForVersionFlag(t *testing.T) {
+	manager := &Manager{modern: true, modernScopes: map[string]map[string]any{}}
+	prepared, err := manager.Prepare("yarn", []string{"--version"}, "http://proxy/default/", nil)
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	if strings.Contains(strings.Join(prepared.Args, " "), "--immutable") {
+		t.Errorf("args = %v, should not force immutable mode", prepared.Args)
+	}
+}
+
+func TestPrepareClassicFreezesInstallAfterValueOption(t *testing.T) {
+	manager := &Manager{}
+	prepared, err := manager.Prepare("yarn", []string{"--cache-folder", "/tmp/cache", "install"}, "http://proxy/default/", nil)
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	if !strings.Contains(strings.Join(prepared.Args, " "), "--pure-lockfile") {
+		t.Errorf("args = %v, want pure lockfile mode", prepared.Args)
+	}
+}
+
+func TestPrepareModernFreezesNestedWorkspaceInstall(t *testing.T) {
+	manager := &Manager{modern: true, modernScopes: map[string]map[string]any{}}
+	prepared, err := manager.Prepare("yarn", []string{"workspace", "web", "install"}, "http://proxy/default/", nil)
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	if !strings.Contains(strings.Join(prepared.Args, " "), "--immutable") {
+		t.Errorf("args = %v, want immutable mode", prepared.Args)
+	}
+}

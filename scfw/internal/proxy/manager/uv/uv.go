@@ -76,7 +76,7 @@ func (Manager) Registries(ctx context.Context, executable string, args []string)
 			}
 		}
 	}
-	pipCommand := len(args) > 0 && args[0] == "pip"
+	pipCommand := uvOperation(args) == "pip"
 	defaultValue := configuration.DefaultIndex
 	indexes := indexDefinitions(configuration.Index)
 	if pipCommand {
@@ -350,7 +350,7 @@ func userConfigPath() string {
 }
 
 func (Manager) Prepare(_ string, args []string, registryURL string, named map[string]string) (proxy.PreparedCommand, error) {
-	projectCommand := len(args) > 0 && args[0] == "sync"
+	projectCommand := uvOperation(args) == "sync"
 	indexes := shared.SortedNamedOptions(named, func(name, value string) string {
 		if projectCommand {
 			// Project source pins require the index name. uv accepts name=url in
@@ -362,7 +362,7 @@ func (Manager) Prepare(_ string, args []string, registryURL string, named map[st
 	})
 	return proxy.PreparedCommand{
 		Args: func() []string {
-			if len(args) > 0 && args[0] == "sync" {
+			if projectCommand {
 				return shared.InsertOptions(args, []string{"--frozen"})
 			}
 			return args
@@ -372,4 +372,36 @@ func (Manager) Prepare(_ string, args []string, registryURL string, named map[st
 			"UV_INDEX":         strings.Join(indexes, " "),
 		}, "UV_INDEX_URL", "UV_EXTRA_INDEX_URL"),
 	}, nil
+}
+
+var globalOptionsWithValue = map[string]bool{
+	"--allow-insecure-host": true,
+	"--cache-dir":           true,
+	"--color":               true,
+	"--config-file":         true,
+	"--directory":           true,
+	"--project":             true,
+}
+
+// uvOperation returns the command after uv's global options so the adapter can
+// choose uv's project-index representation and lockfile-safety settings. It
+// does not determine whether the invocation uses the proxy.
+func uvOperation(args []string) string {
+	for index := 0; index < len(args); index++ {
+		argument := args[index]
+		if argument == "--" {
+			if index+1 < len(args) {
+				return strings.ToLower(args[index+1])
+			}
+			return ""
+		}
+		if !strings.HasPrefix(argument, "-") || argument == "-" {
+			return strings.ToLower(argument)
+		}
+		name, _, hasInlineValue := strings.Cut(strings.ToLower(argument), "=")
+		if !hasInlineValue && globalOptionsWithValue[name] {
+			index++
+		}
+	}
+	return ""
 }

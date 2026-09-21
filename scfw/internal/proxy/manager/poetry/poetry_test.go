@@ -40,3 +40,14 @@ priority = "supplemental"
 		t.Errorf("private source = %q", got)
 	}
 }
+
+func TestRegistriesDoesNotRequireLockForUnrelatedCommand(t *testing.T) {
+	directory := t.TempDir()
+	launcher := filepath.Join(directory, "poetry")
+	if err := os.WriteFile(launcher, []byte("#!/usr/bin/python3\nraise SystemExit(0)\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&Manager{}).Registries(context.Background(), launcher, []string{"--version"}); err != nil {
+		t.Fatalf("Registries() error = %v", err)
+	}
+}

@@ -46,14 +46,17 @@ type poetrySource struct {
 
 func (manager *Manager) Registries(ctx context.Context, executable string, args []string) (proxy.RegistryConfiguration, error) {
 	project := poetryProjectDirectory(args)
-	if _, err := os.Stat(filepath.Join(project, "poetry.lock")); err != nil {
-		if os.IsNotExist(err) {
-			return proxy.RegistryConfiguration{}, errors.New("poetry proxy mode requires an existing poetry.lock so ephemeral registry URLs cannot be persisted")
+	operation := shared.Operation(args, map[string]bool{"--directory": true, "--project": true, "-c": true, "-p": true})
+	if operation == "install" || operation == "sync" {
+		if _, err := os.Stat(filepath.Join(project, "poetry.lock")); err != nil {
+			if os.IsNotExist(err) {
+				return proxy.RegistryConfiguration{}, errors.New("poetry proxy mode requires an existing poetry.lock so ephemeral registry URLs cannot be persisted")
+			}
+			return proxy.RegistryConfiguration{}, err
 		}
-		return proxy.RegistryConfiguration{}, err
-	}
-	if _, err := shared.CommandOutput(ctx, executable, "check", "--lock", "--directory", project); err != nil {
-		return proxy.RegistryConfiguration{}, fmt.Errorf("verify poetry.lock is current: %w", err)
+		if _, err := shared.CommandOutput(ctx, executable, "check", "--lock", "--directory", project); err != nil {
+			return proxy.RegistryConfiguration{}, fmt.Errorf("verify poetry.lock is current: %w", err)
+		}
 	}
 	contents, err := os.ReadFile(filepath.Join(project, "pyproject.toml"))
 	if err != nil && !os.IsNotExist(err) {

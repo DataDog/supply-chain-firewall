@@ -178,8 +178,13 @@ func parseClassicValues(output []byte) (map[string]json.RawMessage, error) {
 }
 
 func (manager *Manager) Prepare(_ string, args []string, registryURL string, named map[string]string) (proxy.PreparedCommand, error) {
+	positionals := shared.PositionalArguments(args, yarnOptionsWithValue)
+	install := yarnInstallOperation(positionals, args)
 	if !manager.modern {
-		options := []string{"--registry=" + registryURL, "--pure-lockfile"}
+		options := []string{"--registry=" + registryURL}
+		if install {
+			options = append(options, "--pure-lockfile")
+		}
 		options = append(options, shared.SortedNamedOptions(named, func(name, value string) string {
 			return "--" + name + ":registry=" + value
 		})...)
@@ -199,11 +204,50 @@ func (manager *Manager) Prepare(_ string, args []string, registryURL string, nam
 	if err != nil {
 		return proxy.PreparedCommand{}, fmt.Errorf("encode Yarn scopes: %w", err)
 	}
+	options := []string(nil)
+	if install {
+		options = append(options, "--immutable")
+	}
 	return proxy.PreparedCommand{
-		Args: shared.InsertOptions(args, []string{"--immutable"}),
+		Args: shared.InsertOptions(args, options),
 		Env: shared.OverrideEnvironment(map[string]string{
 			"YARN_NPM_REGISTRY_SERVER": registryURL,
 			"YARN_NPM_SCOPES":          string(encodedScopes),
 		}),
 	}, nil
+}
+
+var yarnOptionsWithValue = map[string]bool{
+	"--cache-folder":           true,
+	"--cwd":                    true,
+	"--global-folder":          true,
+	"--https-proxy":            true,
+	"--modules-folder":         true,
+	"--mutex":                  true,
+	"--network-concurrency":    true,
+	"--network-timeout":        true,
+	"--preferred-cache-folder": true,
+	"--proxy":                  true,
+	"--registry":               true,
+	"--use-yarnrc":             true,
+}
+
+func yarnInstallOperation(positionals, args []string) bool {
+	if len(positionals) == 0 {
+		return yarnDefaultsToInstall(args)
+	}
+	if positionals[0] == "install" {
+		return true
+	}
+	return len(positionals) > 2 && positionals[0] == "workspace" && positionals[2] == "install"
+}
+
+func yarnDefaultsToInstall(args []string) bool {
+	for _, argument := range args {
+		switch strings.ToLower(argument) {
+		case "--help", "-h", "--version", "-v":
+			return false
+		}
+	}
+	return true
 }

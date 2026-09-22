@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
@@ -53,6 +54,32 @@ func TestRewriteSimpleIndexResponses(t *testing.T) {
 				t.Errorf("rewritten body = %q, want substring %q", body, test.want)
 			}
 		})
+	}
+}
+
+func TestRewriteJSONCarriesUploadTime(t *testing.T) {
+	requestURL, _ := url.Parse("https://index.example/simple/my-pkg/")
+	body := `{"meta":{"api-version":"1.1"},"name":"my-pkg","files":[{"filename":"my_pkg-1.2.3-py3-none-any.whl","url":"../../files/opaque","upload-time":"2025-02-03T04:05:06.123Z"}]}`
+	response := &http.Response{
+		Header:        http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}},
+		Body:          io.NopCloser(strings.NewReader(body)),
+		ContentLength: int64(len(body)),
+		Request:       &http.Request{URL: requestURL},
+	}
+	var identified *pm.Package
+	err := (Handler{}).RewriteResponse(response, func(value *url.URL, pkg *pm.Package) string {
+		if pkg != nil {
+			copy := *pkg
+			identified = &copy
+		}
+		return "proxy:" + value.String()
+	}, nil)
+	if err != nil {
+		t.Fatalf("RewriteResponse() error = %v", err)
+	}
+	want := time.Date(2025, 2, 3, 4, 5, 6, 123000000, time.UTC)
+	if identified == nil || identified.Name != "my-pkg" || identified.Version != "1.2.3" || !identified.PublishDate.Equal(want) {
+		t.Errorf("identified package = %+v, want publish date %s", identified, want)
 	}
 }
 

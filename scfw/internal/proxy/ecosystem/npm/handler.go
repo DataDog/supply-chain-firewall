@@ -8,6 +8,7 @@ package npm
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	baseecosystem "github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
@@ -25,8 +27,26 @@ import (
 
 const maxRewriteSize = 64 << 20
 
+type requestContextKey struct{}
+
 // Handler rewrites redirects, registry URLs, and npm dist.tarball URLs.
 type Handler struct{}
+
+// RewriteRequest asks npm registries for the full packument, whose time map is
+// omitted from the abbreviated install document requested by npm clients.
+func (Handler) RewriteRequest(request *http.Request, registries []*url.URL) {
+	if request.Method != http.MethodGet || !isPackumentURL(request.URL, registries) {
+		return
+	}
+	*request = *request.WithContext(context.WithValue(request.Context(), requestContextKey{}, true))
+	accept, changed := fullPackumentAccept(request.Header.Values("Accept"))
+	if !changed {
+		return
+	}
+	request.Header.Set("Accept", accept)
+	request.Header.Del("If-Modified-Since")
+	request.Header.Del("If-None-Match")
+}
 
 // Package identifies standard npm registry tarball paths.
 func (Handler) Package(destination *url.URL) (pm.Package, bool) {
@@ -49,19 +69,35 @@ func (Handler) Package(destination *url.URL) (pm.Package, bool) {
 
 func (Handler) RewriteResponse(response *http.Response, rewrite proxyecosystem.RewriteURL, registries []*url.URL) error {
 	rewriteLocation(response, rewrite)
+	packumentResponse := response.Request != nil && response.Request.Context().Value(requestContextKey{}) == true && response.StatusCode >= 200 && response.StatusCode < 300
 	mediaType, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
-	if err != nil || !isJSON(mediaType) || response.ContentLength > maxRewriteSize {
+	if !packumentResponse && (err != nil || !isJSON(mediaType)) {
+		return nil
+	}
+	if response.ContentLength > maxRewriteSize {
+		if packumentResponse {
+			return fmt.Errorf("rewrite npm packument: response exceeds %d bytes", maxRewriteSize)
+		}
 		return nil
 	}
 	body, complete, err := readBody(response, maxRewriteSize)
-	if err != nil || !complete {
+	if err != nil {
 		return err
+	}
+	if !complete {
+		if packumentResponse {
+			return fmt.Errorf("rewrite npm packument: response exceeds %d bytes", maxRewriteSize)
+		}
+		return nil
 	}
 	var document any
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
 	if err := decoder.Decode(&document); err != nil {
 		response.Body = io.NopCloser(bytes.NewReader(body))
+		if packumentResponse {
+			return fmt.Errorf("decode npm packument: %w", err)
+		}
 		return nil
 	}
 	if !rewriteJSON(document, "", rewrite, registries, nil) {
@@ -76,6 +112,62 @@ func (Handler) RewriteResponse(response *http.Response, rewrite proxyecosystem.R
 	return nil
 }
 
+func fullPackumentAccept(values []string) (string, bool) {
+	const abbreviated = "application/vnd.npm.install-v1+json"
+	var alternatives []string
+	foundAbbreviated := false
+	foundFull := false
+	for _, value := range values {
+		for _, alternative := range strings.Split(value, ",") {
+			alternative = strings.TrimSpace(alternative)
+			mediaType, _, err := mime.ParseMediaType(alternative)
+			if err == nil && strings.EqualFold(mediaType, abbreviated) {
+				foundAbbreviated = true
+				continue
+			}
+			if err == nil && strings.EqualFold(mediaType, "application/json") {
+				if foundFull {
+					continue
+				}
+				foundFull = true
+				alternatives = append(alternatives, "application/json")
+				continue
+			}
+			if alternative != "" {
+				alternatives = append(alternatives, alternative)
+			}
+		}
+	}
+	if !foundAbbreviated {
+		return "", false
+	}
+	if !foundFull {
+		alternatives = append([]string{"application/json"}, alternatives...)
+	}
+	return strings.Join(alternatives, ", "), true
+}
+
+func isPackumentURL(destination *url.URL, registries []*url.URL) bool {
+	for _, registry := range registries {
+		if !strings.EqualFold(destination.Scheme, registry.Scheme) || !strings.EqualFold(destination.Host, registry.Host) {
+			continue
+		}
+		basePath := strings.TrimSuffix(registry.Path, "/")
+		if basePath != "" && destination.Path != basePath && !strings.HasPrefix(destination.Path, basePath+"/") {
+			continue
+		}
+		relative := strings.Trim(strings.TrimPrefix(destination.Path, basePath), "/")
+		parts := strings.Split(relative, "/")
+		if len(parts) == 1 && parts[0] != "" && !strings.HasPrefix(parts[0], "-") {
+			return true
+		}
+		if len(parts) == 2 && strings.HasPrefix(parts[0], "@") && parts[1] != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func rewriteJSON(value any, key string, rewrite proxyecosystem.RewriteURL, registries []*url.URL, pkg *pm.Package) bool {
 	changed := false
 	switch typed := value.(type) {
@@ -84,8 +176,9 @@ func rewriteJSON(value any, key string, rewrite proxyecosystem.RewriteURL, regis
 			if childKey == "versions" {
 				name, _ := typed["name"].(string)
 				if versions, ok := child.(map[string]any); ok && name != "" {
+					publishDates := parsePublishDates(typed["time"])
 					for version, metadata := range versions {
-						identified := &pm.Package{Ecosystem: baseecosystem.NPM, Name: name, Version: version}
+						identified := &pm.Package{Ecosystem: baseecosystem.NPM, Name: name, Version: version, PublishDate: publishDates[version]}
 						changed = rewriteJSON(metadata, childKey, rewrite, registries, identified) || changed
 					}
 					continue
@@ -113,6 +206,24 @@ func rewriteJSON(value any, key string, rewrite proxyecosystem.RewriteURL, regis
 		}
 	}
 	return changed
+}
+
+func parsePublishDates(value any) map[string]time.Time {
+	publishDates := make(map[string]time.Time)
+	values, ok := value.(map[string]any)
+	if !ok {
+		return publishDates
+	}
+	for version, value := range values {
+		timestamp, ok := value.(string)
+		if !ok {
+			continue
+		}
+		if parsed, err := time.Parse(time.RFC3339Nano, timestamp); err == nil {
+			publishDates[version] = parsed
+		}
+	}
+	return publishDates
 }
 
 func shouldRewrite(key, value string, registries []*url.URL) bool {

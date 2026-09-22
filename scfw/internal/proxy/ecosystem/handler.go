@@ -21,6 +21,7 @@ type RewriteURL func(*url.URL, *pm.Package) string
 
 // Handler rewrites one registry response without depending on a package manager.
 type Handler interface {
+	RewriteRequest(request *http.Request, registries []*url.URL)
 	RewriteResponse(response *http.Response, rewrite RewriteURL, registries []*url.URL) error
 	Package(*url.URL) (pm.Package, bool)
 }

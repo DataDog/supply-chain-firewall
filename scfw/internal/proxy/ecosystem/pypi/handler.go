@@ -17,6 +17,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/net/html"
 
@@ -29,6 +30,8 @@ const maxRewriteSize = 64 << 20
 
 // Handler rewrites PEP 503 HTML, PEP 691 JSON, and redirects.
 type Handler struct{}
+
+func (Handler) RewriteRequest(*http.Request, []*url.URL) {}
 
 // Package identifies wheel and source-distribution filenames.
 func (Handler) Package(destination *url.URL) (pm.Package, bool) {
@@ -195,6 +198,7 @@ func walk(value any, key string, base *url.URL, rewrite proxyecosystem.RewriteUR
 						}
 					}
 					if ok {
+						pkg.PublishDate = parsePublishDate(typed)
 						typed[childKey] = rewrite(resolved, &pkg)
 					} else {
 						typed[childKey] = rewrite(resolved, nil)
@@ -211,6 +215,19 @@ func walk(value any, key string, base *url.URL, rewrite proxyecosystem.RewriteUR
 		}
 	}
 	return changed
+}
+
+func parsePublishDate(metadata map[string]any) time.Time {
+	for _, key := range []string{"upload-time", "upload_time_iso_8601", "upload_time"} {
+		value, ok := metadata[key].(string)
+		if !ok {
+			continue
+		}
+		if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
 }
 
 func isHTTP(value *url.URL) bool {

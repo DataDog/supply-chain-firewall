@@ -352,9 +352,11 @@ func TestServerEvaluatesPackumentMappedNonstandardTarball(t *testing.T) {
 	artifactCalled := false
 	artifact := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { artifactCalled = true }))
 	defer artifact.Close()
-	registry := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+	var upstreamAccept string
+	registry := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		upstreamAccept = request.Header.Get("Accept")
 		writer.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(writer, `{"name":"private-pkg","versions":{"7.8.9":{"dist":{"tarball":%q}}}}`, artifact.URL+"/opaque-download")
+		fmt.Fprintf(writer, `{"name":"private-pkg","time":{"7.8.9":"2025-02-03T04:05:06.123Z"},"versions":{"7.8.9":{"dist":{"tarball":%q}}}}`, artifact.URL+"/opaque-download")
 	}))
 	defer registry.Close()
 	var evaluated pm.Package
@@ -367,7 +369,13 @@ func TestServerEvaluatesPackumentMappedNonstandardTarball(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartWithOptions(): %v", err)
 	}
-	metadata, err := proxyGet(server, server.URL()+"private-pkg")
+	metadataRequest, err := http.NewRequest(http.MethodGet, server.URL()+"private-pkg", nil)
+	if err != nil {
+		t.Fatalf("metadata request: %v", err)
+	}
+	metadataRequest.Header.Set("Accept", "application/vnd.npm.install-v1+json")
+	metadataRequest.Header.Set("Authorization", "Bearer "+server.authSecret)
+	metadata, err := http.DefaultClient.Do(metadataRequest)
 	if err != nil {
 		t.Fatalf("metadata GET: %v", err)
 	}
@@ -393,6 +401,13 @@ func TestServerEvaluatesPackumentMappedNonstandardTarball(t *testing.T) {
 	}
 	if evaluated.Name != "private-pkg" || evaluated.Version != "7.8.9" {
 		t.Errorf("evaluated package = %+v", evaluated)
+	}
+	wantPublishDate := time.Date(2025, 2, 3, 4, 5, 6, 123000000, time.UTC)
+	if !evaluated.PublishDate.Equal(wantPublishDate) {
+		t.Errorf("evaluated publish date = %s, want %s", evaluated.PublishDate, wantPublishDate)
+	}
+	if upstreamAccept != "application/json" {
+		t.Errorf("upstream Accept = %q, want full npm packument", upstreamAccept)
 	}
 }
 

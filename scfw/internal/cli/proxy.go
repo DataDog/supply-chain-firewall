@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -85,12 +86,14 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		Stdout: cmd.OutOrStdout(),
 		Stderr: cmd.ErrOrStderr(),
 	}
-	options := registryproxy.Options{HTTPStatus: httpStatus, Evaluate: evaluateProxyPackage}
+	packageManagerName := filepath.Base(command[0])
+	evaluator := newProxyPackageEvaluator(time.Now().UTC(), packageManagerName)
+	options := registryproxy.Options{HTTPStatus: httpStatus, Evaluate: evaluator.Evaluate}
 	if err := resolveOnWarning(); err != nil {
 		return fmt.Errorf("scfw proxy: %w", err)
 	}
 	var runErr error
-	switch filepath.Base(command[0]) {
+	switch packageManagerName {
 	case "npm":
 		runErr = npmproxy.Run(cmd.Context(), executable, command[1:], streams, options)
 	case "yarn", "yarnpkg":
@@ -115,19 +118,66 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func evaluateProxyPackage(ctx context.Context, pkg pm.Package) error {
-	publishDate, err := ecosystem.ResolvePublishDate(ctx, pkg.Ecosystem, pkg.Name, pkg.Version, pkg.Source)
-	if err != nil {
-		slog.Warn("failed to resolve package publish date", "ecosystem", pkg.Ecosystem, "name", pkg.Name, "version", pkg.Version, "error", err)
-	} else {
-		pkg.PublishDate = publishDate
+type reportProxyOutcomeFunc func(
+	context.Context,
+	time.Time,
+	[]string,
+	string,
+	string,
+	string,
+	*pm.Set[pm.Package],
+	ddapi.ScfwPolicyEvaluationReport,
+	ddapi.Outcome,
+) error
+
+type proxyPackageEvaluator struct {
+	installTimestamp time.Time
+	packageManager   string
+	resolveDate      func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error)
+	evaluate         func(context.Context, bool, *pm.Set[pm.Package]) (ddapi.ScfwPolicyEvaluationReport, error)
+	report           reportProxyOutcomeFunc
+}
+
+func newProxyPackageEvaluator(installTimestamp time.Time, packageManager string) *proxyPackageEvaluator {
+	return &proxyPackageEvaluator{
+		installTimestamp: installTimestamp,
+		packageManager:   packageManager,
+		resolveDate:      ecosystem.ResolvePublishDate,
+		evaluate:         ddapi.EvaluateInstallTargets,
+		report:           ddapi.ReportFirewallOutcome,
 	}
-	report, err := ddapi.EvaluateInstallTargets(ctx, false, pm.NewSet(pkg))
+}
+
+func (e *proxyPackageEvaluator) Evaluate(ctx context.Context, pkg pm.Package) error {
+	if pkg.PublishDate.IsZero() {
+		publishDate, err := e.resolveDate(ctx, pkg.Ecosystem, pkg.Name, pkg.Version, pkg.Source)
+		if err != nil {
+			slog.Warn("failed to resolve package publish date", "ecosystem", pkg.Ecosystem, "name", pkg.Name, "version", pkg.Version, "error", err)
+		} else {
+			pkg.PublishDate = publishDate
+		}
+	}
+	installTargets := pm.NewSet(pkg)
+	evaluationReport, err := e.evaluate(ctx, false, installTargets)
 	if err != nil {
 		return fmt.Errorf("evaluate %s %s: %w", pkg.Name, pkg.Version, err)
 	}
-	if decideFirewallAction(false, report.Outcome) != ddapi.OutcomeAllow {
-		return fmt.Errorf("policy evaluation for %s %s returned %s", pkg.Name, pkg.Version, report.Outcome)
+	action := decideFirewallAction(false, evaluationReport.Outcome)
+	if action != ddapi.OutcomeAllow {
+		return fmt.Errorf("policy evaluation for %s %s returned %s", pkg.Name, pkg.Version, evaluationReport.Outcome)
+	}
+	if err := e.report(
+		ctx,
+		e.installTimestamp,
+		[]string{e.packageManager},
+		e.packageManager,
+		e.packageManager,
+		"",
+		installTargets,
+		evaluationReport,
+		action,
+	); err != nil {
+		slog.Warn("failed to report proxy firewall outcome", "ecosystem", pkg.Ecosystem, "name", pkg.Name, "version", pkg.Version, "error", err)
 	}
 	return nil
 }

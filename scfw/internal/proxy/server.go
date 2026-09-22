@@ -276,6 +276,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 			proxyRequest.Out.Host = destination.Host
 			proxyRequest.Out.RequestURI = ""
 			proxyRequest.Out.Header.Del("Accept-Encoding")
+			s.responseHandler.RewriteRequest(proxyRequest.Out, s.registries())
 			if forwardedArtifact && !s.registryOrigin(destination) || !s.config.ForwardAuthorization {
 				proxyRequest.Out.Header.Del("Authorization")
 			}
@@ -299,12 +300,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 			if request.Method != http.MethodGet && request.Method != http.MethodHead {
 				return nil
 			}
-			registries := make([]*url.URL, 0, len(s.config.ScopedRegistries)+1)
-			registries = append(registries, s.config.Registry)
-			for _, registry := range s.config.ScopedRegistries {
-				registries = append(registries, registry)
-			}
-			return s.responseHandler.RewriteResponse(response, s.proxyURLForPackage, registries)
+			return s.responseHandler.RewriteResponse(response, s.proxyURLForPackage, s.registries())
 		},
 		ErrorHandler: func(responseWriter http.ResponseWriter, _ *http.Request, proxyErr error) {
 			if errors.Is(proxyErr, context.Canceled) {
@@ -315,6 +311,15 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		},
 	}
 	reverseProxy.ServeHTTP(writer, request)
+}
+
+func (s *Server) registries() []*url.URL {
+	registries := make([]*url.URL, 0, len(s.config.ScopedRegistries)+1)
+	registries = append(registries, s.config.Registry)
+	for _, registry := range s.config.ScopedRegistries {
+		registries = append(registries, registry)
+	}
+	return registries
 }
 
 func (s *Server) registryOrigin(destination *url.URL) bool {

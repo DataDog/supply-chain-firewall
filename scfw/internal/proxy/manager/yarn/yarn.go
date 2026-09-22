@@ -25,16 +25,22 @@ import (
 )
 
 type Manager struct {
-	modern       bool
-	modernScopes map[string]map[string]any
+	modern           bool
+	modernScopes     map[string]map[string]any
+	modernUnsafeHTTP []string
 }
 
 func (Manager) Name() string { return "yarn" }
 
 func (manager *Manager) Registries(ctx context.Context, executable string, _ []string) (proxy.RegistryConfiguration, error) {
 	if registry, named, scopes, registries, err := loadModern(ctx, executable); err == nil {
+		unsafeHTTP, unsafeHTTPErr := modernStrings(ctx, executable, "unsafeHttpWhitelist")
+		if unsafeHTTPErr != nil {
+			return proxy.RegistryConfiguration{}, newModernConfigurationError("read unsafeHttpWhitelist", unsafeHTTPErr)
+		}
 		manager.modern = true
 		manager.modernScopes = scopes
+		manager.modernUnsafeHTTP = unsafeHTTP
 		configuration := proxy.RegistryConfiguration{Default: registry, Named: named, Handler: npmecosystem.Handler{}, Credentials: make(map[string]proxy.RegistryCredential), UseNPMCredentials: true}
 		if token, tokenErr := modernString(ctx, executable, "npmAuthToken"); tokenErr == nil && token != "" {
 			configuration.Credentials[registry.String()] = proxy.RegistryCredential{BearerToken: token}
@@ -111,6 +117,21 @@ func modernBool(ctx context.Context, executable, setting string) (bool, error) {
 	}
 	var value bool
 	return value, json.Unmarshal(output, &value)
+}
+
+func modernStrings(ctx context.Context, executable, setting string) ([]string, error) {
+	output, err := shared.CommandOutput(ctx, executable, "config", "get", setting, "--json")
+	if err != nil {
+		return nil, err
+	}
+	if bytes.Equal(bytes.TrimSpace(output), []byte("undefined")) {
+		return nil, nil
+	}
+	var values []string
+	if err := json.Unmarshal(output, &values); err != nil {
+		return nil, err
+	}
+	return values, nil
 }
 
 func loadModern(ctx context.Context, executable string) (*url.URL, map[string]*url.URL, map[string]map[string]any, map[string]map[string]any, error) {
@@ -296,7 +317,13 @@ func (manager *Manager) Prepare(_ string, args []string, registryURL string, nam
 		}
 		values["npmRegistryServer"] = registry
 	}
-	rcFilename, cleanup, err := writeModernRC(registryURL, scopes)
+	unsafeHTTP := append([]string(nil), manager.modernUnsafeHTTP...)
+	proxyURL, err := url.Parse(registryURL)
+	if err != nil || proxyURL.Hostname() == "" {
+		return proxy.PreparedCommand{}, fmt.Errorf("parse Yarn proxy URL %q", registryURL)
+	}
+	unsafeHTTP = appendUnique(unsafeHTTP, proxyURL.Hostname())
+	rcFilename, cleanup, err := writeModernRC(registryURL, scopes, unsafeHTTP)
 	if err != nil {
 		return proxy.PreparedCommand{}, err
 	}
@@ -313,7 +340,7 @@ func (manager *Manager) Prepare(_ string, args []string, registryURL string, nam
 	}, nil
 }
 
-func writeModernRC(registryURL string, scopes map[string]map[string]any) (string, func() error, error) {
+func writeModernRC(registryURL string, scopes map[string]map[string]any, unsafeHTTP []string) (string, func() error, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", nil, fmt.Errorf("get working directory for Yarn configuration: %w", err)
@@ -357,6 +384,7 @@ func writeModernRC(registryURL string, scopes map[string]map[string]any) (string
 		if samePath(directory, cwd) {
 			configuration["npmRegistryServer"] = registryURL
 			configuration["npmScopes"] = scopes
+			configuration["unsafeHttpWhitelist"] = unsafeHTTP
 			overlayConfiguration = configuration
 			continue
 		}
@@ -368,8 +396,9 @@ func writeModernRC(registryURL string, scopes map[string]map[string]any) (string
 	}
 	if overlayConfiguration == nil {
 		overlayConfiguration = map[string]any{
-			"npmRegistryServer": registryURL,
-			"npmScopes":         scopes,
+			"npmRegistryServer":   registryURL,
+			"npmScopes":           scopes,
+			"unsafeHttpWhitelist": unsafeHTTP,
 		}
 	}
 	contents, err := yaml.Marshal(overlayConfiguration)
@@ -383,6 +412,15 @@ func writeModernRC(registryURL string, scopes map[string]map[string]any) (string
 		return "", nil, errors.Join(fmt.Errorf("close temporary Yarn configuration: %w", err), cleanup())
 	}
 	return temporaryName, cleanup, nil
+}
+
+func appendUnique(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func findRCs(directory, name string) []string {

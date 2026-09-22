@@ -45,7 +45,8 @@ npmRegistries:
 		t.Fatal(err)
 	}
 	manager := &Manager{
-		modern: true,
+		modern:           true,
+		modernUnsafeHTTP: []string{"registry.internal"},
 		modernScopes: map[string]map[string]any{
 			"private": {"npmAuthToken": "secret", "npmAlwaysAuth": true},
 		},
@@ -73,6 +74,10 @@ npmRegistries:
 	}
 	if configuration["npmRegistryServer"] != "http://proxy/default/" {
 		t.Errorf("npmRegistryServer = %v", configuration["npmRegistryServer"])
+	}
+	unsafeHTTP, ok := configuration["unsafeHttpWhitelist"].([]any)
+	if !ok || !containsYAMLString(unsafeHTTP, "registry.internal") || !containsYAMLString(unsafeHTTP, "proxy") {
+		t.Errorf("unsafeHttpWhitelist = %#v, want existing and proxy hosts", configuration["unsafeHttpWhitelist"])
 	}
 	scopes, ok := configuration["npmScopes"].(map[string]any)
 	if !ok {
@@ -290,4 +295,13 @@ func environmentValue(environment []string, name string) string {
 		}
 	}
 	return ""
+}
+
+func containsYAMLString(values []any, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }

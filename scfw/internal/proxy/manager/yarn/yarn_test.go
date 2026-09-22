@@ -184,6 +184,19 @@ func TestDecodeModernMapRejectsMalformedConfiguration(t *testing.T) {
 	}
 }
 
+func TestDecodeModernMapAcceptsUnconfiguredValues(t *testing.T) {
+	for _, data := range []string{"undefined", "  undefined\n", "null", "{}"} {
+		values, err := decodeModernMap("npmScopes", []byte(data))
+		if err != nil {
+			t.Errorf("decodeModernMap(%q) error = %v", data, err)
+			continue
+		}
+		if len(values) != 0 {
+			t.Errorf("decodeModernMap(%q) = %#v, want empty map", data, values)
+		}
+	}
+}
+
 func TestPrepareModernDoesNotForceImmutableOnUnrelatedCommand(t *testing.T) {
 	changeWorkingDirectory(t)
 	manager := &Manager{modern: true, modernScopes: map[string]map[string]any{}}

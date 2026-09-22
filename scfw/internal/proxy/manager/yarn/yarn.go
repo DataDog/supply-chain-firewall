@@ -8,6 +8,7 @@ package yarn
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -176,6 +177,9 @@ func newModernConfigurationError(operation string, err error) error {
 
 func decodeModernMap(name string, data []byte) (map[string]map[string]any, error) {
 	values := make(map[string]map[string]any)
+	if bytes.Equal(bytes.TrimSpace(data), []byte("undefined")) {
+		return values, nil
+	}
 	if err := json.Unmarshal(data, &values); err != nil {
 		return nil, newModernConfigurationError("decode "+name, err)
 	}

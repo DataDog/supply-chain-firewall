@@ -1,0 +1,423 @@
+<div id="npm-install-journey">
+  <style>
+    #npm-install-journey {
+      color: var(--foreground);
+      width: 100%;
+    }
+    #npm-install-journey .j-header,
+    #npm-install-journey .j-status,
+    #npm-install-journey .j-controls,
+    #npm-install-journey .j-route,
+    #npm-install-journey .j-detail-head {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    #npm-install-journey .j-header {
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+    #npm-install-journey .j-header h2,
+    #npm-install-journey .j-header p,
+    #npm-install-journey .j-detail-head p {
+      margin: 0;
+    }
+    #npm-install-journey .j-progress-wrap {
+      margin-bottom: 0.75rem;
+    }
+    #npm-install-journey .j-status {
+      justify-content: space-between;
+      margin-bottom: 0.35rem;
+    }
+    #npm-install-journey .j-stations {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(0, 1fr));
+      gap: 0.35rem;
+      margin-bottom: 1rem;
+    }
+    #npm-install-journey .j-map {
+      display: grid;
+	  grid-template-columns: minmax(84px, 1fr) 28px minmax(84px, 1fr) 28px minmax(98px, 1.15fr) 28px minmax(98px, 1.1fr);
+	  grid-template-rows: auto 28px auto 28px auto;
+      align-items: center;
+      gap: 0.2rem;
+      margin: 0.5rem 0 1rem;
+    }
+    #npm-install-journey .j-node {
+      min-height: 86px;
+      display: grid;
+      place-items: center;
+      align-content: center;
+      gap: 0.35rem;
+      padding: 0.65rem 0.35rem;
+      text-align: center;
+      color: var(--muted-foreground);
+      background: color-mix(in srgb, var(--muted) 55%, transparent);
+      border: 1px solid var(--border);
+      border-radius: 0.6rem;
+      transition: background 180ms ease, color 180ms ease, transform 180ms ease;
+    }
+    #npm-install-journey .j-node.is-active {
+      color: var(--foreground);
+      background: color-mix(in srgb, var(--viz-series-1) 18%, var(--background));
+      transform: translateY(-2px);
+    }
+    #npm-install-journey[data-outcome="BLOCK"] .j-node[data-node="artifact"].is-active {
+      background: color-mix(in srgb, var(--destructive) 18%, var(--background));
+    }
+    #npm-install-journey[data-outcome="ALLOW"] .j-node[data-node="artifact"].is-active {
+      background: color-mix(in srgb, var(--green) 18%, var(--background));
+    }
+    #npm-install-journey .j-node code {
+      color: inherit;
+    }
+    #npm-install-journey .j-edge {
+      color: var(--border);
+      text-align: center;
+      transition: color 180ms ease, transform 180ms ease;
+    }
+    #npm-install-journey .j-edge.is-active {
+      color: var(--viz-series-1);
+      transform: scale(1.2);
+    }
+	#npm-install-journey .j-node[data-node="shell"] { grid-column: 1; grid-row: 3; }
+	#npm-install-journey .j-node[data-node="npm"] { grid-column: 3; grid-row: 3; }
+	#npm-install-journey .j-node[data-node="proxy"] { grid-column: 5; grid-row: 3; }
+	#npm-install-journey .j-node[data-node="registry"] { grid-column: 7; grid-row: 1; }
+	#npm-install-journey .j-node[data-node="evaluate"] { grid-column: 5; grid-row: 1; }
+	#npm-install-journey .j-node[data-node="report"] { grid-column: 5; grid-row: 5; }
+	#npm-install-journey .j-node[data-node="artifact"] { grid-column: 7; grid-row: 3; }
+	#npm-install-journey .j-edge[data-edge="shell-npm"] { grid-column: 2; grid-row: 3; }
+	#npm-install-journey .j-edge[data-edge="npm-proxy"] { grid-column: 4; grid-row: 3; }
+	#npm-install-journey .j-edge[data-edge="proxy-registry"] { grid-column: 6; grid-row: 2; }
+	#npm-install-journey .j-edge[data-edge="proxy-eval"] { grid-column: 5; grid-row: 2; }
+	#npm-install-journey .j-edge[data-edge="proxy-report"] { grid-column: 5; grid-row: 4; }
+	#npm-install-journey .j-edge[data-edge="gate"] { grid-column: 6; grid-row: 3; }
+	#npm-install-journey[data-outcome="BLOCK"] .j-edge[data-edge="gate"].is-active {
+      color: var(--destructive);
+    }
+	#npm-install-journey[data-outcome="ALLOW"] .j-edge[data-edge="gate"].is-active {
+      color: var(--green);
+    }
+    #npm-install-journey .j-route {
+      justify-content: center;
+      min-height: 42px;
+      margin-bottom: 1rem;
+    }
+    #npm-install-journey .j-route-arrow {
+      color: var(--viz-series-1);
+    }
+	#npm-install-journey .j-stdout {
+	  display: flex;
+	  align-items: center;
+	  justify-content: center;
+	  gap: 0.5rem;
+	  margin: -0.25rem 0 1rem;
+	  color: var(--muted-foreground);
+	}
+    #npm-install-journey .j-detail {
+      display: grid;
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr);
+      gap: 1rem;
+      align-items: stretch;
+    }
+    #npm-install-journey .j-detail-head {
+      align-content: start;
+      padding-top: 0.35rem;
+    }
+    #npm-install-journey .j-detail-head h3 {
+      width: 100%;
+      margin: 0;
+    }
+    #npm-install-journey .j-code {
+      margin: 0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    #npm-install-journey .j-code-file {
+      margin-bottom: 0.5rem;
+    }
+    #npm-install-journey .j-controls {
+      justify-content: space-between;
+      margin-top: 1rem;
+    }
+    #npm-install-journey .j-controls-group {
+      display: flex;
+      gap: 0.5rem;
+    }
+    #npm-install-journey .j-outcome {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    @media (max-width: 820px) {
+      #npm-install-journey .j-stations {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+      #npm-install-journey .j-map {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.5rem;
+      }
+	  #npm-install-journey .j-map .j-node {
+		flex: 1 1 110px;
+	  }
+	  #npm-install-journey .j-map .j-edge {
+		display: none;
+      }
+      #npm-install-journey .j-detail {
+        grid-template-columns: 1fr;
+      }
+    }
+    @media (max-width: 480px) {
+      #npm-install-journey .j-stations {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      #npm-install-journey .j-map {
+        grid-template-columns: 1fr;
+      }
+      #npm-install-journey .j-map > * {
+        display: none;
+      }
+      #npm-install-journey .j-map > .j-node.is-active {
+        display: grid;
+      }
+      #npm-install-journey .j-controls {
+        align-items: stretch;
+      }
+    }
+  </style>
+
+  <div class="j-header">
+    <div>
+      <h2>npm install → policy decision</h2>
+      <p class="text-muted text-small"><code>scfw proxy -- npm install left-pad</code></p>
+    </div>
+    <label class="j-outcome">
+      <span class="form-label">Decision</span>
+      <select class="form-select" id="npm-journey-outcome" aria-label="Evaluation outcome">
+        <option value="ALLOW">ALLOW</option>
+        <option value="BLOCK">BLOCK</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="j-progress-wrap">
+    <div class="j-status">
+      <span id="npm-journey-step-label" class="text-small tabular-nums">1 / 8</span>
+      <span id="npm-journey-phase" class="viz-badge">Launch</span>
+    </div>
+    <div class="progress" role="progressbar" aria-label="Journey progress" aria-valuemin="1" aria-valuemax="8" aria-valuenow="1">
+      <div class="progress-bar" id="npm-journey-progress" style="width:12.5%"></div>
+    </div>
+  </div>
+
+  <div class="j-stations" role="group" aria-label="Journey steps">
+    <button type="button" class="btn btn-primary" data-step="0">1 · Run</button>
+    <button type="button" class="btn btn-ghost" data-step="1">2 · Config</button>
+    <button type="button" class="btn btn-ghost" data-step="2">3 · Route</button>
+    <button type="button" class="btn btn-ghost" data-step="3">4 · Metadata</button>
+    <button type="button" class="btn btn-ghost" data-step="4">5 · Enrich</button>
+    <button type="button" class="btn btn-ghost" data-step="5">6 · Download</button>
+    <button type="button" class="btn btn-ghost" data-step="6">7 · Evaluate</button>
+    <button type="button" class="btn btn-ghost" data-step="7">8 · Report</button>
+  </div>
+
+  <div class="j-map" id="npm-journey-map" role="img" aria-label="The local proxy connects npm to the registry, evaluation API, report API, and artifact host">
+    <div class="j-node" data-node="shell"><i data-lucide="terminal" aria-hidden="true"></i><span>Shell</span></div>
+    <div class="j-edge" data-edge="shell-npm">→</div>
+    <div class="j-node" data-node="npm"><i data-lucide="package" aria-hidden="true"></i><span>npm</span></div>
+    <div class="j-edge" data-edge="npm-proxy">→</div>
+    <div class="j-node" data-node="proxy"><i data-lucide="shield" aria-hidden="true"></i><span>Local proxy</span><code>127.0.0.1</code></div>
+	<div class="j-edge" data-edge="proxy-registry">↗</div>
+    <div class="j-node" data-node="registry"><i data-lucide="database" aria-hidden="true"></i><span>npm registry</span></div>
+	<div class="j-edge" data-edge="proxy-eval">↑</div>
+    <div class="j-node" data-node="evaluate"><i data-lucide="scan-search" aria-hidden="true"></i><span>Evaluate API</span></div>
+	<div class="j-edge" data-edge="proxy-report">↓</div>
+    <div class="j-node" data-node="report"><i data-lucide="send" aria-hidden="true"></i><span>Report API</span></div>
+    <div class="j-edge" data-edge="gate">→</div>
+    <div class="j-node" data-node="artifact"><i data-lucide="archive" aria-hidden="true"></i><span id="npm-journey-artifact-label">Artifact host</span></div>
+  </div>
+
+  <div class="j-route" aria-live="polite">
+    <span id="npm-journey-from" class="viz-badge">Shell</span>
+    <span class="j-route-arrow">→</span>
+    <code id="npm-journey-packet">scfw proxy -- npm install left-pad</code>
+    <span class="j-route-arrow">→</span>
+    <span id="npm-journey-to" class="viz-badge">npm</span>
+  </div>
+
+  <div class="j-stdout" aria-live="polite">
+	<i data-lucide="square-terminal" aria-hidden="true"></i>
+	<span class="text-small">stdout</span>
+	<code id="npm-journey-stdout">— registry traffic not logged —</code>
+  </div>
+
+  <div class="j-detail">
+    <div class="j-detail-head">
+      <h3 id="npm-journey-title">Launch</h3>
+      <p id="npm-journey-caption">One child process. One temporary proxy.</p>
+    </div>
+    <div class="card">
+      <div id="npm-journey-file" class="j-code-file text-small text-muted">scfw/internal/cli/proxy.go</div>
+      <pre class="j-code"><code id="npm-journey-code">evaluator := newProxyPackageEvaluator(...)
+options := proxy.Options{Evaluate: evaluator.Evaluate}
+npmproxy.Run(ctx, executable, args, streams, options)</code></pre>
+    </div>
+  </div>
+
+  <div class="j-controls">
+    <div class="j-controls-group">
+      <button type="button" class="btn" id="npm-journey-prev" disabled>← Back</button>
+      <button type="button" class="btn btn-primary" id="npm-journey-next">Next →</button>
+    </div>
+    <span class="text-small text-muted" id="npm-journey-location">CLI orchestration</span>
+  </div>
+
+  <script>
+    (() => {
+      const root = document.getElementById('npm-install-journey');
+      const steps = [
+        {
+          phase: 'Launch', title: 'Launch', caption: 'One child process. One temporary proxy.',
+          from: 'Shell', to: 'npm', packet: 'scfw proxy -- npm install left-pad',
+          file: 'scfw/internal/cli/proxy.go', location: 'CLI orchestration',
+          nodes: ['shell', 'npm'], edges: ['shell-npm'],
+          code: 'evaluator := newProxyPackageEvaluator(...)\noptions := proxy.Options{Evaluate: evaluator.Evaluate}\nnpmproxy.Run(ctx, executable, args, streams, options)'
+        },
+		{
+		  phase: 'Config', title: 'Read npm config', caption: 'Before the proxy starts, SCFW asks npm for its registries.',
+		  from: 'SCFW', to: 'npm', packet: 'npm config list --json',
+		  file: 'scfw/internal/proxy/manager/npm/npm.go', location: 'Package-manager adapter',
+		  nodes: ['shell', 'npm'], edges: ['shell-npm'],
+		  code: 'command := exec.CommandContext(ctx, npm,\n  "config", "list", "--json")\ncommand.Run()\nreturn proxy.LoadNPMConfigData(ctx, npm, stdout.Bytes())'
+        },
+        {
+          phase: 'Route', title: 'Give npm a local registry', caption: 'Only the child process sees it.',
+          from: 'npm', to: 'Local proxy', packet: '--registry=http://127.0.0.1:<port>',
+          file: 'scfw/internal/proxy/npm.go', location: 'Process-local override',
+          nodes: ['npm', 'proxy'], edges: ['npm-proxy'],
+          code: 'proxyOptions := []string{\n  "--registry=" + server.URL(),\n  "--replace-registry-host=always",\n}'
+        },
+        {
+          phase: 'Metadata', title: 'Fetch package metadata', caption: 'No policy decision yet.',
+          from: 'Local proxy', to: 'npm registry', packet: 'GET /left-pad  Accept: application/json',
+          file: 'scfw/internal/proxy/ecosystem/npm/handler.go', location: 'npm ecosystem handler',
+		  nodes: ['proxy', 'registry'], edges: ['proxy-registry'],
+          code: 'if request.Method == http.MethodGet &&\n   isPackumentURL(request.URL, registries) {\n  request.Header.Set("Accept", "application/json")\n}'
+        },
+        {
+          phase: 'Enrich', title: 'Attach identity + publish date', caption: 'Rewrite tarball URLs back through SCFW.',
+          from: 'npm registry', to: 'Local proxy', packet: 'time[version] + dist.tarball',
+          file: 'scfw/internal/proxy/ecosystem/npm/handler.go', location: 'Metadata response parser',
+          nodes: ['registry', 'proxy'], edges: ['proxy-registry'],
+          code: 'publishDates := parsePublishDates(packument["time"])\npkg := pm.Package{Name: name, Version: version,\n  PublishDate: publishDates[version]}\ntarball = rewrite(tarballURL, &pkg)'
+        },
+        {
+          phase: 'Download', title: 'Recognize the artifact GET', caption: 'This is the install decision point.',
+          from: 'npm', to: 'Local proxy', packet: 'GET /-/scfw/forward/<token>/left-pad.tgz',
+          file: 'scfw/internal/proxy/server.go', location: 'Reverse proxy',
+          nodes: ['npm', 'proxy'], edges: ['npm-proxy'],
+          code: 'pkg, ok := s.artifactPackage(destination)\nif !ok {\n  pkg, ok = s.responseHandler.Package(destination)\n}\nif ok { err = s.evaluate(ctx, pkg) }'
+        },
+        {
+		  phase: 'Evaluate', title: 'Ask policy', caption: 'Name, version, source, and publish date when available.',
+		  from: 'Local proxy', to: 'Evaluate API', packet: 'POST /evaluate',
+		  file: 'scfw/internal/cli/proxy.go', location: 'Policy decision',
+		  nodes: ['proxy', 'evaluate'], edges: ['proxy-eval'],
+		  code: 'fmt.Fprintln(output, "scfw proxy: POST /evaluate")\nreport, err := ddapi.EvaluateInstallTargets(\n  ctx, false, pm.NewSet(pkg),\n)\naction := decideFirewallAction(false, report.Outcome)'
+		},
+		{
+		  phase: 'Report', title: 'Report, then enforce', caption: '',
+		  from: 'Local proxy', to: 'Report API', packet: 'POST /report',
+		  file: 'scfw/internal/cli/proxy.go', location: 'Final outcome',
+		  nodes: ['proxy', 'report', 'artifact'], edges: ['proxy-report', 'gate'],
+		  code: ''
+        }
+      ];
+
+      let index = 0;
+      const outcome = document.getElementById('npm-journey-outcome');
+      const progress = document.getElementById('npm-journey-progress');
+      const progressWrap = progress.parentElement;
+      const stepLabel = document.getElementById('npm-journey-step-label');
+      const phase = document.getElementById('npm-journey-phase');
+      const title = document.getElementById('npm-journey-title');
+      const caption = document.getElementById('npm-journey-caption');
+      const from = document.getElementById('npm-journey-from');
+      const to = document.getElementById('npm-journey-to');
+      const packet = document.getElementById('npm-journey-packet');
+      const file = document.getElementById('npm-journey-file');
+      const code = document.getElementById('npm-journey-code');
+	  const location = document.getElementById('npm-journey-location');
+	  const artifactLabel = document.getElementById('npm-journey-artifact-label');
+	  const map = document.getElementById('npm-journey-map');
+	  const stdout = document.getElementById('npm-journey-stdout');
+      const previous = document.getElementById('npm-journey-prev');
+      const next = document.getElementById('npm-journey-next');
+      const stationButtons = [...root.querySelectorAll('[data-step]')];
+
+      function finalCode() {
+		return `fmt.Fprintf(output, "scfw proxy: POST /report outcome=%s\\n", action)\nddapi.ReportFirewallOutcome(..., action)\n\nif action != ddapi.OutcomeAllow {\n  return errors.New("package blocked") // HTTP 403\n}\nreturn nil // proxy forwards artifact`;
+      }
+
+      function render() {
+        const step = steps[index];
+        const action = outcome.value;
+        root.dataset.outcome = action;
+        stepLabel.textContent = `${index + 1} / ${steps.length}`;
+        phase.textContent = step.phase;
+        progress.style.width = `${((index + 1) / steps.length) * 100}%`;
+        progressWrap.setAttribute('aria-valuenow', String(index + 1));
+        title.textContent = step.title;
+        caption.textContent = index === 7
+          ? (action === 'ALLOW' ? 'Forward the artifact.' : 'Return HTTP 403. Never contact the artifact host.')
+          : step.caption;
+		from.textContent = step.from;
+		to.textContent = step.to;
+		packet.textContent = index === 7 ? `POST /report outcome=${action}` : step.packet;
+		file.textContent = step.file;
+		code.textContent = index === 7 ? finalCode() : step.code;
+		location.textContent = step.location;
+		stdout.textContent = index === 6
+		  ? 'scfw proxy: POST /evaluate'
+		  : index === 7
+			? `scfw proxy: POST /report outcome=${action}`
+			: '— registry traffic not logged —';
+		artifactLabel.textContent = index === 7 && action === 'BLOCK' ? 'npm · HTTP 403' : 'Artifact host';
+		map.setAttribute('aria-label', index === 7
+		  ? (action === 'ALLOW'
+			? 'The local proxy reports ALLOW, then forwards the download to the artifact host'
+			: 'The local proxy reports BLOCK, then returns HTTP 403 to npm without contacting the artifact host')
+		  : 'The local proxy connects npm to the registry, evaluation API, report API, and artifact host');
+        root.querySelectorAll('.j-node').forEach(node => node.classList.toggle('is-active', step.nodes.includes(node.dataset.node)));
+        root.querySelectorAll('.j-edge').forEach(edge => edge.classList.toggle('is-active', step.edges.includes(edge.dataset.edge)));
+        stationButtons.forEach((button, buttonIndex) => {
+          const active = buttonIndex === index;
+          button.classList.toggle('btn-primary', active);
+          button.classList.toggle('btn-ghost', !active);
+          button.setAttribute('aria-pressed', String(active));
+        });
+        previous.disabled = index === 0;
+        next.disabled = index === steps.length - 1;
+      }
+
+      stationButtons.forEach(button => button.addEventListener('click', () => {
+        index = Number(button.dataset.step);
+        render();
+      }));
+      previous.addEventListener('click', () => {
+        index = Math.max(0, index - 1);
+        render();
+      });
+      next.addEventListener('click', () => {
+        index = Math.min(steps.length - 1, index + 1);
+        render();
+      });
+      outcome.addEventListener('change', render);
+      render();
+    })();
+  </script>
+</div>

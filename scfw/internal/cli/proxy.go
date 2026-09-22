@@ -163,9 +163,6 @@ func (e *proxyPackageEvaluator) Evaluate(ctx context.Context, pkg pm.Package) er
 		return fmt.Errorf("evaluate %s %s: %w", pkg.Name, pkg.Version, err)
 	}
 	action := decideFirewallAction(false, evaluationReport.Outcome)
-	if action != ddapi.OutcomeAllow {
-		return fmt.Errorf("policy evaluation for %s %s returned %s", pkg.Name, pkg.Version, evaluationReport.Outcome)
-	}
 	if err := e.report(
 		ctx,
 		e.installTimestamp,
@@ -178,6 +175,9 @@ func (e *proxyPackageEvaluator) Evaluate(ctx context.Context, pkg pm.Package) er
 		action,
 	); err != nil {
 		slog.Warn("failed to report proxy firewall outcome", "ecosystem", pkg.Ecosystem, "name", pkg.Name, "version", pkg.Version, "error", err)
+	}
+	if action != ddapi.OutcomeAllow {
+		return fmt.Errorf("policy evaluation for %s %s returned %s", pkg.Name, pkg.Version, evaluationReport.Outcome)
 	}
 	return nil
 }

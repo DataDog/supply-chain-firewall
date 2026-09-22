@@ -129,19 +129,26 @@ func TestProxyPackageEvaluatorReportsAllowedPackage(t *testing.T) {
 	}
 }
 
-func TestProxyPackageEvaluatorDoesNotReportBlockedPackage(t *testing.T) {
+func TestProxyPackageEvaluatorReportsBlockedPackage(t *testing.T) {
 	pkg := pm.Package{Ecosystem: ecosystem.NPM, Name: "blocked", Version: "1.0.0", PublishDate: time.Now()}
 	evaluator := newProxyPackageEvaluator(time.Now(), "npm")
 	evaluator.evaluate = func(context.Context, bool, *pm.Set[pm.Package]) (ddapi.ScfwPolicyEvaluationReport, error) {
 		return ddapi.ScfwPolicyEvaluationReport{Outcome: ddapi.OutcomeBlock}, nil
 	}
-	evaluator.report = func(context.Context, time.Time, []string, string, string, string, *pm.Set[pm.Package], ddapi.ScfwPolicyEvaluationReport, ddapi.Outcome) error {
-		t.Fatal("blocked proxy package was reported as accepted")
+	reported := false
+	evaluator.report = func(_ context.Context, _ time.Time, _ []string, _, _, _ string, targets *pm.Set[pm.Package], report ddapi.ScfwPolicyEvaluationReport, outcome ddapi.Outcome) error {
+		reported = true
+		if !targets.Contains(pkg) || report.Outcome != ddapi.OutcomeBlock || outcome != ddapi.OutcomeBlock {
+			t.Errorf("blocked report package/outcome = %+v/%s/%s", targets, report.Outcome, outcome)
+		}
 		return nil
 	}
 
 	if err := evaluator.Evaluate(context.Background(), pkg); err == nil {
 		t.Fatal("Evaluate() error = nil, want blocked package error")
+	}
+	if !reported {
+		t.Fatal("blocked proxy package was not reported")
 	}
 }
 
@@ -157,5 +164,21 @@ func TestProxyPackageEvaluatorReportFailureDoesNotBlock(t *testing.T) {
 
 	if err := evaluator.Evaluate(context.Background(), pkg); err != nil {
 		t.Fatalf("Evaluate() error = %v, want report failure to be non-blocking", err)
+	}
+}
+
+func TestProxyPackageEvaluatorDoesNotReportEvaluationFailure(t *testing.T) {
+	pkg := pm.Package{Ecosystem: ecosystem.PYPI, Name: "example", Version: "1.0.0", PublishDate: time.Now()}
+	evaluator := newProxyPackageEvaluator(time.Now(), "pip")
+	evaluator.evaluate = func(context.Context, bool, *pm.Set[pm.Package]) (ddapi.ScfwPolicyEvaluationReport, error) {
+		return ddapi.ScfwPolicyEvaluationReport{}, errors.New("evaluation unavailable")
+	}
+	evaluator.report = func(context.Context, time.Time, []string, string, string, string, *pm.Set[pm.Package], ddapi.ScfwPolicyEvaluationReport, ddapi.Outcome) error {
+		t.Fatal("failed evaluation was reported as a policy decision")
+		return nil
+	}
+
+	if err := evaluator.Evaluate(context.Background(), pkg); err == nil {
+		t.Fatal("Evaluate() error = nil, want evaluation failure")
 	}
 }

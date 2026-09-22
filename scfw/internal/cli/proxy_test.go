@@ -88,7 +88,8 @@ func TestProxyPackageEvaluatorReportsAllowedPackage(t *testing.T) {
 			Outcome:        ddapi.OutcomeAllow,
 		}},
 	}
-	evaluator := newProxyPackageEvaluator(installTimestamp, "npm")
+	var output strings.Builder
+	evaluator := newProxyPackageEvaluator(installTimestamp, "npm", &output)
 	evaluator.evaluate = func(_ context.Context, interactive bool, targets *pm.Set[pm.Package]) (ddapi.ScfwPolicyEvaluationReport, error) {
 		if interactive {
 			t.Error("proxy evaluation is interactive")
@@ -127,11 +128,20 @@ func TestProxyPackageEvaluatorReportsAllowedPackage(t *testing.T) {
 	if !reported {
 		t.Fatal("allowed proxy package was not reported")
 	}
+	for _, want := range []string{
+		`scfw proxy: POST /evaluate`,
+		`scfw proxy: POST /report outcome=ALLOW`,
+	} {
+		if !strings.Contains(output.String(), want) {
+			t.Errorf("stdout = %q, want %q", output.String(), want)
+		}
+	}
 }
 
 func TestProxyPackageEvaluatorReportsBlockedPackage(t *testing.T) {
 	pkg := pm.Package{Ecosystem: ecosystem.NPM, Name: "blocked", Version: "1.0.0", PublishDate: time.Now()}
-	evaluator := newProxyPackageEvaluator(time.Now(), "npm")
+	var output strings.Builder
+	evaluator := newProxyPackageEvaluator(time.Now(), "npm", &output)
 	evaluator.evaluate = func(context.Context, bool, *pm.Set[pm.Package]) (ddapi.ScfwPolicyEvaluationReport, error) {
 		return ddapi.ScfwPolicyEvaluationReport{Outcome: ddapi.OutcomeBlock}, nil
 	}
@@ -150,11 +160,17 @@ func TestProxyPackageEvaluatorReportsBlockedPackage(t *testing.T) {
 	if !reported {
 		t.Fatal("blocked proxy package was not reported")
 	}
+	if !strings.Contains(output.String(), "POST /evaluate") || !strings.Contains(output.String(), "POST /report") || !strings.Contains(output.String(), "outcome=BLOCK") {
+		t.Errorf("stdout = %q, want evaluation and blocked report logs", output.String())
+	}
+	if strings.Contains(output.String(), pkg.Name) || strings.Contains(output.String(), pkg.Version) {
+		t.Errorf("stdout leaks package coordinates: %q", output.String())
+	}
 }
 
 func TestProxyPackageEvaluatorReportFailureDoesNotBlock(t *testing.T) {
 	pkg := pm.Package{Ecosystem: ecosystem.PYPI, Name: "example", Version: "1.0.0", PublishDate: time.Now()}
-	evaluator := newProxyPackageEvaluator(time.Now(), "pip")
+	evaluator := newProxyPackageEvaluator(time.Now(), "pip", nil)
 	evaluator.evaluate = func(context.Context, bool, *pm.Set[pm.Package]) (ddapi.ScfwPolicyEvaluationReport, error) {
 		return ddapi.ScfwPolicyEvaluationReport{Outcome: ddapi.OutcomeAllow}, nil
 	}
@@ -169,7 +185,8 @@ func TestProxyPackageEvaluatorReportFailureDoesNotBlock(t *testing.T) {
 
 func TestProxyPackageEvaluatorDoesNotReportEvaluationFailure(t *testing.T) {
 	pkg := pm.Package{Ecosystem: ecosystem.PYPI, Name: "example", Version: "1.0.0", PublishDate: time.Now()}
-	evaluator := newProxyPackageEvaluator(time.Now(), "pip")
+	var output strings.Builder
+	evaluator := newProxyPackageEvaluator(time.Now(), "pip", &output)
 	evaluator.evaluate = func(context.Context, bool, *pm.Set[pm.Package]) (ddapi.ScfwPolicyEvaluationReport, error) {
 		return ddapi.ScfwPolicyEvaluationReport{}, errors.New("evaluation unavailable")
 	}
@@ -180,5 +197,8 @@ func TestProxyPackageEvaluatorDoesNotReportEvaluationFailure(t *testing.T) {
 
 	if err := evaluator.Evaluate(context.Background(), pkg); err == nil {
 		t.Fatal("Evaluate() error = nil, want evaluation failure")
+	}
+	if !strings.Contains(output.String(), "POST /evaluate") || strings.Contains(output.String(), "POST /report") {
+		t.Errorf("stdout = %q, want only evaluation log", output.String())
 	}
 }

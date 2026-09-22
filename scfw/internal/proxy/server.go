@@ -6,44 +6,25 @@
 package proxy
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"mime"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"path"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	proxyecosystem "github.com/DataDog/supply-chain-firewall/scfw/internal/proxy/ecosystem"
 	npmecosystem "github.com/DataDog/supply-chain-firewall/scfw/internal/proxy/ecosystem/npm"
 )
-
-const maxLoggedResponseBodySize = 4 << 20
-const maxLoggedResponseBodyTotal = 16 << 20
-const logQueueCapacity = 256
-
-type logRecord struct {
-	line      string
-	requestID uint64
-	body      []byte
-	mediaType string
-	isBody    bool
-}
 
 // Options controls optional proxy behavior.
 type Options struct {
@@ -69,13 +50,6 @@ type Server struct {
 	options          Options
 	responseHandler  proxyecosystem.Handler
 	authSecret       string
-	output           io.Writer
-	requestID        atomic.Uint64
-	loggedBodyBytes  atomic.Int64
-	droppedLogs      atomic.Uint64
-	logQueue         chan logRecord
-	logDone          chan struct{}
-	logClose         sync.Once
 	errors           chan error
 	evaluationMu     sync.Mutex
 	evaluations      map[pm.Package]*evaluationCall
@@ -89,23 +63,19 @@ type evaluationCall struct {
 }
 
 // Start binds an ephemeral loopback port and begins serving registry traffic.
-func Start(config NPMConfig, output io.Writer) (*Server, error) {
-	return StartWithOptions(config, output, Options{})
+func Start(config NPMConfig) (*Server, error) {
+	return StartWithOptions(config, Options{})
 }
 
 // StartWithOptions binds an ephemeral loopback port and begins serving registry
 // traffic with the supplied behavior options.
-func StartWithOptions(config NPMConfig, output io.Writer, options Options) (*Server, error) {
+func StartWithOptions(config NPMConfig, options Options) (*Server, error) {
 	if config.Registry == nil {
 		return nil, errors.New("start registry proxy: missing default registry")
 	}
 	if options.HTTPStatus != 0 && (options.HTTPStatus < 200 || options.HTTPStatus > 599) {
 		return nil, fmt.Errorf("start registry proxy: invalid HTTP status %d: must be between 200 and 599", options.HTTPStatus)
 	}
-	if output == nil {
-		output = io.Discard
-	}
-
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("start registry proxy: %w", err)
@@ -158,9 +128,6 @@ func StartWithOptions(config NPMConfig, output io.Writer, options Options) (*Ser
 		scopedTransports: scopedTransports,
 		options:          options,
 		authSecret:       authSecret,
-		output:           output,
-		logQueue:         make(chan logRecord, logQueueCapacity),
-		logDone:          make(chan struct{}),
 		errors:           make(chan error, 1),
 		evaluations:      make(map[pm.Package]*evaluationCall),
 		artifactPackages: make(map[string]pm.Package),
@@ -169,7 +136,6 @@ func StartWithOptions(config NPMConfig, output io.Writer, options Options) (*Ser
 	if server.responseHandler == nil {
 		server.responseHandler = npmecosystem.Handler{}
 	}
-	go server.writeLogs()
 	registryPrefix := "/-/scfw/registry/" + registryToken + "/"
 	defaultRoute := registryPrefix + "default/"
 	server.registryRoutes[defaultRoute] = config.Registry
@@ -217,21 +183,12 @@ func (s *Server) Errors() <-chan error {
 	return s.errors
 }
 
-// Close stops accepting requests, allows in-flight requests to finish, and
-// flushes queued logs subject to the supplied context.
+// Close stops accepting requests and allows in-flight requests to finish.
 func (s *Server) Close(ctx context.Context) error {
 	if err := s.httpServer.Shutdown(ctx); err != nil {
-		// Shutdown can return while handlers are still active. Keep the log
-		// queue open so those handlers cannot send to a closed channel.
 		return fmt.Errorf("stop registry proxy: %w", err)
 	}
-	s.logClose.Do(func() { close(s.logQueue) })
-	select {
-	case <-s.logDone:
-		return nil
-	case <-ctx.Done():
-		return fmt.Errorf("flush registry proxy logs: %w", ctx.Err())
-	}
+	return nil
 }
 
 func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
@@ -245,10 +202,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	requestID := s.logRequest(request.Method, destination)
 	if s.options.HTTPStatus != 0 {
-		s.logResponse(requestID, s.options.HTTPStatus, request.Method, destination)
-		s.enqueueLog(logRecord{line: fmt.Sprintf("[%d] RESPONSE BODY \"\"\n", requestID)})
 		writer.WriteHeader(s.options.HTTPStatus)
 		return
 	}
@@ -262,8 +216,6 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		}
 		if ok {
 			if err := s.evaluate(request.Context(), pkg); err != nil {
-				s.logResponse(requestID, http.StatusForbidden, request.Method, destination)
-				s.enqueueLog(logRecord{line: fmt.Sprintf("[%d] RESPONSE BODY %q\n", requestID, "package blocked by Supply Chain Firewall")})
 				http.Error(writer, "package blocked by Supply Chain Firewall", http.StatusForbidden)
 				return
 			}
@@ -283,20 +235,6 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 			s.config.authorize(proxyRequest.Out)
 		},
 		ModifyResponse: func(response *http.Response) error {
-			s.logResponse(requestID, response.StatusCode, request.Method, destination)
-			mediaType, _, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
-			if isTextMediaType(mediaType) && response.ContentLength <= maxLoggedResponseBodySize {
-				// Wrap before rewriting so stdout contains the original upstream
-				// JSON rather than proxy-rewritten URLs.
-				response.Body = &responseBodyLogger{
-					ReadCloser: response.Body,
-					server:     s,
-					requestID:  requestID,
-					mediaType:  mediaType,
-				}
-			} else {
-				s.logResponseBodyOmitted(requestID, mediaType, response.ContentLength)
-			}
 			if request.Method != http.MethodGet && request.Method != http.MethodHead {
 				return nil
 			}
@@ -306,7 +244,6 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 			if errors.Is(proxyErr, context.Canceled) {
 				return
 			}
-			s.logError(proxyErr)
 			http.Error(responseWriter, "registry proxy error", http.StatusBadGateway)
 		},
 	}
@@ -431,14 +368,6 @@ func (s *Server) forwardDestination(requestURL *url.URL) (*url.URL, error) {
 	return destination, nil
 }
 
-func isJSONMediaType(mediaType string) bool {
-	return mediaType == "application/json" || strings.HasSuffix(mediaType, "+json")
-}
-
-func isTextMediaType(mediaType string) bool {
-	return isJSONMediaType(mediaType) || strings.HasPrefix(mediaType, "text/") || strings.HasSuffix(mediaType, "+xml")
-}
-
 func (s *Server) proxyURLForPackage(destination *url.URL, pkg *pm.Package) string {
 	upstream := cloneURL(destination)
 	upstream.Fragment = ""
@@ -466,198 +395,6 @@ func (s *Server) artifactPackage(destination *url.URL) (pm.Package, bool) {
 	pkg, ok := s.artifactPackages[key.String()]
 	s.artifactMu.RUnlock()
 	return pkg, ok
-}
-
-func (s *Server) logRequest(method string, destination *url.URL) uint64 {
-	requestID := s.requestID.Add(1)
-	loggedURL := *destination
-	loggedURL.User = nil
-	loggedURL.RawQuery = ""
-	loggedURL.Fragment = ""
-	s.enqueueLog(logRecord{line: fmt.Sprintf("[%d] REQUEST %s %s\n", requestID, method, loggedURL.String())})
-	return requestID
-}
-
-func (s *Server) logResponse(requestID uint64, statusCode int, method string, destination *url.URL) {
-	loggedURL := *destination
-	loggedURL.User = nil
-	loggedURL.RawQuery = ""
-	loggedURL.Fragment = ""
-	s.enqueueLog(logRecord{line: fmt.Sprintf("[%d] RESPONSE %d %s %s\n", requestID, statusCode, method, loggedURL.String())})
-}
-
-func (s *Server) logResponseBody(requestID uint64, mediaType string, body []byte) {
-	size := int64(len(body))
-	for {
-		used := s.loggedBodyBytes.Load()
-		if size > maxLoggedResponseBodyTotal-used {
-			s.enqueueLog(logRecord{line: fmt.Sprintf("[%d] RESPONSE BODY OMITTED reason=total_budget_exhausted limit=%d\n", requestID, maxLoggedResponseBodyTotal)})
-			return
-		}
-		if s.loggedBodyBytes.CompareAndSwap(used, used+size) {
-			break
-		}
-	}
-	s.enqueueLog(logRecord{requestID: requestID, mediaType: mediaType, body: bytes.Clone(body), isBody: true})
-}
-
-func (s *Server) enqueueLog(record logRecord) {
-	select {
-	case s.logQueue <- record:
-	default:
-		s.droppedLogs.Add(1)
-	}
-}
-
-func (s *Server) writeLogs() {
-	defer close(s.logDone)
-	for record := range s.logQueue {
-		s.writeDroppedLogs()
-		if !record.isBody {
-			_, _ = io.WriteString(s.output, record.line)
-			continue
-		}
-		redacted, err := redactResponseBody(record.body, record.mediaType)
-		if err != nil {
-			_, _ = fmt.Fprintf(s.output, "[%d] RESPONSE BODY OMITTED reason=invalid_json\n", record.requestID)
-			continue
-		}
-		_, _ = fmt.Fprintf(s.output, "[%d] RESPONSE BODY %s\n", record.requestID, strconv.Quote(string(redacted)))
-	}
-	s.writeDroppedLogs()
-}
-
-func (s *Server) writeDroppedLogs() {
-	if count := s.droppedLogs.Swap(0); count > 0 {
-		_, _ = fmt.Fprintf(s.output, "proxy log records dropped: %d (output sink too slow)\n", count)
-	}
-}
-
-func (s *Server) logResponseBodyOmitted(requestID uint64, mediaType string, contentLength int64) {
-	s.enqueueLog(logRecord{line: fmt.Sprintf("[%d] RESPONSE BODY OMITTED content_type=%q content_length=%d\n", requestID, mediaType, contentLength)})
-}
-
-func (s *Server) logResponseBodyTooLarge(requestID uint64, size int64) {
-	s.enqueueLog(logRecord{line: fmt.Sprintf("[%d] RESPONSE BODY OMITTED reason=too_large size=%d limit=%d\n", requestID, size, maxLoggedResponseBodySize)})
-}
-
-func (s *Server) logResponseBodyAborted(requestID uint64) {
-	s.enqueueLog(logRecord{line: fmt.Sprintf("[%d] RESPONSE BODY OMITTED reason=aborted\n", requestID)})
-}
-
-func (s *Server) logError(err error) {
-	s.enqueueLog(logRecord{line: fmt.Sprintf("proxy error: %v\n", err)})
-}
-
-type responseBodyLogger struct {
-	io.ReadCloser
-	server    *Server
-	requestID uint64
-	ended     sync.Once
-	body      bytes.Buffer
-	size      int64
-	mediaType string
-}
-
-func (logger *responseBodyLogger) Read(buffer []byte) (int, error) {
-	read, err := logger.ReadCloser.Read(buffer)
-	if read > 0 {
-		logger.size += int64(read)
-		remaining := maxLoggedResponseBodySize + 1 - logger.body.Len()
-		if remaining > 0 {
-			toBuffer := min(read, remaining)
-			_, _ = logger.body.Write(buffer[:toBuffer])
-		}
-	}
-	if errors.Is(err, io.EOF) {
-		logger.end(true)
-	}
-	return read, err
-}
-
-func (logger *responseBodyLogger) Close() error {
-	err := logger.ReadCloser.Close()
-	logger.end(false)
-	return err
-}
-
-func (logger *responseBodyLogger) end(complete bool) {
-	logger.ended.Do(func() {
-		switch {
-		case !complete:
-			logger.server.logResponseBodyAborted(logger.requestID)
-		case logger.size > maxLoggedResponseBodySize:
-			logger.server.logResponseBodyTooLarge(logger.requestID, logger.size)
-		default:
-			logger.server.logResponseBody(logger.requestID, logger.mediaType, logger.body.Bytes())
-		}
-	})
-}
-
-func redactJSONResponse(body []byte) ([]byte, error) {
-	var value any
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.UseNumber()
-	if err := decoder.Decode(&value); err != nil {
-		return nil, err
-	}
-	return json.Marshal(redactJSONValue(value, ""))
-}
-
-var textURLPattern = regexp.MustCompile(`https?://[^\s"'<>]+`)
-
-func redactResponseBody(body []byte, mediaType string) ([]byte, error) {
-	if isJSONMediaType(mediaType) {
-		return redactJSONResponse(body)
-	}
-	return textURLPattern.ReplaceAllFunc(body, func(match []byte) []byte {
-		parsed, err := url.Parse(string(match))
-		if err != nil {
-			return match
-		}
-		parsed.User = nil
-		parsed.RawQuery = ""
-		parsed.Fragment = ""
-		return []byte(parsed.String())
-	}), nil
-}
-
-func redactJSONValue(value any, key string) any {
-	if isSensitiveJSONKey(key) {
-		return "[REDACTED]"
-	}
-	switch typed := value.(type) {
-	case map[string]any:
-		redacted := make(map[string]any, len(typed))
-		for childKey, child := range typed {
-			redacted[childKey] = redactJSONValue(child, childKey)
-		}
-		return redacted
-	case []any:
-		redacted := make([]any, len(typed))
-		for index, child := range typed {
-			redacted[index] = redactJSONValue(child, key)
-		}
-		return redacted
-	case string:
-		parsed, err := url.Parse(typed)
-		if err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != "" {
-			parsed.User = nil
-			parsed.RawQuery = ""
-			parsed.Fragment = ""
-			return parsed.String()
-		}
-	}
-	return value
-}
-
-func isSensitiveJSONKey(key string) bool {
-	switch strings.ToLower(key) {
-	case "_auth", "_authtoken", "access_token", "authorization", "otp", "password", "_password", "refresh_token", "secret", "token":
-		return true
-	default:
-		return false
-	}
 }
 
 func cloneURL(value *url.URL) *url.URL {

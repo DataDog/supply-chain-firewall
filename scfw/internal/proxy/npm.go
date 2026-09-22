@@ -18,8 +18,8 @@ import (
 	"time"
 )
 
-// Streams are connected to the npm child process. Proxy request logs are
-// written to Stdout alongside npm's own output.
+// Streams are connected to the npm child process. Proxy evaluation and report
+// events are written to Stdout alongside npm's own output.
 type Streams struct {
 	Stdin  io.Reader
 	Stdout io.Writer
@@ -87,7 +87,7 @@ func RunNPMWithConfig(ctx context.Context, executable string, args []string, str
 		stdout = io.Discard
 	}
 	synchronizedStdout := &synchronizedWriter{writer: stdout}
-	server, err := StartWithOptions(config, synchronizedStdout, options)
+	server, err := StartWithOptions(config, options)
 	if err != nil {
 		return err
 	}

@@ -9,11 +9,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -81,13 +83,14 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("scfw proxy: find %s executable: %w", filepath.Base(command[0]), err)
 	}
+	stdout := &proxyOutput{writer: cmd.OutOrStdout()}
 	streams := registryproxy.Streams{
 		Stdin:  cmd.InOrStdin(),
-		Stdout: cmd.OutOrStdout(),
+		Stdout: stdout,
 		Stderr: cmd.ErrOrStderr(),
 	}
 	packageManagerName := filepath.Base(command[0])
-	evaluator := newProxyPackageEvaluator(time.Now().UTC(), packageManagerName)
+	evaluator := newProxyPackageEvaluator(time.Now().UTC(), packageManagerName, stdout)
 	options := registryproxy.Options{HTTPStatus: httpStatus, Evaluate: evaluator.Evaluate}
 	if err := resolveOnWarning(); err != nil {
 		return fmt.Errorf("scfw proxy: %w", err)
@@ -133,15 +136,20 @@ type reportProxyOutcomeFunc func(
 type proxyPackageEvaluator struct {
 	installTimestamp time.Time
 	packageManager   string
+	output           io.Writer
 	resolveDate      func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error)
 	evaluate         func(context.Context, bool, *pm.Set[pm.Package]) (ddapi.ScfwPolicyEvaluationReport, error)
 	report           reportProxyOutcomeFunc
 }
 
-func newProxyPackageEvaluator(installTimestamp time.Time, packageManager string) *proxyPackageEvaluator {
+func newProxyPackageEvaluator(installTimestamp time.Time, packageManager string, output io.Writer) *proxyPackageEvaluator {
+	if output == nil {
+		output = io.Discard
+	}
 	return &proxyPackageEvaluator{
 		installTimestamp: installTimestamp,
 		packageManager:   packageManager,
+		output:           output,
 		resolveDate:      ecosystem.ResolvePublishDate,
 		evaluate:         ddapi.EvaluateInstallTargets,
 		report:           ddapi.ReportFirewallOutcome,
@@ -158,11 +166,13 @@ func (e *proxyPackageEvaluator) Evaluate(ctx context.Context, pkg pm.Package) er
 		}
 	}
 	installTargets := pm.NewSet(pkg)
+	_, _ = fmt.Fprintln(e.output, "scfw proxy: POST /evaluate")
 	evaluationReport, err := e.evaluate(ctx, false, installTargets)
 	if err != nil {
 		return fmt.Errorf("evaluate %s %s: %w", pkg.Name, pkg.Version, err)
 	}
 	action := decideFirewallAction(false, evaluationReport.Outcome)
+	_, _ = fmt.Fprintf(e.output, "scfw proxy: POST /report outcome=%s\n", action)
 	if err := e.report(
 		ctx,
 		e.installTimestamp,
@@ -180,6 +190,17 @@ func (e *proxyPackageEvaluator) Evaluate(ctx context.Context, pkg pm.Package) er
 		return fmt.Errorf("policy evaluation for %s %s returned %s", pkg.Name, pkg.Version, evaluationReport.Outcome)
 	}
 	return nil
+}
+
+type proxyOutput struct {
+	mutex  sync.Mutex
+	writer io.Writer
+}
+
+func (o *proxyOutput) Write(data []byte) (int, error) {
+	o.mutex.Lock()
+	defer o.mutex.Unlock()
+	return o.writer.Write(data)
 }
 
 func supportedProxyManager(name string) bool {

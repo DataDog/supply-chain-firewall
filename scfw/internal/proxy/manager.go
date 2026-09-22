@@ -131,7 +131,7 @@ func Run(ctx context.Context, manager Manager, executable string, args []string,
 		}
 		serverConfig.basicCredentials = credentials
 	}
-	server, err := StartWithOptions(serverConfig, synchronizedStdout, options)
+	server, err := StartWithOptions(serverConfig, options)
 	if err != nil {
 		return err
 	}

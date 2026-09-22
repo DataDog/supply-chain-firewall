@@ -196,17 +196,16 @@ The `SCFW_ON_WARNING` environment variable (`allow` or `block`) has the same eff
 
 ### Experimental package registry proxy
 
-To observe the registry requests made by npm, Yarn, pnpm, Bun, pip, Poetry, or
-uv, run the package manager through the experimental proxy mode. Twine is not a
+To evaluate package downloads made by npm, Yarn, pnpm, Bun, pip, Poetry, or uv,
+run the package manager through the experimental proxy mode. Twine is not a
 supported proxy manager. Commands unknown to SCFW still receive the same
 process-local registry overrides, and requests they send to a configured
 package index are forwarded through the proxy:
 
 ```bash
 $ scfw proxy -- npm install react
-[1] REQUEST GET https://registry.npmjs.org/react
-[1] RESPONSE 200 GET https://registry.npmjs.org/react
-[1] RESPONSE BODY "{\"name\":\"react\",...}"
+scfw proxy: POST /evaluate
+scfw proxy: POST /report outcome=ALLOW
 ```
 
 For example, Python installation commands use the same interface:
@@ -222,8 +221,6 @@ return a chosen status for every intercepted request:
 
 ```bash
 $ scfw proxy --http-status 503 -- npm install react
-[1] REQUEST GET https://registry.npmjs.org/react
-[1] RESPONSE 503 GET https://registry.npmjs.org/react
 ```
 
 `--http-status` accepts final HTTP response codes from 200 through 599. Synthetic
@@ -256,16 +253,12 @@ isolate writes to those files without changing npm's command semantics.
 
 Each package-manager adapter reads its effective default and named/scoped index
 configuration. SCFW then starts a reverse proxy on an ephemeral loopback port
-and applies local registry URLs only to the spawned process. Requests, response
-status codes, and bounded JSON or text response bodies are logged to standard
-output and forwarded to their configured
-registry. Known secrets and URL credentials are redacted. Oversized or non-JSON
-bodies such as package tarballs receive an explicit omission marker, avoiding
-private source leakage and install backpressure. Body logging also has a bounded
-command-wide budget and uses a nonblocking queue; if stdout cannot keep up, a
-dropped-record count is emitted instead of delaying registry traffic. Registry
-and package download URLs in npm packuments, Python simple-index HTML, and PEP
-691 JSON responses are routed back through the proxy so subsequent downloads are
+and applies local registry URLs only to the spawned process. Registry requests,
+responses, URLs, and bodies are not logged. Standard output records only when
+SCFW sends an evaluation or final outcome report; package coordinates are omitted
+from those events. Registry and package download URLs in npm packuments, Python
+simple-index HTML, and PEP 691 JSON responses are routed back through the proxy
+so subsequent downloads are
 observed as well. Ephemeral proxy URLs are omitted from generated npm lockfiles.
 When a distribution download is requested, the npm or PyPI handler derives its
 package name and version and evaluates that package with the configured Datadog

@@ -18,7 +18,7 @@ import (
 
 // npmRegistryDomains are the URL domains associated with the npm registry, ported from
 // ecosystem.py's ECOSYSTEM.registry_domains in the Python reference.
-var npmRegistryDomains = []string{"registry.npmjs.org"}
+var npmRegistryDomains = []string{"registry.npmjs.org", "registry.yarnpkg.com"}
 
 // isNpmRegistrySource reports whether source is a known npm registry URL, ported from
 // package.py's Package.has_registry_source in the Python reference.

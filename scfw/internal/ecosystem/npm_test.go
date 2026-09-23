@@ -18,6 +18,7 @@ func TestIsNpmRegistrySource(t *testing.T) {
 		want   bool
 	}{
 		{name: "registry.npmjs.org", source: "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz", want: true},
+		{name: "registry.yarnpkg.com", source: "https://registry.yarnpkg.com/left-pad/-/left-pad-1.3.0.tgz", want: true},
 		{name: "http scheme", source: "http://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz", want: true},
 		{name: "scoped package", source: "https://registry.npmjs.org/@scope/pkg/-/pkg-1.0.0.tgz", want: true},
 		{name: "unrelated domain", source: "https://example.com/left-pad-1.3.0.tgz", want: false},

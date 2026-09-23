@@ -61,10 +61,15 @@ func init() {
 // resolveOnWarning computes onWarning from --allow-on-warning/--block-on-warning and
 // SCFW_ON_WARNING, which takes precedence over the flags when set.
 func resolveOnWarning() error {
-	if allowOnWarning {
+	return resolveOnWarningFlags(allowOnWarning, blockOnWarning)
+}
+
+func resolveOnWarningFlags(allow, block bool) error {
+	onWarning = evaluation.OutcomeWarn
+	if allow {
 		onWarning = evaluation.OutcomeAllow
 	}
-	if blockOnWarning {
+	if block {
 		onWarning = evaluation.OutcomeBlock
 	}
 

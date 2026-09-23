@@ -90,6 +90,10 @@ func TestProxyPackageEvaluatorReportsAllowedPackage(t *testing.T) {
 	}
 	var output strings.Builder
 	evaluator := newProxyPackageEvaluator(installTimestamp, "npm", &output)
+	evaluator.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+		t.Fatal("package with a publish date triggered a metadata lookup")
+		return time.Time{}, nil
+	}
 	evaluator.evaluate = func(_ context.Context, interactive bool, targets *pm.Set[pm.Package]) (ddapi.ScfwPolicyEvaluationReport, error) {
 		if interactive {
 			t.Error("proxy evaluation is interactive")
@@ -135,6 +139,78 @@ func TestProxyPackageEvaluatorReportsAllowedPackage(t *testing.T) {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("stdout = %q, want %q", output.String(), want)
 		}
+	}
+}
+
+func TestProxyPackageEvaluatorResolvesMissingPublishDate(t *testing.T) {
+	pkg := pm.Package{
+		Ecosystem: ecosystem.PYPI,
+		Name:      "example",
+		Version:   "1.2.3",
+		Source:    "https://files.pythonhosted.org/example-1.2.3.tar.gz",
+	}
+	publishDate := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
+	wantPackage := pkg
+	wantPackage.PublishDate = publishDate
+	evaluator := newProxyPackageEvaluator(time.Now(), "pip", nil)
+	evaluator.resolveDate = func(_ context.Context, gotEcosystem ecosystem.Ecosystem, name, version, source string) (time.Time, error) {
+		if gotEcosystem != pkg.Ecosystem || name != pkg.Name || version != pkg.Version || source != pkg.Source {
+			t.Errorf("resolve package = %s/%q/%q/%q, want %s/%q/%q/%q", gotEcosystem, name, version, source, pkg.Ecosystem, pkg.Name, pkg.Version, pkg.Source)
+		}
+		return publishDate, nil
+	}
+	evaluator.evaluate = func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (ddapi.ScfwPolicyEvaluationReport, error) {
+		if !targets.Contains(wantPackage) {
+			t.Errorf("evaluation targets do not contain enriched package %+v", wantPackage)
+		}
+		return ddapi.ScfwPolicyEvaluationReport{Outcome: ddapi.OutcomeAllow}, nil
+	}
+	evaluator.report = func(_ context.Context, _ time.Time, _ []string, _, _, _ string, targets *pm.Set[pm.Package], _ ddapi.ScfwPolicyEvaluationReport, _ ddapi.Outcome) error {
+		if !targets.Contains(wantPackage) {
+			t.Errorf("report targets do not contain enriched package %+v", wantPackage)
+		}
+		return nil
+	}
+
+	if err := evaluator.Evaluate(context.Background(), pkg); err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+}
+
+func TestProxyPackageEvaluatorRequiresPublishDate(t *testing.T) {
+	tests := []struct {
+		name       string
+		resolveErr error
+		wantError  string
+	}{
+		{name: "resolution fails", resolveErr: errors.New("metadata unavailable"), wantError: "metadata unavailable"},
+		{name: "date absent", wantError: "publish date unavailable"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			pkg := pm.Package{Ecosystem: ecosystem.NPM, Name: "example", Version: "1.2.3", Source: "https://registry.npmjs.org/example/-/example-1.2.3.tgz"}
+			var output strings.Builder
+			evaluator := newProxyPackageEvaluator(time.Now(), "npm", &output)
+			evaluator.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+				return time.Time{}, test.resolveErr
+			}
+			evaluator.evaluate = func(context.Context, bool, *pm.Set[pm.Package]) (ddapi.ScfwPolicyEvaluationReport, error) {
+				t.Fatal("package without a publish date was evaluated")
+				return ddapi.ScfwPolicyEvaluationReport{}, nil
+			}
+			evaluator.report = func(context.Context, time.Time, []string, string, string, string, *pm.Set[pm.Package], ddapi.ScfwPolicyEvaluationReport, ddapi.Outcome) error {
+				t.Fatal("package without a publish date was reported")
+				return nil
+			}
+
+			err := evaluator.Evaluate(context.Background(), pkg)
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("Evaluate() error = %v, want it to contain %q", err, test.wantError)
+			}
+			if output.Len() != 0 {
+				t.Errorf("stdout = %q, want no evaluation or report event", output.String())
+			}
+		})
 	}
 }
 

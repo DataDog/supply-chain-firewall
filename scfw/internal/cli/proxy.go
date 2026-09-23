@@ -160,10 +160,12 @@ func (e *proxyPackageEvaluator) Evaluate(ctx context.Context, pkg pm.Package) er
 	if pkg.PublishDate.IsZero() {
 		publishDate, err := e.resolveDate(ctx, pkg.Ecosystem, pkg.Name, pkg.Version, pkg.Source)
 		if err != nil {
-			slog.Warn("failed to resolve package publish date", "ecosystem", pkg.Ecosystem, "name", pkg.Name, "version", pkg.Version, "error", err)
-		} else {
-			pkg.PublishDate = publishDate
+			return fmt.Errorf("resolve publish date for %s %s: %w", pkg.Name, pkg.Version, err)
 		}
+		if publishDate.IsZero() {
+			return fmt.Errorf("resolve publish date for %s %s: publish date unavailable", pkg.Name, pkg.Version)
+		}
+		pkg.PublishDate = publishDate
 	}
 	installTargets := pm.NewSet(pkg)
 	_, _ = fmt.Fprintln(e.output, "scfw proxy: POST /evaluate")

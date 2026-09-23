@@ -262,9 +262,11 @@ so subsequent downloads are
 observed as well. Ephemeral proxy URLs are omitted from generated npm lockfiles.
 When a distribution download is requested, the npm or PyPI handler derives its
 package name and version and evaluates that package with the configured Datadog
-policy. Non-allow decisions and evaluation failures return HTTP 403 without
-contacting the artifact host. Repeated concurrent downloads of the same package
-share one evaluation.
+policy. If registry metadata did not provide a publication date, SCFW invokes the
+existing ecosystem resolver immediately before evaluation. Unsupported sources,
+failed lookups, and empty publication dates return HTTP 403, as do non-allow
+decisions and evaluation failures, without contacting the artifact host. Repeated
+concurrent downloads of the same package share one evaluation.
 
 Proxy mode does not edit global, user, or project package-manager configuration
 files. npm uses an inherited protected descriptor, Bun and Poetry use temporary

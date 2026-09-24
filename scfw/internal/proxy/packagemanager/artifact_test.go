@@ -49,8 +49,29 @@ func TestPackageFromArtifactURL(t *testing.T) {
 			want: pm.Package{Ecosystem: ecosystem.PYPI, Name: "charset-normalizer", Version: "3.4.2", Source: "https://files.pythonhosted.org/packages/hash/charset-normalizer-3.4.2.tar.gz"},
 			ok:   true,
 		},
+		{
+			name: "Maven Central JAR",
+			url:  "https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0.jar",
+			want: pm.Package{Ecosystem: ecosystem.MAVEN, Name: "org.apache.commons:commons-lang3", Version: "3.17.0", Source: "https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0.jar"},
+			ok:   true,
+		},
+		{
+			name: "Maven Central classified POM",
+			url:  "https://repo1.maven.org/maven2/com/example/tool/1.2.3/tool-1.2.3-tests.pom",
+			want: pm.Package{Ecosystem: ecosystem.MAVEN, Name: "com.example:tool", Version: "1.2.3", Source: "https://repo1.maven.org/maven2/com/example/tool/1.2.3/tool-1.2.3-tests.pom"},
+			ok:   true,
+		},
+		{
+			name: "Maven Central timestamped snapshot",
+			url:  "https://repo.maven.apache.org/maven2/com/example/tool/1.2-SNAPSHOT/tool-1.2-20260923.120000-1.jar",
+			want: pm.Package{Ecosystem: ecosystem.MAVEN, Name: "com.example:tool", Version: "1.2-SNAPSHOT", Source: "https://repo.maven.apache.org/maven2/com/example/tool/1.2-SNAPSHOT/tool-1.2-20260923.120000-1.jar"},
+			ok:   true,
+		},
 		{name: "npm metadata", url: "https://registry.npmjs.org/react"},
 		{name: "PyPI metadata sidecar", url: "https://files.pythonhosted.org/packages/hash/idna-3.10-py3-none-any.whl.metadata"},
+		{name: "Maven metadata", url: "https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/maven-metadata.xml"},
+		{name: "Maven checksum", url: "https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0.jar.sha1"},
+		{name: "non-matching Maven filename", url: "https://repo.maven.apache.org/maven2/com/example/tool/1.0.0/other-1.0.0.jar"},
 		{name: "unrelated archive", url: "https://example.com/react-19.1.1.tgz"},
 	}
 

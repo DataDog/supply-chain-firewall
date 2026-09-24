@@ -33,6 +33,7 @@ func TestRootHelpIdentifiesDatadogAndIncludesExamples(t *testing.T) {
 		"scfw run -- npm install react",
 		"scfw run -- pip install requests",
 		"scfw proxy -- npm install react",
+		"scfw proxy -- mvn dependency:resolve",
 	} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("help output %q does not contain %q", output.String(), want)

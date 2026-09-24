@@ -141,7 +141,7 @@ func (Verifier) Name() string {
 // Verify returns the findings declared for the given package in the
 // user-provided findings lists.
 func (v Verifier) Verify(_ context.Context, pkg pm.Package) ([]evaluation.Finding, error) {
-	if pkg.Ecosystem != ecosystem.NPM && pkg.Ecosystem != ecosystem.PYPI {
+	if pkg.Ecosystem != ecosystem.MAVEN && pkg.Ecosystem != ecosystem.NPM && pkg.Ecosystem != ecosystem.PYPI {
 		return nil, fmt.Errorf("package ecosystem %s is not supported", pkg.Ecosystem)
 	}
 	if pkg.Source != "" && !ecosystem.HasRegistrySource(pkg.Ecosystem, pkg.Source) {
@@ -176,6 +176,8 @@ func parseSeverity(value string) (evaluation.Severity, error) {
 
 func parseEcosystem(value string) (ecosystem.Ecosystem, error) {
 	switch {
+	case strings.EqualFold(value, string(ecosystem.MAVEN)):
+		return ecosystem.MAVEN, nil
 	case strings.EqualFold(value, string(ecosystem.NPM)):
 		return ecosystem.NPM, nil
 	case strings.EqualFold(value, string(ecosystem.PYPI)):

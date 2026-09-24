@@ -14,8 +14,9 @@ import (
 type Ecosystem string
 
 const (
-	NPM  Ecosystem = "npm"
-	PYPI Ecosystem = "PyPI"
+	MAVEN Ecosystem = "Maven"
+	NPM   Ecosystem = "npm"
+	PYPI  Ecosystem = "PyPI"
 )
 
 // HasRegistrySource reports whether source is a known registry URL in the given
@@ -23,6 +24,8 @@ const (
 // is treated as unknown, and callers decide how to handle it.
 func HasRegistrySource(ecosystem Ecosystem, source string) bool {
 	switch ecosystem {
+	case MAVEN:
+		return isMavenRegistrySource(source)
 	case NPM:
 		return isNpmRegistrySource(source)
 	case PYPI:
@@ -36,6 +39,8 @@ func HasRegistrySource(ecosystem Ecosystem, source string) bool {
 // in the given ecosystem, dispatching to the ecosystem-specific implementation.
 func ResolvePublishDate(ctx context.Context, ecosystem Ecosystem, name, version, source string) (time.Time, error) {
 	switch ecosystem {
+	case MAVEN:
+		return resolveMavenPublishDate(ctx, name, version, source)
 	case NPM:
 		return resolveNpmPublishDate(ctx, name, version, source)
 	case PYPI:

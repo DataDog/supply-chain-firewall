@@ -43,6 +43,12 @@ findings:
       - ecosystem: PyPI
         name: evil-2
         versions: ["2.0.0"]
+  - severity: CRITICAL
+    finding: known-malicious-maven-package
+    packages:
+      - ecosystem: maven
+        name: com.example:evil
+        versions: ["1.0.0"]
 `)
 
 	v := New()
@@ -77,6 +83,14 @@ findings:
 	}
 	if len(findings) != 0 {
 		t.Fatalf("findings = %+v, want none for an unlisted package", findings)
+	}
+
+	findings, err = v.Verify(context.Background(), pm.Package{Ecosystem: ecosystem.MAVEN, Name: "com.example:evil", Version: "1.0.0"})
+	if err != nil {
+		t.Fatalf("Verify() returned unexpected error: %v", err)
+	}
+	if len(findings) != 1 || findings[0].Severity != evaluation.SeverityCritical {
+		t.Fatalf("findings = %+v, want the Maven CRITICAL finding", findings)
 	}
 }
 

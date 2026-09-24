@@ -110,6 +110,31 @@ func TestVerifyFollowsPagination(t *testing.T) {
 	}
 }
 
+func TestVerifySupportsMavenCoordinates(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		var query queryRequest
+		if err := json.NewDecoder(request.Body).Decode(&query); err != nil {
+			t.Errorf("Decode(request) returned error: %v", err)
+		}
+		if query.Package.Ecosystem != "Maven" || query.Package.Name != "org.apache.commons:commons-lang3" || query.Version != "3.17.0" {
+			t.Errorf("OSV query = %#v", query)
+		}
+		_, _ = w.Write([]byte(`{"vulns":[]}`))
+	}))
+	defer server.Close()
+
+	v := newTestVerifier(t, server.URL, "")
+	_, err := v.Verify(context.Background(), pm.Package{
+		Ecosystem: ecosystem.MAVEN,
+		Name:      "org.apache.commons:commons-lang3",
+		Version:   "3.17.0",
+		Source:    "https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0.jar",
+	})
+	if err != nil {
+		t.Fatalf("Verify() returned unexpected error: %v", err)
+	}
+}
+
 func TestVerifyReportsFailureOnAPIFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

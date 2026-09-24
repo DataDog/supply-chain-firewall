@@ -8,13 +8,14 @@ package packagemanager
 import (
 	"net/url"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
-// PackageFromArtifactURL identifies a public npm or PyPI registry artifact URL.
+// PackageFromArtifactURL identifies a public npm, PyPI, or Maven Central artifact URL.
 func PackageFromArtifactURL(rawURL string) (pm.Package, bool) {
 	artifactURL, err := url.Parse(rawURL)
 	if err != nil {
@@ -24,7 +25,48 @@ func PackageFromArtifactURL(rawURL string) (pm.Package, bool) {
 	if pkg, ok := npmPackageFromArtifactURL(artifactURL); ok {
 		return pkg, true
 	}
+	if pkg, ok := mavenPackageFromArtifactURL(artifactURL); ok {
+		return pkg, true
+	}
 	return pyPIPackageFromArtifactURL(artifactURL)
+}
+
+func mavenPackageFromArtifactURL(artifactURL *url.URL) (pm.Package, bool) {
+	if !ecosystem.HasRegistrySource(ecosystem.MAVEN, artifactURL.String()) {
+		return pm.Package{}, false
+	}
+
+	parts := strings.Split(strings.Trim(artifactURL.Path, "/"), "/")
+	if len(parts) > 0 && parts[0] == "maven2" {
+		parts = parts[1:]
+	}
+	if len(parts) < 4 {
+		return pm.Package{}, false
+	}
+
+	artifactID := parts[len(parts)-3]
+	version := parts[len(parts)-2]
+	filename := parts[len(parts)-1]
+	extension := path.Ext(filename)
+	if artifactID == "" || version == "" || !slices.Contains([]string{".aar", ".jar", ".klib", ".pom", ".war", ".zip"}, extension) {
+		return pm.Package{}, false
+	}
+
+	base := strings.TrimSuffix(filename, extension)
+	expectedPrefix := artifactID + "-" + version
+	if versionBase, snapshot := strings.CutSuffix(version, "-SNAPSHOT"); snapshot {
+		expectedPrefix = artifactID + "-" + versionBase
+	}
+	if base != expectedPrefix && !strings.HasPrefix(base, expectedPrefix+"-") {
+		return pm.Package{}, false
+	}
+
+	groupParts := parts[:len(parts)-3]
+	if slices.Contains(groupParts, "") {
+		return pm.Package{}, false
+	}
+	name := strings.Join(groupParts, ".") + ":" + artifactID
+	return pm.Package{Ecosystem: ecosystem.MAVEN, Name: name, Version: version, Source: artifactURL.String()}, true
 }
 
 func npmPackageFromArtifactURL(artifactURL *url.URL) (pm.Package, bool) {

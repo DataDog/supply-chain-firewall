@@ -148,7 +148,7 @@ type queryResponse struct {
 // purview (unsupported ecosystem or non-registry artifact source) or when the
 // package could not be verified against the OSV.dev API.
 func (v Verifier) Verify(ctx context.Context, pkg pm.Package) ([]evaluation.Finding, error) {
-	if pkg.Ecosystem != ecosystem.NPM && pkg.Ecosystem != ecosystem.PYPI {
+	if pkg.Ecosystem != ecosystem.MAVEN && pkg.Ecosystem != ecosystem.NPM && pkg.Ecosystem != ecosystem.PYPI {
 		return nil, fmt.Errorf("package ecosystem %s is not supported", pkg.Ecosystem)
 	}
 	if pkg.Source != "" && !ecosystem.HasRegistrySource(pkg.Ecosystem, pkg.Source) {

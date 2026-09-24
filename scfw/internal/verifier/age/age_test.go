@@ -51,6 +51,23 @@ func TestVerifyWarnsOnRecentPackages(t *testing.T) {
 	}
 }
 
+func TestVerifyWarnsOnRecentMavenPackage(t *testing.T) {
+	v := New()
+	findings, err := v.Verify(context.Background(), pm.Package{
+		Ecosystem:   ecosystem.MAVEN,
+		Name:        "org.example:example",
+		Version:     "1.0.0",
+		Source:      "https://repo.maven.apache.org/maven2/org/example/example/1.0.0/example-1.0.0.jar",
+		PublishDate: time.Now().Add(-time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("Verify() returned unexpected error: %v", err)
+	}
+	if len(findings) != 1 || findings[0].Severity != evaluation.SeverityWarning {
+		t.Fatalf("findings = %+v, want a single WARNING finding", findings)
+	}
+}
+
 func TestVerifySkipsUnknownAndNonRegistryPackages(t *testing.T) {
 	v := New()
 

@@ -30,7 +30,7 @@ import (
 
 var proxyCmd = &cobra.Command{
 	Use:   "proxy -- <command>",
-	Short: "Run a supported JavaScript or Python package manager through an HTTPS inspection proxy.",
+	Short: "Run a supported package manager through an HTTPS inspection proxy.",
 	Args:  validateProxyArgs,
 	PreRunE: func(cmd *cobra.Command, _ []string) error {
 		return rejectFlagLikeValues(cmd)

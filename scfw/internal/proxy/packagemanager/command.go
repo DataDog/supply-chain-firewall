@@ -11,6 +11,7 @@ package packagemanager
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,7 +19,9 @@ import (
 	"strings"
 )
 
-var supportedNames = []string{"npm", "yarn", "pnpm", "bun", "pip", "pip3", "poetry", "uv"}
+var supportedNames = []string{"npm", "yarn", "pnpm", "bun", "pip", "pip3", "poetry", "uv", "mvn", "mvnw"}
+
+const mavenTrustStorePassword = "scfw-proxy"
 
 var bunPackageCommands = []string{
 	"add", "ci", "install", "link", "outdated", "patch", "remove", "unlink", "update",
@@ -46,10 +49,53 @@ func Command(ctx context.Context, command []string, proxyURL, certificatePath st
 	if name == "bun" {
 		arguments = bunArguments(arguments, certificatePath)
 	}
+	var mavenTrustStore string
+	if name == "mvn" || name == "mvnw" {
+		mavenTrustStore, err = createMavenTrustStore(ctx, certificatePath)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	child := exec.CommandContext(ctx, executable, arguments...)
-	child.Env = proxyEnvironment(os.Environ(), name, proxyURL, certificatePath)
+	child.Env, err = proxyEnvironment(os.Environ(), name, proxyURL, certificatePath, mavenTrustStore)
+	if err != nil {
+		return nil, err
+	}
 	return child, nil
+}
+
+func createMavenTrustStore(ctx context.Context, certificatePath string) (string, error) {
+	keytool, err := exec.LookPath("keytool")
+	if err != nil {
+		javaHome := os.Getenv("JAVA_HOME")
+		if javaHome == "" {
+			return "", fmt.Errorf("find keytool executable required by Maven: %w", err)
+		}
+		javaHomeKeytool := filepath.Join(javaHome, "bin", "keytool")
+		keytool, err = exec.LookPath(javaHomeKeytool)
+		if err != nil {
+			return "", fmt.Errorf("find keytool executable required by Maven: %w", err)
+		}
+	}
+
+	trustStorePath := filepath.Join(filepath.Dir(certificatePath), "maven-truststore.p12")
+	command := exec.CommandContext(ctx, keytool,
+		"-importcert",
+		"-noprompt",
+		"-alias", "scfw-proxy-ca",
+		"-file", certificatePath,
+		"-keystore", trustStorePath,
+		"-storetype", "PKCS12",
+		"-storepass", mavenTrustStorePassword,
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("create Maven trust store: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	if err := os.Chmod(trustStorePath, 0o600); err != nil {
+		return "", fmt.Errorf("secure Maven trust store: %w", err)
+	}
+	return trustStorePath, nil
 }
 
 func bunArguments(arguments []string, certificatePath string) []string {
@@ -83,7 +129,7 @@ func bunPackageCommandIndex(arguments []string) int {
 	return -1
 }
 
-func proxyEnvironment(environment []string, name, proxyURL, certificatePath string) []string {
+func proxyEnvironment(environment []string, name, proxyURL, certificatePath, mavenTrustStore string) ([]string, error) {
 	overrides := map[string]string{
 		"GIT_SSL_CAINFO": certificatePath,
 		"HTTP_PROXY":     proxyURL,
@@ -115,6 +161,31 @@ func proxyEnvironment(environment []string, name, proxyURL, certificatePath stri
 		overrides["REQUESTS_CA_BUNDLE"] = certificatePath
 	case "uv":
 		overrides["SSL_CERT_FILE"] = certificatePath
+	case "mvn", "mvnw":
+		if mavenTrustStore == "" {
+			return nil, fmt.Errorf("missing Maven trust store path")
+		}
+		parsedProxyURL, err := url.Parse(proxyURL)
+		if err != nil || parsedProxyURL.Hostname() == "" || parsedProxyURL.Port() == "" {
+			return nil, fmt.Errorf("parse Maven proxy URL %q", proxyURL)
+		}
+		jvmOptions := strings.Join([]string{
+			"-Daether.connector.http.useSystemProperties=true",
+			"-Daether.transport.apache.useSystemProperties=true",
+			"-Dhttp.proxyHost=" + parsedProxyURL.Hostname(),
+			"-Dhttp.proxyPort=" + parsedProxyURL.Port(),
+			"-Dhttps.proxyHost=" + parsedProxyURL.Hostname(),
+			"-Dhttps.proxyPort=" + parsedProxyURL.Port(),
+			"-Dhttp.nonProxyHosts=",
+			"-Djavax.net.ssl.trustStore=" + mavenTrustStore,
+			"-Djavax.net.ssl.trustStorePassword=" + mavenTrustStorePassword,
+			"-Djavax.net.ssl.trustStoreType=PKCS12",
+		}, " ")
+		overrides["MAVEN_OPTS"] = appendEnvironmentValue(environmentValue(environment, "MAVEN_OPTS"), jvmOptions)
+		overrides["MAVEN_ARGS"] = appendEnvironmentValue(
+			environmentValue(environment, "MAVEN_ARGS"),
+			"-Daether.connector.http.useSystemProperties=true -Daether.transport.apache.useSystemProperties=true",
+		)
 	}
 
 	result := make([]string, 0, len(environment)+len(overrides))
@@ -134,5 +205,22 @@ func proxyEnvironment(environment []string, name, proxyURL, certificatePath stri
 	for _, key := range keys {
 		result = append(result, key+"="+overrides[key])
 	}
-	return result
+	return result, nil
+}
+
+func environmentValue(environment []string, wantedKey string) string {
+	for _, entry := range environment {
+		key, value, found := strings.Cut(entry, "=")
+		if found && key == wantedKey {
+			return value
+		}
+	}
+	return ""
+}
+
+func appendEnvironmentValue(existing, addition string) string {
+	if strings.TrimSpace(existing) == "" {
+		return addition
+	}
+	return existing + " " + addition
 }

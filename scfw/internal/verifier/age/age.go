@@ -59,7 +59,7 @@ func (Verifier) Name() string {
 // outside their ecosystem's registry (whose publish date cannot be resolved),
 // are skipped rather than failed.
 func (v Verifier) Verify(_ context.Context, pkg pm.Package) ([]evaluation.Finding, error) {
-	if pkg.Ecosystem != ecosystem.NPM && pkg.Ecosystem != ecosystem.PYPI {
+	if pkg.Ecosystem != ecosystem.MAVEN && pkg.Ecosystem != ecosystem.NPM && pkg.Ecosystem != ecosystem.PYPI {
 		return nil, fmt.Errorf("package ecosystem %s is not supported", pkg.Ecosystem)
 	}
 	if v.minimumAge == 0 {

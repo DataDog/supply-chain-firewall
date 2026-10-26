@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -138,6 +139,9 @@ func TestRunThroughProxyStopsProxyOnEveryExitPath(t *testing.T) {
 					if strings.Join(command, " ") != "install left-pad" {
 						t.Errorf("command = %q, want %q", command, "install left-pad")
 					}
+					if _, err := os.Stat(config.CACertificatePath); err != nil {
+						t.Errorf("CA certificate is not available while the command runs: %v", err)
+					}
 					return tt.run(ctx, cancel)
 				},
 			}
@@ -166,8 +170,8 @@ func TestRunThroughProxyStopsProxyOnEveryExitPath(t *testing.T) {
 	}
 }
 
-// assertProxyStopped checks that the command received a loopback proxy and
-// that the proxy no longer serves requests.
+// assertProxyStopped checks that the command received a loopback proxy, that
+// the proxy no longer serves requests, and that its CA certificate is gone.
 func assertProxyStopped(t *testing.T, config proxy.ClientConfig) {
 	t.Helper()
 	proxyURL, err := url.Parse(config.URL)
@@ -181,6 +185,9 @@ func assertProxyStopped(t *testing.T, config proxy.ClientConfig) {
 	if response, err := client.Get("http://example.invalid/"); err == nil {
 		_ = response.Body.Close()
 		t.Error("proxy still serves requests after the command exited")
+	}
+	if _, err := os.Stat(filepath.Dir(config.CACertificatePath)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("proxy certificate directory still exists: %v", err)
 	}
 }
 

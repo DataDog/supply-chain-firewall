@@ -546,24 +546,6 @@ func TestResponsesStreamWithoutBuffering(t *testing.T) {
 	}
 }
 
-func TestCloseCancelsHookContext(t *testing.T) {
-	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), false)
-	hookContexts := make(chan context.Context, 1)
-	options.RequestHooks = []RequestHook{func(ctx context.Context, _ *http.Request) error {
-		hookContexts <- ctx
-		return nil
-	}}
-	server := startTestProxy(t, options)
-
-	get(t, newProxyClient(t, server), registryURL)
-	if err := server.Close(); err != nil {
-		t.Fatalf("Close() returned unexpected error: %v", err)
-	}
-	if err := (<-hookContexts).Err(); !errors.Is(err, context.Canceled) {
-		t.Errorf("hook context error after Close() = %v, want context.Canceled", err)
-	}
-}
-
 func TestRedactURL(t *testing.T) {
 	u, _ := url.Parse("https://user:token@registry.example/pkg/-/pkg-1.0.0.tgz?token=secret")
 	if got, want := redactURL(u), "https://registry.example/pkg/-/pkg-1.0.0.tgz"; got != want {
@@ -656,5 +638,121 @@ func TestIgnoresEnvironmentProxySettings(t *testing.T) {
 	status, _ := get(t, newProxyClient(t, startTestProxy(t, options)), registryURL)
 	if status != http.StatusOK || hits.Load() != 0 {
 		t.Errorf("status %d, environment proxy hits %d; want 200, 0", status, hits.Load())
+	}
+}
+
+func TestCloseCancelsRunningHooks(t *testing.T) {
+	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), false)
+	hookStarted, hookCanceled := make(chan struct{}), make(chan struct{})
+	options.RequestHooks = []RequestHook{
+		func(ctx context.Context, _ *http.Request) error {
+			close(hookStarted)
+			<-ctx.Done()
+			close(hookCanceled)
+			return ctx.Err()
+		},
+	}
+	server := startTestProxy(t, options)
+	client := newProxyClient(t, server)
+	go func() {
+		if response, err := client.Get(registryURL); err == nil {
+			_ = response.Body.Close()
+		}
+	}()
+
+	select {
+	case <-hookStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("request hook never ran")
+	}
+	if err := server.Close(); err != nil {
+		t.Fatalf("Close() returned unexpected error: %v", err)
+	}
+	select {
+	case <-hookCanceled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close() did not cancel the running hook")
+	}
+}
+
+func TestCloseCancelsInFlightUpstreamRequests(t *testing.T) {
+	upstreamCanceled := make(chan struct{})
+	testDone := make(chan struct{})
+	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "first")
+		w.(http.Flusher).Flush()
+		select {
+		case <-r.Context().Done():
+			close(upstreamCanceled)
+		case <-testDone:
+		}
+	}), true)
+	// Registered after the registry, so it runs first and unblocks the handler
+	// even if the proxy leaks the request.
+	t.Cleanup(func() { close(testDone) })
+	server := startTestProxy(t, options)
+
+	response, err := newProxyClient(t, server).Get(registryURL + "/artifact.tgz")
+	if err != nil {
+		t.Fatalf("Get() returned unexpected error: %v", err)
+	}
+	defer response.Body.Close()
+	if _, err := io.ReadFull(response.Body, make([]byte, len("first"))); err != nil {
+		t.Fatalf("reading first chunk returned unexpected error: %v", err)
+	}
+
+	if err := server.Close(); err != nil {
+		t.Fatalf("Close() returned unexpected error: %v", err)
+	}
+	select {
+	case <-upstreamCanceled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("upstream request was still active after Close() returned")
+	}
+}
+
+func TestCloseTerminatesOpenTunnels(t *testing.T) {
+	server := startTestProxy(t, Options{})
+	conn, reader := openTunnel(t, server, "registry.npmjs.org:443")
+
+	closed := make(chan error, 1)
+	go func() { closed <- server.Close() }()
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatalf("Close() returned unexpected error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close() did not return while a tunnel was open")
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	var netErr net.Error
+	if _, err := io.ReadAll(reader); errors.As(err, &netErr) && netErr.Timeout() {
+		t.Error("tunnel stayed open after Close()")
+	}
+}
+
+func TestParentContextCancellationAbortsRequests(t *testing.T) {
+	var upstreamHits atomic.Int32
+	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		upstreamHits.Add(1)
+	}), false)
+	ctx, cancel := context.WithCancel(context.Background())
+	server, err := Start(ctx, options)
+	if err != nil {
+		t.Fatalf("Start() returned unexpected error: %v", err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+
+	cancel()
+	if response, err := newProxyClient(t, server).Get(registryURL); err == nil {
+		_ = response.Body.Close()
+		if response.StatusCode == http.StatusOK {
+			t.Error("request succeeded after the proxy's context was canceled")
+		}
+	}
+	if upstreamHits.Load() != 0 {
+		t.Errorf("upstream served %d requests after cancellation, want 0", upstreamHits.Load())
 	}
 }

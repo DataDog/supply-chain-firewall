@@ -32,9 +32,6 @@ const (
 
 	certificateFileName = "ca.pem"
 
-	// shutdownTimeout bounds how long Close waits for in-flight exchanges.
-	shutdownTimeout = 2 * time.Second
-
 	// maxIdleConnsPerHost keeps upstream connections for reuse: package
 	// managers fetch many artifacts concurrently from one or two registries,
 	// and the default of 2 would reconnect after every burst.
@@ -42,16 +39,16 @@ const (
 )
 
 // RequestHook observes a request before it is sent upstream. ctx is canceled
-// when the proxy closes. Returning a non-nil error rejects the request with
-// HTTP 403 Forbidden and the error text as body, without contacting upstream.
-// Hooks must not consume the request body.
+// when the proxy closes. Returning a non-nil error rejects
+// the request with HTTP 403 Forbidden and the error text as body, without
+// contacting upstream. Hooks must not consume the request body.
 type RequestHook func(ctx context.Context, request *http.Request) error
 
 // ResponseHook observes an upstream response before it is streamed back to the
-// client. ctx is canceled when the proxy closes. The body is forwarded as-is,
-// including any Content-Encoding. A hook that needs the body may replace
-// response.Body with a reader that wraps the original, but must preserve
-// streaming and never buffer whole artifacts.
+// client. ctx is canceled when the proxy closes. The body
+// is forwarded as-is, including any Content-Encoding. A hook that needs the
+// body may replace response.Body with a reader that wraps the original, but
+// must preserve streaming and never buffer whole artifacts.
 type ResponseHook func(ctx context.Context, response *http.Response)
 
 // Options configures a proxy.
@@ -93,10 +90,16 @@ type Server struct {
 	clientConfig ClientConfig
 	served       chan error
 
-	// ctx is given to hooks. It is canceled when the caller's context is
-	// canceled or Close is called.
+	// ctx is the context of every proxied request and hook. It is canceled
+	// when the caller's context is canceled or Close is called, aborting
+	// in-flight upstream exchanges.
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// connections holds every open client connection, including the CONNECT
+	// tunnels goproxy hijacks, which http.Server stops tracking.
+	connectionsMutex sync.Mutex
+	connections      map[net.Conn]struct{}
 
 	closeOnce sync.Once
 	closeErr  error
@@ -105,7 +108,7 @@ type Server struct {
 // Start creates a per-run CA, writes its public certificate to a private
 // temporary directory, and starts a proxy on a loopback ephemeral port. The
 // caller must call Close once the proxied process has exited. Canceling ctx
-// cancels the context given to hooks, but does not stop the server.
+// cancels in-flight requests, but does not release the proxy's resources.
 func Start(ctx context.Context, options Options) (*Server, error) {
 	ca, err := newCertificateAuthority()
 	if err != nil {
@@ -138,11 +141,13 @@ func Start(ctx context.Context, options Options) (*Server, error) {
 		served:       make(chan error, 1),
 		ctx:          serverCtx,
 		cancel:       cancel,
+		connections:  make(map[net.Conn]struct{}),
 	}
 	server.httpServer = &http.Server{
 		Handler:           server.newHandler(ca, options.RequestHooks, options.ResponseHooks),
 		ReadHeaderTimeout: 30 * time.Second,
 		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelDebug),
+		ConnState:         server.trackConnection,
 	}
 
 	go func() {
@@ -159,21 +164,24 @@ func (server *Server) ClientConfig() ClientConfig {
 }
 
 // Close stops the proxy and removes its temporary certificate material. It
-// cancels the context given to hooks. Close is idempotent.
+// cancels in-flight requests and hooks and closes every connection, including
+// open CONNECT tunnels. Close is idempotent.
 func (server *Server) Close() error {
 	server.closeOnce.Do(func() {
 		server.cancel()
-
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		defer cancel()
-		shutdownErr := server.httpServer.Shutdown(shutdownCtx)
+		closeErr := server.httpServer.Close()
+		server.connectionsMutex.Lock()
+		for conn := range server.connections {
+			_ = conn.Close()
+		}
+		server.connectionsMutex.Unlock()
 		server.transport.CloseIdleConnections()
 		serveErr := <-server.served
 		removeErr := os.RemoveAll(filepath.Dir(server.clientConfig.CACertificatePath))
 
 		var errs []error
-		if shutdownErr != nil && !errors.Is(shutdownErr, context.DeadlineExceeded) {
-			errs = append(errs, fmt.Errorf("shut down proxy: %w", shutdownErr))
+		if closeErr != nil {
+			errs = append(errs, fmt.Errorf("shut down proxy: %w", closeErr))
 		}
 		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			errs = append(errs, fmt.Errorf("serve proxy: %w", serveErr))
@@ -185,6 +193,19 @@ func (server *Server) Close() error {
 		slog.Debug("stopped package manager proxy")
 	})
 	return server.closeErr
+}
+
+// trackConnection records open client connections for Close. Hijacked
+// connections are never reported closed, so they stay recorded until Close.
+func (server *Server) trackConnection(conn net.Conn, state http.ConnState) {
+	server.connectionsMutex.Lock()
+	defer server.connectionsMutex.Unlock()
+	switch state {
+	case http.StateNew:
+		server.connections[conn] = struct{}{}
+	case http.StateClosed:
+		delete(server.connections, conn)
+	}
 }
 
 func (server *Server) newHandler(ca *certificateAuthority, requestHooks []RequestHook, responseHooks []ResponseHook) *goproxy.ProxyHttpServer {
@@ -213,7 +234,9 @@ func (server *Server) newHandler(ca *certificateAuthority, requestHooks []Reques
 	})
 
 	handler.OnRequest().DoFunc(func(request *http.Request, proxyCtx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-		if err := runRequestHooks(server.ctx, requestHooks, request); err != nil {
+		// Tie the request to the proxy's lifetime, so Close aborts it.
+		request = request.WithContext(server.ctx)
+		if err := runRequestHooks(requestHooks, request); err != nil {
 			slog.Debug("proxy rejected request", "method", request.Method, "url", redactURL(request.URL), "reason", err)
 			return request, goproxy.NewResponse(request, goproxy.ContentTypeText, http.StatusForbidden, err.Error()+"\n")
 		}
@@ -225,7 +248,7 @@ func (server *Server) newHandler(ca *certificateAuthority, requestHooks []Reques
 				return nil, err
 			}
 			for _, hook := range responseHooks {
-				hook(server.ctx, response)
+				hook(request.Context(), response)
 			}
 			return response, nil
 		})
@@ -235,9 +258,9 @@ func (server *Server) newHandler(ca *certificateAuthority, requestHooks []Reques
 	return handler
 }
 
-func runRequestHooks(ctx context.Context, hooks []RequestHook, request *http.Request) error {
+func runRequestHooks(hooks []RequestHook, request *http.Request) error {
 	for _, hook := range hooks {
-		if err := hook(ctx, request); err != nil {
+		if err := hook(request.Context(), request); err != nil {
 			return err
 		}
 	}

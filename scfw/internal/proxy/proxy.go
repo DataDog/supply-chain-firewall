@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/elazarl/goproxy"
+	"golang.org/x/net/http/httpproxy"
 )
 
 const (
@@ -55,6 +56,13 @@ type ResponseHook func(ctx context.Context, response *http.Response)
 
 // Options configures a proxy.
 type Options struct {
+	// Upstream is the proxy configuration that was in effect before SCFW, as
+	// supplied by the package manager integration. Outbound requests honor it so
+	// corporate proxies keep working. The zero value connects directly; the
+	// process environment is never consulted, which prevents the proxy from
+	// routing to itself through the variables it sets for its child.
+	Upstream httpproxy.Config
+
 	// RequestHooks run, in order, for each request. The first rejection wins.
 	RequestHooks []RequestHook
 
@@ -238,8 +246,12 @@ func runRequestHooks(ctx context.Context, hooks []RequestHook, request *http.Req
 
 func newUpstreamTransport(options Options) *http.Transport {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	// Connect directly; never consult the process environment for a proxy.
-	transport.Proxy = nil
+	// Route through the supplied upstream proxy only; never consult the
+	// process environment.
+	proxyFunc := options.Upstream.ProxyFunc()
+	transport.Proxy = func(request *http.Request) (*url.URL, error) {
+		return proxyFunc(request.URL)
+	}
 	// Intercepted HTTPS is re-encrypted toward the registry, so the proxy, not
 	// the package manager, now verifies the registry's certificate.
 	transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: options.upstreamRootCAs}

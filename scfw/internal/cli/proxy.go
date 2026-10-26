@@ -7,6 +7,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -25,7 +26,8 @@ func proxyEnabled() bool {
 }
 
 // runThroughProxy runs command through a proxy created for this invocation
-// alone. The proxy is stopped once the command exits, whatever the outcome.
+// alone, chained to the package manager's pre-existing upstream proxy. The proxy
+// is stopped once the command exits, whatever the outcome.
 // commandErr is the command's own failure; setupErr means the command never ran.
 func runThroughProxy(ctx context.Context, runner pm.ProxyRunner, command []string) (commandErr, setupErr error) {
 	// SIGINT already cancels ctx (see main). Also treat SIGTERM as cancellation
@@ -33,7 +35,12 @@ func runThroughProxy(ctx context.Context, runner pm.ProxyRunner, command []strin
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM)
 	defer stop()
 
-	server, err := proxy.Start(ctx, proxy.Options{})
+	upstream, err := runner.UpstreamProxy(command)
+	if err != nil {
+		return nil, fmt.Errorf("resolve upstream proxy: %w", err)
+	}
+
+	server, err := proxy.Start(ctx, proxy.Options{Upstream: upstream})
 	if err != nil {
 		return nil, err
 	}

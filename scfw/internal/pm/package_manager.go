@@ -9,6 +9,8 @@ import (
 	"context"
 	"errors"
 
+	"golang.org/x/net/http/httpproxy"
+
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
@@ -23,6 +25,9 @@ type PackageManager interface {
 // Supply Chain Firewall proxy, which evaluates packages as they are downloaded
 // rather than resolving install targets ahead of time.
 type ProxyRunner interface {
+	// UpstreamProxy returns the proxy configuration the package manager would
+	// use for command without SCFW, so that the SCFW proxy can chain to it.
+	UpstreamProxy(command []string) (httpproxy.Config, error)
 	// RunCommandThroughProxy runs command configured to route its traffic
 	// through the given proxy, without changing any persistent package manager
 	// configuration.

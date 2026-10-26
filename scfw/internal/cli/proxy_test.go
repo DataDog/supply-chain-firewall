@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/http/httpproxy"
+
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
@@ -24,9 +26,14 @@ import (
 // fakeProxyPackageManager is a package manager that supports proxy mode.
 type fakeProxyPackageManager struct {
 	fakePackageManager
-	runProxied func(ctx context.Context, command []string, config proxy.ClientConfig) error
+	upstreamErr error
+	runProxied  func(ctx context.Context, command []string, config proxy.ClientConfig) error
 
 	proxyRunCalls int
+}
+
+func (manager *fakeProxyPackageManager) UpstreamProxy([]string) (httpproxy.Config, error) {
+	return httpproxy.Config{}, manager.upstreamErr
 }
 
 func (manager *fakeProxyPackageManager) RunCommandThroughProxy(ctx context.Context, command []string, config proxy.ClientConfig) error {
@@ -167,6 +174,18 @@ func TestRunThroughProxyStopsProxyOnEveryExitPath(t *testing.T) {
 			}
 			assertProxyStopped(t, seen)
 		})
+	}
+}
+
+func TestRunThroughProxyReportsUpstreamResolutionFailure(t *testing.T) {
+	manager := &fakeProxyPackageManager{upstreamErr: errors.New("bad proxy configuration")}
+
+	commandErr, err := runThroughProxy(context.Background(), manager, []string{"install"})
+	if err == nil || !strings.Contains(err.Error(), "bad proxy configuration") {
+		t.Errorf("runThroughProxy() setup error = %v, want the upstream resolution failure", err)
+	}
+	if commandErr != nil || manager.proxyRunCalls != 0 {
+		t.Errorf("command error %v, RunCommandThroughProxy calls %d; want nil, 0", commandErr, manager.proxyRunCalls)
 	}
 }
 

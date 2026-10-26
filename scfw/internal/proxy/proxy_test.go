@@ -25,6 +25,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/elazarl/goproxy"
+	"golang.org/x/net/http/httpproxy"
 )
 
 // testRegistryHost is the name test registries are reached by. It is not a
@@ -568,5 +571,90 @@ func TestRedactURL(t *testing.T) {
 	}
 	if got := redactURL(nil); got != "" {
 		t.Errorf("redactURL(nil) = %q, want empty", got)
+	}
+}
+
+// startUpstreamProxy starts a forwarding proxy standing in for a corporate
+// proxy, which dials registries with dial, and counts the requests and CONNECT
+// tunnels it handles.
+func startUpstreamProxy(t *testing.T, dial func(context.Context, string, string) (net.Conn, error)) (string, *atomic.Int32) {
+	t.Helper()
+	var hits atomic.Int32
+	upstream := goproxy.NewProxyHttpServer()
+	upstream.Logger = proxyLogger{}
+	upstream.Tr = &http.Transport{DialContext: dial}
+	upstream.ConnectDial = func(network, address string) (net.Conn, error) {
+		return dial(context.Background(), network, address)
+	}
+	upstream.OnRequest().HandleConnectFunc(func(host string, _ *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
+		hits.Add(1)
+		return goproxy.OkConnect, host
+	})
+	upstream.OnRequest().DoFunc(func(request *http.Request, _ *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+		hits.Add(1)
+		return request, nil
+	})
+	upstreamServer := httptest.NewServer(upstream)
+	t.Cleanup(upstreamServer.Close)
+	return upstreamServer.URL, &hits
+}
+
+func TestChainsToUpstreamProxy(t *testing.T) {
+	tests := []struct {
+		name     string
+		useTLS   bool
+		upstream func(upstreamURL string) httpproxy.Config
+		wantHits int32
+	}{
+		{
+			name:     "https through HTTPS proxy",
+			useTLS:   true,
+			upstream: func(u string) httpproxy.Config { return httpproxy.Config{HTTPSProxy: u} },
+			wantHits: 1,
+		},
+		{
+			name:     "http through HTTP proxy",
+			useTLS:   false,
+			upstream: func(u string) httpproxy.Config { return httpproxy.Config{HTTPProxy: u} },
+			wantHits: 1,
+		},
+		{
+			name:     "no proxy match connects directly",
+			useTLS:   true,
+			upstream: func(u string) httpproxy.Config { return httpproxy.Config{HTTPSProxy: u, NoProxy: testRegistryHost} },
+			wantHits: 0,
+		},
+		{
+			name:     "no upstream connects directly",
+			useTLS:   true,
+			upstream: func(string) httpproxy.Config { return httpproxy.Config{} },
+			wantHits: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registryURL, options := newTestRegistry(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), tt.useTLS)
+			upstreamURL, hits := startUpstreamProxy(t, options.dialContext)
+			options.Upstream = tt.upstream(upstreamURL)
+
+			status, _ := get(t, newProxyClient(t, startTestProxy(t, options)), registryURL+"/pkg")
+			if status != http.StatusOK || hits.Load() != tt.wantHits {
+				t.Errorf("status %d, upstream proxy hits %d; want 200, %d", status, hits.Load(), tt.wantHits)
+			}
+		})
+	}
+}
+
+func TestIgnoresEnvironmentProxySettings(t *testing.T) {
+	// The proxy's own environment may point at a proxy (including itself, via a
+	// nested invocation); only Options.Upstream may route outbound traffic.
+	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), false)
+	upstreamURL, hits := startUpstreamProxy(t, options.dialContext)
+	t.Setenv("HTTP_PROXY", upstreamURL)
+	t.Setenv("HTTPS_PROXY", upstreamURL)
+
+	status, _ := get(t, newProxyClient(t, startTestProxy(t, options)), registryURL)
+	if status != http.StatusOK || hits.Load() != 0 {
+		t.Errorf("status %d, environment proxy hits %d; want 200, 0", status, hits.Load())
 	}
 }

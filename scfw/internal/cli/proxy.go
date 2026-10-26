@@ -33,7 +33,7 @@ func runThroughProxy(ctx context.Context, runner pm.ProxyRunner, command []strin
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM)
 	defer stop()
 
-	server, err := proxy.Start(proxy.Options{})
+	server, err := proxy.Start(ctx, proxy.Options{})
 	if err != nil {
 		return nil, err
 	}

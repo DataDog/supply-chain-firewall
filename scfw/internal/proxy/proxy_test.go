@@ -34,7 +34,7 @@ const testRegistryHost = "registry.test"
 
 func startTestProxy(t *testing.T, options Options) *Server {
 	t.Helper()
-	server, err := Start(options)
+	server, err := Start(context.Background(), options)
 	if err != nil {
 		t.Fatalf("Start() returned unexpected error: %v", err)
 	}
@@ -388,5 +388,185 @@ func TestDiagnosticsDoNotLogRequestData(t *testing.T) {
 
 	if strings.Contains(logs.String(), "secret-token") {
 		t.Errorf("logs contain the Authorization token:\n%s", logs.String())
+	}
+}
+
+func TestRequestHookRejectsBeforeUpstream(t *testing.T) {
+	var upstreamHits, responseHookCalls atomic.Int32
+	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		upstreamHits.Add(1)
+	}), true)
+	options.RequestHooks = []RequestHook{
+		func(_ context.Context, request *http.Request) error {
+			if strings.HasSuffix(request.URL.Path, ".tgz") {
+				return errors.New("package blocked by Supply Chain Firewall")
+			}
+			return nil
+		},
+	}
+	options.ResponseHooks = []ResponseHook{
+		func(context.Context, *http.Response) { responseHookCalls.Add(1) },
+	}
+	client := newProxyClient(t, startTestProxy(t, options))
+
+	status, body := get(t, client, registryURL+"/left-pad/-/left-pad-1.0.0.tgz")
+	if status != http.StatusForbidden || !strings.Contains(body, "package blocked by Supply Chain Firewall") {
+		t.Errorf("response = %d %q, want 403 with the rejection reason", status, body)
+	}
+	if upstreamHits.Load() != 0 || responseHookCalls.Load() != 0 {
+		t.Errorf("rejected request: upstream hits %d, response hook calls %d; want 0, 0", upstreamHits.Load(), responseHookCalls.Load())
+	}
+
+	// Other requests on the same tunnel still flow.
+	if status, _ := get(t, client, registryURL+"/left-pad"); status != http.StatusOK || upstreamHits.Load() != 1 {
+		t.Errorf("allowed request: status %d, upstream hits %d; want 200, 1", status, upstreamHits.Load())
+	}
+}
+
+func TestRequestHooksRunInOrderUntilRejection(t *testing.T) {
+	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), false)
+	var calls []string
+	options.RequestHooks = []RequestHook{
+		func(context.Context, *http.Request) error { calls = append(calls, "first"); return nil },
+		func(context.Context, *http.Request) error { calls = append(calls, "second"); return errors.New("no") },
+		func(context.Context, *http.Request) error { calls = append(calls, "third"); return nil },
+	}
+
+	get(t, newProxyClient(t, startTestProxy(t, options)), registryURL)
+	if got := strings.Join(calls, ","); got != "first,second" {
+		t.Errorf("hooks ran %q, want %q", got, "first,second")
+	}
+}
+
+func TestHooksObserveRequestsAndResponses(t *testing.T) {
+	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"name":"left-pad"}`)
+	}), true)
+
+	var mutex sync.Mutex
+	var requests, responses []string
+	var observedBody strings.Builder
+	options.RequestHooks = []RequestHook{
+		func(_ context.Context, request *http.Request) error {
+			mutex.Lock()
+			defer mutex.Unlock()
+			requests = append(requests, request.Method+" "+request.URL.String())
+			return nil
+		},
+	}
+	options.ResponseHooks = []ResponseHook{
+		func(_ context.Context, response *http.Response) {
+			mutex.Lock()
+			defer mutex.Unlock()
+			responses = append(responses, fmt.Sprintf("%d %s", response.StatusCode, response.Request.URL))
+			// A hook may observe the body by wrapping it, as long as it streams.
+			response.Body = struct {
+				io.Reader
+				io.Closer
+			}{io.TeeReader(response.Body, &observedBody), response.Body}
+		},
+	}
+
+	target := registryURL + "/left-pad"
+	_, body := get(t, newProxyClient(t, startTestProxy(t, options)), target)
+
+	mutex.Lock()
+	defer mutex.Unlock()
+	if len(requests) != 1 || requests[0] != "GET "+target {
+		t.Errorf("observed requests = %q, want [%q]", requests, "GET "+target)
+	}
+	if len(responses) != 1 || responses[0] != "200 "+target {
+		t.Errorf("observed responses = %q, want [%q]", responses, "200 "+target)
+	}
+	if body != `{"name":"left-pad"}` || observedBody.String() != body {
+		t.Errorf("client body = %q, hook body = %q; want both %q", body, observedBody.String(), `{"name":"left-pad"}`)
+	}
+}
+
+func TestResponsesStreamWithoutBuffering(t *testing.T) {
+	tests := []struct {
+		name          string
+		contentLength bool
+		responseHook  bool
+	}{
+		{name: "known length", contentLength: true},
+		{name: "chunked", contentLength: false},
+		{name: "known length with response hook", contentLength: true, responseHook: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			release := make(chan struct{})
+			var releaseOnce sync.Once
+			releaseUpstream := func() { releaseOnce.Do(func() { close(release) }) }
+			defer releaseUpstream()
+
+			registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if tt.contentLength {
+					w.Header().Set("Content-Length", "10")
+				}
+				_, _ = io.WriteString(w, "first")
+				w.(http.Flusher).Flush()
+				<-release
+				_, _ = io.WriteString(w, "-last")
+			}), true)
+			if tt.responseHook {
+				options.ResponseHooks = []ResponseHook{func(context.Context, *http.Response) {}}
+			}
+
+			response, err := newProxyClient(t, startTestProxy(t, options)).Get(registryURL + "/artifact.tgz")
+			if err != nil {
+				t.Fatalf("Get() returned unexpected error: %v", err)
+			}
+			defer response.Body.Close()
+
+			// The first chunk must arrive while upstream is still holding the rest.
+			first := make([]byte, len("first"))
+			readDone := make(chan error, 1)
+			go func() {
+				_, err := io.ReadFull(response.Body, first)
+				readDone <- err
+			}()
+			select {
+			case err := <-readDone:
+				if err != nil || string(first) != "first" {
+					t.Fatalf("first chunk = %q, %v; want %q", first, err, "first")
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("proxy buffered the response instead of streaming it")
+			}
+
+			releaseUpstream()
+			if rest, err := io.ReadAll(response.Body); err != nil || string(rest) != "-last" {
+				t.Errorf("rest of body = %q, %v; want %q", rest, err, "-last")
+			}
+		})
+	}
+}
+
+func TestCloseCancelsHookContext(t *testing.T) {
+	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), false)
+	hookContexts := make(chan context.Context, 1)
+	options.RequestHooks = []RequestHook{func(ctx context.Context, _ *http.Request) error {
+		hookContexts <- ctx
+		return nil
+	}}
+	server := startTestProxy(t, options)
+
+	get(t, newProxyClient(t, server), registryURL)
+	if err := server.Close(); err != nil {
+		t.Fatalf("Close() returned unexpected error: %v", err)
+	}
+	if err := (<-hookContexts).Err(); !errors.Is(err, context.Canceled) {
+		t.Errorf("hook context error after Close() = %v, want context.Canceled", err)
+	}
+}
+
+func TestRedactURL(t *testing.T) {
+	u, _ := url.Parse("https://user:token@registry.example/pkg/-/pkg-1.0.0.tgz?token=secret")
+	if got, want := redactURL(u), "https://registry.example/pkg/-/pkg-1.0.0.tgz"; got != want {
+		t.Errorf("redactURL() = %q, want %q", got, want)
+	}
+	if got := redactURL(nil); got != "" {
+		t.Errorf("redactURL(nil) = %q, want empty", got)
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -39,8 +40,27 @@ const (
 	maxIdleConnsPerHost = 32
 )
 
+// RequestHook observes a request before it is sent upstream. ctx is canceled
+// when the proxy closes. Returning a non-nil error rejects the request with
+// HTTP 403 Forbidden and the error text as body, without contacting upstream.
+// Hooks must not consume the request body.
+type RequestHook func(ctx context.Context, request *http.Request) error
+
+// ResponseHook observes an upstream response before it is streamed back to the
+// client. ctx is canceled when the proxy closes. The body is forwarded as-is,
+// including any Content-Encoding. A hook that needs the body may replace
+// response.Body with a reader that wraps the original, but must preserve
+// streaming and never buffer whole artifacts.
+type ResponseHook func(ctx context.Context, response *http.Response)
+
 // Options configures a proxy.
 type Options struct {
+	// RequestHooks run, in order, for each request. The first rejection wins.
+	RequestHooks []RequestHook
+
+	// ResponseHooks run, in order, for each upstream response.
+	ResponseHooks []ResponseHook
+
 	// upstreamRootCAs and dialContext let tests reach local upstream servers;
 	// nil means the system roots and the default dialer.
 	upstreamRootCAs *x509.CertPool
@@ -65,14 +85,20 @@ type Server struct {
 	clientConfig ClientConfig
 	served       chan error
 
+	// ctx is given to hooks. It is canceled when the caller's context is
+	// canceled or Close is called.
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	closeOnce sync.Once
 	closeErr  error
 }
 
 // Start creates a per-run CA, writes its public certificate to a private
 // temporary directory, and starts a proxy on a loopback ephemeral port. The
-// caller must call Close once the proxied process has exited.
-func Start(options Options) (*Server, error) {
+// caller must call Close once the proxied process has exited. Canceling ctx
+// cancels the context given to hooks, but does not stop the server.
+func Start(ctx context.Context, options Options) (*Server, error) {
 	ca, err := newCertificateAuthority()
 	if err != nil {
 		return nil, fmt.Errorf("create proxy certificate authority: %w", err)
@@ -96,14 +122,17 @@ func Start(options Options) (*Server, error) {
 	}
 	proxyURL := "http://" + listener.Addr().String()
 
+	serverCtx, cancel := context.WithCancel(ctx)
 	server := &Server{
 		listener:     listener,
 		transport:    newUpstreamTransport(options),
 		clientConfig: ClientConfig{URL: proxyURL, CACertificatePath: certificatePath},
 		served:       make(chan error, 1),
+		ctx:          serverCtx,
+		cancel:       cancel,
 	}
 	server.httpServer = &http.Server{
-		Handler:           server.newHandler(ca),
+		Handler:           server.newHandler(ca, options.RequestHooks, options.ResponseHooks),
 		ReadHeaderTimeout: 30 * time.Second,
 		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelDebug),
 	}
@@ -121,10 +150,12 @@ func (server *Server) ClientConfig() ClientConfig {
 	return server.clientConfig
 }
 
-// Close stops the proxy and removes its temporary certificate material. Close
-// is idempotent.
+// Close stops the proxy and removes its temporary certificate material. It
+// cancels the context given to hooks. Close is idempotent.
 func (server *Server) Close() error {
 	server.closeOnce.Do(func() {
+		server.cancel()
+
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		shutdownErr := server.httpServer.Shutdown(shutdownCtx)
@@ -148,7 +179,7 @@ func (server *Server) Close() error {
 	return server.closeErr
 }
 
-func (server *Server) newHandler(ca *certificateAuthority) *goproxy.ProxyHttpServer {
+func (server *Server) newHandler(ca *certificateAuthority, requestHooks []RequestHook, responseHooks []ResponseHook) *goproxy.ProxyHttpServer {
 	handler := goproxy.NewProxyHttpServer()
 	handler.Logger = proxyLogger{}
 	handler.Tr = server.transport
@@ -173,7 +204,36 @@ func (server *Server) newHandler(ca *certificateAuthority) *goproxy.ProxyHttpSer
 		return mitm, host
 	})
 
+	handler.OnRequest().DoFunc(func(request *http.Request, proxyCtx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+		if err := runRequestHooks(server.ctx, requestHooks, request); err != nil {
+			slog.Debug("proxy rejected request", "method", request.Method, "url", redactURL(request.URL), "reason", err)
+			return request, goproxy.NewResponse(request, goproxy.ContentTypeText, http.StatusForbidden, err.Error()+"\n")
+		}
+		// Response hooks run on upstream responses only, so responses generated
+		// above never reach them.
+		proxyCtx.RoundTripper = goproxy.RoundTripperFunc(func(request *http.Request, _ *goproxy.ProxyCtx) (*http.Response, error) {
+			response, err := server.transport.RoundTrip(request)
+			if err != nil {
+				return nil, err
+			}
+			for _, hook := range responseHooks {
+				hook(server.ctx, response)
+			}
+			return response, nil
+		})
+		return request, nil
+	})
+
 	return handler
+}
+
+func runRequestHooks(ctx context.Context, hooks []RequestHook, request *http.Request) error {
+	for _, hook := range hooks {
+		if err := hook(ctx, request); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func newUpstreamTransport(options Options) *http.Transport {
@@ -189,6 +249,19 @@ func newUpstreamTransport(options Options) *http.Transport {
 		transport.DialContext = options.dialContext
 	}
 	return transport
+}
+
+// redactURL renders u for logs without user information or query parameters,
+// either of which may carry registry credentials.
+func redactURL(u *url.URL) string {
+	if u == nil {
+		return ""
+	}
+	redacted := *u
+	redacted.User = nil
+	redacted.RawQuery = ""
+	redacted.ForceQuery = false
+	return redacted.String()
 }
 
 // proxyLogger routes goproxy diagnostics to debug logs. Only the message

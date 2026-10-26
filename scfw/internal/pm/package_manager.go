@@ -8,6 +8,8 @@ package pm
 import (
 	"context"
 	"errors"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
 type PackageManager interface {
@@ -15,6 +17,16 @@ type PackageManager interface {
 	ProjectDirectory(command []string) (string, error)
 	RunCommand(ctx context.Context, command []string) error
 	ResolveInstallTargets(ctx context.Context, command []string) (*Set[Package], error)
+}
+
+// ProxyRunner is implemented by package managers that can run through the
+// Supply Chain Firewall proxy, which evaluates packages as they are downloaded
+// rather than resolving install targets ahead of time.
+type ProxyRunner interface {
+	// RunCommandThroughProxy runs command configured to route its traffic
+	// through the given proxy, without changing any persistent package manager
+	// configuration.
+	RunCommandThroughProxy(ctx context.Context, command []string, config proxy.ClientConfig) error
 }
 
 // ErrUnsupportedVersion indicates that a package manager's version is too

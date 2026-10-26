@@ -3,6 +3,7 @@ module github.com/DataDog/supply-chain-firewall
 go 1.26.5
 
 require (
+	github.com/elazarl/goproxy v1.9.2
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/spf13/cobra v1.10.2
@@ -35,5 +36,6 @@ require (
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )

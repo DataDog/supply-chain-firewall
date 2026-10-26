@@ -127,6 +127,18 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scfw run: %w", err)
 	}
 
+	if proxyEnabled() {
+		if runner, ok := packageManager.(pm.ProxyRunner); ok {
+			commandErr, err := runThroughProxy(cmd.Context(), runner, cmdArgs[1:])
+			if err != nil {
+				return fmt.Errorf("scfw run: %w", err)
+			}
+			exitOnCommandError(commandErr)
+			return nil
+		}
+		slog.Warn("proxy mode is not yet supported for this package manager; falling back to dry-run resolution", "package_manager", packageManagerName)
+	}
+
 	slog.Debug("resolving package installation targets", "package_manager", packageManagerName)
 	installTargets, err := packageManager.ResolveInstallTargets(cmd.Context(), cmdArgs[1:])
 	if err != nil {
@@ -179,14 +191,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 	switch action {
 	case evaluation.OutcomeAllow:
 		slog.Debug("running approved package manager command", "package_manager", packageManagerName)
-		if err := packageManager.RunCommand(cmd.Context(), cmdArgs[1:]); err != nil {
-			// Preserve the wrapped command's own exit code.
-			if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-				os.Exit(exitErr.ExitCode())
-			}
-			slog.Error("failed to run command", "error", err)
-			os.Exit(-1)
-		}
+		exitOnCommandError(packageManager.RunCommand(cmd.Context(), cmdArgs[1:]))
 		return nil
 	default:
 		fmt.Fprintln(os.Stderr, "The command was blocked. No changes have been made.")
@@ -195,6 +200,19 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 		}
 		return nil
 	}
+}
+
+// exitOnCommandError exits the process if running the package manager command
+// failed, preserving the command's own exit code when it has one.
+func exitOnCommandError(err error) {
+	if err == nil {
+		return
+	}
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+		os.Exit(exitErr.ExitCode())
+	}
+	slog.Error("failed to run command", "error", err)
+	os.Exit(-1)
 }
 
 func discoverGitMetadata(packageManager pm.PackageManager, command []string) git.Metadata {

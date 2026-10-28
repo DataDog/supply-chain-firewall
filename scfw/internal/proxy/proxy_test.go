@@ -722,6 +722,43 @@ func TestCloseCancelsInFlightUpstreamRequests(t *testing.T) {
 	}
 }
 
+func TestClientCancellationAbortsUpstreamRequest(t *testing.T) {
+	upstreamStarted, upstreamCanceled := make(chan struct{}), make(chan struct{})
+	testDone := make(chan struct{})
+	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		close(upstreamStarted)
+		select {
+		case <-r.Context().Done():
+			close(upstreamCanceled)
+		case <-testDone:
+		}
+	}), false)
+	// Registered after the registry, so it runs first and unblocks the handler
+	// even if the proxy leaks the request.
+	t.Cleanup(func() { close(testDone) })
+	client := newProxyClient(t, startTestProxy(t, options))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, registryURL, nil)
+	go func() {
+		if response, err := client.Do(request); err == nil {
+			_ = response.Body.Close()
+		}
+	}()
+	select {
+	case <-upstreamStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("request never reached upstream")
+	}
+
+	cancel()
+	select {
+	case <-upstreamCanceled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("upstream request kept running after the client canceled it")
+	}
+}
+
 func TestCloseTerminatesOpenTunnels(t *testing.T) {
 	server := startTestProxy(t, Options{})
 	conn, reader := openTunnel(t, server, "registry.npmjs.org:443")

@@ -53,12 +53,14 @@ type Response struct {
 }
 
 // RequestHook observes a request before it is sent upstream. ctx is canceled
-// when the proxy closes. Returning a non-nil error rejects the request with
-// HTTP 403 Forbidden and the error text as body, without contacting upstream.
+// when the client abandons the request or the proxy closes. Returning a
+// non-nil error rejects the request with HTTP 403 Forbidden and the error text
+// as body, without contacting upstream.
 type RequestHook func(ctx context.Context, request Request) error
 
 // ResponseHook observes an upstream response before it is streamed back to the
-// client. ctx is canceled when the proxy closes.
+// client. ctx is canceled when the client abandons the request or the proxy
+// closes.
 type ResponseHook func(ctx context.Context, response Response)
 
 // Options configures a proxy.
@@ -244,8 +246,7 @@ func (server *Server) newHandler(ca *certificateAuthority, requestHooks []Reques
 	})
 
 	handler.OnRequest().DoFunc(func(request *http.Request, proxyCtx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-		// Tie the request to the proxy's lifetime, so Close aborts it.
-		request = request.WithContext(server.ctx)
+		request = request.WithContext(server.requestContext(request.Context()))
 		observed := Request{Method: request.Method, URL: *request.URL}
 		if err := runRequestHooks(request.Context(), requestHooks, observed); err != nil {
 			slog.Debug("proxy rejected request", "method", request.Method, "url", redactURL(request.URL), "reason", err)
@@ -267,6 +268,19 @@ func (server *Server) newHandler(ca *certificateAuthority, requestHooks []Reques
 	})
 
 	return handler
+}
+
+// requestContext returns a context for one proxied request that is canceled
+// when either the client's own request context ends or the proxy closes.
+// goproxy only cancels requests inside intercepted HTTPS tunnels once the
+// exchange ends, so a client that drops such a tunnel is noticed when the
+// response is written back.
+func (server *Server) requestContext(clientCtx context.Context) context.Context {
+	ctx, cancel := context.WithCancel(clientCtx)
+	stop := context.AfterFunc(server.ctx, cancel)
+	// Unregister from the proxy's context once the request is done.
+	context.AfterFunc(ctx, func() { stop() })
+	return ctx
 }
 
 func runRequestHooks(ctx context.Context, hooks []RequestHook, request Request) error {

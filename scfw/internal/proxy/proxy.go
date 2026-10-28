@@ -38,18 +38,28 @@ const (
 	maxIdleConnsPerHost = 32
 )
 
+// Request describes a request observed by the proxy. It is a copy: hooks see
+// what is being requested, but cannot change the request or read its body.
+type Request struct {
+	Method string
+	URL    url.URL
+}
+
+// Response describes an upstream response observed by the proxy. It is a
+// copy: the proxy alone streams the response body back to the client.
+type Response struct {
+	Request    Request
+	StatusCode int
+}
+
 // RequestHook observes a request before it is sent upstream. ctx is canceled
-// when the proxy closes. Returning a non-nil error rejects
-// the request with HTTP 403 Forbidden and the error text as body, without
-// contacting upstream. Hooks must not consume the request body.
-type RequestHook func(ctx context.Context, request *http.Request) error
+// when the proxy closes. Returning a non-nil error rejects the request with
+// HTTP 403 Forbidden and the error text as body, without contacting upstream.
+type RequestHook func(ctx context.Context, request Request) error
 
 // ResponseHook observes an upstream response before it is streamed back to the
-// client. ctx is canceled when the proxy closes. The body
-// is forwarded as-is, including any Content-Encoding. A hook that needs the
-// body may replace response.Body with a reader that wraps the original, but
-// must preserve streaming and never buffer whole artifacts.
-type ResponseHook func(ctx context.Context, response *http.Response)
+// client. ctx is canceled when the proxy closes.
+type ResponseHook func(ctx context.Context, response Response)
 
 // Options configures a proxy.
 type Options struct {
@@ -236,7 +246,8 @@ func (server *Server) newHandler(ca *certificateAuthority, requestHooks []Reques
 	handler.OnRequest().DoFunc(func(request *http.Request, proxyCtx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		// Tie the request to the proxy's lifetime, so Close aborts it.
 		request = request.WithContext(server.ctx)
-		if err := runRequestHooks(requestHooks, request); err != nil {
+		observed := Request{Method: request.Method, URL: *request.URL}
+		if err := runRequestHooks(request.Context(), requestHooks, observed); err != nil {
 			slog.Debug("proxy rejected request", "method", request.Method, "url", redactURL(request.URL), "reason", err)
 			return request, goproxy.NewResponse(request, goproxy.ContentTypeText, http.StatusForbidden, err.Error()+"\n")
 		}
@@ -248,7 +259,7 @@ func (server *Server) newHandler(ca *certificateAuthority, requestHooks []Reques
 				return nil, err
 			}
 			for _, hook := range responseHooks {
-				hook(request.Context(), response)
+				hook(request.Context(), Response{Request: observed, StatusCode: response.StatusCode})
 			}
 			return response, nil
 		})
@@ -258,9 +269,9 @@ func (server *Server) newHandler(ca *certificateAuthority, requestHooks []Reques
 	return handler
 }
 
-func runRequestHooks(hooks []RequestHook, request *http.Request) error {
+func runRequestHooks(ctx context.Context, hooks []RequestHook, request Request) error {
 	for _, hook := range hooks {
-		if err := hook(request.Context(), request); err != nil {
+		if err := hook(ctx, request); err != nil {
 			return err
 		}
 	}

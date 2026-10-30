@@ -9,6 +9,7 @@ import (
 	"context"
 	"slices"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/npm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/pip"
@@ -16,8 +17,9 @@ import (
 )
 
 type PackageManagerFactory struct {
-	Names []string
-	New   func(ctx context.Context, name, executable string) (pm.PackageManager, error)
+	Names                    []string
+	New                      func(ctx context.Context, name, executable string) (pm.PackageManager, error)
+	ProxyControllerEcosystem ecosystem.Ecosystem
 }
 
 var packageManagerFactories = []PackageManagerFactory{

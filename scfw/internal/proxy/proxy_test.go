@@ -7,6 +7,7 @@ package proxy
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -424,6 +425,45 @@ func TestRequestHookRejectsBeforeUpstream(t *testing.T) {
 	if status, _ := get(t, client, registryURL+"/left-pad"); status != http.StatusOK || upstreamHits.Load() != 1 {
 		t.Errorf("allowed request: status %d, upstream hits %d; want 200, 1", status, upstreamHits.Load())
 	}
+}
+
+func TestResponseBodyObserverSeesStreamWithoutChangingResponse(t *testing.T) {
+	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.pypi.simple.v1+json")
+		flusher := w.(http.Flusher)
+		_, _ = io.WriteString(w, `{"files":[`)
+		flusher.Flush()
+		_, _ = io.WriteString(w, `{"filename":"project-1.0.whl"}]}`)
+	}), true)
+
+	var observed bytes.Buffer
+	var closed atomic.Bool
+	options.ResponseBodyObservers = []ResponseBodyObserver{
+		func(_ context.Context, response Response) io.WriteCloser {
+			if response.Header.Get("Content-Type") != "application/vnd.pypi.simple.v1+json" {
+				t.Errorf("observer content type = %q", response.Header.Get("Content-Type"))
+			}
+			return testWriteCloser{Writer: &observed, close: func() { closed.Store(true) }}
+		},
+	}
+
+	status, body := get(t, newProxyClient(t, startTestProxy(t, options)), registryURL+"/simple/project/")
+	if status != http.StatusOK || body != observed.String() {
+		t.Errorf("response = %d %q, observed %q; want identical bytes", status, body, observed.String())
+	}
+	if !closed.Load() {
+		t.Error("response observer was not closed at end of stream")
+	}
+}
+
+type testWriteCloser struct {
+	io.Writer
+	close func()
+}
+
+func (writer testWriteCloser) Close() error {
+	writer.close()
+	return nil
 }
 
 func TestRequestHooksRunInOrderUntilRejection(t *testing.T) {

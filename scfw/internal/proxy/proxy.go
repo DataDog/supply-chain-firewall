@@ -13,6 +13,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -43,6 +44,7 @@ const (
 type Request struct {
 	Method string
 	URL    url.URL
+	Header http.Header
 }
 
 // Response describes an upstream response observed by the proxy. It is a
@@ -50,6 +52,7 @@ type Request struct {
 type Response struct {
 	Request    Request
 	StatusCode int
+	Header     http.Header
 }
 
 // RequestHook observes a request before it is sent upstream. ctx is canceled
@@ -62,6 +65,12 @@ type RequestHook func(ctx context.Context, request Request) error
 // client. ctx is canceled when the client abandons the request or the proxy
 // closes.
 type ResponseHook func(ctx context.Context, response Response)
+
+// ResponseBodyObserver optionally observes an upstream response body as the
+// client consumes it. Returning nil leaves the response unobserved. The proxy
+// forwards the original bytes regardless of observer write or close failures.
+// Implementations must keep Write fast and bound any retained data.
+type ResponseBodyObserver func(ctx context.Context, response Response) io.WriteCloser
 
 // Options configures a proxy.
 type Options struct {
@@ -77,6 +86,11 @@ type Options struct {
 
 	// ResponseHooks run, in order, for each upstream response.
 	ResponseHooks []ResponseHook
+
+	// ResponseBodyObservers are offered each upstream response before its body
+	// is streamed. Non-nil observers receive exactly the bytes sent upstream,
+	// without delaying the first byte until the full response has been read.
+	ResponseBodyObservers []ResponseBodyObserver
 
 	// upstreamRootCAs and dialContext let tests reach local upstream servers;
 	// nil means the system roots and the default dialer.
@@ -156,7 +170,7 @@ func Start(ctx context.Context, options Options) (*Server, error) {
 		connections:  make(map[net.Conn]struct{}),
 	}
 	server.httpServer = &http.Server{
-		Handler:           server.newHandler(ca, options.RequestHooks, options.ResponseHooks),
+		Handler:           server.newHandler(ca, options.RequestHooks, options.ResponseHooks, options.ResponseBodyObservers),
 		ReadHeaderTimeout: 30 * time.Second,
 		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelDebug),
 		ConnState:         server.trackConnection,
@@ -220,7 +234,12 @@ func (server *Server) trackConnection(conn net.Conn, state http.ConnState) {
 	}
 }
 
-func (server *Server) newHandler(ca *certificateAuthority, requestHooks []RequestHook, responseHooks []ResponseHook) *goproxy.ProxyHttpServer {
+func (server *Server) newHandler(
+	ca *certificateAuthority,
+	requestHooks []RequestHook,
+	responseHooks []ResponseHook,
+	responseBodyObservers []ResponseBodyObserver,
+) *goproxy.ProxyHttpServer {
 	handler := goproxy.NewProxyHttpServer()
 	handler.Logger = proxyLogger{}
 	handler.Tr = server.transport
@@ -247,7 +266,7 @@ func (server *Server) newHandler(ca *certificateAuthority, requestHooks []Reques
 
 	handler.OnRequest().DoFunc(func(request *http.Request, proxyCtx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		request = request.WithContext(server.requestContext(request.Context()))
-		observed := Request{Method: request.Method, URL: *request.URL}
+		observed := Request{Method: request.Method, URL: *request.URL, Header: request.Header.Clone()}
 		if err := runRequestHooks(request.Context(), requestHooks, observed); err != nil {
 			slog.Debug("proxy rejected request", "method", request.Method, "url", redactURL(request.URL), "reason", err)
 			return request, goproxy.NewResponse(request, goproxy.ContentTypeText, http.StatusForbidden, err.Error()+"\n")
@@ -259,8 +278,18 @@ func (server *Server) newHandler(ca *certificateAuthority, requestHooks []Reques
 			if err != nil {
 				return nil, err
 			}
+			observedResponse := Response{Request: observed, StatusCode: response.StatusCode, Header: response.Header.Clone()}
 			for _, hook := range responseHooks {
-				hook(request.Context(), Response{Request: observed, StatusCode: response.StatusCode})
+				hook(request.Context(), observedResponse)
+			}
+			var observers []io.WriteCloser
+			for _, observe := range responseBodyObservers {
+				if observer := observe(request.Context(), observedResponse); observer != nil {
+					observers = append(observers, observer)
+				}
+			}
+			if len(observers) > 0 {
+				response.Body = &observedResponseBody{source: response.Body, observers: observers}
 			}
 			return response, nil
 		})
@@ -268,6 +297,49 @@ func (server *Server) newHandler(ca *certificateAuthority, requestHooks []Reques
 	})
 
 	return handler
+}
+
+// observedResponseBody mirrors bytes into observers without allowing observer
+// failures to affect the response consumed by the package manager.
+type observedResponseBody struct {
+	source        io.ReadCloser
+	observers     []io.WriteCloser
+	observerMutex sync.Mutex
+	closeOnce     sync.Once
+}
+
+func (body *observedResponseBody) Read(buffer []byte) (int, error) {
+	read, err := body.source.Read(buffer)
+	if read > 0 {
+		body.observerMutex.Lock()
+		for _, observer := range body.observers {
+			if _, observerErr := observer.Write(buffer[:read]); observerErr != nil {
+				slog.Debug("proxy response observer write failed", "error", observerErr)
+			}
+		}
+		body.observerMutex.Unlock()
+	}
+	if errors.Is(err, io.EOF) {
+		body.closeObservers()
+	}
+	return read, err
+}
+
+func (body *observedResponseBody) Close() error {
+	body.closeObservers()
+	return body.source.Close()
+}
+
+func (body *observedResponseBody) closeObservers() {
+	body.observerMutex.Lock()
+	defer body.observerMutex.Unlock()
+	body.closeOnce.Do(func() {
+		for _, observer := range body.observers {
+			if err := observer.Close(); err != nil {
+				slog.Debug("proxy response observer close failed", "error", err)
+			}
+		}
+	})
 }
 
 // requestContext returns a context for one proxied request that is canceled

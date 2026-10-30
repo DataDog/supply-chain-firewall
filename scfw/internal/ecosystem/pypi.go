@@ -7,9 +7,12 @@ package ecosystem
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"path"
@@ -22,6 +25,40 @@ import (
 // pyPIRegistryDomains are the URL domains associated with the PyPI registry, ported from
 // ecosystem.py's ECOSYSTEM.registry_domains in the Python reference.
 var pyPIRegistryDomains = []string{"pypi.org", "files.pythonhosted.org", "pypi.python.org"}
+
+// PyPIRequestKind describes the role of an HTTP request in the PyPI protocols.
+// Metadata requests never need policy evaluation; artifact requests do.
+type PyPIRequestKind uint8
+
+const (
+	PyPIRequestUnrelated PyPIRequestKind = iota
+	PyPIRequestJSONAPI
+	PyPIRequestSimpleAPI
+	PyPIRequestCoreMetadata
+	PyPIRequestArtifact
+)
+
+// PyPIRequestClassifierOptions describes index contexts known by the package
+// manager integration. SimpleIndexURLs are project-list roots (the project
+// name is the next path segment); DirectArtifactURLs are exact distribution
+// URLs supplied directly on the command line or by configuration.
+type PyPIRequestClassifierOptions struct {
+	SimpleIndexURLs    []string
+	DirectArtifactURLs []string
+}
+
+// PyPIRequestClassifier classifies requests within one package-manager run.
+// Advertised artifact URLs remain the metadata cache's responsibility because
+// they may be opaque and can point at an otherwise unknown CDN.
+type PyPIRequestClassifier struct {
+	simpleIndexes      []pyPISimpleIndex
+	directArtifactURLs map[string]struct{}
+}
+
+type pyPISimpleIndex struct {
+	match     url.URL
+	discovery url.URL
+}
 
 // PyPIArtifact identifies the distribution requested by a package manager.
 type PyPIArtifact struct {
@@ -214,6 +251,274 @@ func canonicalNumber(value string) string {
 
 func onlyDigits(value string) bool {
 	return strings.Trim(value, "0123456789") == ""
+}
+
+// NewPyPIRequestClassifier creates a run-scoped classifier for configured
+// custom index and direct-artifact contexts.
+func NewPyPIRequestClassifier(options PyPIRequestClassifierOptions) (*PyPIRequestClassifier, error) {
+	classifier := &PyPIRequestClassifier{directArtifactURLs: make(map[string]struct{})}
+	for _, value := range options.SimpleIndexURLs {
+		parsed, err := parsePyPIContextURL(value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid PyPI Simple index URL: %w", err)
+		}
+		parsed.Path = strings.TrimSuffix(parsed.Path, "/") + "/"
+		parsed.RawPath = ""
+		parsed.Fragment = ""
+		discovery := *parsed
+		parsed.RawQuery, parsed.User = "", nil
+		classifier.simpleIndexes = append(classifier.simpleIndexes, pyPISimpleIndex{match: *parsed, discovery: discovery})
+	}
+	for _, value := range options.DirectArtifactURLs {
+		parsed, err := parsePyPIContextURL(value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid PyPI direct artifact URL: %w", err)
+		}
+		classifier.directArtifactURLs[directPyPIURLKey(parsed)] = struct{}{}
+	}
+	return classifier, nil
+}
+
+func parsePyPIContextURL(value string) (*url.URL, error) {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return nil, errors.New("expected an absolute HTTP(S) URL")
+	}
+	return parsed, nil
+}
+
+var defaultPyPIRequestClassifier = &PyPIRequestClassifier{}
+
+// ClassifyPyPIRequest recognizes requests using the built-in PyPI and common
+// Simple API layouts. Integrations with arbitrary bases use a run classifier.
+func ClassifyPyPIRequest(method string, requestURL *url.URL) (PyPIRequestKind, PyPIArtifact) {
+	return defaultPyPIRequestClassifier.ClassifyRequest(method, requestURL)
+}
+
+// ClassifyRequest recognizes PyPI metadata and distribution requests. A
+// parseable archive is immediately trusted only on a supported registry host
+// or at an explicitly configured direct URL. Configured custom indexes require
+// exact advertisement through metadata discovery before evaluation.
+func (classifier *PyPIRequestClassifier) ClassifyRequest(method string, requestURL *url.URL) (PyPIRequestKind, PyPIArtifact) {
+	if requestURL == nil || (requestURL.Scheme != "http" && requestURL.Scheme != "https") {
+		return PyPIRequestUnrelated, PyPIArtifact{}
+	}
+	cleanPath := path.Clean(requestURL.EscapedPath())
+	host := strings.ToLower(requestURL.Hostname())
+	_, configuredProject := classifier.configuredSimpleProject(requestURL)
+	_, knownSimpleProject := PyPISimpleProject(requestURL)
+	_, directArtifact := classifier.directArtifactURLs[directPyPIURLKey(requestURL)]
+	directCoreMetadata := false
+	if strings.HasSuffix(strings.ToLower(requestURL.Path), ".whl.metadata") {
+		wheelURL := *requestURL
+		wheelURL.Path = wheelURL.Path[:len(wheelURL.Path)-len(".metadata")]
+		if strings.HasSuffix(strings.ToLower(wheelURL.RawPath), ".metadata") {
+			wheelURL.RawPath = wheelURL.RawPath[:len(wheelURL.RawPath)-len(".metadata")]
+		}
+		_, directCoreMetadata = classifier.directArtifactURLs[directPyPIURLKey(&wheelURL)]
+	}
+	artifactContext := slices.Contains(pyPIRegistryDomains, host) || directArtifact || directCoreMetadata
+	// Artifact parsing takes precedence over metadata path recognition: custom
+	// indexes sometimes serve distributions beneath their Simple API base.
+	if method == http.MethodGet {
+		filename := path.Base(requestURL.EscapedPath())
+		if strings.HasSuffix(strings.ToLower(filename), ".whl.metadata") {
+			wheelFilename := filename[:len(filename)-len(".metadata")]
+			if _, _, ok := ParsePyPIDistributionFilename(wheelFilename); ok && artifactContext {
+				return PyPIRequestCoreMetadata, PyPIArtifact{}
+			}
+		}
+		name, version, ok := ParsePyPIDistributionFilename(filename)
+		if ok && artifactContext {
+			return PyPIRequestArtifact, PyPIArtifact{
+				Name: name, Version: version, Filename: artifactFilename(requestURL.String()),
+				Source: canonicalPyPIURL(nil, requestURL.String()), RequestKey: pyPIURLRequestKey(nil, requestURL.String()),
+			}
+		}
+	}
+	if host == "pypi.org" && strings.HasPrefix(cleanPath, "/pypi/") && strings.HasSuffix(cleanPath, "/json") {
+		return PyPIRequestJSONAPI, PyPIArtifact{}
+	}
+	if knownSimpleProject || configuredProject || cleanPath == "/simple" {
+		return PyPIRequestSimpleAPI, PyPIArtifact{}
+	}
+	return PyPIRequestUnrelated, PyPIArtifact{}
+}
+
+// ClassifyResponse recognizes Simple API protocol evidence that is only known
+// after receiving a response. Vendor media types are safe evidence; generic
+// application/json and text/html are intentionally insufficient.
+func (classifier *PyPIRequestClassifier) ClassifyResponse(method string, requestURL *url.URL, header http.Header) (PyPIRequestKind, PyPIArtifact) {
+	kind, artifact := classifier.ClassifyRequest(method, requestURL)
+	if kind != PyPIRequestUnrelated || method != http.MethodGet || requestURL == nil {
+		return kind, artifact
+	}
+	mediaType, _, _ := mime.ParseMediaType(header.Get("Content-Type"))
+	if mediaType != "application/vnd.pypi.simple.v1+json" && mediaType != "application/vnd.pypi.simple.v1+html" {
+		return PyPIRequestUnrelated, PyPIArtifact{}
+	}
+	if _, ok := simpleProjectFromLastPathSegment(requestURL); !ok {
+		return PyPIRequestUnrelated, PyPIArtifact{}
+	}
+	return PyPIRequestSimpleAPI, PyPIArtifact{}
+}
+
+// SimpleProject returns the normalized project associated with a recognized
+// Simple API endpoint, including configured arbitrary bases and response-only
+// endpoints identified by their protocol media type.
+func (classifier *PyPIRequestClassifier) SimpleProject(requestURL *url.URL, header http.Header) (string, bool) {
+	if project, ok := PyPISimpleProject(requestURL); ok {
+		return project, true
+	}
+	if project, ok := classifier.configuredSimpleProject(requestURL); ok {
+		return project, true
+	}
+	mediaType, _, _ := mime.ParseMediaType(header.Get("Content-Type"))
+	if mediaType == "application/vnd.pypi.simple.v1+json" || mediaType == "application/vnd.pypi.simple.v1+html" {
+		return simpleProjectFromLastPathSegment(requestURL)
+	}
+	return "", false
+}
+
+func (classifier *PyPIRequestClassifier) configuredSimpleProject(requestURL *url.URL) (string, bool) {
+	if classifier == nil || requestURL == nil {
+		return "", false
+	}
+	for index := range classifier.simpleIndexes {
+		base := &classifier.simpleIndexes[index].match
+		if !sameURLOrigin(base, requestURL) || !strings.HasPrefix(requestURL.Path, base.Path) {
+			continue
+		}
+		remainder := strings.Trim(requestURL.Path[len(base.Path):], "/")
+		if remainder == "" || strings.Contains(remainder, "/") {
+			continue
+		}
+		decoded, err := url.PathUnescape(remainder)
+		if err == nil && pyPIProjectName.MatchString(decoded) {
+			return NormalizePyPIName(decoded), true
+		}
+	}
+	return "", false
+}
+
+// MetadataDiscovery returns a filename-derived project hint and configured
+// Simple endpoints that can prove whether the exact URL is a distribution.
+// It deliberately does not return an artifact: the filename is never policy
+// evidence unless metadata subsequently advertises the exact request URL.
+func (classifier *PyPIRequestClassifier) MetadataDiscovery(requestURL *url.URL) (string, []url.URL, bool) {
+	if classifier == nil || requestURL == nil || len(classifier.simpleIndexes) == 0 ||
+		(requestURL.Scheme != "http" && requestURL.Scheme != "https") {
+		return "", nil, false
+	}
+	filename := path.Base(requestURL.EscapedPath())
+	name, _, ok := ParsePyPIDistributionFilename(filename)
+	if !ok {
+		return "", nil, false
+	}
+	endpoints := make([]url.URL, 0, len(classifier.simpleIndexes))
+	for index := range classifier.simpleIndexes {
+		endpoint := classifier.simpleIndexes[index].discovery
+		endpoint.Path += url.PathEscape(name) + "/"
+		endpoint.RawPath = ""
+		endpoints = append(endpoints, endpoint)
+	}
+	return name, endpoints, true
+}
+
+func simpleProjectFromLastPathSegment(requestURL *url.URL) (string, bool) {
+	if requestURL == nil {
+		return "", false
+	}
+	segment, err := url.PathUnescape(path.Base(path.Clean(requestURL.EscapedPath())))
+	if err != nil || !pyPIProjectName.MatchString(segment) {
+		return "", false
+	}
+	return NormalizePyPIName(segment), true
+}
+
+func directPyPIURLKey(value *url.URL) string {
+	if value == nil {
+		return ""
+	}
+	withoutCredentials := *value
+	withoutCredentials.User = nil
+	return pyPIURLRequestKey(nil, withoutCredentials.String())
+}
+
+// PyPISimpleProject recognizes supported project-level Simple API paths while
+// avoiding a broad match on arbitrary paths containing a "simple" segment.
+func PyPISimpleProject(requestURL *url.URL) (string, bool) {
+	if requestURL == nil {
+		return "", false
+	}
+	segments := strings.Split(strings.Trim(path.Clean(requestURL.EscapedPath()), "/"), "/")
+	var project string
+	switch {
+	case len(segments) == 2 && segments[0] == "simple":
+		project = segments[1]
+	case len(segments) == 5 && segments[0] == "api" && segments[1] == "pypi" && segments[3] == "simple":
+		project = segments[4]
+	case len(segments) == 6 && segments[0] == "artifactory" && segments[1] == "api" && segments[2] == "pypi" && segments[4] == "simple":
+		project = segments[5]
+	case len(segments) == 4 && segments[2] == "+simple":
+		project = segments[3]
+	default:
+		return "", false
+	}
+	decoded, err := url.PathUnescape(project)
+	if err != nil || !pyPIProjectName.MatchString(decoded) {
+		return "", false
+	}
+	return NormalizePyPIName(decoded), true
+}
+
+// redactPyPIArtifactURL retains the artifact origin and path while removing
+// fields commonly used for credentials in custom-index and signed CDN URLs.
+func redactPyPIArtifactURL(value *url.URL) string {
+	redacted := *value
+	redacted.User = nil
+	redacted.RawQuery = ""
+	redacted.ForceQuery = false
+	redacted.Fragment = ""
+	return redacted.String()
+}
+
+func canonicalPyPIURL(base *url.URL, reference string) string {
+	parsed := resolvePyPIURL(base, reference)
+	if parsed == nil {
+		return ""
+	}
+	return redactPyPIArtifactURL(parsed)
+}
+
+// pyPIURLRequestKey retains exact URL matching without keeping reversible
+// credentials or query values in map keys that might appear in diagnostics.
+func pyPIURLRequestKey(base *url.URL, reference string) string {
+	parsed := resolvePyPIURL(base, reference)
+	if parsed == nil {
+		return ""
+	}
+	redacted := redactPyPIArtifactURL(parsed)
+	user := ""
+	if parsed.User != nil {
+		user = parsed.User.String()
+	}
+	digest := sha256.Sum256([]byte(user + "\x00" + parsed.RawQuery))
+	return fmt.Sprintf("%s\x00%x", redacted, digest)
+}
+
+func resolvePyPIURL(base *url.URL, reference string) *url.URL {
+	parsed, err := url.Parse(reference)
+	if err != nil {
+		return nil
+	}
+	if base != nil {
+		parsed = base.ResolveReference(parsed)
+	}
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	parsed.Host = strings.ToLower(parsed.Host)
+	parsed.Fragment = ""
+	return parsed
 }
 
 // isPyPIRegistrySource reports whether source is a known PyPI registry URL, ported from

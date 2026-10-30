@@ -27,5 +27,8 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Test snapshot comment automation
+        run: node --test .github/scripts/*.test.cjs
+
       - name: Run tests
         run: go test -count=2 ./scfw/...

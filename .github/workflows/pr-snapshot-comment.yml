@@ -1,0 +1,37 @@
+name: PR snapshot comment
+
+on:
+  workflow_run:
+    workflows: [PR snapshot]
+    types: [completed]
+
+permissions:
+  contents: read
+
+# The build workflow has no write token, including for PRs from forks. This
+# workflow only reads artifact metadata and runs code from the default branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_repository.id }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  comment:
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    steps:
+      - name: Check out trusted comment code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Create or update the snapshot comment
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const comment = require('./.github/scripts/pr-snapshot-comment.cjs');
+            await comment({ github, context, core });

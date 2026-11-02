@@ -7,6 +7,7 @@ package proxy
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -424,6 +425,104 @@ func TestRequestHookRejectsBeforeUpstream(t *testing.T) {
 	if status, _ := get(t, client, registryURL+"/left-pad"); status != http.StatusOK || upstreamHits.Load() != 1 {
 		t.Errorf("allowed request: status %d, upstream hits %d; want 200, 1", status, upstreamHits.Load())
 	}
+}
+
+func TestResponseBodyObserverSeesStreamWithoutChangingResponse(t *testing.T) {
+	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.pypi.simple.v1+json")
+		flusher := w.(http.Flusher)
+		_, _ = io.WriteString(w, `{"files":[`)
+		flusher.Flush()
+		_, _ = io.WriteString(w, `{"filename":"project-1.0.whl"}]}`)
+	}), true)
+
+	var observed bytes.Buffer
+	var closed atomic.Bool
+	options.ResponseBodyObservers = []ResponseBodyObserver{
+		func(_ context.Context, response Response) io.WriteCloser {
+			if response.Header.Get("Content-Type") != "application/vnd.pypi.simple.v1+json" {
+				t.Errorf("observer content type = %q", response.Header.Get("Content-Type"))
+			}
+			return testWriteCloser{Writer: &observed, close: func() { closed.Store(true) }}
+		},
+	}
+
+	status, body := get(t, newProxyClient(t, startTestProxy(t, options)), registryURL+"/simple/project/")
+	if status != http.StatusOK || body != observed.String() {
+		t.Errorf("response = %d %q, observed %q; want identical bytes", status, body, observed.String())
+	}
+	if !closed.Load() {
+		t.Error("response observer was not closed at end of stream")
+	}
+}
+
+func TestResponseBodyObserverFinishesBeforeDeclaredLengthIsDelivered(t *testing.T) {
+	const metadataBody = `{"files":[{"filename":"project-1.0.tar.gz","url":"/objects/opaque"}]}`
+	endStream := make(chan struct{})
+	defer close(endStream)
+	var artifactHits atomic.Int32
+	registry := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/objects/opaque" {
+			artifactHits.Add(1)
+			_, _ = io.WriteString(w, "artifact bytes")
+			return
+		}
+		if request.ProtoMajor != 2 {
+			t.Errorf("upstream protocol = %s, want HTTP/2", request.Proto)
+		}
+		w.Header().Set("Content-Length", fmt.Sprint(len(metadataBody)))
+		_, _ = io.WriteString(w, metadataBody)
+		w.(http.Flusher).Flush()
+		// Deliver all declared bytes, but withhold HTTP/2 END_STREAM until the
+		// installer has made its next request on a separate connection.
+		select {
+		case <-endStream:
+		case <-request.Context().Done():
+		}
+	}))
+	registry.EnableHTTP2 = true
+	registry.StartTLS()
+	t.Cleanup(registry.Close)
+	roots := x509.NewCertPool()
+	roots.AddCert(registry.Certificate())
+	var observed bytes.Buffer
+	var closed atomic.Bool
+	server := startTestProxy(t, Options{
+		upstreamRootCAs: roots,
+		RequestHooks: []RequestHook{func(_ context.Context, request Request) error {
+			if request.URL.Path == "/objects/opaque" && closed.Load() {
+				return errors.New("blocked advertised artifact")
+			}
+			return nil
+		}},
+		ResponseBodyObservers: []ResponseBodyObserver{func(_ context.Context, response Response) io.WriteCloser {
+			if response.Request.URL.Path != "/simple/project/" {
+				return nil
+			}
+			return testWriteCloser{Writer: &observed, close: func() {
+				if observed.String() != metadataBody {
+					t.Errorf("observed %q, want complete metadata body", observed.String())
+				}
+				closed.Store(true)
+			}}
+		}},
+	})
+	if status, body := get(t, newProxyClient(t, server), registry.URL+"/simple/project/"); status != http.StatusOK || body != metadataBody {
+		t.Fatalf("metadata response = %d %q; want original bytes", status, body)
+	}
+	if status, _ := get(t, newProxyClient(t, server), registry.URL+"/objects/opaque"); status != http.StatusForbidden || artifactHits.Load() != 0 {
+		t.Fatalf("artifact status=%d upstream hits=%d; want 403, 0", status, artifactHits.Load())
+	}
+}
+
+type testWriteCloser struct {
+	io.Writer
+	close func()
+}
+
+func (writer testWriteCloser) Close() error {
+	writer.close()
+	return nil
 }
 
 func TestRequestHooksRunInOrderUntilRejection(t *testing.T) {

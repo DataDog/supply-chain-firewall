@@ -21,6 +21,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/git"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
@@ -116,7 +117,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 
 	cmdArgs := args[cmd.ArgsLenAtDash():]
 	packageManagerName := filepath.Base(cmdArgs[0])
-	slog.Debug("preparing package manager command", "package_manager", packageManagerName, "command", cmdArgs)
+	slog.Debug("preparing package manager command", "package_manager", packageManagerName, "command", redactCommandArguments(cmdArgs))
 
 	packageManagerFactory, ok := findPackageManagerFactory(packageManagerName)
 	if !ok {
@@ -129,7 +130,24 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 
 	if proxyEnabled() {
 		if runner, ok := packageManager.(pm.ProxyRunner); ok {
-			commandErr, err := runThroughProxy(cmd.Context(), runner, cmdArgs[1:])
+			var controller proxyController
+			switch packageManagerFactory.ProxyControllerEcosystem {
+			case "":
+				// Existing generic ProxyRunners (npm) retain their base behavior.
+			case ecosystem.PYPI:
+				evaluator, evaluatorErr := newEvaluator(cmd.Context(), mode)
+				if evaluatorErr != nil {
+					return fmt.Errorf("scfw run: %w", evaluatorErr)
+				}
+				gitMetadata := discoverGitMetadata(packageManager, cmdArgs[1:])
+				controller = newPyPIProxyController(newProxyPackageEvaluator(
+					cmd.Context(), installTimestamp, cmdArgs, packageManagerName, packageManager.Executable(), gitMetadata.RepositoryURL,
+					evaluator, reporter, os.Stderr,
+				))
+			default:
+				return fmt.Errorf("scfw run: unsupported proxy controller ecosystem %q", packageManagerFactory.ProxyControllerEcosystem)
+			}
+			commandErr, err := runThroughProxy(cmd.Context(), runner, cmdArgs[1:], controller)
 			if err != nil {
 				return fmt.Errorf("scfw run: %w", err)
 			}

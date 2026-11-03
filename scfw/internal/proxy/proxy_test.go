@@ -7,6 +7,7 @@ package proxy
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -400,15 +401,15 @@ func TestRequestHookRejectsBeforeUpstream(t *testing.T) {
 		upstreamHits.Add(1)
 	}), true)
 	options.RequestHooks = []RequestHook{
-		func(_ context.Context, request Request) error {
+		func(_ context.Context, request Request) (ResponseHook, error) {
 			if strings.HasSuffix(request.URL.Path, ".tgz") {
-				return errors.New("package blocked by Supply Chain Firewall")
+				return nil, errors.New("package blocked by Supply Chain Firewall")
 			}
-			return nil
+			return func(context.Context, Response) (*ResponseBodyHook, error) {
+				responseHookCalls.Add(1)
+				return nil, nil
+			}, nil
 		},
-	}
-	options.ResponseHooks = []ResponseHook{
-		func(context.Context, Response) { responseHookCalls.Add(1) },
 	}
 	client := newProxyClient(t, startTestProxy(t, options))
 
@@ -426,13 +427,304 @@ func TestRequestHookRejectsBeforeUpstream(t *testing.T) {
 	}
 }
 
+func TestResponseBodyHookFinishesBeforeDeclaredLengthIsDelivered(t *testing.T) {
+	const metadataBody = `{"files":[{"filename":"project-1.0.tar.gz","url":"/objects/opaque"}]}`
+	endStream := make(chan struct{})
+	defer close(endStream)
+	var artifactHits atomic.Int32
+	registry := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/objects/opaque" {
+			artifactHits.Add(1)
+			_, _ = io.WriteString(w, "artifact bytes")
+			return
+		}
+		if request.ProtoMajor != 2 {
+			t.Errorf("upstream protocol = %s, want HTTP/2", request.Proto)
+		}
+		w.Header().Set("Content-Length", fmt.Sprint(len(metadataBody)))
+		_, _ = io.WriteString(w, metadataBody)
+		w.(http.Flusher).Flush()
+		// Deliver all declared bytes, but withhold HTTP/2 END_STREAM until the
+		// installer has made its next request on a separate connection.
+		select {
+		case <-endStream:
+		case <-request.Context().Done():
+		}
+	}))
+	registry.EnableHTTP2 = true
+	registry.StartTLS()
+	t.Cleanup(registry.Close)
+	roots := x509.NewCertPool()
+	roots.AddCert(registry.Certificate())
+	var processed atomic.Bool
+	server := startTestProxy(t, Options{
+		upstreamRootCAs: roots,
+		RequestHooks: []RequestHook{func(_ context.Context, request Request) (ResponseHook, error) {
+			if request.URL.Path == "/objects/opaque" && processed.Load() {
+				return nil, errors.New("blocked advertised artifact")
+			}
+			if request.URL.Path != "/simple/project/" {
+				return nil, nil
+			}
+			return func(context.Context, Response) (*ResponseBodyHook, error) {
+				return &ResponseBodyHook{MaxBytes: 1024, Handle: func(_ context.Context, response Response) error {
+					if string(response.Body) != metadataBody {
+						t.Errorf("observed %q, want complete metadata body", response.Body)
+					}
+					processed.Store(true)
+					return nil
+				}}, nil
+			}, nil
+		}},
+	})
+	if status, body := get(t, newProxyClient(t, server), registry.URL+"/simple/project/"); status != http.StatusOK || body != metadataBody {
+		t.Fatalf("metadata response = %d %q; want original bytes", status, body)
+	}
+	if status, _ := get(t, newProxyClient(t, server), registry.URL+"/objects/opaque"); status != http.StatusForbidden || artifactHits.Load() != 0 {
+		t.Fatalf("artifact status=%d upstream hits=%d; want 403, 0", status, artifactHits.Load())
+	}
+}
+
+func TestResponseHooksKeepConcurrentBodiesAndCopiesIsolated(t *testing.T) {
+	var inspected atomic.Int32
+	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("X-Request") != "original" {
+			t.Error("request hook mutated the forwarded request")
+		}
+		w.Header().Set("X-Response", "original")
+		_, _ = io.WriteString(w, request.URL.Path)
+	}), true)
+	for range 2 {
+		options.RequestHooks = append(options.RequestHooks, func(_ context.Context, request Request) (ResponseHook, error) {
+			if request.Header.Get("X-Request") != "original" {
+				t.Error("request hooks shared mutable headers")
+			}
+			request.Header.Set("X-Request", "changed")
+			if request.URL.Path == "/unobserved" {
+				return nil, nil
+			}
+			expectedPath := request.URL.Path
+			return func(_ context.Context, response Response) (*ResponseBodyHook, error) {
+				if response.Request.URL.Path != expectedPath || response.Header.Get("X-Response") != "original" || response.Body != nil {
+					t.Errorf("wrong response snapshot for %s: %#v", expectedPath, response)
+				}
+				response.Header.Set("X-Response", "changed")
+				return &ResponseBodyHook{MaxBytes: 1024, Handle: func(_ context.Context, response Response) error {
+					if !bytes.Equal(response.Body, []byte(expectedPath)) || response.Header.Get("X-Response") != "original" ||
+						response.Request.Header.Get("X-Request") != "original" {
+						t.Errorf("body or headers leaked between hooks for %s: %#v", expectedPath, response)
+					}
+					response.Body[0] = '!'
+					response.Header.Set("X-Response", "changed")
+					response.Request.Header.Set("X-Request", "changed")
+					inspected.Add(1)
+					return nil
+				}}, nil
+			}, nil
+		})
+	}
+	client := newProxyClient(t, startTestProxy(t, options))
+	var group sync.WaitGroup
+	for index := range 12 {
+		group.Go(func() {
+			target := fmt.Sprintf("/metadata-%d", index)
+			if index == 0 {
+				target = "/unobserved"
+			}
+			request, _ := http.NewRequest(http.MethodGet, registryURL+target, nil)
+			request.Header.Set("X-Request", "original")
+			response, err := client.Do(request)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			defer response.Body.Close()
+			body, err := io.ReadAll(response.Body)
+			if err != nil || string(body) != target || response.Header.Get("X-Response") != "original" {
+				t.Errorf("forwarded %s = %q, %v, headers=%v", target, body, err, response.Header)
+			}
+		})
+	}
+	group.Wait()
+	if inspected.Load() != 22 {
+		t.Fatalf("body hook calls = %d; want 22", inspected.Load())
+	}
+}
+
+func TestResponseBodyHookCompletesBeforeResponseIsForwarded(t *testing.T) {
+	for _, useTLS := range []bool{false, true} {
+		t.Run(fmt.Sprintf("tls=%t", useTLS), func(t *testing.T) {
+			registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = io.WriteString(w, "metadata bytes")
+			}), useTLS)
+			started, release := make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			finish := func() { once.Do(func() { close(release) }) }
+			defer finish()
+			options.RequestHooks = []RequestHook{func(context.Context, Request) (ResponseHook, error) {
+				return func(context.Context, Response) (*ResponseBodyHook, error) {
+					return &ResponseBodyHook{MaxBytes: 1024, Handle: func(ctx context.Context, response Response) error {
+						if string(response.Body) != "metadata bytes" {
+							t.Errorf("body = %q; want complete metadata", response.Body)
+						}
+						close(started)
+						select {
+						case <-release:
+							return nil
+						case <-ctx.Done():
+							return ctx.Err()
+						}
+					}}, nil
+				}, nil
+			}}
+			client := newProxyClient(t, startTestProxy(t, options))
+			result := make(chan error, 1)
+			go func() {
+				response, err := client.Get(registryURL)
+				if err == nil {
+					defer response.Body.Close()
+					body, readErr := io.ReadAll(response.Body)
+					if readErr != nil || response.StatusCode != http.StatusOK || string(body) != "metadata bytes" {
+						err = fmt.Errorf("response = %d %q, %v", response.StatusCode, body, readErr)
+					}
+				}
+				result <- err
+			}()
+			select {
+			case <-started:
+			case <-time.After(5 * time.Second):
+				t.Fatal("body hook did not run")
+			}
+			select {
+			case err := <-result:
+				t.Fatalf("response forwarded before hook finished: %v", err)
+			case <-time.After(50 * time.Millisecond):
+			}
+			finish()
+			if err := <-result; err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestResponseInspectionFailuresDoNotForwardBody(t *testing.T) {
+	for _, test := range []struct {
+		name               string
+		length             string
+		maxBytes           int64
+		headerErr, bodyErr bool
+		wantLimitLog       bool
+	}{
+		{name: "known oversized", length: "6", maxBytes: 5, wantLimitLog: true},
+		{name: "chunked oversized", maxBytes: 5, wantLimitLog: true},
+		{name: "truncated", length: "8", maxBytes: 8},
+		{name: "invalid limit", length: "6"},
+		{name: "header failure", length: "6", maxBytes: 8, headerErr: true},
+		{name: "body failure", length: "6", maxBytes: 8, bodyErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			logs := captureDebugLogs(t)
+			registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if test.length != "" {
+					w.Header().Set("Content-Length", test.length)
+				}
+				w.(http.Flusher).Flush()
+				_, _ = io.WriteString(w, "secret")
+			}), true)
+			var bodyCalls atomic.Int32
+			options.RequestHooks = []RequestHook{func(context.Context, Request) (ResponseHook, error) {
+				return func(context.Context, Response) (*ResponseBodyHook, error) {
+					if test.headerErr {
+						return nil, errors.New("secret")
+					}
+					return &ResponseBodyHook{MaxBytes: test.maxBytes, Handle: func(context.Context, Response) error {
+						bodyCalls.Add(1)
+						if test.bodyErr {
+							return errors.New("secret")
+						}
+						return nil
+					}}, nil
+				}, nil
+			}}
+			target, _ := url.Parse(registryURL)
+			target.User = url.UserPassword("user", "password")
+			target.RawQuery = "token=credential-secret"
+			status, body := get(t, newProxyClient(t, startTestProxy(t, options)), target.String())
+			if status != http.StatusBadGateway || strings.Contains(body, "secret") {
+				t.Fatalf("response = %d %q; want 502 without upstream bytes or hook error", status, body)
+			}
+			if !test.bodyErr && bodyCalls.Load() != 0 {
+				t.Error("body hook processed an incomplete or oversized response")
+			}
+			message := logs.String()
+			if test.wantLimitLog && (!strings.Contains(message, "level=WARN") ||
+				!strings.Contains(message, "proxy response exceeds inspection limit") || !strings.Contains(message, "limit_bytes=5")) {
+				t.Fatalf("missing size-limit diagnostic: %s", message)
+			}
+			for _, secret := range []string{"user:", "password", "token=", "secret"} {
+				if strings.Contains(message, secret) {
+					t.Fatalf("inspection diagnostic exposed %q", secret)
+				}
+			}
+		})
+	}
+}
+
+func TestCloseCancelsResponseBuffering(t *testing.T) {
+	started := make(chan struct{})
+	upstreamCanceled := make(chan struct{})
+	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		_, _ = io.WriteString(w, "partial")
+		w.(http.Flusher).Flush()
+		close(started)
+		<-request.Context().Done()
+		close(upstreamCanceled)
+	}), false)
+	options.RequestHooks = []RequestHook{func(context.Context, Request) (ResponseHook, error) {
+		return func(context.Context, Response) (*ResponseBodyHook, error) {
+			return &ResponseBodyHook{MaxBytes: 1024, Handle: func(context.Context, Response) error {
+				t.Error("incomplete response was processed")
+				return nil
+			}}, nil
+		}, nil
+	}}
+	server := startTestProxy(t, options)
+	client := newProxyClient(t, server)
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		if response, err := client.Get(registryURL); err == nil {
+			_ = response.Body.Close()
+		}
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("metadata request did not start")
+	}
+	if err := server.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, done := range []chan struct{}{upstreamCanceled, finished} {
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("buffering did not stop after proxy shutdown")
+		}
+	}
+}
+
 func TestRequestHooksRunInOrderUntilRejection(t *testing.T) {
 	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), false)
 	var calls []string
 	options.RequestHooks = []RequestHook{
-		func(context.Context, Request) error { calls = append(calls, "first"); return nil },
-		func(context.Context, Request) error { calls = append(calls, "second"); return errors.New("no") },
-		func(context.Context, Request) error { calls = append(calls, "third"); return nil },
+		func(context.Context, Request) (ResponseHook, error) { calls = append(calls, "first"); return nil, nil },
+		func(context.Context, Request) (ResponseHook, error) {
+			calls = append(calls, "second")
+			return nil, errors.New("no")
+		},
+		func(context.Context, Request) (ResponseHook, error) { calls = append(calls, "third"); return nil, nil },
 	}
 
 	get(t, newProxyClient(t, startTestProxy(t, options)), registryURL)
@@ -449,18 +741,16 @@ func TestHooksObserveRequestsAndResponses(t *testing.T) {
 	var mutex sync.Mutex
 	var requests, responses []string
 	options.RequestHooks = []RequestHook{
-		func(_ context.Context, request Request) error {
+		func(_ context.Context, request Request) (ResponseHook, error) {
 			mutex.Lock()
-			defer mutex.Unlock()
 			requests = append(requests, request.Method+" "+request.URL.String())
-			return nil
-		},
-	}
-	options.ResponseHooks = []ResponseHook{
-		func(_ context.Context, response Response) {
-			mutex.Lock()
-			defer mutex.Unlock()
-			responses = append(responses, fmt.Sprintf("%d %s", response.StatusCode, response.Request.URL.String()))
+			mutex.Unlock()
+			return func(_ context.Context, response Response) (*ResponseBodyHook, error) {
+				mutex.Lock()
+				defer mutex.Unlock()
+				responses = append(responses, fmt.Sprintf("%d %s", response.StatusCode, response.Request.URL.String()))
+				return nil, nil
+			}, nil
 		},
 	}
 
@@ -484,7 +774,7 @@ func TestRequestBodyReachesUpstreamUnchanged(t *testing.T) {
 	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(w, r.Body)
 	}), true)
-	options.RequestHooks = []RequestHook{func(context.Context, Request) error { return nil }}
+	options.RequestHooks = []RequestHook{func(context.Context, Request) (ResponseHook, error) { return nil, nil }}
 	client := newProxyClient(t, startTestProxy(t, options))
 
 	response, err := client.Post(registryURL+"/-/publish", "application/json", strings.NewReader(`{"name":"left-pad"}`))
@@ -524,7 +814,9 @@ func TestResponsesStreamWithoutBuffering(t *testing.T) {
 				_, _ = io.WriteString(w, "-last")
 			}), true)
 			if tt.responseHook {
-				options.ResponseHooks = []ResponseHook{func(context.Context, Response) {}}
+				options.RequestHooks = []RequestHook{func(context.Context, Request) (ResponseHook, error) {
+					return func(context.Context, Response) (*ResponseBodyHook, error) { return nil, nil }, nil
+				}}
 			}
 
 			response, err := newProxyClient(t, startTestProxy(t, options)).Get(registryURL + "/artifact.tgz")
@@ -656,11 +948,11 @@ func TestCloseCancelsRunningHooks(t *testing.T) {
 	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), false)
 	hookStarted, hookCanceled := make(chan struct{}), make(chan struct{})
 	options.RequestHooks = []RequestHook{
-		func(ctx context.Context, _ Request) error {
+		func(ctx context.Context, _ Request) (ResponseHook, error) {
 			close(hookStarted)
 			<-ctx.Done()
 			close(hookCanceled)
-			return ctx.Err()
+			return nil, ctx.Err()
 		},
 	}
 	server := startTestProxy(t, options)
@@ -756,6 +1048,133 @@ func TestClientCancellationAbortsUpstreamRequest(t *testing.T) {
 	case <-upstreamCanceled:
 	case <-time.After(5 * time.Second):
 		t.Fatal("upstream request kept running after the client canceled it")
+	}
+}
+
+func TestParentCancellationCancelsBufferedResponse(t *testing.T) {
+	for _, useTLS := range []bool{false, true} {
+		t.Run(fmt.Sprintf("tls=%t", useTLS), func(t *testing.T) {
+			started, canceled, testDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				_, _ = io.WriteString(w, "partial metadata")
+				w.(http.Flusher).Flush()
+				close(started)
+				select {
+				case <-request.Context().Done():
+					close(canceled)
+				case <-testDone:
+				}
+			}), useTLS)
+			t.Cleanup(func() { close(testDone) })
+			options.RequestHooks = []RequestHook{func(context.Context, Request) (ResponseHook, error) {
+				return func(context.Context, Response) (*ResponseBodyHook, error) {
+					return &ResponseBodyHook{MaxBytes: 1024, Handle: func(context.Context, Response) error {
+						t.Error("incomplete metadata was processed")
+						return nil
+					}}, nil
+				}, nil
+			}}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			server, err := Start(ctx, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = server.Close() })
+			client := newProxyClient(t, server)
+			finished := make(chan struct{})
+			go func() {
+				defer close(finished)
+				if response, err := client.Get(registryURL); err == nil {
+					_ = response.Body.Close()
+				}
+			}()
+			select {
+			case <-started:
+			case <-time.After(5 * time.Second):
+				t.Fatal("upstream metadata request did not start")
+			}
+			cancel()
+			for _, done := range []chan struct{}{canceled, finished} {
+				select {
+				case <-done:
+				case <-time.After(2 * time.Second):
+					t.Fatal("buffering retained an upstream request after the command was canceled")
+				}
+			}
+		})
+	}
+}
+
+func TestTruncatedStreamingResponseDoesNotComplete(t *testing.T) {
+	for _, useTLS := range []bool{false, true} {
+		t.Run(fmt.Sprintf("TLS=%t", useTLS), func(t *testing.T) {
+			partial := strings.Repeat("partial artifact", 512)
+			finish := make(chan struct{})
+			var finishOnce sync.Once
+			finishResponse := func() { finishOnce.Do(func() { close(finish) }) }
+			defer finishResponse()
+			registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/octet-stream")
+				_, _ = io.WriteString(w, partial)
+				w.(http.Flusher).Flush()
+				<-finish
+				// Close upstream without the final chunk that completes its body.
+				panic(http.ErrAbortHandler)
+			}), useTLS)
+			response, err := newProxyClient(t, startTestProxy(t, options)).Get(registryURL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			finishResponse()
+			body, err := io.ReadAll(response.Body)
+			if string(body) != partial || !errors.Is(err, io.ErrUnexpectedEOF) {
+				t.Fatalf("body length = %d, error = %v; want %d partial bytes and unexpected EOF", len(body), err, len(partial))
+			}
+		})
+	}
+}
+
+func TestUpgradedTunnelClosesAfterUpstream(t *testing.T) {
+	for _, useTLS := range []bool{false, true} {
+		t.Run(fmt.Sprintf("TLS=%t", useTLS), func(t *testing.T) {
+			registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				connection, _, err := http.NewResponseController(w).Hijack()
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				defer connection.Close()
+				_, _ = io.WriteString(connection, "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\npayload")
+			}), useTLS)
+			server := startTestProxy(t, options)
+			target, _ := url.Parse(registryURL)
+			connection, _ := openTunnel(t, server, target.Host)
+			if useTLS {
+				connection = tls.Client(connection, &tls.Config{
+					RootCAs: proxyRoots(t, server), ServerName: testRegistryHost, MinVersion: tls.VersionTLS12,
+				})
+				defer connection.Close()
+			}
+			_ = connection.SetDeadline(time.Now().Add(3 * time.Second))
+			if _, err := fmt.Fprintf(connection, "GET /socket HTTP/1.1\r\nHost: %s\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n", target.Host); err != nil {
+				t.Fatal(err)
+			}
+			reader := bufio.NewReader(connection)
+			response, err := http.ReadResponse(reader, &http.Request{Method: http.MethodGet})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			if response.StatusCode != http.StatusSwitchingProtocols {
+				t.Fatalf("status = %d, want 101", response.StatusCode)
+			}
+			body, err := io.ReadAll(reader)
+			if err != nil || string(body) != "payload" {
+				t.Fatalf("upgraded body = %q, error = %v; want payload followed by EOF", body, err)
+			}
+		})
 	}
 }
 

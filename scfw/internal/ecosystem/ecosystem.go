@@ -8,6 +8,7 @@ package ecosystem
 import (
 	"context"
 	"fmt"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 	"time"
 )
 
@@ -26,7 +27,7 @@ func HasRegistrySource(ecosystem Ecosystem, source string) bool {
 	case NPM:
 		return isNpmRegistrySource(source)
 	case PYPI:
-		return isPyPIRegistrySource(source)
+		return pypi.HasRegistrySource(source)
 	default:
 		return false
 	}
@@ -39,7 +40,7 @@ func ResolvePublishDate(ctx context.Context, ecosystem Ecosystem, name, version,
 	case NPM:
 		return resolveNpmPublishDate(ctx, name, version, source)
 	case PYPI:
-		return resolvePyPIPublishDate(ctx, name, version, source)
+		return pypi.ResolvePublishDate(ctx, name, version, source)
 	default:
 		return time.Time{}, fmt.Errorf("unsupported ecosystem: %s", ecosystem)
 	}

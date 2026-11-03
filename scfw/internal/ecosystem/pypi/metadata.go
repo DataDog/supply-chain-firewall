@@ -3,7 +3,7 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2024-present Datadog, Inc.
 
-package ecosystem
+package pypi
 
 import (
 	"bytes"
@@ -28,16 +28,16 @@ import (
 	"golang.org/x/net/html"
 )
 
-// MaxPyPIMetadataBytes bounds both encoded and decoded metadata retained from
+// MaxMetadataBytes bounds both encoded and decoded metadata retained from
 // an index response. Callers must handle oversized or unsupported responses
 // before exposing uninspected metadata to the package manager.
-const MaxPyPIMetadataBytes = 8 << 20
+const MaxMetadataBytes = 8 << 20
 
-var errPyPIMetadataTooLarge = fmt.Errorf("PyPI metadata exceeds %d bytes", MaxPyPIMetadataBytes)
+var errPyPIMetadataTooLarge = fmt.Errorf("PyPI metadata exceeds %d bytes", MaxMetadataBytes)
 
-// PyPIMetadataCache stores exact per-distribution upload times observed in
+// MetadataCache stores exact per-distribution upload times observed in
 // PyPI JSON API and Simple API responses during one package-manager run.
-type PyPIMetadataCache struct {
+type MetadataCache struct {
 	mutex     sync.RWMutex
 	records   map[string]pyPIMetadataRecord
 	aliases   map[string]pyPIMetadataRecord
@@ -48,7 +48,7 @@ type PyPIMetadataCache struct {
 }
 
 type pyPIMetadataRecord struct {
-	artifact PyPIArtifact
+	artifact Artifact
 	date     time.Time
 }
 
@@ -65,26 +65,26 @@ type pyPIMetadataDiscovery struct {
 }
 
 // Register records a metadata endpoint for later independent refresh.
-func (cache *PyPIMetadataCache) Register(requestURL url.URL, requestHeader http.Header) {
+func (cache *MetadataCache) Register(requestURL url.URL, requestHeader http.Header) {
 	cache.registerEndpoint(requestURL, requestHeader)
 }
 
 // RegisterProject records a Simple endpoint whose arbitrary base was
 // configured by an integration or established by PyPI protocol media type.
-func (cache *PyPIMetadataCache) RegisterProject(requestURL url.URL, project string, requestHeader http.Header) {
-	cache.registerProjectEndpoint(requestURL, NormalizePyPIName(project), requestHeader, false)
+func (cache *MetadataCache) RegisterProject(requestURL url.URL, project string, requestHeader http.Header) {
+	cache.registerProjectEndpoint(requestURL, NormalizeName(project), requestHeader, false)
 }
 
 // RegisterProjectCandidate retains the possible project behind an ambiguous
 // archive-shaped redirect without treating the destination's binary as metadata.
-func (cache *PyPIMetadataCache) RegisterProjectCandidate(requestURL url.URL, project string, requestHeader http.Header) {
-	cache.registerProjectEndpoint(requestURL, NormalizePyPIName(project), requestHeader, true)
+func (cache *MetadataCache) RegisterProjectCandidate(requestURL url.URL, project string, requestHeader http.Header) {
+	cache.registerProjectEndpoint(requestURL, NormalizeName(project), requestHeader, true)
 }
 
 // ProjectForURL returns the Simple project registered for this exact endpoint,
 // including redirect destinations. Tentative projects need response media-type
 // evidence before their successful response bodies can be treated as metadata.
-func (cache *PyPIMetadataCache) ProjectForURL(requestURL *url.URL) (project string, tentative, found bool) {
+func (cache *MetadataCache) ProjectForURL(requestURL *url.URL) (project string, tentative, found bool) {
 	if requestURL == nil {
 		return "", false, false
 	}
@@ -95,9 +95,9 @@ func (cache *PyPIMetadataCache) ProjectForURL(requestURL *url.URL) (project stri
 	return endpoint.project, endpoint.tentative, found
 }
 
-// IsPyPIMetadataContentType recognizes JSON/HTML representations within a known
+// IsMetadataContentType recognizes JSON/HTML representations within a known
 // or tentative metadata context. It does not identify an arbitrary URL as PyPI.
-func IsPyPIMetadataContentType(header http.Header) bool {
+func IsMetadataContentType(header http.Header) bool {
 	mediaType, _, _ := mime.ParseMediaType(header.Get("Content-Type"))
 	return mediaType == "application/json" || strings.HasSuffix(mediaType, "+json") ||
 		mediaType == "text/html" || strings.HasSuffix(mediaType, "+html")
@@ -106,7 +106,7 @@ func IsPyPIMetadataContentType(header http.Header) bool {
 // RegisterRedirect carries a known Simple project's context to its redirect
 // destination. Credentials are captured from the destination's actual request,
 // never copied from the redirecting endpoint.
-func (cache *PyPIMetadataCache) RegisterRedirect(requestURL url.URL, location string) {
+func (cache *MetadataCache) RegisterRedirect(requestURL url.URL, location string) {
 	project, tentative, found := cache.ProjectForURL(&requestURL)
 	if !found || location == "" {
 		return
@@ -127,7 +127,7 @@ func (cache *PyPIMetadataCache) RegisterRedirect(requestURL url.URL, location st
 }
 
 // PublishDate returns an observed upload time for this exact distribution.
-func (cache *PyPIMetadataCache) PublishDate(artifact PyPIArtifact) (time.Time, bool) {
+func (cache *MetadataCache) PublishDate(artifact Artifact) (time.Time, bool) {
 	key := artifact.RequestKey
 	if key == "" {
 		key = pyPIURLRequestKey(nil, artifact.Source)
@@ -135,7 +135,7 @@ func (cache *PyPIMetadataCache) PublishDate(artifact PyPIArtifact) (time.Time, b
 	cache.mutex.RLock()
 	defer cache.mutex.RUnlock()
 	record, found := cache.recordForKey(key)
-	if !found || record.date.IsZero() || record.artifact.Name != artifact.Name || PyPIVersionIdentity(record.artifact.Version) != PyPIVersionIdentity(artifact.Version) {
+	if !found || record.date.IsZero() || record.artifact.Name != artifact.Name || VersionIdentity(record.artifact.Version) != VersionIdentity(artifact.Version) {
 		return time.Time{}, false
 	}
 	return record.date, true
@@ -143,22 +143,22 @@ func (cache *PyPIMetadataCache) PublishDate(artifact PyPIArtifact) (time.Time, b
 
 // ArtifactForURL resolves an advertised, possibly opaque, distribution URL to
 // the identity supplied by its Simple or JSON metadata.
-func (cache *PyPIMetadataCache) ArtifactForURL(requestURL *url.URL) (PyPIArtifact, bool) {
+func (cache *MetadataCache) ArtifactForURL(requestURL *url.URL) (Artifact, bool) {
 	if requestURL == nil {
-		return PyPIArtifact{}, false
+		return Artifact{}, false
 	}
 	key := pyPIURLRequestKey(nil, requestURL.String())
 	cache.mutex.RLock()
 	record, found := cache.recordForKey(key)
 	cache.mutex.RUnlock()
 	if !found {
-		return PyPIArtifact{}, false
+		return Artifact{}, false
 	}
 	return record.artifact, true
 }
 
 // recordForKey requires the cache mutex to be held by the caller.
-func (cache *PyPIMetadataCache) recordForKey(key string) (pyPIMetadataRecord, bool) {
+func (cache *MetadataCache) recordForKey(key string) (pyPIMetadataRecord, bool) {
 	if cache.ambiguous[key] {
 		return pyPIMetadataRecord{}, false
 	}
@@ -172,7 +172,7 @@ func (cache *PyPIMetadataCache) recordForKey(key string) (pyPIMetadataRecord, bo
 // IsCoreMetadataURL reports whether a request is the PEP 658/714 metadata
 // sidecar for an advertised wheel. Core metadata must pass through without
 // evaluating it as a distribution download.
-func (cache *PyPIMetadataCache) IsCoreMetadataURL(requestURL *url.URL) bool {
+func (cache *MetadataCache) IsCoreMetadataURL(requestURL *url.URL) bool {
 	if requestURL == nil || !strings.HasSuffix(strings.ToLower(requestURL.Path), ".metadata") {
 		return false
 	}
@@ -189,7 +189,7 @@ func (cache *PyPIMetadataCache) IsCoreMetadataURL(requestURL *url.URL) bool {
 // project hint. Success only means the metadata was fetched; the caller must
 // still require ArtifactForURL to match the exact request URL before treating
 // it as a distribution. Concurrent hints for one project share the refresh.
-func (cache *PyPIMetadataCache) Discover(
+func (cache *MetadataCache) Discover(
 	ctx context.Context,
 	client *http.Client,
 	project string,
@@ -200,7 +200,7 @@ func (cache *PyPIMetadataCache) Discover(
 	if client == nil || len(endpoints) == 0 {
 		return errors.New("PyPI metadata discovery is unavailable")
 	}
-	project = NormalizePyPIName(project)
+	project = NormalizeName(project)
 	cache.mutex.Lock()
 	if cache.discovery == nil {
 		cache.discovery = make(map[string]*pyPIMetadataDiscovery)
@@ -244,8 +244,8 @@ func (cache *PyPIMetadataCache) Discover(
 
 // Observe parses a complete metadata response supplied by the proxy or an
 // independent refresh. The caller owns reading and buffering the encoded body.
-func (cache *PyPIMetadataCache) Observe(requestURL url.URL, header http.Header, encoded []byte) error {
-	if len(encoded) > MaxPyPIMetadataBytes {
+func (cache *MetadataCache) Observe(requestURL url.URL, header http.Header, encoded []byte) error {
+	if len(encoded) > MaxMetadataBytes {
 		logPyPIMetadataLimit(requestURL)
 		return errPyPIMetadataTooLarge
 	}
@@ -279,21 +279,21 @@ func (cache *PyPIMetadataCache) Observe(requestURL url.URL, header http.Header, 
 }
 
 func logPyPIMetadataLimit(requestURL url.URL) {
-	slog.Warn("PyPI metadata exceeds size limit", "url", canonicalPyPIURL(nil, requestURL.String()), "limit_bytes", MaxPyPIMetadataBytes)
+	slog.Warn("PyPI metadata exceeds size limit", "url", canonicalPyPIURL(nil, requestURL.String()), "limit_bytes", MaxMetadataBytes)
 }
 
 // Resolve project context before HTML base elements change link resolution.
-func (cache *PyPIMetadataCache) metadataProject(requestURL *url.URL) string {
+func (cache *MetadataCache) metadataProject(requestURL *url.URL) string {
 	if project, _, found := cache.ProjectForURL(requestURL); found {
 		return project
 	}
-	if project, found := PyPISimpleProject(requestURL); found {
+	if project, found := SimpleProject(requestURL); found {
 		return project
 	}
 	segments := strings.Split(strings.Trim(path.Clean(requestURL.Path), "/"), "/")
 	if strings.EqualFold(requestURL.Hostname(), "pypi.org") && (len(segments) == 3 || len(segments) == 4) &&
 		segments[0] == "pypi" && segments[len(segments)-1] == "json" && pyPIProjectName.MatchString(segments[1]) {
-		return NormalizePyPIName(segments[1])
+		return NormalizeName(segments[1])
 	}
 	return ""
 }
@@ -320,7 +320,7 @@ func decodePyPIMetadata(encoded []byte, contentEncoding string) ([]byte, error) 
 	case "br":
 		reader = brotli.NewReader(reader)
 	case "zstd":
-		decoder, err := zstd.NewReader(reader, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(MaxPyPIMetadataBytes*2))
+		decoder, err := zstd.NewReader(reader, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(MaxMetadataBytes*2))
 		if err != nil {
 			return nil, fmt.Errorf("open Zstandard PyPI metadata: %w", err)
 		}
@@ -332,11 +332,11 @@ func decodePyPIMetadata(encoded []byte, contentEncoding string) ([]byte, error) 
 	if closeReader != nil {
 		defer closeReader()
 	}
-	body, err := io.ReadAll(io.LimitReader(reader, MaxPyPIMetadataBytes+1))
+	body, err := io.ReadAll(io.LimitReader(reader, MaxMetadataBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("decode PyPI metadata: %w", err)
 	}
-	if len(body) > MaxPyPIMetadataBytes {
+	if len(body) > MaxMetadataBytes {
 		return nil, errPyPIMetadataTooLarge
 	}
 	return body, nil
@@ -350,7 +350,7 @@ func firstNonSpace(body []byte) byte {
 	return trimmed[0]
 }
 
-func (cache *PyPIMetadataCache) observeJSON(body []byte, base *url.URL, project string) error {
+func (cache *MetadataCache) observeJSON(body []byte, base *url.URL, project string) error {
 	var metadata struct {
 		Name string `json:"name"`
 		Info struct {
@@ -377,9 +377,9 @@ func (cache *PyPIMetadataCache) observeJSON(body []byte, base *url.URL, project 
 	}
 	if project == "" {
 		if pyPIProjectName.MatchString(metadata.Name) {
-			project = NormalizePyPIName(metadata.Name)
+			project = NormalizeName(metadata.Name)
 		} else if pyPIProjectName.MatchString(metadata.Info.Name) {
-			project = NormalizePyPIName(metadata.Info.Name)
+			project = NormalizeName(metadata.Info.Name)
 		}
 	}
 	for _, releases := range metadata.Releases {
@@ -408,7 +408,7 @@ func (cache *PyPIMetadataCache) observeJSON(body []byte, base *url.URL, project 
 	return nil
 }
 
-func (cache *PyPIMetadataCache) observeHTML(body []byte, base *url.URL, project string) error {
+func (cache *MetadataCache) observeHTML(body []byte, base *url.URL, project string) error {
 	base = pyPIHTMLBaseURL(body, base)
 	tokenizer := html.NewTokenizer(bytes.NewReader(body))
 	for {
@@ -465,7 +465,7 @@ func pyPIHTMLBaseURL(body []byte, fallback *url.URL) *url.URL {
 	}
 }
 
-func (cache *PyPIMetadataCache) store(base *url.URL, filename, reference, uploadTime, project string) {
+func (cache *MetadataCache) store(base *url.URL, filename, reference, uploadTime, project string) {
 	name, version, ok := parsePyPIDistributionFilename(filename, project)
 	source := canonicalPyPIURL(base, reference)
 	requestKey := pyPIURLRequestKey(base, reference)
@@ -476,7 +476,7 @@ func (cache *PyPIMetadataCache) store(base *url.URL, filename, reference, upload
 	if uploadTime != "" {
 		date, _ = time.Parse(time.RFC3339Nano, uploadTime)
 	}
-	artifact := PyPIArtifact{Name: name, Version: version, Filename: filename, Source: source, RequestKey: requestKey}
+	artifact := Artifact{Name: name, Version: version, Filename: filename, Source: source, RequestKey: requestKey}
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 	if cache.records == nil {
@@ -501,7 +501,7 @@ func (cache *PyPIMetadataCache) store(base *url.URL, filename, reference, upload
 	}
 }
 
-func (cache *PyPIMetadataCache) storeAlias(key string, record pyPIMetadataRecord) {
+func (cache *MetadataCache) storeAlias(key string, record pyPIMetadataRecord) {
 	if cache.aliases == nil {
 		cache.aliases = make(map[string]pyPIMetadataRecord)
 	}
@@ -510,7 +510,7 @@ func (cache *PyPIMetadataCache) storeAlias(key string, record pyPIMetadataRecord
 
 // storeRecord merges evidence for an exact request key or its wire-visible
 // alias. Identity conflicts invalidate both paths for the remainder of the run.
-func (cache *PyPIMetadataCache) storeRecord(records map[string]pyPIMetadataRecord, key string, record pyPIMetadataRecord) bool {
+func (cache *MetadataCache) storeRecord(records map[string]pyPIMetadataRecord, key string, record pyPIMetadataRecord) bool {
 	if key == "" || cache.ambiguous[key] {
 		return false
 	}
@@ -539,7 +539,7 @@ func (cache *PyPIMetadataCache) storeRecord(records map[string]pyPIMetadataRecor
 	return true
 }
 
-func (cache *PyPIMetadataCache) markAmbiguous(key string) {
+func (cache *MetadataCache) markAmbiguous(key string) {
 	delete(cache.records, key)
 	delete(cache.aliases, key)
 	if cache.ambiguous == nil {
@@ -548,20 +548,20 @@ func (cache *PyPIMetadataCache) markAmbiguous(key string) {
 	cache.ambiguous[key] = true
 }
 
-func samePyPIArtifactIdentity(first, second PyPIArtifact) bool {
-	return first.Name == second.Name && PyPIVersionIdentity(first.Version) == PyPIVersionIdentity(second.Version) &&
+func samePyPIArtifactIdentity(first, second Artifact) bool {
+	return first.Name == second.Name && VersionIdentity(first.Version) == VersionIdentity(second.Version) &&
 		first.Filename == second.Filename
 }
 
-func (cache *PyPIMetadataCache) registerEndpoint(requestURL url.URL, requestHeader http.Header) {
-	project, ok := PyPISimpleProject(&requestURL)
+func (cache *MetadataCache) registerEndpoint(requestURL url.URL, requestHeader http.Header) {
+	project, ok := SimpleProject(&requestURL)
 	if !ok {
 		return
 	}
 	cache.registerProjectEndpoint(requestURL, project, requestHeader, false)
 }
 
-func (cache *PyPIMetadataCache) registerProjectEndpoint(requestURL url.URL, project string, requestHeader http.Header, tentative bool) {
+func (cache *MetadataCache) registerProjectEndpoint(requestURL url.URL, project string, requestHeader http.Header, tentative bool) {
 	if !pyPIProjectName.MatchString(project) {
 		return
 	}
@@ -584,7 +584,7 @@ func (cache *PyPIMetadataCache) registerProjectEndpoint(requestURL url.URL, proj
 	cache.mutex.Unlock()
 }
 
-func (cache *PyPIMetadataCache) markObserved(requestURL url.URL) {
+func (cache *MetadataCache) markObserved(requestURL url.URL) {
 	key := pyPIURLRequestKey(nil, requestURL.String())
 	cache.mutex.Lock()
 	if cache.observed == nil {
@@ -596,7 +596,7 @@ func (cache *PyPIMetadataCache) markObserved(requestURL url.URL) {
 
 // HasObserved reports whether this exact metadata endpoint has already
 // supplied a successfully parsed response during the run.
-func (cache *PyPIMetadataCache) HasObserved(requestURL url.URL) bool {
+func (cache *MetadataCache) HasObserved(requestURL url.URL) bool {
 	key := pyPIURLRequestKey(nil, requestURL.String())
 	cache.mutex.RLock()
 	defer cache.mutex.RUnlock()
@@ -604,7 +604,7 @@ func (cache *PyPIMetadataCache) HasObserved(requestURL url.URL) bool {
 }
 
 // Refresh fetches one metadata endpoint independently and observes its body.
-func (cache *PyPIMetadataCache) Refresh(ctx context.Context, client *http.Client, requestURL url.URL) error {
+func (cache *MetadataCache) Refresh(ctx context.Context, client *http.Client, requestURL url.URL) error {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), nil)
 	if err != nil {
 		return errors.New("build PyPI metadata refresh request")
@@ -632,7 +632,7 @@ func (cache *PyPIMetadataCache) Refresh(ctx context.Context, client *http.Client
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("refresh PyPI metadata: unexpected status %s", response.Status)
 	}
-	if endpoint.tentative && !IsPyPIMetadataContentType(response.Header) {
+	if endpoint.tentative && !IsMetadataContentType(response.Header) {
 		// A cached archive can also return 304 at a Simple-shaped URL. Its
 		// independent refresh must confirm metadata before inspecting the body.
 		return nil
@@ -646,7 +646,7 @@ func (cache *PyPIMetadataCache) Refresh(ctx context.Context, client *http.Client
 	if project := cache.metadataProject(&requestURL); project != "" {
 		cache.RegisterProject(*responseURL, project, nil)
 	}
-	body, err := io.ReadAll(io.LimitReader(response.Body, MaxPyPIMetadataBytes+1))
+	body, err := io.ReadAll(io.LimitReader(response.Body, MaxMetadataBytes+1))
 	if err != nil {
 		return fmt.Errorf("read PyPI metadata refresh: %w", err)
 	}
@@ -659,7 +659,7 @@ func (cache *PyPIMetadataCache) Refresh(ctx context.Context, client *http.Client
 
 // ResolvePublishDate refreshes previously observed Simple endpoints for the
 // artifact's project and returns the date for its exact advertised source.
-func (cache *PyPIMetadataCache) ResolvePublishDate(ctx context.Context, client *http.Client, artifact PyPIArtifact) (time.Time, error) {
+func (cache *MetadataCache) ResolvePublishDate(ctx context.Context, client *http.Client, artifact Artifact) (time.Time, error) {
 	if date, found := cache.PublishDate(artifact); found {
 		return date, nil
 	}
@@ -756,4 +756,42 @@ func effectiveURLPort(value *url.URL) string {
 		return "80"
 	}
 	return ""
+}
+
+// ResolveArtifactPublishDate resolves one distribution's upload time, preferring
+// observed metadata, then independently refreshed metadata, and finally fallback.
+func (cache *MetadataCache) ResolveArtifactPublishDate(
+	ctx context.Context,
+	client *http.Client,
+	artifact Artifact,
+	fallback func(context.Context, string, string, string) (time.Time, error),
+) (time.Time, error) {
+	if err := ctx.Err(); err != nil {
+		return time.Time{}, err
+	}
+	publishDate, found := cache.PublishDate(artifact)
+	var publishErr error
+	if !found && client != nil {
+		publishDate, publishErr = cache.ResolvePublishDate(ctx, client, artifact)
+		if isContextError(publishErr) {
+			return time.Time{}, publishErr
+		}
+		found = !publishDate.IsZero()
+	}
+	if !found {
+		fallbackDate, fallbackErr := fallback(ctx, artifact.Name, artifact.Version, artifact.Source)
+		if !fallbackDate.IsZero() || fallbackErr != nil || publishErr == nil {
+			publishDate, publishErr = fallbackDate, fallbackErr
+		}
+	}
+	if isContextError(publishErr) {
+		return time.Time{}, publishErr
+	}
+	if err := ctx.Err(); err != nil {
+		return time.Time{}, err
+	}
+	if publishErr == nil && publishDate.IsZero() {
+		publishErr = errors.New("publication date unavailable")
+	}
+	return publishDate, publishErr
 }

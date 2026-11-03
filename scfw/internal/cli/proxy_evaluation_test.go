@@ -29,6 +29,7 @@ import (
 	"golang.org/x/net/http/httpproxy"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
@@ -64,7 +65,7 @@ func TestPyPIProxyControllerExposesEcosystemHooks(t *testing.T) {
 		}),
 		nopReporter{}, io.Discard,
 	)
-	controller, err := newPyPIProxyControllerWithOptions(handler, ecosystem.PyPIRequestClassifierOptions{
+	controller, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{
 		SimpleIndexURLs: []string{
 			"https://index.example/python-packages/",
 			"https://index.example/simple/v1+json/",
@@ -90,7 +91,7 @@ func TestPyPIProxyControllerExposesEcosystemHooks(t *testing.T) {
 			t.Fatal(parseErr)
 		}
 		kind, _ := handler.classifier.ClassifyRequest(http.MethodGet, requestURL)
-		if kind != ecosystem.PyPIRequestSimpleAPI {
+		if kind != pypi.RequestSimpleAPI {
 			t.Fatalf("configured base %q classified as %v, want Simple API", rawURL, kind)
 		}
 	}
@@ -111,21 +112,21 @@ func TestConfiguredPyPISimpleBasesCacheOpaqueArtifacts(t *testing.T) {
 				}),
 				nopReporter{}, io.Discard,
 			)
-			if _, err := newPyPIProxyControllerWithOptions(handler, ecosystem.PyPIRequestClassifierOptions{
+			if _, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{
 				SimpleIndexURLs: []string{base},
 			}); err != nil {
 				t.Fatal(err)
 			}
 			metadataURL := mustParseURL(t, base+"project/")
 			request := proxy.Request{Method: http.MethodGet, URL: metadataURL}
-			if _, err := handler.HandleRequest(context.Background(), request); err != nil {
+			if _, err := handler.pypiHandler().HandleRequest(context.Background(), request); err != nil {
 				t.Fatal(err)
 			}
 			response := proxy.Response{
 				Request: request, StatusCode: http.StatusOK,
 				Header: http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}},
 			}
-			bodyHook, err := handler.ObserveMetadataHeaders(context.Background(), response)
+			bodyHook, err := handler.pypiHandler().ObserveMetadataHeaders(context.Background(), response)
 			if err != nil || bodyHook == nil {
 				t.Fatal("configured Simple response was not observed")
 			}
@@ -134,7 +135,7 @@ func TestConfiguredPyPISimpleBasesCacheOpaqueArtifacts(t *testing.T) {
 				t.Fatal(err)
 			}
 			artifactURL := mustParseURL(t, "https://index.example/objects/opaque")
-			if _, err := handler.HandleRequest(context.Background(), proxy.Request{Method: http.MethodGet, URL: artifactURL}); err == nil {
+			if _, err := handler.pypiHandler().HandleRequest(context.Background(), proxy.Request{Method: http.MethodGet, URL: artifactURL}); err == nil {
 				t.Fatal("opaque artifact was not blocked before forwarding")
 			}
 			if evaluations.Load() != 1 {
@@ -215,7 +216,7 @@ func TestPyPIProxyDiscoversConfiguredIndexArtifactsBeforeForwarding(t *testing.T
 	}
 	indexURL.User = url.UserPassword("index-user", "index-password")
 	indexURL.Path = "/python-packages/"
-	controller, err := newPyPIProxyControllerWithOptions(handler, ecosystem.PyPIRequestClassifierOptions{
+	controller, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{
 		SimpleIndexURLs: []string{indexURL.String()},
 	})
 	if err != nil {
@@ -311,7 +312,7 @@ func TestPyPIProxyDiscoversArchiveShapedSimpleDownloads(t *testing.T) {
 						evaluations.Add(1)
 						return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeBlock}, nil
 					}), nopReporter{}, io.Discard)
-				controller, err := newPyPIProxyControllerWithOptions(handler, ecosystem.PyPIRequestClassifierOptions{SimpleIndexURLs: []string{index.URL + base}})
+				controller, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{SimpleIndexURLs: []string{index.URL + base}})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -370,7 +371,7 @@ func TestPyPIProxyKeepsUnadvertisedArchiveRedirectsTentative(t *testing.T) {
 			evaluations.Add(1)
 			return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeBlock}, nil
 		}), nopReporter{}, io.Discard)
-	controller, err := newPyPIProxyControllerWithOptions(handler, ecosystem.PyPIRequestClassifierOptions{SimpleIndexURLs: []string{index.URL + "/simple/"}})
+	controller, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{SimpleIndexURLs: []string{index.URL + "/simple/"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,7 +423,7 @@ func TestPyPIProxyPreservesTentativeBinaryNotModified(t *testing.T) {
 					t.Error("unadvertised binary was evaluated")
 					return evaluation.ScfwPolicyEvaluationReport{}, nil
 				}), nopReporter{}, io.Discard)
-			controller, err := newPyPIProxyControllerWithOptions(handler, ecosystem.PyPIRequestClassifierOptions{SimpleIndexURLs: []string{index.URL + "/simple/"}})
+			controller, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{SimpleIndexURLs: []string{index.URL + "/simple/"}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -507,7 +508,7 @@ func TestPyPIProxyPreservesArchiveShapedProjectContext(t *testing.T) {
 					}
 					return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeBlock}, nil
 				}), nopReporter{}, io.Discard)
-			controller, err := newPyPIProxyControllerWithOptions(handler, ecosystem.PyPIRequestClassifierOptions{SimpleIndexURLs: []string{index.URL + "/simple/"}})
+			controller, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{SimpleIndexURLs: []string{index.URL + "/simple/"}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -655,7 +656,7 @@ func TestPyPIProxyBlocksHTMLBaseArtifactBeforeForwarding(t *testing.T) {
 					}
 					return nil
 				}), io.Discard)
-			controller, err := newPyPIProxyControllerWithOptions(handler, ecosystem.PyPIRequestClassifierOptions{
+			controller, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{
 				SimpleIndexURLs: []string{index.URL + "/simple/"},
 			})
 			if err != nil {
@@ -835,7 +836,7 @@ func TestProxyPackageEvaluatorTracksOnlyMetadataRedirects(t *testing.T) {
 			handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "", nil, nil, io.Discard)
 			source := mustParseURL(t, "https://index.example/simple/project/")
 			target := mustParseURL(t, "https://index.example/catalog/opaque/")
-			handler.ObserveMetadataHeaders(context.Background(), proxy.Response{
+			handler.pypiHandler().ObserveMetadataHeaders(context.Background(), proxy.Response{
 				Request: proxy.Request{Method: http.MethodGet, URL: source}, StatusCode: status,
 				Header: http.Header{"Location": []string{"/catalog/opaque/"}},
 			})
@@ -848,7 +849,7 @@ func TestProxyPackageEvaluatorTracksOnlyMetadataRedirects(t *testing.T) {
 	handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "", nil, nil, io.Discard)
 	source := mustParseURL(t, "https://index.example/unrelated/")
 	target := mustParseURL(t, "https://index.example/catalog/opaque/")
-	handler.ObserveMetadataHeaders(context.Background(), proxy.Response{
+	handler.pypiHandler().ObserveMetadataHeaders(context.Background(), proxy.Response{
 		Request: proxy.Request{Method: http.MethodGet, URL: source}, StatusCode: http.StatusFound,
 		Header: http.Header{"Location": []string{target.String()}},
 	})
@@ -899,7 +900,7 @@ func TestRunThroughProxyCancelsArtifactWorkWithLifecycleContext(t *testing.T) {
 				requestURL, _ := url.Parse("https://files.pythonhosted.org/packages/project-1.0-py3-none-any.whl")
 				request := proxy.Request{Method: http.MethodGet, URL: *requestURL}
 				result := make(chan error, 1)
-				go func() { _, err := handler.HandleRequest(context.Background(), request); result <- err }()
+				go func() { _, err := handler.pypiHandler().HandleRequest(context.Background(), request); result <- err }()
 				<-started
 				if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
 					return err
@@ -924,7 +925,7 @@ func TestRunThroughProxyCancelsArtifactWorkWithLifecycleContext(t *testing.T) {
 			configure := func(ctx context.Context, _ httpproxy.Config) proxy.Options {
 				lifecycleContext = ctx
 				handler.runContext = ctx
-				return proxy.Options{RequestHooks: []proxy.RequestHook{handler.HandleRequest}}
+				return proxy.Options{RequestHooks: []proxy.RequestHook{handler.pypiHandler().HandleRequest}}
 			}
 			commandErr, setupErr := runThroughProxy(context.Background(), manager, []string{"install", "project"}, configure)
 			if setupErr != nil {
@@ -1004,7 +1005,7 @@ func TestProxyPackageEvaluatorDecisions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = handler.HandleRequest(context.Background(), proxy.Request{Method: http.MethodGet, URL: *requestURL})
+			_, err = handler.pypiHandler().HandleRequest(context.Background(), proxy.Request{Method: http.MethodGet, URL: *requestURL})
 			if (err != nil) != tt.wantBlocked {
 				t.Fatalf("HandleRequest() error = %v, want blocked %v", err, tt.wantBlocked)
 			}
@@ -1094,13 +1095,13 @@ func TestProxyPackageEvaluatorDoesNotReuseOtherArtifactPolicyInputs(t *testing.T
 			}
 			observe(test.firstFile, test.firstURL, firstDate)
 			first := proxy.Request{Method: http.MethodGet, URL: mustParseURL(t, test.firstURL)}
-			if _, err := handler.HandleRequest(context.Background(), first); err != nil {
+			if _, err := handler.pypiHandler().HandleRequest(context.Background(), first); err != nil {
 				t.Fatalf("old artifact was blocked: %v", err)
 			}
 			observe(test.secondFile, test.secondURL, test.secondDate)
 			second := proxy.Request{Method: http.MethodGet, URL: mustParseURL(t, test.secondURL)}
 			for range 2 {
-				if _, err := handler.HandleRequest(context.Background(), second); err == nil {
+				if _, err := handler.pypiHandler().HandleRequest(context.Background(), second); err == nil {
 					t.Fatal("second artifact inherited the first artifact's allowance")
 				}
 			}
@@ -1189,7 +1190,7 @@ func TestProxyPackageEvaluatorMatchesExactUploadInstants(t *testing.T) {
 	}
 	request := proxy.Request{Method: http.MethodGet, URL: mustParseURL(t, "https://files.pythonhosted.org/project-1.0.tar.gz")}
 	for index := range dates {
-		if _, err := handler.HandleRequest(context.Background(), request); err != nil {
+		if _, err := handler.pypiHandler().HandleRequest(context.Background(), request); err != nil {
 			t.Fatal(err)
 		}
 		wantEvaluations := int32(1)
@@ -1222,10 +1223,10 @@ func TestProxyPackageEvaluatorResolvesPublicationBeforeReusingDecision(t *testin
 		return now.Add(-time.Hour), nil
 	}
 	request := proxy.Request{Method: http.MethodGet, URL: mustParseURL(t, "https://files.pythonhosted.org/project-1.0.tar.gz")}
-	if _, err := handler.HandleRequest(context.Background(), request); err != nil {
+	if _, err := handler.pypiHandler().HandleRequest(context.Background(), request); err != nil {
 		t.Fatalf("initial lookup failure unexpectedly blocked: %v", err)
 	}
-	if _, err := handler.HandleRequest(context.Background(), request); err == nil {
+	if _, err := handler.pypiHandler().HandleRequest(context.Background(), request); err == nil {
 		t.Fatal("recovered publication lookup reused the decision with an unknown date")
 	}
 	if lookups.Load() != 2 || evaluations.Load() != 2 {
@@ -1271,7 +1272,7 @@ func TestProxyPackageEvaluatorDeduplicatesConcurrentRequests(t *testing.T) {
 			defer group.Done()
 			<-start
 			requestURL, _ := url.Parse(resolvedSource)
-			_, err := handler.HandleRequest(context.Background(), proxy.Request{Method: http.MethodGet, URL: *requestURL})
+			_, err := handler.pypiHandler().HandleRequest(context.Background(), proxy.Request{Method: http.MethodGet, URL: *requestURL})
 			errorsSeen <- err
 		}()
 	}
@@ -1329,14 +1330,14 @@ func TestProxyPackageEvaluatorRequestCancellationDoesNotCancelRunDecision(t *tes
 	request := proxy.Request{Method: http.MethodGet, URL: *requestURL}
 	requestContext, cancelRequest := context.WithCancel(context.Background())
 	result := make(chan error, 1)
-	go func() { _, err := handler.HandleRequest(requestContext, request); result <- err }()
+	go func() { _, err := handler.pypiHandler().HandleRequest(requestContext, request); result <- err }()
 	<-resolveStarted
 	cancelRequest()
 	close(releaseResolve)
 	if err := <-result; err != nil {
 		t.Fatalf("leader response returned error after request cancellation: %v", err)
 	}
-	if _, err := handler.HandleRequest(context.Background(), request); err != nil {
+	if _, err := handler.pypiHandler().HandleRequest(context.Background(), request); err != nil {
 		t.Fatalf("retry returned error: %v", err)
 	}
 	if resolves.Load() != 2 || evaluations.Load() != 1 || reports.Load() != 1 {
@@ -1363,10 +1364,10 @@ func TestProxyPackageEvaluatorRetriesIncompleteCanceledDecision(t *testing.T) {
 	}
 	requestURL, _ := url.Parse("https://files.pythonhosted.org/packages/project-1.0-py3-none-any.whl")
 	request := proxy.Request{Method: http.MethodGet, URL: *requestURL}
-	if _, err := handler.HandleRequest(context.Background(), request); !errors.Is(err, context.Canceled) {
+	if _, err := handler.pypiHandler().HandleRequest(context.Background(), request); !errors.Is(err, context.Canceled) {
 		t.Fatalf("first incomplete decision error = %v, want context canceled", err)
 	}
-	if _, err := handler.HandleRequest(context.Background(), request); err != nil {
+	if _, err := handler.pypiHandler().HandleRequest(context.Background(), request); err != nil {
 		t.Fatalf("retry returned error: %v", err)
 	}
 	if resolves.Load() != 2 || evaluations.Load() != 1 || reports.Load() != 1 {
@@ -1395,7 +1396,7 @@ func TestProxyPackageEvaluatorUsesObservedMetadataBeforeArtifactRequest(t *testi
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}},
 	}
-	bodyHook, err := handler.ObserveMetadataHeaders(context.Background(), metadataResponse)
+	bodyHook, err := handler.pypiHandler().ObserveMetadataHeaders(context.Background(), metadataResponse)
 	if err != nil || bodyHook == nil {
 		t.Fatal("successful Simple response was not observed")
 	}
@@ -1404,12 +1405,12 @@ func TestProxyPackageEvaluatorUsesObservedMetadataBeforeArtifactRequest(t *testi
 		t.Fatal(err)
 	}
 	metadataResponse.StatusCode = http.StatusNotModified
-	if bodyHook, err := handler.ObserveMetadataHeaders(context.Background(), metadataResponse); bodyHook != nil || err != nil {
+	if bodyHook, err := handler.pypiHandler().ObserveMetadataHeaders(context.Background(), metadataResponse); bodyHook != nil || err != nil {
 		t.Fatal("metadata 304 unexpectedly replaced the per-run cache")
 	}
 
 	artifactURL, _ := url.Parse("https://cdn.example/project-1.0-py3-none-any.whl")
-	if _, err := handler.HandleRequest(context.Background(), proxy.Request{Method: http.MethodGet, URL: *artifactURL}); err != nil {
+	if _, err := handler.pypiHandler().HandleRequest(context.Background(), proxy.Request{Method: http.MethodGet, URL: *artifactURL}); err != nil {
 		t.Fatal(err)
 	}
 	if !gotDate.Equal(wantDate) {
@@ -1431,21 +1432,21 @@ func TestProxyPackageEvaluatorFallsBackAfterUncachedMetadata304(t *testing.T) {
 		return time.Now(), nil
 	}
 	metadataURL, _ := url.Parse("https://index.example/simple/project/")
-	if bodyHook, err := handler.ObserveMetadataHeaders(context.Background(), proxy.Response{
+	if bodyHook, err := handler.pypiHandler().ObserveMetadataHeaders(context.Background(), proxy.Response{
 		Request:    proxy.Request{Method: http.MethodGet, URL: *metadataURL},
 		StatusCode: http.StatusNotModified,
 	}); bodyHook != nil || err != nil {
 		t.Fatal("metadata 304 returned an observer")
 	}
 	artifactURL, _ := url.Parse("https://cdn.example/project-1.0.tar.gz")
-	classifier, err := ecosystem.NewPyPIRequestClassifier(ecosystem.PyPIRequestClassifierOptions{
+	classifier, err := pypi.NewRequestClassifier(pypi.RequestClassifierOptions{
 		DirectArtifactURLs: []string{artifactURL.String()},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	handler.classifier = classifier
-	if _, err := handler.HandleRequest(context.Background(), proxy.Request{Method: http.MethodGet, URL: *artifactURL}); err != nil {
+	if _, err := handler.pypiHandler().HandleRequest(context.Background(), proxy.Request{Method: http.MethodGet, URL: *artifactURL}); err != nil {
 		t.Fatal(err)
 	}
 	if lookups.Load() != 1 {
@@ -1480,7 +1481,7 @@ func TestProxyPackageEvaluatorUsesJSONFallbackForOrdinarySimpleHTML(t *testing.T
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+html"}},
 	}
-	bodyHook, err := handler.ObserveMetadataHeaders(context.Background(), response)
+	bodyHook, err := handler.pypiHandler().ObserveMetadataHeaders(context.Background(), response)
 	if err != nil || bodyHook == nil {
 		t.Fatal("ordinary Simple HTML response was not observed")
 	}
@@ -1489,7 +1490,7 @@ func TestProxyPackageEvaluatorUsesJSONFallbackForOrdinarySimpleHTML(t *testing.T
 		t.Fatal(err)
 	}
 	artifactURL := mustParseURL(t, "https://files.pythonhosted.org/project-1.0.tar.gz")
-	if _, err := handler.HandleRequest(context.Background(), proxy.Request{Method: http.MethodGet, URL: artifactURL}); err != nil {
+	if _, err := handler.pypiHandler().HandleRequest(context.Background(), proxy.Request{Method: http.MethodGet, URL: artifactURL}); err != nil {
 		t.Fatal(err)
 	}
 	if lookups.Load() != 1 || !gotDate.Equal(wantDate) {
@@ -1510,12 +1511,12 @@ func TestProxyPackageEvaluatorLeavesMetadataAndUnrelatedTrafficAlone(t *testing.
 		"https://example.test/unrelated.json",
 	} {
 		requestURL, _ := url.Parse(rawURL)
-		if _, err := handler.HandleRequest(context.Background(), proxy.Request{Method: http.MethodGet, URL: *requestURL}); err != nil {
+		if _, err := handler.pypiHandler().HandleRequest(context.Background(), proxy.Request{Method: http.MethodGet, URL: *requestURL}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	headURL, _ := url.Parse("https://files.pythonhosted.org/packages/requests-2.32.3-py3-none-any.whl")
-	if _, err := handler.HandleRequest(context.Background(), proxy.Request{Method: http.MethodHead, URL: *headURL}); err != nil {
+	if _, err := handler.pypiHandler().HandleRequest(context.Background(), proxy.Request{Method: http.MethodHead, URL: *headURL}); err != nil {
 		t.Fatal(err)
 	}
 	if calls.Load() != 0 {
@@ -1536,7 +1537,7 @@ func TestProxyPackageEvaluatorClassifiesRangesAndPassesCoreMetadata(t *testing.T
 	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
 		return time.Now(), nil
 	}
-	classifier, err := ecosystem.NewPyPIRequestClassifier(ecosystem.PyPIRequestClassifierOptions{
+	classifier, err := pypi.NewRequestClassifier(pypi.RequestClassifierOptions{
 		SimpleIndexURLs:    []string{"https://index.example/python-packages/"},
 		DirectArtifactURLs: []string{"https://index.example/files/project-1.0.tar.lz"},
 	})
@@ -1557,7 +1558,7 @@ func TestProxyPackageEvaluatorClassifiesRangesAndPassesCoreMetadata(t *testing.T
 		{Method: http.MethodGet, URL: mustParseURL(t, "https://unrelated.example/report-2026.zip")},
 	}
 	for _, request := range requests {
-		if _, err := handler.HandleRequest(context.Background(), request); err != nil {
+		if _, err := handler.pypiHandler().HandleRequest(context.Background(), request); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1616,7 +1617,7 @@ func TestPyPIProxyBlocksArtifactBeforeForwardingAndPassesMetadata(t *testing.T) 
 		return time.Time{}, errors.New("unexpected fallback")
 	}
 	server, err := proxy.Start(context.Background(), proxy.Options{
-		RequestHooks: []proxy.RequestHook{handler.HandleRequest},
+		RequestHooks: []proxy.RequestHook{handler.pypiHandler().HandleRequest},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1784,14 +1785,14 @@ func TestPyPIProxyWarnsBeforeForwardingArtifact(t *testing.T) {
 	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
 		return time.Now(), nil
 	}
-	classifier, err := ecosystem.NewPyPIRequestClassifier(ecosystem.PyPIRequestClassifierOptions{
+	classifier, err := pypi.NewRequestClassifier(pypi.RequestClassifierOptions{
 		DirectArtifactURLs: []string{upstream.URL + "/project-1.0.tar.gz"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	handler.classifier = classifier
-	server, err := proxy.Start(context.Background(), proxy.Options{RequestHooks: []proxy.RequestHook{handler.HandleRequest}})
+	server, err := proxy.Start(context.Background(), proxy.Options{RequestHooks: []proxy.RequestHook{handler.pypiHandler().HandleRequest}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2023,7 +2024,7 @@ func TestPyPIProxyBlocksOpaqueAdvertisedArtifactBeforeUpstream(t *testing.T) {
 		return time.Time{}, errors.New("unexpected fallback")
 	}
 	server, err := proxy.Start(context.Background(), proxy.Options{
-		RequestHooks: []proxy.RequestHook{handler.HandleRequest},
+		RequestHooks: []proxy.RequestHook{handler.pypiHandler().HandleRequest},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2087,7 +2088,7 @@ func TestPyPIProxyBlocksAdvertisedAbsoluteUserinfoURL(t *testing.T) {
 	server, err := proxy.Start(context.Background(), proxy.Options{RequestHooks: []proxy.RequestHook{
 		func(ctx context.Context, request proxy.Request) (proxy.ResponseHook, error) {
 			observedUserinfoFree.Store(request.URL.User == nil)
-			return handler.HandleRequest(ctx, request)
+			return handler.pypiHandler().HandleRequest(ctx, request)
 		},
 	}})
 	if err != nil {
@@ -2130,7 +2131,7 @@ func TestPyPIProxyBlocksOpaqueArtifactWithoutAdvertisedUploadTime(t *testing.T) 
 	if err := handler.metadata.Observe(*metadataURL, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(`{"files":[{"filename":"project-1.0.tar.gz","url":"/download?id=wheel-a&token=secret"}]}`)); err != nil {
 		t.Fatal(err)
 	}
-	server, err := proxy.Start(context.Background(), proxy.Options{RequestHooks: []proxy.RequestHook{handler.HandleRequest}})
+	server, err := proxy.Start(context.Background(), proxy.Options{RequestHooks: []proxy.RequestHook{handler.pypiHandler().HandleRequest}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2165,14 +2166,14 @@ func TestPyPIProxyBlocksArtifactUnderSimplePathBeforeUpstream(t *testing.T) {
 	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
 		return time.Now(), nil
 	}
-	classifier, err := ecosystem.NewPyPIRequestClassifier(ecosystem.PyPIRequestClassifierOptions{
+	classifier, err := pypi.NewRequestClassifier(pypi.RequestClassifierOptions{
 		DirectArtifactURLs: []string{upstream.URL + "/simple/files/project-1.0.tar.gz"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	handler.classifier = classifier
-	server, err := proxy.Start(context.Background(), proxy.Options{RequestHooks: []proxy.RequestHook{handler.HandleRequest}})
+	server, err := proxy.Start(context.Background(), proxy.Options{RequestHooks: []proxy.RequestHook{handler.pypiHandler().HandleRequest}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2249,7 +2250,7 @@ func TestPyPIProxyRefreshesAuthenticatedArtifactoryMetadataOn304BeforeOpaqueArti
 	slog.SetDefault(slog.New(slog.NewTextHandler(&diagnostics, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	t.Cleanup(func() { slog.SetDefault(previousLogger) })
 	server, err := proxy.Start(context.Background(), proxy.Options{
-		RequestHooks: []proxy.RequestHook{handler.HandleRequest},
+		RequestHooks: []proxy.RequestHook{handler.pypiHandler().HandleRequest},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2327,7 +2328,7 @@ func TestPyPIProxyObservesModernCompressedMetadataWithoutChangingBytes(t *testin
 				return time.Time{}, errors.New("unexpected fallback")
 			}
 			server, err := proxy.Start(context.Background(), proxy.Options{
-				RequestHooks: []proxy.RequestHook{handler.HandleRequest},
+				RequestHooks: []proxy.RequestHook{handler.pypiHandler().HandleRequest},
 			})
 			if err != nil {
 				t.Fatal(err)

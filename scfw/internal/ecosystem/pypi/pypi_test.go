@@ -3,7 +3,7 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2024-present Datadog, Inc.
 
-package ecosystem
+package pypi
 
 import (
 	"context"
@@ -60,9 +60,9 @@ func TestParsePyPIDistributionFilename(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.filename, func(t *testing.T) {
-			name, version, ok := ParsePyPIDistributionFilename(tt.filename)
+			name, version, ok := ParseDistributionFilename(tt.filename)
 			if name != tt.wantName || version != tt.wantVersion || ok != tt.wantOK {
-				t.Fatalf("ParsePyPIDistributionFilename(%q) = %q, %q, %v; want %q, %q, %v",
+				t.Fatalf("ParseDistributionFilename(%q) = %q, %q, %v; want %q, %q, %v",
 					tt.filename, name, version, ok, tt.wantName, tt.wantVersion, tt.wantOK)
 			}
 		})
@@ -105,8 +105,8 @@ func TestPyPIVersionIdentityIgnoresReleaseTrailingZeros(t *testing.T) {
 		{version: "2!1.0.0.post2+LINUX_001", want: "2!1.post2+linux.1"},
 	}
 	for _, tt := range tests {
-		if got := PyPIVersionIdentity(tt.version); got != tt.want {
-			t.Errorf("PyPIVersionIdentity(%q) = %q, want %q", tt.version, got, tt.want)
+		if got := VersionIdentity(tt.version); got != tt.want {
+			t.Errorf("VersionIdentity(%q) = %q, want %q", tt.version, got, tt.want)
 		}
 	}
 }
@@ -116,35 +116,35 @@ func TestClassifyPyPIRequest(t *testing.T) {
 		name       string
 		method     string
 		url        string
-		wantKind   PyPIRequestKind
+		wantKind   RequestKind
 		wantName   string
 		wantSource string
 	}{
-		{name: "JSON API", method: http.MethodGet, url: "https://pypi.org/pypi/requests/json", wantKind: PyPIRequestJSONAPI},
-		{name: "version JSON API", method: http.MethodGet, url: "https://pypi.org/pypi/requests/2.32.3/json", wantKind: PyPIRequestJSONAPI},
-		{name: "HTML Simple API", method: http.MethodGet, url: "https://pypi.org/simple/requests/", wantKind: PyPIRequestSimpleAPI},
-		{name: "custom JSON Simple API", method: http.MethodGet, url: "https://token@example.test/simple/requests/", wantKind: PyPIRequestSimpleAPI},
-		{name: "Artifactory Simple API", method: http.MethodGet, url: "https://artifactory.example/api/pypi/repo/simple/requests/", wantKind: PyPIRequestSimpleAPI},
-		{name: "prefixed Artifactory Simple API", method: http.MethodGet, url: "https://artifactory.example/artifactory/api/pypi/repo/simple/requests/", wantKind: PyPIRequestSimpleAPI},
-		{name: "devpi Simple API", method: http.MethodGet, url: "https://devpi.example/user/index/+simple/requests/", wantKind: PyPIRequestSimpleAPI},
-		{name: "artifact beneath official Simple path", method: http.MethodGet, url: "https://pypi.org/simple/files/project-1.0.tar.gz", wantKind: PyPIRequestArtifact, wantName: "project", wantSource: "https://pypi.org/simple/files/project-1.0.tar.gz"},
-		{name: "unconfigured archive beneath Simple-like path", method: http.MethodGet, url: "https://index.example/simple/files/project-1.0.tar.gz", wantKind: PyPIRequestUnrelated},
+		{name: "JSON API", method: http.MethodGet, url: "https://pypi.org/pypi/requests/json", wantKind: RequestJSONAPI},
+		{name: "version JSON API", method: http.MethodGet, url: "https://pypi.org/pypi/requests/2.32.3/json", wantKind: RequestJSONAPI},
+		{name: "HTML Simple API", method: http.MethodGet, url: "https://pypi.org/simple/requests/", wantKind: RequestSimpleAPI},
+		{name: "custom JSON Simple API", method: http.MethodGet, url: "https://token@example.test/simple/requests/", wantKind: RequestSimpleAPI},
+		{name: "Artifactory Simple API", method: http.MethodGet, url: "https://artifactory.example/api/pypi/repo/simple/requests/", wantKind: RequestSimpleAPI},
+		{name: "prefixed Artifactory Simple API", method: http.MethodGet, url: "https://artifactory.example/artifactory/api/pypi/repo/simple/requests/", wantKind: RequestSimpleAPI},
+		{name: "devpi Simple API", method: http.MethodGet, url: "https://devpi.example/user/index/+simple/requests/", wantKind: RequestSimpleAPI},
+		{name: "artifact beneath official Simple path", method: http.MethodGet, url: "https://pypi.org/simple/files/project-1.0.tar.gz", wantKind: RequestArtifact, wantName: "project", wantSource: "https://pypi.org/simple/files/project-1.0.tar.gz"},
+		{name: "unconfigured archive beneath Simple-like path", method: http.MethodGet, url: "https://index.example/simple/files/project-1.0.tar.gz", wantKind: RequestUnrelated},
 		{
 			name:       "official wheel",
 			method:     http.MethodGet,
 			url:        "https://files.pythonhosted.org/packages/requests-2.32.3-py3-none-any.whl",
-			wantKind:   PyPIRequestArtifact,
+			wantKind:   RequestArtifact,
 			wantName:   "requests",
 			wantSource: "https://files.pythonhosted.org/packages/requests-2.32.3-py3-none-any.whl",
 		},
-		{name: "unadvertised custom archive", method: http.MethodGet, url: "https://user:password@cdn.example.test/pkg/My_Pkg-1.0rc1.tar.gz?token=secret", wantKind: PyPIRequestUnrelated},
-		{name: "wheel core metadata", method: http.MethodGet, url: "https://files.pythonhosted.org/packages/requests-2.32.3-py3-none-any.whl.metadata", wantKind: PyPIRequestCoreMetadata},
-		{name: "artifact HEAD", method: http.MethodHead, url: "https://files.pythonhosted.org/pkg/requests-2.32.3.tar.gz", wantKind: PyPIRequestUnrelated},
-		{name: "unrelated nested simple path", method: http.MethodGet, url: "https://example.test/docs/simple/requests/", wantKind: PyPIRequestUnrelated},
-		{name: "unrelated Artifactory-like path", method: http.MethodGet, url: "https://example.test/api/pypi/repo/not-simple/requests/", wantKind: PyPIRequestUnrelated},
-		{name: "unrelated prefixed Artifactory lookalike", method: http.MethodGet, url: "https://example.test/prefix/artifactory/api/pypi/repo/simple/requests/", wantKind: PyPIRequestUnrelated},
-		{name: "unrelated archive under lookalike", method: http.MethodGet, url: "https://example.test/prefix/artifactory/api/pypi/repo/simple/report-2026.zip", wantKind: PyPIRequestUnrelated},
-		{name: "unrelated", method: http.MethodGet, url: "https://example.test/index.json", wantKind: PyPIRequestUnrelated},
+		{name: "unadvertised custom archive", method: http.MethodGet, url: "https://user:password@cdn.example.test/pkg/My_Pkg-1.0rc1.tar.gz?token=secret", wantKind: RequestUnrelated},
+		{name: "wheel core metadata", method: http.MethodGet, url: "https://files.pythonhosted.org/packages/requests-2.32.3-py3-none-any.whl.metadata", wantKind: RequestCoreMetadata},
+		{name: "artifact HEAD", method: http.MethodHead, url: "https://files.pythonhosted.org/pkg/requests-2.32.3.tar.gz", wantKind: RequestUnrelated},
+		{name: "unrelated nested simple path", method: http.MethodGet, url: "https://example.test/docs/simple/requests/", wantKind: RequestUnrelated},
+		{name: "unrelated Artifactory-like path", method: http.MethodGet, url: "https://example.test/api/pypi/repo/not-simple/requests/", wantKind: RequestUnrelated},
+		{name: "unrelated prefixed Artifactory lookalike", method: http.MethodGet, url: "https://example.test/prefix/artifactory/api/pypi/repo/simple/requests/", wantKind: RequestUnrelated},
+		{name: "unrelated archive under lookalike", method: http.MethodGet, url: "https://example.test/prefix/artifactory/api/pypi/repo/simple/report-2026.zip", wantKind: RequestUnrelated},
+		{name: "unrelated", method: http.MethodGet, url: "https://example.test/index.json", wantKind: RequestUnrelated},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -152,9 +152,9 @@ func TestClassifyPyPIRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			kind, artifact := ClassifyPyPIRequest(tt.method, requestURL)
+			kind, artifact := ClassifyRequest(tt.method, requestURL)
 			if kind != tt.wantKind || artifact.Name != tt.wantName || artifact.Source != tt.wantSource {
-				t.Fatalf("ClassifyPyPIRequest() = %v, %#v; want kind %v, name %q, source %q",
+				t.Fatalf("ClassifyRequest() = %v, %#v; want kind %v, name %q, source %q",
 					kind, artifact, tt.wantKind, tt.wantName, tt.wantSource)
 			}
 		})
@@ -162,7 +162,7 @@ func TestClassifyPyPIRequest(t *testing.T) {
 }
 
 func TestPyPIRequestClassifierConfiguredContexts(t *testing.T) {
-	classifier, err := NewPyPIRequestClassifier(PyPIRequestClassifierOptions{
+	classifier, err := NewRequestClassifier(RequestClassifierOptions{
 		SimpleIndexURLs: []string{
 			"https://index.example/python-packages/",
 			"https://json.example/simple/v1+json/",
@@ -178,19 +178,19 @@ func TestPyPIRequestClassifierConfiguredContexts(t *testing.T) {
 	tests := []struct {
 		name     string
 		value    string
-		wantKind PyPIRequestKind
+		wantKind RequestKind
 		wantName string
 	}{
-		{name: "arbitrary HTML base", value: "https://index.example/python-packages/My_Project/", wantKind: PyPIRequestSimpleAPI},
-		{name: "archive directly beneath configured base", value: "https://index.example/python-packages/project-1.0.tar.gz", wantKind: PyPIRequestUnrelated},
-		{name: "wheel directly beneath configured base", value: "https://index.example/python-packages/project-1.0-py3-none-any.whl", wantKind: PyPIRequestUnrelated},
-		{name: "arbitrary JSON base", value: "https://json.example/simple/v1+json/my-project/", wantKind: PyPIRequestSimpleAPI},
-		{name: "unadvertised configured-origin artifact", value: "https://index.example/files/my_project-1.0.txz", wantKind: PyPIRequestUnrelated},
-		{name: "unadvertised configured-origin core metadata", value: "https://index.example/files/my_project-1.0-py3-none-any.whl.metadata", wantKind: PyPIRequestUnrelated},
-		{name: "direct exact URL without transport credentials", value: "https://cdn.example/download/report-2026.zip?id=artifact&token=secret", wantKind: PyPIRequestArtifact, wantName: "report"},
-		{name: "direct wheel core metadata", value: "https://cdn.example/download/project-1.0-py3-none-any.whl.metadata?id=wheel", wantKind: PyPIRequestCoreMetadata},
-		{name: "direct query mismatch", value: "https://user:secret@cdn.example/download/report-2026.zip?id=other&token=secret", wantKind: PyPIRequestUnrelated},
-		{name: "unrelated archive", value: "https://unrelated.example/report-2026.zip", wantKind: PyPIRequestUnrelated},
+		{name: "arbitrary HTML base", value: "https://index.example/python-packages/My_Project/", wantKind: RequestSimpleAPI},
+		{name: "archive directly beneath configured base", value: "https://index.example/python-packages/project-1.0.tar.gz", wantKind: RequestUnrelated},
+		{name: "wheel directly beneath configured base", value: "https://index.example/python-packages/project-1.0-py3-none-any.whl", wantKind: RequestUnrelated},
+		{name: "arbitrary JSON base", value: "https://json.example/simple/v1+json/my-project/", wantKind: RequestSimpleAPI},
+		{name: "unadvertised configured-origin artifact", value: "https://index.example/files/my_project-1.0.txz", wantKind: RequestUnrelated},
+		{name: "unadvertised configured-origin core metadata", value: "https://index.example/files/my_project-1.0-py3-none-any.whl.metadata", wantKind: RequestUnrelated},
+		{name: "direct exact URL without transport credentials", value: "https://cdn.example/download/report-2026.zip?id=artifact&token=secret", wantKind: RequestArtifact, wantName: "report"},
+		{name: "direct wheel core metadata", value: "https://cdn.example/download/project-1.0-py3-none-any.whl.metadata?id=wheel", wantKind: RequestCoreMetadata},
+		{name: "direct query mismatch", value: "https://user:secret@cdn.example/download/report-2026.zip?id=other&token=secret", wantKind: RequestUnrelated},
+		{name: "unrelated archive", value: "https://unrelated.example/report-2026.zip", wantKind: RequestUnrelated},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -217,7 +217,7 @@ func TestPyPIRequestClassifierConfiguredContexts(t *testing.T) {
 }
 
 func TestPyPIRequestClassifierUsesProtocolMediaTypeEvidence(t *testing.T) {
-	classifier, err := NewPyPIRequestClassifier(PyPIRequestClassifierOptions{})
+	classifier, err := NewRequestClassifier(RequestClassifierOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestPyPIRequestClassifierUsesProtocolMediaTypeEvidence(t *testing.T) {
 	}
 	header := http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}
 	kind, _ := classifier.ClassifyResponse(http.MethodGet, requestURL, header)
-	if kind != PyPIRequestSimpleAPI {
+	if kind != RequestSimpleAPI {
 		t.Fatalf("ClassifyResponse() = %v, want Simple API", kind)
 	}
 	project, ok := classifier.SimpleProject(requestURL, header)
@@ -236,22 +236,22 @@ func TestPyPIRequestClassifierUsesProtocolMediaTypeEvidence(t *testing.T) {
 	}
 
 	kind, _ = classifier.ClassifyResponse(http.MethodGet, requestURL, http.Header{"Content-Type": []string{"application/json"}})
-	if kind != PyPIRequestUnrelated {
+	if kind != RequestUnrelated {
 		t.Fatalf("generic JSON ClassifyResponse() = %v, want unrelated", kind)
 	}
 }
 
 func TestPyPIRequestClassifierArchiveShapedSimpleProjectResponse(t *testing.T) {
-	classifier, err := NewPyPIRequestClassifier(PyPIRequestClassifierOptions{SimpleIndexURLs: []string{"https://index.example/simple/"}})
+	classifier, err := NewRequestClassifier(RequestClassifierOptions{SimpleIndexURLs: []string{"https://index.example/simple/"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	endpoint, _ := url.Parse("https://index.example/simple/project-1.0.tar.gz/")
-	if kind, _ := classifier.ClassifyRequest(http.MethodGet, endpoint); kind != PyPIRequestUnrelated {
+	if kind, _ := classifier.ClassifyRequest(http.MethodGet, endpoint); kind != RequestUnrelated {
 		t.Fatalf("archive-shaped request = %v, want discovery before metadata classification", kind)
 	}
 	for _, contentType := range []string{"text/html", "application/json", "application/vnd.pypi.simple.v1+json"} {
-		if kind, _ := classifier.ClassifyResponse(http.MethodGet, endpoint, http.Header{"Content-Type": []string{contentType}}); kind != PyPIRequestSimpleAPI {
+		if kind, _ := classifier.ClassifyResponse(http.MethodGet, endpoint, http.Header{"Content-Type": []string{contentType}}); kind != RequestSimpleAPI {
 			t.Fatalf("%s project listing response = %v, want Simple API", contentType, kind)
 		}
 	}
@@ -274,8 +274,8 @@ func TestIsPyPIRegistrySource(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := isPyPIRegistrySource(tc.source); got != tc.want {
-				t.Fatalf("isPyPIRegistrySource(%q) = %v, want %v", tc.source, got, tc.want)
+			if got := HasRegistrySource(tc.source); got != tc.want {
+				t.Fatalf("HasRegistrySource(%q) = %v, want %v", tc.source, got, tc.want)
 			}
 		})
 	}
@@ -371,7 +371,7 @@ func TestParsePyPIReleaseMetadataSelectsExactArtifact(t *testing.T) {
 }
 
 func TestExactArtifactLookupRetainsReleaseTrailingZeros(t *testing.T) {
-	name, version, ok := ParsePyPIDistributionFilename("project-1.0.0-py3-none-any.whl")
+	name, version, ok := ParseDistributionFilename("project-1.0.0-py3-none-any.whl")
 	if !ok || name != "project" || version != "1.0.0" {
 		t.Fatalf("parsed artifact = %q, %q, %v; want project, 1.0.0, true", name, version, ok)
 	}
@@ -403,7 +403,7 @@ func TestResolvePyPIPublishDateWithClientUsesSuppliedTransport(t *testing.T) {
 			Request:    request,
 		}, nil
 	})}
-	got, err := ResolvePyPIPublishDateWithClient(
+	got, err := ResolvePublishDateWithClient(
 		context.Background(),
 		client,
 		"project",
@@ -420,12 +420,12 @@ func TestResolvePyPIPublishDateWithClientUsesSuppliedTransport(t *testing.T) {
 }
 
 func TestResolvePyPIPublishDate_NonRegistrySourceIsNoop(t *testing.T) {
-	got, err := resolvePyPIPublishDate(context.Background(), "six", "1.16.0", "https://example.com/six-1.16.0.whl")
+	got, err := ResolvePublishDate(context.Background(), "six", "1.16.0", "https://example.com/six-1.16.0.whl")
 	if err != nil {
-		t.Fatalf("resolvePyPIPublishDate() returned unexpected error: %v", err)
+		t.Fatalf("ResolvePublishDate() returned unexpected error: %v", err)
 	}
 	if !got.IsZero() {
-		t.Fatalf("resolvePyPIPublishDate() = %v, want zero time", got)
+		t.Fatalf("ResolvePublishDate() = %v, want zero time", got)
 	}
 }
 
@@ -452,12 +452,12 @@ func TestResolvePyPIPublishDate_RealPyPI(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
-			got, err := resolvePyPIPublishDate(ctx, name, version, tc.source)
+			got, err := ResolvePublishDate(ctx, name, version, tc.source)
 			if err != nil {
-				t.Fatalf("resolvePyPIPublishDate(%q, %q, %q) returned unexpected error: %v", name, version, tc.source, err)
+				t.Fatalf("ResolvePublishDate(%q, %q, %q) returned unexpected error: %v", name, version, tc.source, err)
 			}
 			if !got.Equal(want) {
-				t.Fatalf("resolvePyPIPublishDate(%q, %q, %q) = %v, want %v", name, version, tc.source, got, want)
+				t.Fatalf("ResolvePublishDate(%q, %q, %q) = %v, want %v", name, version, tc.source, got, want)
 			}
 		})
 	}
@@ -469,8 +469,8 @@ func TestResolvePyPIPublishDate_RealPyPI_NonexistentPackage(t *testing.T) {
 
 	const name = "this-package-definitely-does-not-exist-xyz"
 
-	got, err := resolvePyPIPublishDate(ctx, name, "1.0.0", "")
+	got, err := ResolvePublishDate(ctx, name, "1.0.0", "")
 	if err == nil {
-		t.Fatalf("resolvePyPIPublishDate(%q, ...) = %v, want error", name, got)
+		t.Fatalf("ResolvePublishDate(%q, ...) = %v, want error", name, got)
 	}
 }

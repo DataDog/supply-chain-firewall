@@ -3,7 +3,7 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2024-present Datadog, Inc.
 
-package ecosystem
+package pypi
 
 import (
 	"context"
@@ -26,31 +26,31 @@ import (
 // ecosystem.py's ECOSYSTEM.registry_domains in the Python reference.
 var pyPIRegistryDomains = []string{"pypi.org", "files.pythonhosted.org", "pypi.python.org"}
 
-// PyPIRequestKind describes the role of an HTTP request in the PyPI protocols.
+// RequestKind describes the role of an HTTP request in the PyPI protocols.
 // Metadata requests never need policy evaluation; artifact requests do.
-type PyPIRequestKind uint8
+type RequestKind uint8
 
 const (
-	PyPIRequestUnrelated PyPIRequestKind = iota
-	PyPIRequestJSONAPI
-	PyPIRequestSimpleAPI
-	PyPIRequestCoreMetadata
-	PyPIRequestArtifact
+	RequestUnrelated RequestKind = iota
+	RequestJSONAPI
+	RequestSimpleAPI
+	RequestCoreMetadata
+	RequestArtifact
 )
 
-// PyPIRequestClassifierOptions describes index contexts known by the package
+// RequestClassifierOptions describes index contexts known by the package
 // manager integration. SimpleIndexURLs are project-list roots (the project
 // name is the next path segment); DirectArtifactURLs are exact distribution
 // URLs supplied directly on the command line or by configuration.
-type PyPIRequestClassifierOptions struct {
+type RequestClassifierOptions struct {
 	SimpleIndexURLs    []string
 	DirectArtifactURLs []string
 }
 
-// PyPIRequestClassifier classifies requests within one package-manager run.
+// RequestClassifier classifies requests within one package-manager run.
 // Advertised artifact URLs remain the metadata cache's responsibility because
 // they may be opaque and can point at an otherwise unknown CDN.
-type PyPIRequestClassifier struct {
+type RequestClassifier struct {
 	simpleIndexes      []pyPISimpleIndex
 	directArtifactURLs map[string]struct{}
 }
@@ -60,8 +60,8 @@ type pyPISimpleIndex struct {
 	discovery url.URL
 }
 
-// PyPIArtifact identifies the distribution requested by a package manager.
-type PyPIArtifact struct {
+// Artifact identifies the distribution requested by a package manager.
+type Artifact struct {
 	Name       string
 	Version    string
 	Filename   string
@@ -86,16 +86,16 @@ var pyPISdistExtensions = []string{
 	".tbz", ".tgz", ".tlz", ".txz", ".tar", ".zip",
 }
 
-// NormalizePyPIName applies the project-name normalization specified by PEP
+// NormalizeName applies the project-name normalization specified by PEP
 // 503: ASCII case-folding and replacement of every run of '-', '_' or '.' by
 // one hyphen.
-func NormalizePyPIName(name string) string {
+func NormalizeName(name string) string {
 	return pyPINameSeparator.ReplaceAllString(strings.ToLower(name), "-")
 }
 
-// ParsePyPIDistributionFilename parses a wheel or common source-distribution
+// ParseDistributionFilename parses a wheel or common source-distribution
 // filename according to PEP 427/491 and PEP 625/440.
-func ParsePyPIDistributionFilename(filename string) (name, version string, ok bool) {
+func ParseDistributionFilename(filename string) (name, version string, ok bool) {
 	return parsePyPIDistributionFilename(filename, "")
 }
 
@@ -103,21 +103,21 @@ func ParsePyPIDistributionFilename(filename string) (name, version string, ok bo
 // sdist versions containing hyphens, as installers do when reading a listing.
 // With project context, filenames for other projects must not be accepted.
 func parsePyPIDistributionFilename(filename, project string) (name, version string, ok bool) {
-	project = NormalizePyPIName(project)
+	project = NormalizeName(project)
 	filename, err := url.PathUnescape(filename)
 	if err != nil || filename == "" || strings.ContainsAny(filename, `/\\`) {
 		return "", "", false
 	}
 
 	if match := pyPIWheelFilename.FindStringSubmatch(filename); match != nil {
-		if project != "" && NormalizePyPIName(match[1]) != project {
+		if project != "" && NormalizeName(match[1]) != project {
 			return "", "", false
 		}
 		canonicalVersion, valid := canonicalPyPIVersion(match[2])
 		if !valid {
 			return "", "", false
 		}
-		return NormalizePyPIName(match[1]), canonicalVersion, true
+		return NormalizeName(match[1]), canonicalVersion, true
 	}
 
 	stem := ""
@@ -168,7 +168,7 @@ func parsePyPIDistributionFilename(filename, project string) (name, version stri
 		candidateName, candidateVersion := stem[:separator], stem[separator+1:]
 		canonicalVersion, valid := canonicalPyPIVersion(candidateVersion)
 		if pyPIProjectName.MatchString(candidateName) && valid {
-			return NormalizePyPIName(candidateName), canonicalVersion, true
+			return NormalizeName(candidateName), canonicalVersion, true
 		}
 	}
 
@@ -178,7 +178,7 @@ func parsePyPIDistributionFilename(filename, project string) (name, version stri
 		candidateName, candidateVersion := stem[:separator], stem[separator+1:]
 		canonicalVersion, valid := canonicalPyPIVersion(candidateVersion)
 		if pyPIProjectName.MatchString(candidateName) && valid {
-			return NormalizePyPIName(candidateName), canonicalVersion, true
+			return NormalizeName(candidateName), canonicalVersion, true
 		}
 		next := strings.IndexByte(stem[separator+1:], '-')
 		if next < 0 {
@@ -241,11 +241,11 @@ func canonicalPyPIVersion(version string) (string, bool) {
 	return canonical.String(), true
 }
 
-// PyPIVersionIdentity returns the PEP 440 equality identity for a version.
-// Exact canonical release spelling is retained on PyPIArtifact.Version for
+// VersionIdentity returns the PEP 440 equality identity for a version.
+// Exact canonical release spelling is retained on Artifact.Version for
 // registry lookup and reporting, while release trailing zeros are ignored here
 // because PEP 440 compares missing release segments as zero.
-func PyPIVersionIdentity(version string) string {
+func VersionIdentity(version string) string {
 	canonical, valid := canonicalPyPIVersion(version)
 	if !valid {
 		return version
@@ -293,10 +293,10 @@ func onlyDigits(value string) bool {
 	return strings.Trim(value, "0123456789") == ""
 }
 
-// NewPyPIRequestClassifier creates a run-scoped classifier for configured
+// NewRequestClassifier creates a run-scoped classifier for configured
 // custom index and direct-artifact contexts.
-func NewPyPIRequestClassifier(options PyPIRequestClassifierOptions) (*PyPIRequestClassifier, error) {
-	classifier := &PyPIRequestClassifier{directArtifactURLs: make(map[string]struct{})}
+func NewRequestClassifier(options RequestClassifierOptions) (*RequestClassifier, error) {
+	classifier := &RequestClassifier{directArtifactURLs: make(map[string]struct{})}
 	for _, value := range options.SimpleIndexURLs {
 		parsed, err := parsePyPIContextURL(value)
 		if err != nil {
@@ -327,11 +327,11 @@ func parsePyPIContextURL(value string) (*url.URL, error) {
 	return parsed, nil
 }
 
-var defaultPyPIRequestClassifier = &PyPIRequestClassifier{}
+var defaultPyPIRequestClassifier = &RequestClassifier{}
 
-// ClassifyPyPIRequest recognizes requests using the built-in PyPI and common
+// ClassifyRequest recognizes requests using the built-in PyPI and common
 // Simple API layouts. Integrations with arbitrary bases use a run classifier.
-func ClassifyPyPIRequest(method string, requestURL *url.URL) (PyPIRequestKind, PyPIArtifact) {
+func ClassifyRequest(method string, requestURL *url.URL) (RequestKind, Artifact) {
 	return defaultPyPIRequestClassifier.ClassifyRequest(method, requestURL)
 }
 
@@ -339,14 +339,14 @@ func ClassifyPyPIRequest(method string, requestURL *url.URL) (PyPIRequestKind, P
 // parseable archive is immediately trusted only on a supported registry host
 // or at an explicitly configured direct URL. Configured custom indexes require
 // exact advertisement through metadata discovery before evaluation.
-func (classifier *PyPIRequestClassifier) ClassifyRequest(method string, requestURL *url.URL) (PyPIRequestKind, PyPIArtifact) {
+func (classifier *RequestClassifier) ClassifyRequest(method string, requestURL *url.URL) (RequestKind, Artifact) {
 	if requestURL == nil || (requestURL.Scheme != "http" && requestURL.Scheme != "https") {
-		return PyPIRequestUnrelated, PyPIArtifact{}
+		return RequestUnrelated, Artifact{}
 	}
 	cleanPath := path.Clean(requestURL.EscapedPath())
 	host := strings.ToLower(requestURL.Hostname())
 	_, configuredProject := classifier.configuredSimpleProject(requestURL)
-	_, knownSimpleProject := PyPISimpleProject(requestURL)
+	_, knownSimpleProject := SimpleProject(requestURL)
 	_, directArtifact := classifier.directArtifactURLs[directPyPIURLKey(requestURL)]
 	directCoreMetadata := false
 	if strings.HasSuffix(strings.ToLower(requestURL.Path), ".whl.metadata") {
@@ -364,13 +364,13 @@ func (classifier *PyPIRequestClassifier) ClassifyRequest(method string, requestU
 		filename := path.Base(requestURL.EscapedPath())
 		if strings.HasSuffix(strings.ToLower(filename), ".whl.metadata") {
 			wheelFilename := filename[:len(filename)-len(".metadata")]
-			if _, _, ok := ParsePyPIDistributionFilename(wheelFilename); ok && artifactContext {
-				return PyPIRequestCoreMetadata, PyPIArtifact{}
+			if _, _, ok := ParseDistributionFilename(wheelFilename); ok && artifactContext {
+				return RequestCoreMetadata, Artifact{}
 			}
 		}
-		name, version, ok := ParsePyPIDistributionFilename(filename)
+		name, version, ok := ParseDistributionFilename(filename)
 		if ok && artifactContext {
-			return PyPIRequestArtifact, PyPIArtifact{
+			return RequestArtifact, Artifact{
 				Name: name, Version: version, Filename: artifactFilename(requestURL.String()),
 				Source: canonicalPyPIURL(nil, requestURL.String()), RequestKey: pyPIURLRequestKey(nil, requestURL.String()),
 			}
@@ -379,24 +379,24 @@ func (classifier *PyPIRequestClassifier) ClassifyRequest(method string, requestU
 			// A custom index may serve archives directly under its Simple
 			// base. Require exact advertisement through metadata discovery
 			// before interpreting this ambiguous path as a project listing.
-			return PyPIRequestUnrelated, PyPIArtifact{}
+			return RequestUnrelated, Artifact{}
 		}
 	}
 	if host == "pypi.org" && strings.HasPrefix(cleanPath, "/pypi/") && strings.HasSuffix(cleanPath, "/json") {
-		return PyPIRequestJSONAPI, PyPIArtifact{}
+		return RequestJSONAPI, Artifact{}
 	}
 	if knownSimpleProject || configuredProject || cleanPath == "/simple" {
-		return PyPIRequestSimpleAPI, PyPIArtifact{}
+		return RequestSimpleAPI, Artifact{}
 	}
-	return PyPIRequestUnrelated, PyPIArtifact{}
+	return RequestUnrelated, Artifact{}
 }
 
 // ClassifyResponse recognizes Simple API protocol evidence that is only known
 // after receiving a response. Vendor media types are safe evidence; generic
 // application/json and text/html alone are intentionally insufficient.
-func (classifier *PyPIRequestClassifier) ClassifyResponse(method string, requestURL *url.URL, header http.Header) (PyPIRequestKind, PyPIArtifact) {
+func (classifier *RequestClassifier) ClassifyResponse(method string, requestURL *url.URL, header http.Header) (RequestKind, Artifact) {
 	kind, artifact := classifier.ClassifyRequest(method, requestURL)
-	if kind != PyPIRequestUnrelated || method != http.MethodGet || requestURL == nil {
+	if kind != RequestUnrelated || method != http.MethodGet || requestURL == nil {
 		return kind, artifact
 	}
 	mediaType, _, _ := mime.ParseMediaType(header.Get("Content-Type"))
@@ -404,23 +404,23 @@ func (classifier *PyPIRequestClassifier) ClassifyResponse(method string, request
 		if _, project := classifier.SimpleProject(requestURL, nil); project {
 			// Preserve legitimate archive-shaped project names after the
 			// request path has had an opportunity to discover an artifact.
-			return PyPIRequestSimpleAPI, PyPIArtifact{}
+			return RequestSimpleAPI, Artifact{}
 		}
 	}
 	if mediaType != "application/vnd.pypi.simple.v1+json" && mediaType != "application/vnd.pypi.simple.v1+html" {
-		return PyPIRequestUnrelated, PyPIArtifact{}
+		return RequestUnrelated, Artifact{}
 	}
 	if _, ok := simpleProjectFromLastPathSegment(requestURL); !ok {
-		return PyPIRequestUnrelated, PyPIArtifact{}
+		return RequestUnrelated, Artifact{}
 	}
-	return PyPIRequestSimpleAPI, PyPIArtifact{}
+	return RequestSimpleAPI, Artifact{}
 }
 
 // SimpleProject returns the normalized project associated with a recognized
 // Simple API endpoint, including configured arbitrary bases and response-only
 // endpoints identified by their protocol media type.
-func (classifier *PyPIRequestClassifier) SimpleProject(requestURL *url.URL, header http.Header) (string, bool) {
-	if project, ok := PyPISimpleProject(requestURL); ok {
+func (classifier *RequestClassifier) SimpleProject(requestURL *url.URL, header http.Header) (string, bool) {
+	if project, ok := SimpleProject(requestURL); ok {
 		return project, true
 	}
 	if project, ok := classifier.configuredSimpleProject(requestURL); ok {
@@ -433,7 +433,7 @@ func (classifier *PyPIRequestClassifier) SimpleProject(requestURL *url.URL, head
 	return "", false
 }
 
-func (classifier *PyPIRequestClassifier) configuredSimpleProject(requestURL *url.URL) (string, bool) {
+func (classifier *RequestClassifier) configuredSimpleProject(requestURL *url.URL) (string, bool) {
 	if classifier == nil || requestURL == nil {
 		return "", false
 	}
@@ -448,7 +448,7 @@ func (classifier *PyPIRequestClassifier) configuredSimpleProject(requestURL *url
 		}
 		decoded, err := url.PathUnescape(remainder)
 		if err == nil && pyPIProjectName.MatchString(decoded) {
-			return NormalizePyPIName(decoded), true
+			return NormalizeName(decoded), true
 		}
 	}
 	return "", false
@@ -458,13 +458,13 @@ func (classifier *PyPIRequestClassifier) configuredSimpleProject(requestURL *url
 // Simple endpoints that can prove whether the exact URL is a distribution.
 // It deliberately does not return an artifact: the filename is never policy
 // evidence unless metadata subsequently advertises the exact request URL.
-func (classifier *PyPIRequestClassifier) MetadataDiscovery(requestURL *url.URL) (string, []url.URL, bool) {
+func (classifier *RequestClassifier) MetadataDiscovery(requestURL *url.URL) (string, []url.URL, bool) {
 	if classifier == nil || requestURL == nil || len(classifier.simpleIndexes) == 0 ||
 		(requestURL.Scheme != "http" && requestURL.Scheme != "https") {
 		return "", nil, false
 	}
 	filename := path.Base(requestURL.EscapedPath())
-	name, _, ok := ParsePyPIDistributionFilename(filename)
+	name, _, ok := ParseDistributionFilename(filename)
 	if !ok {
 		return "", nil, false
 	}
@@ -486,7 +486,7 @@ func simpleProjectFromLastPathSegment(requestURL *url.URL) (string, bool) {
 	if err != nil || !pyPIProjectName.MatchString(segment) {
 		return "", false
 	}
-	return NormalizePyPIName(segment), true
+	return NormalizeName(segment), true
 }
 
 func directPyPIURLKey(value *url.URL) string {
@@ -498,9 +498,9 @@ func directPyPIURLKey(value *url.URL) string {
 	return pyPIURLRequestKey(nil, withoutCredentials.String())
 }
 
-// PyPISimpleProject recognizes supported project-level Simple API paths while
+// SimpleProject recognizes supported project-level Simple API paths while
 // avoiding a broad match on arbitrary paths containing a "simple" segment.
-func PyPISimpleProject(requestURL *url.URL) (string, bool) {
+func SimpleProject(requestURL *url.URL) (string, bool) {
 	if requestURL == nil {
 		return "", false
 	}
@@ -522,7 +522,7 @@ func PyPISimpleProject(requestURL *url.URL) (string, bool) {
 	if err != nil || !pyPIProjectName.MatchString(decoded) {
 		return "", false
 	}
-	return NormalizePyPIName(decoded), true
+	return NormalizeName(decoded), true
 }
 
 // redactPyPIArtifactURL retains the artifact origin and path while removing
@@ -602,9 +602,9 @@ func normalizePyPIURLEscapes(value string) string {
 	return normalized.String()
 }
 
-// isPyPIRegistrySource reports whether source is a known PyPI registry URL, ported from
+// HasRegistrySource reports whether source is a known PyPI registry URL, ported from
 // package.py's Package.has_registry_source in the Python reference.
-func isPyPIRegistrySource(source string) bool {
+func HasRegistrySource(source string) bool {
 	u, err := url.Parse(source)
 	if err != nil {
 		return false
@@ -615,19 +615,19 @@ func isPyPIRegistrySource(source string) bool {
 	return slices.Contains(pyPIRegistryDomains, u.Hostname())
 }
 
-// resolvePyPIPublishDate returns the publication date of the given package version on
+// ResolvePublishDate returns the publication date of the given package version on
 // PyPI, taken to be the latest of the release's upload timestamps.
 //
 // A non-empty source that isn't a known PyPI registry URL has no publish date to resolve;
 // this is a no-op rather than an error, leaving it to the caller to decide how to handle
 // an unresolved publish date, and the zero value of time.Time is returned in that case.
 // An empty source is assumed to be the PyPI registry.
-func resolvePyPIPublishDate(ctx context.Context, name, version, source string) (time.Time, error) {
+func ResolvePublishDate(ctx context.Context, name, version, source string) (time.Time, error) {
 	return resolvePyPIPublishDateWithClient(ctx, http.DefaultClient, name, version, source)
 }
 
 func resolvePyPIPublishDateWithClient(ctx context.Context, client *http.Client, name, version, source string) (time.Time, error) {
-	if source != "" && !isPyPIRegistrySource(source) {
+	if source != "" && !HasRegistrySource(source) {
 		return time.Time{}, nil
 	}
 
@@ -653,16 +653,16 @@ func resolvePyPIPublishDateWithClient(ctx context.Context, client *http.Client, 
 	}
 
 	filename := artifactFilename(source)
-	if _, _, ok := ParsePyPIDistributionFilename(filename); !ok {
+	if _, _, ok := ParseDistributionFilename(filename); !ok {
 		filename = ""
 	}
 	return parsePyPIReleaseMetadataForArtifact(body, name, version, filename)
 }
 
-// ResolvePyPIPublishDateWithClient resolves an exact PyPI artifact using the
+// ResolvePublishDateWithClient resolves an exact PyPI artifact using the
 // supplied registry client, allowing future proxy adapters to honor their
 // command-specific upstream without putting transport behavior in the adapter.
-func ResolvePyPIPublishDateWithClient(ctx context.Context, client *http.Client, name, version, source string) (time.Time, error) {
+func ResolvePublishDateWithClient(ctx context.Context, client *http.Client, name, version, source string) (time.Time, error) {
 	if client == nil {
 		client = http.DefaultClient
 	}

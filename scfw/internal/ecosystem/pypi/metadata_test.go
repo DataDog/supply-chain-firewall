@@ -3,7 +3,7 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2024-present Datadog, Inc.
 
-package ecosystem
+package pypi
 
 import (
 	"bytes"
@@ -28,7 +28,7 @@ import (
 
 func TestPyPIMetadataCacheRegistersExactRedirectedProject(t *testing.T) {
 	source, _ := url.Parse("https://index.example/simple/my_project/")
-	cache := &PyPIMetadataCache{}
+	cache := &MetadataCache{}
 	cache.Register(*source, http.Header{"Authorization": []string{"Bearer source-secret"}})
 	cache.RegisterRedirect(*source, "../../catalog/opaque/?token=one#fragment")
 	first, _ := url.Parse("https://index.example/catalog/opaque/?token=one")
@@ -64,7 +64,7 @@ func TestPyPIMetadataCacheRejectsInvalidRedirects(t *testing.T) {
 	for _, location := range []string{"", "http://[invalid", "file:///tmp/project", "javascript:alert(1)", "mailto:project@example.com"} {
 		t.Run(location, func(t *testing.T) {
 			source, _ := url.Parse("https://index.example/simple/project/")
-			cache := &PyPIMetadataCache{}
+			cache := &MetadataCache{}
 			cache.Register(*source, nil)
 			cache.RegisterRedirect(*source, location)
 			if len(cache.endpoints) != 1 {
@@ -73,7 +73,7 @@ func TestPyPIMetadataCacheRejectsInvalidRedirects(t *testing.T) {
 		})
 	}
 	source, _ := url.Parse("https://index.example/unrelated/")
-	cache := &PyPIMetadataCache{}
+	cache := &MetadataCache{}
 	cache.RegisterRedirect(*source, "https://cdn.example/listing/")
 	if len(cache.endpoints) != 0 {
 		t.Fatal("unregistered redirect source established Simple API context")
@@ -131,7 +131,7 @@ func TestPyPIMetadataCacheObservesJSONAPIAndSimpleAPI(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			requestURL, _ := url.Parse(test.requestURL)
-			cache := &PyPIMetadataCache{}
+			cache := &MetadataCache{}
 
 			if err := cache.Observe(*requestURL, http.Header{"Content-Type": []string{test.contentType}}, []byte(test.body)); err != nil {
 				t.Fatal(err)
@@ -163,7 +163,7 @@ func TestPyPIMetadataCacheUsesProjectContextForLegacySdists(t *testing.T) {
 		{"JSON info name", "https://index.example/opaque", "application/json", `{"info":{"name":"project"},"urls":[{"filename":"project-1.0-1.tar.gz","url":"https://cdn.example/project-1.0-1.tar.gz"}]}`, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			cache := &PyPIMetadataCache{}
+			cache := &MetadataCache{}
 			endpoint, _ := url.Parse(test.endpoint)
 			if test.registered != "" {
 				original, _ := url.Parse("https://index.example/simple/" + test.registered + "/")
@@ -197,7 +197,7 @@ func TestPyPIMetadataCacheRefreshRetainsProjectAcrossRedirect(t *testing.T) {
 		_, _ = io.WriteString(w, `<base href="https://cdn.example/"><a href="project-1.0-1.tar.gz">project</a>`)
 	}))
 	defer server.Close()
-	cache := &PyPIMetadataCache{}
+	cache := &MetadataCache{}
 	endpoint, _ := url.Parse(server.URL + "/simple/project/")
 	cache.Register(*endpoint, nil)
 	if err := cache.Refresh(context.Background(), server.Client(), *endpoint); err != nil {
@@ -212,7 +212,7 @@ func TestPyPIMetadataCacheRefreshRetainsProjectAcrossRedirect(t *testing.T) {
 
 func TestPyPIMetadataCacheRejectsFilesForAnotherProject(t *testing.T) {
 	for _, filename := range []string{"other-1.0.tar.gz", "other-1.0-py3-none-any.whl"} {
-		cache := &PyPIMetadataCache{}
+		cache := &MetadataCache{}
 		endpoint, _ := url.Parse("https://index.example/simple/project/")
 		body := fmt.Sprintf(`{"name":"other","files":[{"filename":%q,"url":"https://cdn.example/opaque"}]}`, filename)
 		if err := cache.Observe(*endpoint, http.Header{"Content-Type": {"application/json"}}, []byte(body)); err != nil {
@@ -260,7 +260,7 @@ func TestPyPIMetadataCacheHTMLBaseURL(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			endpoint, _ := url.Parse("https://index.example/simple/project/")
-			cache := &PyPIMetadataCache{}
+			cache := &MetadataCache{}
 
 			if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"text/html"}}, []byte(test.html)); err != nil {
 				t.Fatal(err)
@@ -279,7 +279,7 @@ func TestPyPIMetadataCacheHTMLBaseURL(t *testing.T) {
 
 func TestPyPIMetadataCacheRecognizesOpaqueWheelCoreMetadata(t *testing.T) {
 	endpoint, _ := url.Parse("https://index.example/simple/project/")
-	cache := &PyPIMetadataCache{}
+	cache := &MetadataCache{}
 
 	if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(`{"files":[{"filename":"project-1.0-py3-none-any.whl","url":"/objects/opaque?id=wheel"}]}`)); err != nil {
 		t.Fatal(err)
@@ -296,7 +296,7 @@ func TestPyPIMetadataCacheRecognizesOpaqueWheelCoreMetadata(t *testing.T) {
 
 func TestPyPIMetadataCacheOrdinaryHTMLHasNoUploadTime(t *testing.T) {
 	endpoint, _ := url.Parse("https://index.example/simple/project/")
-	cache := &PyPIMetadataCache{}
+	cache := &MetadataCache{}
 
 	if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+html"}}, []byte(`<a href="/files/project-1.0.tar.gz#sha256=digest">project</a>`)); err != nil {
 		t.Fatal(err)
@@ -329,7 +329,7 @@ func TestPyPIMetadataCacheDeduplicatesConcurrentDiscovery(t *testing.T) {
 		}, nil
 	})}
 	endpoint, _ := url.Parse("https://index.example/python-packages/project/")
-	cache := &PyPIMetadataCache{}
+	cache := &MetadataCache{}
 	const workers = 8
 	errorsSeen := make(chan error, workers)
 	var waitGroup sync.WaitGroup
@@ -362,7 +362,7 @@ func TestPyPIMetadataCacheDecodesGzip(t *testing.T) {
 	_ = writer.Close()
 
 	requestURL, _ := url.Parse("https://index.example/simple/project/")
-	cache := &PyPIMetadataCache{}
+	cache := &MetadataCache{}
 
 	if err := cache.Observe(*requestURL, http.Header{
 		"Content-Type":     []string{"application/vnd.pypi.simple.v1+json"},
@@ -383,7 +383,7 @@ func TestPyPIMetadataCacheDecodesGzip(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheKeepsOpaqueSourcesIndependent(t *testing.T) {
-	cache := &PyPIMetadataCache{}
+	cache := &MetadataCache{}
 	for _, metadata := range []struct {
 		endpoint string
 		body     string
@@ -428,7 +428,7 @@ func TestPyPIMetadataCacheKeepsOpaqueSourcesIndependent(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheDistinguishesOpaqueQueryVariants(t *testing.T) {
-	cache := &PyPIMetadataCache{}
+	cache := &MetadataCache{}
 	for _, input := range []struct{ project, file string }{
 		{"alpha", `{"filename":"alpha-1.0.tar.gz","url":"/download?id=wheel-a&token=first-secret","upload-time":"2025-09-01T01:00:00Z"}`},
 		{"beta", `{"filename":"beta-2.0.tar.gz","url":"/download?id=wheel-b&token=second-secret","upload-time":"2025-09-02T02:00:00Z"}`},
@@ -469,7 +469,7 @@ func TestPyPIMetadataCacheDistinguishesOpaqueQueryVariants(t *testing.T) {
 
 func TestPyPIMetadataCacheMatchesEquivalentURLEncodings(t *testing.T) {
 	endpoint, _ := url.Parse("https://index.example/simple/project/")
-	cache := &PyPIMetadataCache{}
+	cache := &MetadataCache{}
 	cache.store(endpoint, "project-1.0.tar.gz", "/objects/%61%62%63%2f%7e?token=%6fne%2ftwo&literal=%252F", "2025-01-02T03:04:05Z", "project")
 	for _, reference := range []string{
 		"/objects/abc%2F~?token=one%2Ftwo&literal=%252F",
@@ -499,7 +499,7 @@ func TestPyPIMetadataCacheMatchesEquivalentURLEncodings(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheMatchesUniqueUserinfoFreeResource(t *testing.T) {
-	cache := &PyPIMetadataCache{}
+	cache := &MetadataCache{}
 	for _, input := range []struct{ project, file string }{
 		{"project", `{"filename":"project-1.0-py3-none-any.whl","url":"https://user:password@cdn.example/project-1.0-py3-none-any.whl?id=wheel&token=secret","upload-time":"2025-09-03T03:00:00Z"}`},
 		{"alpha", `{"filename":"alpha-1.0.tar.gz","url":"https://alpha:secret@cdn.example/shared?id=collision"}`},
@@ -532,7 +532,7 @@ func TestPyPIMetadataCacheMatchesUniqueUserinfoFreeResource(t *testing.T) {
 func TestPyPIMetadataCacheRetainsArtifactIdentityWithoutValidUploadTime(t *testing.T) {
 	for _, uploadTime := range []string{"", `,"upload-time":"not-a-time"`} {
 		endpoint, _ := url.Parse("https://index.example/simple/project/")
-		cache := &PyPIMetadataCache{}
+		cache := &MetadataCache{}
 
 		if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(`{"files":[{"filename":"project-1.0.tar.gz","url":"/objects/opaque"`+uploadTime+`}]}`)); err != nil {
 			t.Fatal(err)
@@ -551,7 +551,7 @@ func TestPyPIMetadataCacheRetainsArtifactIdentityWithoutValidUploadTime(t *testi
 func TestPyPIMetadataCachePreservesKnownUploadTime(t *testing.T) {
 	for _, credentialed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("credentialed=%t", credentialed), func(t *testing.T) {
-			cache := &PyPIMetadataCache{}
+			cache := &MetadataCache{}
 			endpoint, _ := url.Parse("https://index.example/simple/project/")
 			source := "https://cdn.example/project-1.0.tar.gz?token=one"
 			if credentialed {
@@ -593,11 +593,11 @@ func TestPyPIMetadataCachePreservesKnownUploadTime(t *testing.T) {
 func TestPyPIMetadataCacheRejectsConflictingExactIdentities(t *testing.T) {
 	for _, conflict := range []string{"beta-1.0.tar.gz", "alpha-2.0.tar.gz", "alpha-1.0-py3-none-any.whl"} {
 		t.Run(conflict, func(t *testing.T) {
-			cache := &PyPIMetadataCache{}
+			cache := &MetadataCache{}
 			artifactURL, _ := url.Parse("https://cdn.example/download?token=one")
 			observe := func(index, filename string) {
 				t.Helper()
-				project, _, _ := ParsePyPIDistributionFilename(filename)
+				project, _, _ := ParseDistributionFilename(filename)
 				endpoint, _ := url.Parse(index + "/simple/" + project + "/")
 
 				if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(fmt.Sprintf(`{"files":[{"filename":%q,"url":%q,"upload-time":"2025-05-06T07:08:09Z"}]}`, filename, artifactURL.String()))); err != nil {
@@ -626,7 +626,7 @@ func TestPyPIMetadataCacheRejectsConflictingExactIdentities(t *testing.T) {
 func TestPyPIMetadataCacheRejectsExactAliasIdentityConflicts(t *testing.T) {
 	for _, aliasFirst := range []bool{false, true} {
 		t.Run(fmt.Sprintf("aliasFirst=%t", aliasFirst), func(t *testing.T) {
-			cache := &PyPIMetadataCache{}
+			cache := &MetadataCache{}
 			endpoint, _ := url.Parse("https://index.example/catalog/")
 			bodies := []string{
 				`{"name":"alpha","files":[{"filename":"alpha-1.0.tar.gz","url":"https://cdn.example/shared?token=one"}]}`,
@@ -650,7 +650,7 @@ func TestPyPIMetadataCacheRejectsExactAliasIdentityConflicts(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheRefreshesMatchingExactAndAliasDates(t *testing.T) {
-	cache := &PyPIMetadataCache{}
+	cache := &MetadataCache{}
 	endpoint, _ := url.Parse("https://index.example/simple/project/")
 	wireURL, _ := url.Parse("https://cdn.example/project-1.0.tar.gz?token=one")
 	date := time.Date(2025, 5, 6, 7, 8, 9, 0, time.UTC)
@@ -684,7 +684,7 @@ func TestPyPIMetadataCacheRefreshesMatchingExactAndAliasDates(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheExactConflictAlsoInvalidatesAlias(t *testing.T) {
-	cache := &PyPIMetadataCache{}
+	cache := &MetadataCache{}
 	endpoint, _ := url.Parse("https://index.example/simple/project/")
 	credentialed, _ := url.Parse("https://user:password@cdn.example/shared?token=one")
 	wireURL, _ := url.Parse("https://cdn.example/shared?token=one")
@@ -722,12 +722,12 @@ func TestPyPIMetadataCacheIndependentlyRefreshesCustomSimpleEndpoint(t *testing.
 	defer server.Close()
 
 	endpoint, _ := url.Parse(server.URL + "/api/pypi/repo/simple/project/")
-	cache := &PyPIMetadataCache{}
+	cache := &MetadataCache{}
 	header := http.Header{"Authorization": []string{"Bearer original"}, "Cookie": []string{"session=original"}}
 	cache.Register(*endpoint, header)
 	header.Set("Authorization", "Bearer mutated")
 	header.Set("Cookie", "session=mutated")
-	artifact := PyPIArtifact{
+	artifact := Artifact{
 		Name: "project", Version: "3.0", Filename: "project-3.0.tar.gz", Source: server.URL + "/packages/project-3.0.tar.gz",
 	}
 	date, err := cache.ResolvePublishDate(context.Background(), server.Client(), artifact)
@@ -745,7 +745,7 @@ func TestPyPIMetadataRefreshErrorRedactsEndpointCredentials(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("request to https://user:password@index.example/?token=secret failed")
 	})}
-	err := (&PyPIMetadataCache{}).Refresh(context.Background(), client, *endpoint)
+	err := (&MetadataCache{}).Refresh(context.Background(), client, *endpoint)
 	if err == nil {
 		t.Fatal("Refresh() returned nil error")
 	}
@@ -771,7 +771,7 @@ func TestPyPIMetadataRefreshRedirectCredentialPolicy(t *testing.T) {
 		defer first.Close()
 
 		endpoint, _ := url.Parse(first.URL + "/simple/project/?endpoint_token=query-secret")
-		cache := &PyPIMetadataCache{}
+		cache := &MetadataCache{}
 		cache.Register(*endpoint, http.Header{
 			"Authorization":   []string{"Bearer auth-secret"},
 			"Cookie":          []string{"session=cookie-secret"},
@@ -820,7 +820,7 @@ func TestPyPIMetadataRefreshRedirectCredentialPolicy(t *testing.T) {
 		}))
 		defer server.Close()
 		endpoint, _ := url.Parse(server.URL + "/simple/project/?endpoint_token=query-secret")
-		cache := &PyPIMetadataCache{}
+		cache := &MetadataCache{}
 		cache.Register(*endpoint, http.Header{
 			"Authorization":   []string{"Bearer auth-secret"},
 			"Cookie":          []string{"session=cookie-secret"},
@@ -834,9 +834,9 @@ func TestPyPIMetadataRefreshRedirectCredentialPolicy(t *testing.T) {
 
 func TestPyPIMetadataCacheBoundsRetainedResponse(t *testing.T) {
 	requestURL, _ := url.Parse("https://index.example/simple/project/")
-	cache := &PyPIMetadataCache{}
+	cache := &MetadataCache{}
 
-	data := bytes.Repeat([]byte("x"), MaxPyPIMetadataBytes+1)
+	data := bytes.Repeat([]byte("x"), MaxMetadataBytes+1)
 
 	if err := cache.Observe(*requestURL, http.Header{"Content-Type": []string{"application/json"}}, data); err == nil {
 		t.Fatal("oversized metadata observer returned nil error")
@@ -844,7 +844,7 @@ func TestPyPIMetadataCacheBoundsRetainedResponse(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheBoundsModernCompressedResponse(t *testing.T) {
-	decoded := bytes.Repeat([]byte("x"), MaxPyPIMetadataBytes+1)
+	decoded := bytes.Repeat([]byte("x"), MaxMetadataBytes+1)
 	for _, encoding := range []string{"br", "zstd"} {
 		t.Run(encoding, func(t *testing.T) {
 			var encoded bytes.Buffer
@@ -863,7 +863,7 @@ func TestPyPIMetadataCacheBoundsModernCompressedResponse(t *testing.T) {
 			}
 			requestURL, _ := url.Parse("https://index.example/simple/project/")
 
-			if err := (&PyPIMetadataCache{}).Observe(*requestURL, http.Header{
+			if err := (&MetadataCache{}).Observe(*requestURL, http.Header{
 				"Content-Type":     []string{"application/vnd.pypi.simple.v1+json"},
 				"Content-Encoding": []string{encoding},
 			}, encoded.Bytes()); err == nil {
@@ -874,7 +874,7 @@ func TestPyPIMetadataCacheBoundsModernCompressedResponse(t *testing.T) {
 }
 
 func TestPyPIMetadataSizeLimitDiagnostics(t *testing.T) {
-	oversized := bytes.Repeat([]byte("x"), MaxPyPIMetadataBytes+1)
+	oversized := bytes.Repeat([]byte("x"), MaxMetadataBytes+1)
 	var compressed bytes.Buffer
 	writer := gzip.NewWriter(&compressed)
 	_, _ = writer.Write(oversized)
@@ -886,7 +886,7 @@ func TestPyPIMetadataSizeLimitDiagnostics(t *testing.T) {
 			slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
 			defer slog.SetDefault(previous)
 			endpoint, _ := url.Parse("https://user:password@index.example/simple/project/?token=secret#private")
-			cache := &PyPIMetadataCache{}
+			cache := &MetadataCache{}
 			var err error
 			switch mode {
 			case "observation":

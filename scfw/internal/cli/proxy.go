@@ -99,7 +99,8 @@ var commandURLPattern = regexp.MustCompile(`(?i)https?://[^\s]+`)
 func redactCommandURL(value string) string {
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Host == "" {
-		return value
+		// If the URL cannot be safely decomposed, none of it is safe to log.
+		return "[REDACTED_URL]"
 	}
 	parsed.User = nil
 	parsed.RawQuery = ""

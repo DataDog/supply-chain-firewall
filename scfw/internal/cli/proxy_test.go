@@ -124,6 +124,32 @@ func TestRedactCommandArgumentsRemovesURLCredentials(t *testing.T) {
 	}
 }
 
+func TestRedactCommandArgumentsReplacesUnparseableURLs(t *testing.T) {
+	for _, test := range []struct {
+		name, argument, want string
+	}{
+		{"invalid path escape", "--index-url=https://user:password@index.example/%zz?token=secret", "--index-url=[REDACTED_URL]"},
+		{"invalid credentials", "https://user:pass%zz@index.example/simple", "[REDACTED_URL]"},
+		{"invalid port", "https://user:password@index.example:invalid/simple", "[REDACTED_URL]"},
+		{"invalid host", "project @ https://user:password@[invalid/path?token=secret", "project @ [REDACTED_URL]"},
+		{"missing host", "-ihttps:///private-path?token=secret", "-i[REDACTED_URL]"},
+		{"invalid fragment", "HTTPS://user:password@index.example/simple#%zz", "[REDACTED_URL]"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command := []string{"pip", "install", test.argument, "project"}
+			original := slices.Clone(command)
+			got := redactCommandArguments(command)
+			want := []string{"pip", "install", test.want, "project"}
+			if !slices.Equal(got, want) {
+				t.Fatalf("redacted command = %q, want %q", got, want)
+			}
+			if !slices.Equal(command, original) {
+				t.Fatal("redaction changed the original package-manager arguments")
+			}
+		})
+	}
+}
+
 func TestRunThroughProxyStopsProxyOnEveryExitPath(t *testing.T) {
 	commandFailure := errors.New("install failed")
 	tests := []struct {

@@ -8,13 +8,19 @@ package cli
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
-	"os/signal"
-	"syscall"
-
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
+	"golang.org/x/net/http/httpproxy"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"os"
+	"os/signal"
+	"regexp"
+	"syscall"
+	"time"
 )
 
 // proxyEnabledVar is the feature flag that routes `scfw run` through the
@@ -29,7 +35,12 @@ func proxyEnabled() bool {
 // alone, chained to the package manager's pre-existing upstream proxy. The proxy
 // is stopped once the command exits, whatever the outcome.
 // commandErr is the command's own failure; setupErr means the command never ran.
-func runThroughProxy(ctx context.Context, runner pm.ProxyRunner, command []string) (commandErr, setupErr error) {
+func runThroughProxy(
+	ctx context.Context,
+	runner pm.ProxyRunner,
+	command []string,
+	controller ecosystemProxyController,
+) (commandErr, setupErr error) {
 	// SIGINT already cancels ctx (see main). Also treat SIGTERM as cancellation
 	// here, rather than letting it end the process before the proxy is cleaned up.
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM)
@@ -39,8 +50,13 @@ func runThroughProxy(ctx context.Context, runner pm.ProxyRunner, command []strin
 	if err != nil {
 		return nil, fmt.Errorf("resolve upstream proxy: %w", err)
 	}
+	options := proxy.Options{Upstream: upstream}
+	if controller != nil {
+		options = controller(ctx, upstream)
+		options.Upstream = upstream
+	}
 
-	server, err := proxy.Start(ctx, proxy.Options{Upstream: upstream})
+	server, err := proxy.Start(ctx, options)
 	if err != nil {
 		return nil, err
 	}
@@ -53,4 +69,91 @@ func runThroughProxy(ctx context.Context, runner pm.ProxyRunner, command []strin
 
 	slog.Debug("running package manager command through proxy")
 	return runner.RunCommandThroughProxy(ctx, command, server.ClientConfig()), nil
+}
+
+// ecosystemProxyController is the narrow CLI integration boundary between a concrete
+// package-manager ProxyRunner and ecosystem-specific proxy behavior. Generic
+// ProxyRunners pass nil; future Python adapter wiring can opt into PyPI without
+// moving registry parsing or policy orchestration into the adapter.
+type ecosystemProxyController func(context.Context, httpproxy.Config) proxy.Options
+
+func newPublicationHTTPClient(upstream httpproxy.Config) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	proxyFunc := upstream.ProxyFunc()
+	transport.Proxy = func(request *http.Request) (*url.URL, error) {
+		return proxyFunc(request.URL)
+	}
+	return &http.Client{Transport: transport}
+}
+
+// redactCommandArguments returns a reporting/logging copy of a command with
+// credentials removed from absolute HTTP(S) URL arguments. The package manager
+// still receives the original arguments.
+func redactCommandArguments(command []string) []string {
+	redacted := make([]string, len(command))
+	for index, argument := range command {
+		redacted[index] = commandURLPattern.ReplaceAllStringFunc(argument, redactCommandURL)
+	}
+	return redacted
+}
+
+var commandURLPattern = regexp.MustCompile(`(?i)https?://[^\s]+`)
+
+func redactCommandURL(value string) string {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" {
+		// If the URL cannot be safely decomposed, none of it is safe to log.
+		return "[REDACTED_URL]"
+	}
+	parsed.User = nil
+	parsed.RawQuery = ""
+	parsed.ForceQuery = false
+	parsed.Fragment = ""
+	return parsed.String()
+}
+
+func newPyPIProxyController(packageEvaluator *proxyPackageEvaluator) ecosystemProxyController {
+	controller, err := newPyPIProxyControllerWithOptions(packageEvaluator, pypi.RequestClassifierOptions{})
+	if err != nil {
+		panic(err)
+	}
+	return controller
+}
+
+// newPyPIProxyControllerWithOptions is the future Python-adapter integration
+// surface for arbitrary index bases and direct artifact URLs. Existing package
+// managers are deliberately not wired to this controller in this change.
+func newPyPIProxyControllerWithOptions(
+	packageEvaluator *proxyPackageEvaluator,
+	classifierOptions pypi.RequestClassifierOptions,
+) (ecosystemProxyController, error) {
+	classifier, err := pypi.NewRequestClassifier(classifierOptions)
+	if err != nil {
+		return nil, err
+	}
+	packageEvaluator.classifier = classifier
+	return func(runContext context.Context, upstream httpproxy.Config) proxy.Options {
+		packageEvaluator.runContext = runContext
+		client := newPublicationHTTPClient(upstream)
+		packageEvaluator.metadataClient = client
+		packageEvaluator.resolveDate = func(ctx context.Context, packageEcosystem ecosystem.Ecosystem, name, version, source string) (time.Time, error) {
+			if packageEcosystem != ecosystem.PYPI {
+				return time.Time{}, fmt.Errorf("unsupported proxy ecosystem: %s", packageEcosystem)
+			}
+			return pypi.ResolvePublishDateWithClient(ctx, client, name, version, source)
+		}
+		return proxy.Options{
+			RequestHooks: []proxy.RequestHook{packageEvaluator.pypiHandler().HandleRequest},
+		}
+	}, nil
+}
+
+func (e *proxyPackageEvaluator) pypiHandler() pypi.ProxyHandler {
+	return pypi.ProxyHandler{
+		RunContext:       e.runContext,
+		Client:           e.metadataClient,
+		Metadata:         &e.metadata,
+		Classifier:       e.classifier,
+		EvaluateArtifact: e.evaluateArtifactRequest,
+	}
 }

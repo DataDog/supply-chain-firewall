@@ -5,7 +5,7 @@ Supply Chain Firewall (`scfw`) is a Go command-line application that protects pa
 ## Repository structure
 
 - `scfw/main.go` is the executable entry point. Keep it limited to process-level setup and handing control to the CLI package.
-- `scfw/internal/cli` defines Cobra commands and owns user-facing command orchestration: configuration, diagnostics, package-manager selection, policy outcomes, prompts, and running the approved command.
+- `scfw/internal/cli` defines Cobra commands and owns user-facing command orchestration: configuration, diagnostics, package-manager selection, policy outcomes, prompts, and running the approved command. Generic proxy startup and lifecycle stay in `cli/proxy.go`; PyPI proxy orchestration lives in `cli/proxy_pypi.go`.
 - `scfw/internal/build` owns build-time metadata such as the application version. Release builds inject these values through GoReleaser.
 - `scfw/internal/ddapi` owns Datadog authentication, HTTP transport, and the Code Security API implementation of the `evaluation` interfaces (policy evaluation and run reporting). Package-manager-specific behavior does not belong here.
 - `scfw/internal/evaluation` defines the policy evaluation and reporting domain: shared outcome/report types and the `Evaluator`/`Reporter` interfaces that the Datadog and local backends implement.
@@ -26,6 +26,8 @@ Supply Chain Firewall (`scfw`) is a Go command-line application that protects pa
 Keep this guide accurate as part of every structural change. In the same change that creates, removes, renames, moves, or materially repurposes a package or top-level directory, update the structure section above to state its responsibility and boundaries. A new package must have one clear, cohesive responsibility, live at the narrowest appropriate scope, and avoid duplicating responsibilities already assigned here. If its purpose cannot be described in one concise sentence, reconsider the package boundary before adding it.
 
 Preserve the existing separation of concerns: the CLI orchestrates (including evaluation-mode selection), `evaluation` provides shared evaluation/reporting abstractions, `ddapi` communicates with Datadog, `evaluation/local` and `verifier` implement local evaluation, `ecosystem` communicates with registries, `proxy` provides generic traffic interception, `pm` provides shared domain abstractions, and each `pm/<manager>` package implements one package-manager adapter. Do not put manager-specific parsing in `pm`, API transport in `cli`, or CLI presentation in lower-level packages.
+
+Within a package, isolate ecosystem-specific behavior in explicitly named files (for example, `proxy_pypi.go`). Shared orchestration should select and wire those implementations without embedding their protocol logic. This file separation does not move responsibilities between packages: ecosystem protocol parsing stays in `ecosystem`, while policy orchestration, reporting, and presentation stay in `cli`.
 
 ## Validation
 

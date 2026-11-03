@@ -96,12 +96,23 @@ func NormalizePyPIName(name string) string {
 // ParsePyPIDistributionFilename parses a wheel or common source-distribution
 // filename according to PEP 427/491 and PEP 625/440.
 func ParsePyPIDistributionFilename(filename string) (name, version string, ok bool) {
+	return parsePyPIDistributionFilename(filename, "")
+}
+
+// parsePyPIDistributionFilename uses a known project to disambiguate legacy
+// sdist versions containing hyphens, as installers do when reading a listing.
+// With project context, filenames for other projects must not be accepted.
+func parsePyPIDistributionFilename(filename, project string) (name, version string, ok bool) {
+	project = NormalizePyPIName(project)
 	filename, err := url.PathUnescape(filename)
 	if err != nil || filename == "" || strings.ContainsAny(filename, `/\\`) {
 		return "", "", false
 	}
 
 	if match := pyPIWheelFilename.FindStringSubmatch(filename); match != nil {
+		if project != "" && NormalizePyPIName(match[1]) != project {
+			return "", "", false
+		}
 		canonicalVersion, valid := canonicalPyPIVersion(match[2])
 		if !valid {
 			return "", "", false
@@ -120,10 +131,39 @@ func ParsePyPIDistributionFilename(filename string) (name, version string, ok bo
 	if stem == "" {
 		return "", "", false
 	}
+	if project != "" {
+		if !pyPIProjectName.MatchString(project) {
+			return "", "", false
+		}
+		// Match the normalized project once, preserving the original version
+		// suffix and allowing equivalent runs of separators in the name.
+		offset := 0
+		for index, part := range strings.Split(project, "-") {
+			if index > 0 {
+				start := offset
+				for offset < len(stem) && strings.ContainsRune("-_.", rune(stem[offset])) {
+					offset++
+				}
+				if start == offset {
+					return "", "", false
+				}
+			}
+			if len(stem)-offset < len(part) || !strings.EqualFold(stem[offset:offset+len(part)], part) {
+				return "", "", false
+			}
+			offset += len(part)
+		}
+		if offset < len(stem) && stem[offset] == '-' {
+			if canonicalVersion, valid := canonicalPyPIVersion(stem[offset+1:]); valid {
+				return project, canonicalVersion, true
+			}
+		}
+		return "", "", false
+	}
 
-	// PEP 625 specifies the last hyphen as the name/version separator. This is
-	// also packaging.utils.parse_sdist_filename's behavior, so project-1-2 is
-	// project-1 version 2 rather than project version 1.post2.
+	// Without project context, retain packaging.utils.parse_sdist_filename's
+	// last-hyphen interpretation. PEP 625-compliant filenames have one hyphen;
+	// legacy filenames can be ambiguous and need context to resolve otherwise.
 	if separator := strings.LastIndexByte(stem, '-'); separator > 0 {
 		candidateName, candidateVersion := stem[:separator], stem[separator+1:]
 		canonicalVersion, valid := canonicalPyPIVersion(candidateVersion)

@@ -614,15 +614,17 @@ func TestResponseInspectionFailuresDoNotForwardBody(t *testing.T) {
 		length             string
 		maxBytes           int64
 		headerErr, bodyErr bool
+		wantLimitLog       bool
 	}{
-		{name: "known oversized", length: "6", maxBytes: 5},
-		{name: "chunked oversized", maxBytes: 5},
+		{name: "known oversized", length: "6", maxBytes: 5, wantLimitLog: true},
+		{name: "chunked oversized", maxBytes: 5, wantLimitLog: true},
 		{name: "truncated", length: "8", maxBytes: 8},
 		{name: "invalid limit", length: "6"},
 		{name: "header failure", length: "6", maxBytes: 8, headerErr: true},
 		{name: "body failure", length: "6", maxBytes: 8, bodyErr: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			logs := captureDebugLogs(t)
 			registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				if test.length != "" {
 					w.Header().Set("Content-Length", test.length)
@@ -645,12 +647,25 @@ func TestResponseInspectionFailuresDoNotForwardBody(t *testing.T) {
 					}}, nil
 				}, nil
 			}}
-			status, body := get(t, newProxyClient(t, startTestProxy(t, options)), registryURL)
+			target, _ := url.Parse(registryURL)
+			target.User = url.UserPassword("user", "password")
+			target.RawQuery = "token=credential-secret"
+			status, body := get(t, newProxyClient(t, startTestProxy(t, options)), target.String())
 			if status != http.StatusBadGateway || strings.Contains(body, "secret") {
 				t.Fatalf("response = %d %q; want 502 without upstream bytes or hook error", status, body)
 			}
 			if !test.bodyErr && bodyCalls.Load() != 0 {
 				t.Error("body hook processed an incomplete or oversized response")
+			}
+			message := logs.String()
+			if test.wantLimitLog && (!strings.Contains(message, "level=WARN") ||
+				!strings.Contains(message, "proxy response exceeds inspection limit") || !strings.Contains(message, "limit_bytes=5")) {
+				t.Fatalf("missing size-limit diagnostic: %s", message)
+			}
+			for _, secret := range []string{"user:", "password", "token=", "secret"} {
+				if strings.Contains(message, secret) {
+					t.Fatalf("inspection diagnostic exposed %q", secret)
+				}
 			}
 		})
 	}

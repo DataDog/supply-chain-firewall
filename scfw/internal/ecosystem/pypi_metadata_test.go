@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -145,6 +146,82 @@ func TestPyPIMetadataCacheObservesJSONAPIAndSimpleAPI(t *testing.T) {
 				t.Fatalf("PublishDate(%q) = %v, %v; want %v, true", test.filename, got, found, test.want)
 			}
 		})
+	}
+}
+
+func TestPyPIMetadataCacheUsesProjectContextForLegacySdists(t *testing.T) {
+	for _, test := range []struct {
+		name, endpoint, contentType, body, registered string
+	}{
+		{"simple HTML", "https://index.example/simple/project/", "text/html", `<a href="https://cdn.example/project-1.0-1.tar.gz">project</a>`, ""},
+		{"HTML base", "https://index.example/simple/project/", "text/html", `<base href="https://cdn.example/"><a href="project-1.0-1.tar.gz">project</a>`, ""},
+		{"redirected HTML", "https://index.example/opaque", "text/html", `<a href="https://cdn.example/project-1.0-1.tar.gz">project</a>`, "project"},
+		{"redirected project path", "https://index.example/simple/other/", "text/html", `<a href="https://cdn.example/project-1.0-1.tar.gz">project</a>`, "project"},
+		{"simple JSON", "https://index.example/simple/project/", "application/vnd.pypi.simple.v1+json", `{"files":[{"filename":"project-1.0-1.tar.gz","url":"https://cdn.example/project-1.0-1.tar.gz"}]}`, ""},
+		{"JSON project name", "https://index.example/opaque", "application/json", `{"name":"project","files":[{"filename":"project-1.0-1.tar.gz","url":"https://cdn.example/project-1.0-1.tar.gz"}]}`, ""},
+		{"JSON API", "https://pypi.org/pypi/project/json", "application/json", `{"releases":{"1.0-1":[{"filename":"project-1.0-1.tar.gz","url":"https://cdn.example/project-1.0-1.tar.gz"}]}}`, ""},
+		{"JSON info name", "https://index.example/opaque", "application/json", `{"info":{"name":"project"},"urls":[{"filename":"project-1.0-1.tar.gz","url":"https://cdn.example/project-1.0-1.tar.gz"}]}`, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cache := &PyPIMetadataCache{}
+			endpoint, _ := url.Parse(test.endpoint)
+			if test.registered != "" {
+				original, _ := url.Parse("https://index.example/simple/" + test.registered + "/")
+				cache.Register(*original, nil)
+				cache.RegisterRedirect(*original, test.endpoint)
+			}
+			if err := cache.Observe(*endpoint, http.Header{"Content-Type": {test.contentType}}, []byte(test.body)); err != nil {
+				t.Fatal(err)
+			}
+			artifactURL, _ := url.Parse("https://cdn.example/project-1.0-1.tar.gz")
+			artifact, found := cache.ArtifactForURL(artifactURL)
+			if !found || artifact.Name != "project" || artifact.Version != "1.0.post1" {
+				t.Fatalf("advertised identity = %#v, %t; want project 1.0.post1", artifact, found)
+			}
+			if test.registered != "" {
+				if project, _, found := cache.ProjectForURL(endpoint); !found || project != test.registered {
+					t.Fatalf("observation replaced redirected project context with %q", project)
+				}
+			}
+		})
+	}
+}
+
+func TestPyPIMetadataCacheRefreshRetainsProjectAcrossRedirect(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/simple/project/" {
+			http.Redirect(w, request, "/opaque", http.StatusFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = io.WriteString(w, `<base href="https://cdn.example/"><a href="project-1.0-1.tar.gz">project</a>`)
+	}))
+	defer server.Close()
+	cache := &PyPIMetadataCache{}
+	endpoint, _ := url.Parse(server.URL + "/simple/project/")
+	cache.Register(*endpoint, nil)
+	if err := cache.Refresh(context.Background(), server.Client(), *endpoint); err != nil {
+		t.Fatal(err)
+	}
+	artifactURL, _ := url.Parse("https://cdn.example/project-1.0-1.tar.gz")
+	artifact, found := cache.ArtifactForURL(artifactURL)
+	if !found || artifact.Name != "project" || artifact.Version != "1.0.post1" {
+		t.Fatalf("refreshed identity = %#v, %t; want project 1.0.post1", artifact, found)
+	}
+}
+
+func TestPyPIMetadataCacheRejectsFilesForAnotherProject(t *testing.T) {
+	for _, filename := range []string{"other-1.0.tar.gz", "other-1.0-py3-none-any.whl"} {
+		cache := &PyPIMetadataCache{}
+		endpoint, _ := url.Parse("https://index.example/simple/project/")
+		body := fmt.Sprintf(`{"name":"other","files":[{"filename":%q,"url":"https://cdn.example/opaque"}]}`, filename)
+		if err := cache.Observe(*endpoint, http.Header{"Content-Type": {"application/json"}}, []byte(body)); err != nil {
+			t.Fatal(err)
+		}
+		artifactURL, _ := url.Parse("https://cdn.example/opaque")
+		if artifact, found := cache.ArtifactForURL(artifactURL); found {
+			t.Fatalf("accepted another project's artifact: %#v", artifact)
+		}
 	}
 }
 
@@ -351,14 +428,15 @@ func TestPyPIMetadataCacheKeepsOpaqueSourcesIndependent(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheDistinguishesOpaqueQueryVariants(t *testing.T) {
-	endpoint, _ := url.Parse("https://index.example/simple/projects/")
 	cache := &PyPIMetadataCache{}
-
-	if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(`{"files":[`+
-		`{"filename":"alpha-1.0.tar.gz","url":"/download?id=wheel-a&token=first-secret","upload-time":"2025-09-01T01:00:00Z"},`+
-		`{"filename":"beta-2.0.tar.gz","url":"/download?id=wheel-b&token=second-secret","upload-time":"2025-09-02T02:00:00Z"}`+
-		`]}`)); err != nil {
-		t.Fatal(err)
+	for _, input := range []struct{ project, file string }{
+		{"alpha", `{"filename":"alpha-1.0.tar.gz","url":"/download?id=wheel-a&token=first-secret","upload-time":"2025-09-01T01:00:00Z"}`},
+		{"beta", `{"filename":"beta-2.0.tar.gz","url":"/download?id=wheel-b&token=second-secret","upload-time":"2025-09-02T02:00:00Z"}`},
+	} {
+		endpoint, _ := url.Parse("https://index.example/simple/" + input.project + "/")
+		if err := cache.Observe(*endpoint, http.Header{"Content-Type": {"application/vnd.pypi.simple.v1+json"}}, []byte(`{"files":[`+input.file+`]}`)); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	tests := []struct {
@@ -392,7 +470,7 @@ func TestPyPIMetadataCacheDistinguishesOpaqueQueryVariants(t *testing.T) {
 func TestPyPIMetadataCacheMatchesEquivalentURLEncodings(t *testing.T) {
 	endpoint, _ := url.Parse("https://index.example/simple/project/")
 	cache := &PyPIMetadataCache{}
-	cache.store(endpoint, "project-1.0.tar.gz", "/objects/%61%62%63%2f%7e?token=%6fne%2ftwo&literal=%252F", "2025-01-02T03:04:05Z")
+	cache.store(endpoint, "project-1.0.tar.gz", "/objects/%61%62%63%2f%7e?token=%6fne%2ftwo&literal=%252F", "2025-01-02T03:04:05Z", "project")
 	for _, reference := range []string{
 		"/objects/abc%2F~?token=one%2Ftwo&literal=%252F",
 		"/objects/%61bc%2f%7E?token=o%6Ee%2ftwo&literal=%252F",
@@ -421,15 +499,16 @@ func TestPyPIMetadataCacheMatchesEquivalentURLEncodings(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheMatchesUniqueUserinfoFreeResource(t *testing.T) {
-	endpoint, _ := url.Parse("https://index.example/simple/projects/")
 	cache := &PyPIMetadataCache{}
-
-	if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(`{"files":[`+
-		`{"filename":"project-1.0-py3-none-any.whl","url":"https://user:password@cdn.example/project-1.0-py3-none-any.whl?id=wheel&token=secret","upload-time":"2025-09-03T03:00:00Z"},`+
-		`{"filename":"alpha-1.0.tar.gz","url":"https://alpha:secret@cdn.example/shared?id=collision"},`+
-		`{"filename":"beta-2.0.tar.gz","url":"https://beta:secret@cdn.example/shared?id=collision"}`+
-		`]}`)); err != nil {
-		t.Fatal(err)
+	for _, input := range []struct{ project, file string }{
+		{"project", `{"filename":"project-1.0-py3-none-any.whl","url":"https://user:password@cdn.example/project-1.0-py3-none-any.whl?id=wheel&token=secret","upload-time":"2025-09-03T03:00:00Z"}`},
+		{"alpha", `{"filename":"alpha-1.0.tar.gz","url":"https://alpha:secret@cdn.example/shared?id=collision"}`},
+		{"beta", `{"filename":"beta-2.0.tar.gz","url":"https://beta:secret@cdn.example/shared?id=collision"}`},
+	} {
+		endpoint, _ := url.Parse("https://index.example/simple/" + input.project + "/")
+		if err := cache.Observe(*endpoint, http.Header{"Content-Type": {"application/vnd.pypi.simple.v1+json"}}, []byte(`{"files":[`+input.file+`]}`)); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	requestURL, _ := url.Parse("https://cdn.example/project-1.0-py3-none-any.whl?id=wheel&token=secret")
@@ -518,7 +597,8 @@ func TestPyPIMetadataCacheRejectsConflictingExactIdentities(t *testing.T) {
 			artifactURL, _ := url.Parse("https://cdn.example/download?token=one")
 			observe := func(index, filename string) {
 				t.Helper()
-				endpoint, _ := url.Parse(index + "/simple/project/")
+				project, _, _ := ParsePyPIDistributionFilename(filename)
+				endpoint, _ := url.Parse(index + "/simple/" + project + "/")
 
 				if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(fmt.Sprintf(`{"files":[{"filename":%q,"url":%q,"upload-time":"2025-05-06T07:08:09Z"}]}`, filename, artifactURL.String()))); err != nil {
 					t.Fatal(err)
@@ -547,10 +627,10 @@ func TestPyPIMetadataCacheRejectsExactAliasIdentityConflicts(t *testing.T) {
 	for _, aliasFirst := range []bool{false, true} {
 		t.Run(fmt.Sprintf("aliasFirst=%t", aliasFirst), func(t *testing.T) {
 			cache := &PyPIMetadataCache{}
-			endpoint, _ := url.Parse("https://index.example/simple/project/")
+			endpoint, _ := url.Parse("https://index.example/catalog/")
 			bodies := []string{
-				`{"files":[{"filename":"alpha-1.0.tar.gz","url":"https://cdn.example/shared?token=one"}]}`,
-				`{"files":[{"filename":"beta-2.0.tar.gz","url":"https://user:password@cdn.example/shared?token=one"}]}`,
+				`{"name":"alpha","files":[{"filename":"alpha-1.0.tar.gz","url":"https://cdn.example/shared?token=one"}]}`,
+				`{"name":"beta","files":[{"filename":"beta-2.0.tar.gz","url":"https://user:password@cdn.example/shared?token=one"}]}`,
 			}
 			if aliasFirst {
 				bodies[0], bodies[1] = bodies[1], bodies[0]
@@ -788,6 +868,49 @@ func TestPyPIMetadataCacheBoundsModernCompressedResponse(t *testing.T) {
 				"Content-Encoding": []string{encoding},
 			}, encoded.Bytes()); err == nil {
 				t.Fatal("oversized decoded metadata returned nil error")
+			}
+		})
+	}
+}
+
+func TestPyPIMetadataSizeLimitDiagnostics(t *testing.T) {
+	oversized := bytes.Repeat([]byte("x"), MaxPyPIMetadataBytes+1)
+	var compressed bytes.Buffer
+	writer := gzip.NewWriter(&compressed)
+	_, _ = writer.Write(oversized)
+	_ = writer.Close()
+	for _, mode := range []string{"observation", "decoded observation", "discovery"} {
+		t.Run(mode, func(t *testing.T) {
+			var logs bytes.Buffer
+			previous := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+			defer slog.SetDefault(previous)
+			endpoint, _ := url.Parse("https://user:password@index.example/simple/project/?token=secret#private")
+			cache := &PyPIMetadataCache{}
+			var err error
+			switch mode {
+			case "observation":
+				err = cache.Observe(*endpoint, nil, oversized)
+			case "decoded observation":
+				err = cache.Observe(*endpoint, http.Header{"Content-Encoding": {"gzip"}}, compressed.Bytes())
+			case "discovery":
+				client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(oversized))}, nil
+				})}
+				err = cache.Discover(context.Background(), client, "project", []url.URL{*endpoint}, endpoint, nil)
+			}
+			if !errors.Is(err, errPyPIMetadataTooLarge) {
+				t.Fatalf("error = %v; want size limit error", err)
+			}
+			message := logs.String()
+			if !strings.Contains(message, "PyPI metadata exceeds size limit") || !strings.Contains(message, "limit_bytes=8388608") ||
+				!strings.Contains(message, "https://index.example/simple/project/") {
+				t.Fatalf("missing size-limit diagnostic: %s", message)
+			}
+			for _, secret := range []string{"user:", "password", "token", "secret", "private", "xxxxxxxx"} {
+				if strings.Contains(message, secret) {
+					t.Fatalf("size-limit diagnostic exposed %q", secret)
+				}
 			}
 		})
 	}

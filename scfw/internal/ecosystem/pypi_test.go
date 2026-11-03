@@ -69,6 +69,30 @@ func TestParsePyPIDistributionFilename(t *testing.T) {
 	}
 }
 
+func TestParsePyPIDistributionFilenameWithProjectContext(t *testing.T) {
+	for _, test := range []struct {
+		filename, project, version string
+	}{
+		{"project-1.0-1.tar.gz", "project", "1.0.post1"},
+		{"project-1.0-1.tar.gz", "project-1-0", "1"},
+		{"legacy-project-1.0-2.zip", "legacy-project", "1.0.post2"},
+		{"My.Project-1.0-rc1.tar.gz", "my-project", "1.0rc1"},
+		{"My..__---Project-1.0-1.tar.gz", "my-project", "1.0.post1"},
+		{"my_project-1.0-py3-none-any.whl", "my-project", "1.0"},
+		{"other-1.0.tar.gz", "project", ""},
+		{"other-1.0-py3-none-any.whl", "project", ""},
+		{"project-extra-1.0.tar.gz", "project", ""},
+		{"project-invalid-1.tar.gz", "project", ""},
+	} {
+		t.Run(test.project+"/"+test.filename, func(t *testing.T) {
+			name, version, ok := parsePyPIDistributionFilename(test.filename, test.project)
+			if ok != (test.version != "") || version != test.version || (ok && name != test.project) {
+				t.Fatalf("parsed %q as %q %q (%t); want %q %q", test.filename, name, version, ok, test.project, test.version)
+			}
+		})
+	}
+}
+
 func TestPyPIVersionIdentityIgnoresReleaseTrailingZeros(t *testing.T) {
 	tests := []struct {
 		version string

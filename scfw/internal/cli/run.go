@@ -130,7 +130,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 
 	if proxyEnabled() {
 		if runner, ok := packageManager.(pm.ProxyRunner); ok {
-			var controller proxyController
+			var controller ecosystemProxyController
 			switch packageManagerFactory.ProxyControllerEcosystem {
 			case "":
 				// Existing generic ProxyRunners (npm) retain their base behavior.

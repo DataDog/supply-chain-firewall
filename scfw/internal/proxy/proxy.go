@@ -323,6 +323,7 @@ func runResponseHooks(ctx context.Context, request Request, response *http.Respo
 		length = 0
 	}
 	if length > limit {
+		slog.Warn("proxy response exceeds inspection limit", "url", redactURL(&request.URL), "limit_bytes", limit)
 		return errors.New("upstream response exceeds inspection limit")
 	}
 	readLimit := limit + 1
@@ -335,6 +336,7 @@ func runResponseHooks(ctx context.Context, request Request, response *http.Respo
 		return err
 	}
 	if int64(len(body)) > limit {
+		slog.Warn("proxy response exceeds inspection limit", "url", redactURL(&request.URL), "limit_bytes", limit)
 		return errors.New("upstream response exceeds inspection limit")
 	}
 	if length >= 0 && int64(len(body)) != length {

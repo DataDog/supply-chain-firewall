@@ -8,6 +8,7 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -15,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -47,30 +49,36 @@ type Request struct {
 	Header http.Header
 }
 
-// Response describes an upstream response observed by the proxy. It is a
-// copy: the proxy alone streams the response body back to the client.
+// Response is a copy of an upstream response. Body is populated only for a
+// requested body hook; mutating this snapshot never changes the forwarded bytes.
 type Response struct {
 	Request    Request
 	StatusCode int
 	Header     http.Header
+	Body       []byte
 }
 
 // RequestHook observes a request before it is sent upstream. ctx is canceled
 // when the client abandons the request or the proxy closes. Returning a
 // non-nil error rejects the request with HTTP 403 Forbidden and the error text
-// as body, without contacting upstream.
-type RequestHook func(ctx context.Context, request Request) error
+// as body, without contacting upstream. A returned response hook belongs only
+// to this request and runs only if its upstream response arrives.
+type RequestHook func(ctx context.Context, request Request) (ResponseHook, error)
 
 // ResponseHook observes an upstream response before it is streamed back to the
 // client. ctx is canceled when the client abandons the request or the proxy
-// closes.
-type ResponseHook func(ctx context.Context, response Response)
+// closes. Returning nil leaves the body streaming; returning a body hook asks
+// the proxy to buffer and inspect it before forwarding any response bytes.
+// Errors reject the upstream response with HTTP 502.
+type ResponseHook func(ctx context.Context, response Response) (*ResponseBodyHook, error)
 
-// ResponseBodyObserver optionally observes an upstream response body as the
-// client consumes it. Returning nil leaves the response unobserved. The proxy
-// forwards the original bytes regardless of observer write or close failures.
-// Implementations must keep Write fast and bound any retained data.
-type ResponseBodyObserver func(ctx context.Context, response Response) io.WriteCloser
+// ResponseBodyHook processes a complete, bounded copy of a response body.
+// MaxBytes must be positive. Handle must succeed before the original response
+// is forwarded; read, size-limit, or handler failures produce HTTP 502.
+type ResponseBodyHook struct {
+	MaxBytes int64
+	Handle   func(context.Context, Response) error
+}
 
 // Options configures a proxy.
 type Options struct {
@@ -83,14 +91,6 @@ type Options struct {
 
 	// RequestHooks run, in order, for each request. The first rejection wins.
 	RequestHooks []RequestHook
-
-	// ResponseHooks run, in order, for each upstream response.
-	ResponseHooks []ResponseHook
-
-	// ResponseBodyObservers are offered each upstream response before its body
-	// is streamed. Non-nil observers receive exactly the bytes sent upstream,
-	// without delaying the first byte until the full response has been read.
-	ResponseBodyObservers []ResponseBodyObserver
 
 	// upstreamRootCAs and dialContext let tests reach local upstream servers;
 	// nil means the system roots and the default dialer.
@@ -170,7 +170,7 @@ func Start(ctx context.Context, options Options) (*Server, error) {
 		connections:  make(map[net.Conn]struct{}),
 	}
 	server.httpServer = &http.Server{
-		Handler:           server.newHandler(ca, options.RequestHooks, options.ResponseHooks, options.ResponseBodyObservers),
+		Handler:           server.newHandler(ca, options.RequestHooks),
 		ReadHeaderTimeout: 30 * time.Second,
 		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelDebug),
 		ConnState:         server.trackConnection,
@@ -237,8 +237,6 @@ func (server *Server) trackConnection(conn net.Conn, state http.ConnState) {
 func (server *Server) newHandler(
 	ca *certificateAuthority,
 	requestHooks []RequestHook,
-	responseHooks []ResponseHook,
-	responseBodyObservers []ResponseBodyObserver,
 ) *goproxy.ProxyHttpServer {
 	handler := goproxy.NewProxyHttpServer()
 	handler.Logger = proxyLogger{}
@@ -254,20 +252,20 @@ func (server *Server) newHandler(
 
 	// Intercept every HTTPS tunnel with a certificate from the per-run CA, so
 	// the requests inside are visible to the proxy.
-	mitm := &goproxy.ConnectAction{
-		Action: goproxy.ConnectMitm,
-		TLSConfig: func(host string, _ *goproxy.ProxyCtx) (*tls.Config, error) {
-			return ca.serverTLSConfig(host), nil
-		},
-	}
 	handler.OnRequest().HandleConnectFunc(func(host string, _ *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
-		return mitm, host
+		return &goproxy.ConnectAction{
+			Action: goproxy.ConnectHijack,
+			Hijack: func(_ *http.Request, client net.Conn, _ *goproxy.ProxyCtx) {
+				go server.serveTunnel(client, host, ca, handler)
+			},
+		}, host
 	})
 
 	handler.OnRequest().DoFunc(func(request *http.Request, proxyCtx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		request = request.WithContext(server.requestContext(request.Context()))
 		observed := Request{Method: request.Method, URL: *request.URL, Header: request.Header.Clone()}
-		if err := runRequestHooks(request.Context(), requestHooks, observed); err != nil {
+		responseHooks, err := runRequestHooks(request.Context(), requestHooks, observed)
+		if err != nil {
 			slog.Debug("proxy rejected request", "method", request.Method, "url", redactURL(request.URL), "reason", err)
 			return request, goproxy.NewResponse(request, goproxy.ContentTypeText, http.StatusForbidden, err.Error()+"\n")
 		}
@@ -278,18 +276,16 @@ func (server *Server) newHandler(
 			if err != nil {
 				return nil, err
 			}
-			observedResponse := Response{Request: observed, StatusCode: response.StatusCode, Header: response.Header.Clone()}
-			for _, hook := range responseHooks {
-				hook(request.Context(), observedResponse)
+			if err := runResponseHooks(request.Context(), observed, response, responseHooks); err != nil {
+				_ = response.Body.Close()
+				// Hook and transport errors may contain credentials or body data.
+				// Do not expose their contents in the response or diagnostics.
+				slog.Debug("proxy could not inspect upstream response", "url", redactURL(request.URL))
+				return goproxy.NewResponse(request, goproxy.ContentTypeText, http.StatusBadGateway,
+					"supply chain firewall could not inspect upstream response\n"), nil
 			}
-			var observers []io.WriteCloser
-			for _, observe := range responseBodyObservers {
-				if observer := observe(request.Context(), observedResponse); observer != nil {
-					observers = append(observers, observer)
-				}
-			}
-			if len(observers) > 0 {
-				response.Body = &observedResponseBody{source: response.Body, observers: observers, remaining: response.ContentLength}
+			if response.StatusCode != http.StatusSwitchingProtocols {
+				response.Body = &streamingResponseBody{ReadCloser: response.Body}
 			}
 			return response, nil
 		})
@@ -299,61 +295,95 @@ func (server *Server) newHandler(
 	return handler
 }
 
-// observedResponseBody mirrors bytes into observers without allowing observer
-// failures to affect the response consumed by the package manager.
-type observedResponseBody struct {
-	source        io.ReadCloser
-	observers     []io.WriteCloser
-	remaining     int64
-	observerMutex sync.Mutex
-	closeOnce     sync.Once
+func runResponseHooks(ctx context.Context, request Request, response *http.Response, hooks []ResponseHook) error {
+	var bodyHooks []*ResponseBodyHook
+	var limit int64
+	for _, hook := range hooks {
+		bodyHook, err := hook(ctx, responseSnapshot(request, response, nil))
+		if err != nil {
+			return err
+		}
+		if bodyHook == nil {
+			continue
+		}
+		if bodyHook.MaxBytes <= 0 || bodyHook.MaxBytes == math.MaxInt64 || bodyHook.Handle == nil {
+			return errors.New("invalid proxy response body hook")
+		}
+		if limit == 0 || bodyHook.MaxBytes < limit {
+			limit = bodyHook.MaxBytes
+		}
+		bodyHooks = append(bodyHooks, bodyHook)
+	}
+	if len(bodyHooks) == 0 {
+		return ctx.Err()
+	}
+	length := response.ContentLength
+	if request.Method == http.MethodHead || response.StatusCode == http.StatusNoContent ||
+		response.StatusCode == http.StatusNotModified || response.StatusCode < http.StatusOK {
+		length = 0
+	}
+	if length > limit {
+		return errors.New("upstream response exceeds inspection limit")
+	}
+	readLimit := limit + 1
+	if length >= 0 {
+		// A known-length HTTP/2 body can be complete before END_STREAM arrives.
+		readLimit = length
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, readLimit))
+	if err != nil {
+		return err
+	}
+	if int64(len(body)) > limit {
+		return errors.New("upstream response exceeds inspection limit")
+	}
+	if length >= 0 && int64(len(body)) != length {
+		return io.ErrUnexpectedEOF
+	}
+	for _, hook := range bodyHooks {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := hook.Handle(ctx, responseSnapshot(request, response, body)); err != nil {
+			return err
+		}
+	}
+	// Retain the upstream reader after the replayed bytes so its EOF/trailers
+	// and connection cleanup still follow the ordinary response lifecycle.
+	response.Body = &bufferedResponseBody{
+		Reader: io.MultiReader(bytes.NewReader(body), response.Body),
+		Closer: response.Body,
+	}
+	return ctx.Err()
 }
 
-func (body *observedResponseBody) Read(buffer []byte) (int, error) {
-	read, err := body.source.Read(buffer)
-	if read > 0 {
-		body.observerMutex.Lock()
-		for _, observer := range body.observers {
-			if _, observerErr := observer.Write(buffer[:read]); observerErr != nil {
-				slog.Debug("proxy response observer write failed", "error", observerErr)
-			}
-		}
-		body.observerMutex.Unlock()
-	}
-	if body.remaining >= 0 {
-		body.remaining -= int64(read)
-	}
-	// HTTP/2 can deliver the last declared byte before END_STREAM supplies EOF.
-	// Commit observations before returning those bytes: the client may already
-	// consider its response complete and start its next request immediately.
-	if body.remaining == 0 || errors.Is(err, io.EOF) {
-		body.closeObservers()
+func responseSnapshot(request Request, response *http.Response, body []byte) Response {
+	request.Header = request.Header.Clone()
+	return Response{Request: request, StatusCode: response.StatusCode, Header: response.Header.Clone(), Body: bytes.Clone(body)}
+}
+
+type bufferedResponseBody struct {
+	io.Reader
+	io.Closer
+}
+
+// goproxy logs copy errors and returns normally, which lets net/http finish a
+// truncated chunked response as though it succeeded. Abort the downstream
+// response on read failure instead. Upgraded bodies retain their ReadWriter.
+type streamingResponseBody struct{ io.ReadCloser }
+
+func (body *streamingResponseBody) Read(buffer []byte) (int, error) {
+	read, err := body.ReadCloser.Read(buffer)
+	if err != nil && !errors.Is(err, io.EOF) {
+		panic(http.ErrAbortHandler)
 	}
 	return read, err
 }
 
-func (body *observedResponseBody) Close() error {
-	body.closeObservers()
-	return body.source.Close()
-}
-
-func (body *observedResponseBody) closeObservers() {
-	body.observerMutex.Lock()
-	defer body.observerMutex.Unlock()
-	body.closeOnce.Do(func() {
-		for _, observer := range body.observers {
-			if err := observer.Close(); err != nil {
-				slog.Debug("proxy response observer close failed", "error", err)
-			}
-		}
-	})
-}
-
 // requestContext returns a context for one proxied request that is canceled
 // when either the client's own request context ends or the proxy closes.
-// goproxy only cancels requests inside intercepted HTTPS tunnels once the
-// exchange ends, so a client that drops such a tunnel is noticed when the
-// response is written back.
+// Both plain requests and intercepted tunnels use net/http request contexts,
+// which detect client disconnects even while a response is being buffered.
 func (server *Server) requestContext(clientCtx context.Context) context.Context {
 	ctx, cancel := context.WithCancel(clientCtx)
 	stop := context.AfterFunc(server.ctx, cancel)
@@ -362,13 +392,20 @@ func (server *Server) requestContext(clientCtx context.Context) context.Context 
 	return ctx
 }
 
-func runRequestHooks(ctx context.Context, hooks []RequestHook, request Request) error {
+func runRequestHooks(ctx context.Context, hooks []RequestHook, request Request) ([]ResponseHook, error) {
+	var responseHooks []ResponseHook
 	for _, hook := range hooks {
-		if err := hook(ctx, request); err != nil {
-			return err
+		snapshot := request
+		snapshot.Header = request.Header.Clone()
+		responseHook, err := hook(ctx, snapshot)
+		if err != nil {
+			return nil, err
+		}
+		if responseHook != nil {
+			responseHooks = append(responseHooks, responseHook)
 		}
 	}
-	return nil
+	return responseHooks, nil
 }
 
 func newUpstreamTransport(options Options) *http.Transport {

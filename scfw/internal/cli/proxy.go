@@ -113,9 +113,7 @@ func newPyPIProxyControllerWithOptions(
 			return ecosystem.ResolvePyPIPublishDateWithClient(ctx, client, name, version, source)
 		}
 		return proxy.Options{
-			RequestHooks:          []proxy.RequestHook{packageEvaluator.HandleRequest},
-			ResponseHooks:         []proxy.ResponseHook{packageEvaluator.ObserveMetadataHeaders},
-			ResponseBodyObservers: []proxy.ResponseBodyObserver{packageEvaluator.ObserveMetadataResponse},
+			RequestHooks: []proxy.RequestHook{packageEvaluator.HandleRequest},
 		}
 	}, nil
 }
@@ -218,13 +216,14 @@ func redactCommandURL(value string) string {
 }
 
 // HandleRequest evaluates an artifact before the proxy sends its request
-// upstream. Metadata and unrelated traffic are left untouched.
-func (e *proxyPackageEvaluator) HandleRequest(requestContext context.Context, request proxy.Request) error {
+// upstream. Metadata candidates attach a response hook so their headers can
+// select body inspection; artifact and core-metadata bodies keep streaming.
+func (e *proxyPackageEvaluator) HandleRequest(requestContext context.Context, request proxy.Request) (proxy.ResponseHook, error) {
 	if request.Method != http.MethodGet {
-		return nil
+		return nil, nil
 	}
 	if e.metadata.IsCoreMetadataURL(&request.URL) {
-		return nil
+		return nil, nil
 	}
 	artifact, advertised := e.metadata.ArtifactForURL(&request.URL)
 	if !advertised {
@@ -235,10 +234,10 @@ func (e *proxyPackageEvaluator) HandleRequest(requestContext context.Context, re
 			} else {
 				e.metadata.Register(request.URL, request.Header)
 			}
-			return nil
+			return e.ObserveMetadataHeaders, nil
 		}
 		if kind == ecosystem.PyPIRequestCoreMetadata {
-			return nil
+			return nil, nil
 		}
 		if kind != ecosystem.PyPIRequestArtifact {
 			project, endpoints, discoverable := e.classifier.MetadataDiscovery(&request.URL)
@@ -246,23 +245,22 @@ func (e *proxyPackageEvaluator) HandleRequest(requestContext context.Context, re
 				if err := e.metadata.Discover(
 					e.runContext, e.metadataClient, project, endpoints, &request.URL, request.Header,
 				); isContextError(err) {
-					return err
+					return nil, err
 				}
 				artifact, advertised = e.metadata.ArtifactForURL(&request.URL)
 			}
 			if !advertised {
-				// Only after exact-artifact discovery fails may an archive-shaped
-				// project URL supply metadata context for a bodyless 304 or redirect.
-				if project, ok := e.classifier.SimpleProject(&request.URL, nil); ok {
-					e.metadata.RegisterProject(request.URL, project, request.Header)
-				}
-				return nil
+				return e.ObserveMetadataHeaders, nil
 			}
 		} else {
 			artifact = classified
 		}
 	}
 
+	return nil, e.evaluateArtifactRequest(requestContext, artifact)
+}
+
+func (e *proxyPackageEvaluator) evaluateArtifactRequest(requestContext context.Context, artifact ecosystem.PyPIArtifact) error {
 	// Resolve each file's publication data before consulting the decision cache.
 	// Files from the same release can have different sources and upload times.
 	pkg, publishErr := e.resolveArtifact(e.runContext, artifact)
@@ -305,12 +303,14 @@ func (e *proxyPackageEvaluator) HandleRequest(requestContext context.Context, re
 // ObserveMetadataHeaders records metadata endpoints and resolves an uncached
 // 304 through an independent request before the package manager can issue a
 // download from metadata held only in its own cache.
-func (e *proxyPackageEvaluator) ObserveMetadataHeaders(ctx context.Context, response proxy.Response) {
-	kind, project := e.classifyMetadataResponse(response)
+func (e *proxyPackageEvaluator) ObserveMetadataHeaders(ctx context.Context, response proxy.Response) (*proxy.ResponseBodyHook, error) {
+	kind, project, tentative := e.classifyMetadataResponse(response)
 	if kind != ecosystem.PyPIRequestJSONAPI && kind != ecosystem.PyPIRequestSimpleAPI {
-		return
+		return nil, nil
 	}
-	if project != "" {
+	if tentative {
+		e.metadata.RegisterProjectCandidate(response.Request.URL, project, response.Request.Header)
+	} else if project != "" {
 		e.metadata.RegisterProject(response.Request.URL, project, response.Request.Header)
 	} else {
 		e.metadata.Register(response.Request.URL, response.Request.Header)
@@ -318,41 +318,47 @@ func (e *proxyPackageEvaluator) ObserveMetadataHeaders(ctx context.Context, resp
 	switch response.StatusCode {
 	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
 		e.metadata.RegisterRedirect(response.Request.URL, response.Header.Get("Location"))
+	case http.StatusNotModified:
+		if !e.metadata.HasObserved(response.Request.URL) && e.metadataClient != nil {
+			if err := e.metadata.Refresh(ctx, e.metadataClient, response.Request.URL); err != nil {
+				return nil, err
+			}
+		}
 	}
-	if response.StatusCode == http.StatusNotModified && !e.metadata.HasObserved(response.Request.URL) && e.metadataClient != nil {
-		// Failure is intentionally deferred to artifact evaluation, where the
-		// normal resolver records it without changing the metadata response.
-		_ = e.metadata.Refresh(ctx, e.metadataClient, response.Request.URL)
-	}
-}
-
-// ObserveMetadataResponse mirrors successful JSON API and Simple API response
-// bodies into the per-run metadata cache. 304 responses deliberately retain
-// whatever the run already observed and otherwise leave artifact lookup to the
-// independent resolver.
-func (e *proxyPackageEvaluator) ObserveMetadataResponse(_ context.Context, response proxy.Response) io.WriteCloser {
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return nil
+		return nil, nil
 	}
-	kind, project := e.classifyMetadataResponse(response)
-	if kind != ecosystem.PyPIRequestJSONAPI && kind != ecosystem.PyPIRequestSimpleAPI {
-		return nil
-	}
-	if project != "" {
-		e.metadata.RegisterProject(response.Request.URL, project, response.Request.Header)
-	}
-	return e.metadata.Observe(response.Request.URL, response.Header)
+	return &proxy.ResponseBodyHook{
+		MaxBytes: ecosystem.MaxPyPIMetadataBytes,
+		Handle: func(_ context.Context, response proxy.Response) error {
+			return e.metadata.Observe(response.Request.URL, response.Header, response.Body)
+		},
+	}, nil
 }
 
-func (e *proxyPackageEvaluator) classifyMetadataResponse(response proxy.Response) (ecosystem.PyPIRequestKind, string) {
+func (e *proxyPackageEvaluator) classifyMetadataResponse(response proxy.Response) (ecosystem.PyPIRequestKind, string, bool) {
 	kind, _ := e.classifier.ClassifyResponse(response.Request.Method, &response.Request.URL, response.Header)
 	if response.Request.Method == http.MethodGet && (kind == ecosystem.PyPIRequestUnrelated || kind == ecosystem.PyPIRequestSimpleAPI) {
-		if project, found := e.metadata.ProjectForURL(&response.Request.URL); found {
-			return ecosystem.PyPIRequestSimpleAPI, project
+		if project, tentative, found := e.metadata.ProjectForURL(&response.Request.URL); found {
+			if !tentative || (response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices &&
+				ecosystem.IsPyPIMetadataContentType(response.Header)) {
+				return ecosystem.PyPIRequestSimpleAPI, project, false
+			}
+			if response.StatusCode >= http.StatusMultipleChoices && response.StatusCode < http.StatusBadRequest {
+				return ecosystem.PyPIRequestSimpleAPI, project, true
+			}
+		}
+		// An archive-shaped Simple path is ambiguous until response headers
+		// arrive. Bodyless redirects/304s can still establish project context;
+		// successful responses must supply metadata media-type evidence first.
+		if response.StatusCode >= http.StatusMultipleChoices && response.StatusCode < http.StatusBadRequest {
+			if project, found := e.classifier.SimpleProject(&response.Request.URL, nil); found {
+				return ecosystem.PyPIRequestSimpleAPI, project, true
+			}
 		}
 	}
 	project, _ := e.classifier.SimpleProject(&response.Request.URL, response.Header)
-	return kind, project
+	return kind, project, false
 }
 
 func (e *proxyPackageEvaluator) resolveArtifact(ctx context.Context, artifact ecosystem.PyPIArtifact) (pm.Package, error) {

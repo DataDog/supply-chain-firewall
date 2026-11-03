@@ -59,15 +59,15 @@ type Response struct {
 }
 
 // RequestHook observes a request before it is sent upstream. ctx is canceled
-// when the client abandons the request or the proxy closes. Returning a
-// non-nil error rejects the request with HTTP 403 Forbidden and the error text
+// when the command is canceled or the proxy closes. Returning a non-nil error
+// rejects the request with HTTP 403 Forbidden and the error text
 // as body, without contacting upstream. A returned response hook belongs only
 // to this request and runs only if its upstream response arrives.
 type RequestHook func(ctx context.Context, request Request) (ResponseHook, error)
 
 // ResponseHook observes an upstream response before it is streamed back to the
-// client. ctx is canceled when the client abandons the request or the proxy
-// closes. Returning nil leaves the body streaming; returning a body hook asks
+// client. ctx is canceled when the command is canceled or the proxy closes.
+// Returning nil leaves the body streaming; returning a body hook asks
 // the proxy to buffer and inspect it before forwarding any response bytes.
 // Errors reject the upstream response with HTTP 502.
 type ResponseHook func(ctx context.Context, response Response) (*ResponseBodyHook, error)
@@ -252,13 +252,14 @@ func (server *Server) newHandler(
 
 	// Intercept every HTTPS tunnel with a certificate from the per-run CA, so
 	// the requests inside are visible to the proxy.
+	mitm := &goproxy.ConnectAction{
+		Action: goproxy.ConnectMitm,
+		TLSConfig: func(host string, _ *goproxy.ProxyCtx) (*tls.Config, error) {
+			return ca.serverTLSConfig(host), nil
+		},
+	}
 	handler.OnRequest().HandleConnectFunc(func(host string, _ *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
-		return &goproxy.ConnectAction{
-			Action: goproxy.ConnectHijack,
-			Hijack: func(_ *http.Request, client net.Conn, _ *goproxy.ProxyCtx) {
-				go server.serveTunnel(client, host, ca, handler)
-			},
-		}, host
+		return mitm, host
 	})
 
 	handler.OnRequest().DoFunc(func(request *http.Request, proxyCtx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
@@ -284,7 +285,9 @@ func (server *Server) newHandler(
 				return goproxy.NewResponse(request, goproxy.ContentTypeText, http.StatusBadGateway,
 					"supply chain firewall could not inspect upstream response\n"), nil
 			}
-			if response.StatusCode != http.StatusSwitchingProtocols {
+			// ErrAbortHandler must reach net/http's recovery handler. CONNECT
+			// requests use goproxy's own response writer and error handling.
+			if request.Context().Value(http.ServerContextKey) != nil && response.StatusCode != http.StatusSwitchingProtocols {
 				response.Body = &streamingResponseBody{ReadCloser: response.Body}
 			}
 			return response, nil
@@ -369,9 +372,9 @@ type bufferedResponseBody struct {
 	io.Closer
 }
 
-// goproxy logs copy errors and returns normally, which lets net/http finish a
-// truncated chunked response as though it succeeded. Abort the downstream
-// response on read failure instead. Upgraded bodies retain their ReadWriter.
+// For plain HTTP, goproxy logs copy errors and returns normally, which lets
+// net/http finish a truncated chunked response as though it succeeded. Abort the
+// downstream response on read failure instead. Upgraded bodies retain their ReadWriter.
 type streamingResponseBody struct{ io.ReadCloser }
 
 func (body *streamingResponseBody) Read(buffer []byte) (int, error) {
@@ -384,8 +387,8 @@ func (body *streamingResponseBody) Read(buffer []byte) (int, error) {
 
 // requestContext returns a context for one proxied request that is canceled
 // when either the client's own request context ends or the proxy closes.
-// Both plain requests and intercepted tunnels use net/http request contexts,
-// which detect client disconnects even while a response is being buffered.
+// Inside CONNECT tunnels, goproxy ends the client context after the exchange;
+// the proxy context still cancels upstream work when the command stops.
 func (server *Server) requestContext(clientCtx context.Context) context.Context {
 	ctx, cancel := context.WithCancel(clientCtx)
 	stop := context.AfterFunc(server.ctx, cancel)

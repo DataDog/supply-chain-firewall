@@ -1051,7 +1051,7 @@ func TestClientCancellationAbortsUpstreamRequest(t *testing.T) {
 	}
 }
 
-func TestClientDisconnectCancelsBufferedResponse(t *testing.T) {
+func TestParentCancellationCancelsBufferedResponse(t *testing.T) {
 	for _, useTLS := range []bool{false, true} {
 		t.Run(fmt.Sprintf("tls=%t", useTLS), func(t *testing.T) {
 			started, canceled, testDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
@@ -1074,14 +1074,18 @@ func TestClientDisconnectCancelsBufferedResponse(t *testing.T) {
 					}}, nil
 				}, nil
 			}}
-			client := newProxyClient(t, startTestProxy(t, options))
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, registryURL, nil)
+			server, err := Start(ctx, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = server.Close() })
+			client := newProxyClient(t, server)
 			finished := make(chan struct{})
 			go func() {
 				defer close(finished)
-				if response, err := client.Do(request); err == nil {
+				if response, err := client.Get(registryURL); err == nil {
 					_ = response.Body.Close()
 				}
 			}()
@@ -1095,7 +1099,7 @@ func TestClientDisconnectCancelsBufferedResponse(t *testing.T) {
 				select {
 				case <-done:
 				case <-time.After(2 * time.Second):
-					t.Fatal("buffering retained an upstream request after the client disconnected")
+					t.Fatal("buffering retained an upstream request after the command was canceled")
 				}
 			}
 		})

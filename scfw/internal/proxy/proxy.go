@@ -70,15 +70,22 @@ type RequestHook func(ctx context.Context, request Request) (ResponseHook, error
 // client. ctx is canceled when the command is canceled or the proxy closes.
 // Returning nil leaves the body streaming; returning a body hook asks
 // the proxy to buffer and inspect it before forwarding any response bytes.
-// Errors reject the upstream response with HTTP 502.
+// ErrResponseRejected produces HTTP 403; other errors produce HTTP 502.
 type ResponseHook func(ctx context.Context, response Response) (*ResponseBodyHook, error)
 
+// ErrResponseRejected lets a response hook reject a completed upstream response
+// with HTTP 403. The wrapped error is never exposed to the client or logs.
+var ErrResponseRejected = errors.New("upstream response rejected")
+
 // ResponseBodyHook processes a complete, bounded copy of a response body.
-// MaxBytes must be positive. Handle must succeed before the original response
-// is forwarded; read, size-limit, or handler failures produce HTTP 502.
+// MaxBytes must be positive and exactly one handler must be set. Handle uses an
+// in-memory copy; HandleFile opts into temporary-file buffering and receives a
+// read-only view valid for that call. Inspection finishes before forwarding.
+// ErrResponseRejected produces HTTP 403; other failures produce HTTP 502.
 type ResponseBodyHook struct {
-	MaxBytes int64
-	Handle   func(context.Context, Response) error
+	MaxBytes   int64
+	Handle     func(context.Context, Response) error
+	HandleFile func(context.Context, Response, *io.SectionReader) error
 }
 
 // Options configures a proxy.
@@ -292,11 +299,15 @@ func (server *Server) newHandler(
 			if err != nil {
 				return nil, err
 			}
-			if err := runResponseHooks(request.Context(), observed, response, responseHooks); err != nil {
+			if err := runResponseHooks(request.Context(), observed, response, responseHooks, filepath.Dir(server.clientConfig.CACertificatePath)); err != nil {
 				_ = response.Body.Close()
 				// Hook and transport errors may contain credentials or body data.
 				// Do not expose their contents in the response or diagnostics.
 				slog.Debug("proxy could not inspect upstream response", "url", redactURL(request.URL))
+				if errors.Is(err, ErrResponseRejected) {
+					return goproxy.NewResponse(request, goproxy.ContentTypeText, http.StatusForbidden,
+						"supply chain firewall rejected upstream response\n"), nil
+				}
 				return goproxy.NewResponse(request, goproxy.ContentTypeText, http.StatusBadGateway,
 					"supply chain firewall could not inspect upstream response\n"), nil
 			}
@@ -313,9 +324,10 @@ func (server *Server) newHandler(
 	return handler
 }
 
-func runResponseHooks(ctx context.Context, request Request, response *http.Response, hooks []ResponseHook) error {
+func runResponseHooks(ctx context.Context, request Request, response *http.Response, hooks []ResponseHook, temporaryDir string) error {
 	var bodyHooks []*ResponseBodyHook
 	var limit int64
+	useFile := false
 	for _, hook := range hooks {
 		bodyHook, err := hook(ctx, responseSnapshot(request, response, nil))
 		if err != nil {
@@ -324,13 +336,14 @@ func runResponseHooks(ctx context.Context, request Request, response *http.Respo
 		if bodyHook == nil {
 			continue
 		}
-		if bodyHook.MaxBytes <= 0 || bodyHook.MaxBytes == math.MaxInt64 || bodyHook.Handle == nil {
+		if bodyHook.MaxBytes <= 0 || bodyHook.MaxBytes == math.MaxInt64 || (bodyHook.Handle == nil) == (bodyHook.HandleFile == nil) {
 			return errors.New("invalid proxy response body hook")
 		}
 		if limit == 0 || bodyHook.MaxBytes < limit {
 			limit = bodyHook.MaxBytes
 		}
 		bodyHooks = append(bodyHooks, bodyHook)
+		useFile = useFile || bodyHook.HandleFile != nil
 	}
 	if len(bodyHooks) == 0 {
 		return ctx.Err()
@@ -343,6 +356,9 @@ func runResponseHooks(ctx context.Context, request Request, response *http.Respo
 	if length > limit {
 		slog.Warn("proxy response exceeds inspection limit", "url", redactURL(&request.URL), "limit_bytes", limit)
 		return errors.New("upstream response exceeds inspection limit")
+	}
+	if useFile {
+		return inspectResponseFile(ctx, request, response, bodyHooks, temporaryDir, length, limit)
 	}
 	readLimit := limit + 1
 	if length >= 0 {

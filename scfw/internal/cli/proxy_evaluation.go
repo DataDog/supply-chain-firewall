@@ -9,19 +9,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"io"
 	"log/slog"
-	"net/http"
 	"sync"
 	"time"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
-// proxyPackageEvaluator evaluates PyPI artifacts immediately before the proxy
-// forwards them. decisions is scoped to one command and also acts as a
+// proxyPackageEvaluator evaluates resolved packages before their downloads are
+// forwarded. decisions is scoped to one command and also acts as a
 // singleflight table for concurrent requests with identical policy inputs.
 type proxyPackageEvaluator struct {
 	runContext       context.Context
@@ -33,10 +32,6 @@ type proxyPackageEvaluator struct {
 	output           io.Writer
 	evaluator        evaluation.Evaluator
 	reporter         evaluation.Reporter
-	resolveDate      func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error)
-	metadata         pypi.MetadataCache
-	metadataClient   *http.Client
-	classifier       *pypi.RequestClassifier
 
 	mutex     sync.Mutex
 	decisions map[pm.Package]*proxyPackageDecision
@@ -63,10 +58,6 @@ func newProxyPackageEvaluator(
 	if runContext == nil {
 		runContext = context.Background()
 	}
-	classifier, err := pypi.NewRequestClassifier(pypi.RequestClassifierOptions{})
-	if err != nil {
-		panic(err)
-	}
 	return &proxyPackageEvaluator{
 		runContext:       runContext,
 		installTimestamp: installTimestamp,
@@ -77,19 +68,20 @@ func newProxyPackageEvaluator(
 		output:           output,
 		evaluator:        evaluator,
 		reporter:         reporter,
-		resolveDate:      ecosystem.ResolvePublishDate,
-		classifier:       classifier,
 		decisions:        make(map[pm.Package]*proxyPackageDecision),
 	}
 }
 
-func (e *proxyPackageEvaluator) evaluateArtifactRequest(requestContext context.Context, artifact pypi.Artifact) error {
-	// Resolve each file's publication data before consulting the decision cache.
-	// Files from the same release can have different sources and upload times.
-	pkg, publishErr := e.resolveArtifact(e.runContext, artifact)
+// evaluatePackage receives identity and publication data from an ecosystem
+// controller. Request cancellation only stops waiters; shared evaluation work
+// follows the invocation context.
+func (e *proxyPackageEvaluator) evaluatePackage(requestContext context.Context, pkg pm.Package, publishErr error) error {
 	if isContextError(publishErr) {
 		return publishErr
 	}
+	// Equal publication instants must produce equal decision-cache keys,
+	// regardless of which ecosystem controller supplied them.
+	pkg.PublishDate = pkg.PublishDate.UTC()
 	key := pkg
 	for {
 		e.mutex.Lock()
@@ -112,7 +104,7 @@ func (e *proxyPackageEvaluator) evaluateArtifactRequest(requestContext context.C
 			}
 		}
 
-		decision.err, decision.complete = e.evaluateArtifact(e.runContext, pkg, publishErr)
+		decision.err, decision.complete = e.evaluatePolicy(e.runContext, pkg, publishErr)
 		e.mutex.Lock()
 		if !decision.complete && e.decisions[key] == decision {
 			delete(e.decisions, key)
@@ -123,33 +115,14 @@ func (e *proxyPackageEvaluator) evaluateArtifactRequest(requestContext context.C
 	}
 }
 
-func (e *proxyPackageEvaluator) resolveArtifact(ctx context.Context, artifact pypi.Artifact) (pm.Package, error) {
-	pkg := pm.Package{
-		Ecosystem: ecosystem.PYPI,
-		Name:      artifact.Name,
-		Version:   artifact.Version,
-		Source:    artifact.Source,
-	}
-	publishDate, err := e.metadata.ResolveArtifactPublishDate(ctx, e.metadataClient, artifact,
-		func(ctx context.Context, name, version, source string) (time.Time, error) {
-			return e.resolveDate(ctx, ecosystem.PYPI, name, version, source)
-		},
-	)
-	if err == nil {
-		// Equal instants must produce equal policy-cache keys.
-		pkg.PublishDate = publishDate.UTC()
-	}
-	return pkg, err
-}
-
-func (e *proxyPackageEvaluator) evaluateArtifact(ctx context.Context, pkg pm.Package, publishErr error) (error, bool) {
+func (e *proxyPackageEvaluator) evaluatePolicy(ctx context.Context, pkg pm.Package, publishErr error) (error, bool) {
 	if err := ctx.Err(); err != nil {
 		return err, false
 	}
 	var publicationFailure *evaluation.Failure
 	if publishErr != nil {
 		publicationFailure = &evaluation.Failure{Verifier: "publication", Error: publishErr.Error()}
-		_, _ = fmt.Fprintf(e.output, "Could not resolve publication data for PyPI %s@%s: %v\n", pkg.Name, pkg.Version, publishErr)
+		_, _ = fmt.Fprintf(e.output, "Could not resolve publication data for %s %s@%s: %v\n", pkg.Ecosystem, pkg.Name, pkg.Version, publishErr)
 	}
 	targets := pm.NewSet(pkg)
 	report, err := e.evaluator.EvaluateInstallTargets(ctx, false, targets)
@@ -217,7 +190,7 @@ func addPackageFailure(report *evaluation.ScfwPolicyEvaluationReport, pkg pm.Pac
 	for index := range report.Results {
 		result := &report.Results[index]
 		if result.Ecosystem == string(pkg.Ecosystem) &&
-			pypi.NormalizeName(result.PackageName) == pkg.Name &&
+			ecosystem.NormalizePackageName(pkg.Ecosystem, result.PackageName) == ecosystem.NormalizePackageName(pkg.Ecosystem, pkg.Name) &&
 			result.PackageVersion == pkg.Version {
 			result.Failures = append(result.Failures, failure)
 			return

@@ -22,9 +22,13 @@ import (
 	"time"
 )
 
-// pyPIRegistryDomains are the URL domains associated with the PyPI registry, ported from
-// ecosystem.py's ECOSYSTEM.registry_domains in the Python reference.
-var pyPIRegistryDomains = []string{"pypi.org", "files.pythonhosted.org", "pypi.python.org"}
+const (
+	registryHost = "pypi.org"
+	registryURL  = "https://" + registryHost
+)
+
+// pyPIRegistryDomains are the URL domains associated with the PyPI registry.
+var pyPIRegistryDomains = []string{registryHost, "files.pythonhosted.org", "pypi.python.org"}
 
 // RequestKind describes the role of an HTTP request in the PyPI protocols.
 // Metadata requests never need policy evaluation; artifact requests do.
@@ -382,7 +386,7 @@ func (classifier *RequestClassifier) ClassifyRequest(method string, requestURL *
 			return RequestUnrelated, Artifact{}
 		}
 	}
-	if host == "pypi.org" && strings.HasPrefix(cleanPath, "/pypi/") && strings.HasSuffix(cleanPath, "/json") {
+	if host == registryHost && strings.HasPrefix(cleanPath, "/pypi/") && strings.HasSuffix(cleanPath, "/json") {
 		return RequestJSONAPI, Artifact{}
 	}
 	if knownSimpleProject || configuredProject || cleanPath == "/simple" {
@@ -631,7 +635,7 @@ func resolvePyPIPublishDateWithClient(ctx context.Context, client *http.Client, 
 		return time.Time{}, nil
 	}
 
-	url := fmt.Sprintf("https://pypi.org/pypi/%s/json", name)
+	url := fmt.Sprintf(registryURL+"/pypi/%s/json", name)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to build PyPI request: %w", err)

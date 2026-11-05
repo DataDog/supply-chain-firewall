@@ -10,8 +10,6 @@ import (
 	"fmt"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
-	"golang.org/x/net/http/httpproxy"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -43,44 +41,31 @@ func runThroughProxy(
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM)
 	defer stop()
 
-	upstream, err := runner.UpstreamProxy(command)
+	var options proxy.Options
+	var err error
+	if provider, ok := runner.(pm.ProxyOptionsProvider); ok {
+		options, err = provider.ProxyOptions(command)
+	} else {
+		options.Upstream, err = runner.UpstreamProxy(command)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("resolve upstream proxy: %w", err)
 	}
-	options := proxy.Options{Upstream: upstream}
 	if controller != nil {
-		options = controller(ctx, upstream)
-		options.Upstream = upstream
+		options = controller(ctx, options)
 	}
 
-	server, err := proxy.Start(ctx, options)
-	if err != nil {
-		return nil, err
-	}
-	// Deferred so the proxy is also stopped if the command panics.
-	defer func() {
-		if err := server.Close(); err != nil {
-			slog.Warn("failed to stop package manager proxy cleanly", "error", err)
-		}
-	}()
-
-	slog.Debug("running package manager command through proxy")
-	return runner.RunCommandThroughProxy(ctx, command, server.ClientConfig()), nil
+	return proxy.Run(ctx, options, command, runner)
 }
 
 // ecosystemProxyController is the narrow CLI integration boundary between a concrete
 // package-manager ProxyRunner and ecosystem-specific proxy behavior. Generic
-// ProxyRunners pass nil; future Python adapter wiring can opt into PyPI without
+// ProxyRunners pass nil; Python adapters opt into PyPI without
 // moving registry parsing or policy orchestration into the adapter.
-type ecosystemProxyController func(context.Context, httpproxy.Config) proxy.Options
+type ecosystemProxyController func(context.Context, proxy.Options) proxy.Options
 
-func newPublicationHTTPClient(upstream httpproxy.Config) *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	proxyFunc := upstream.ProxyFunc()
-	transport.Proxy = func(request *http.Request) (*url.URL, error) {
-		return proxyFunc(request.URL)
-	}
-	return &http.Client{Transport: transport}
+func newPublicationHTTPClient(options proxy.Options) *http.Client {
+	return &http.Client{Transport: proxy.NewTransport(options)}
 }
 
 // redactCommandArguments returns a reporting/logging copy of a command with

@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -133,17 +134,20 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 			var controller ecosystemProxyController
 			switch packageManagerFactory.ProxyControllerEcosystem {
 			case "":
-				// Existing generic ProxyRunners (npm) retain their base behavior.
+				// Generic proxy integrations need no ecosystem controller.
 			case ecosystem.PYPI:
 				evaluator, evaluatorErr := newEvaluator(cmd.Context(), mode)
 				if evaluatorErr != nil {
 					return fmt.Errorf("scfw run: %w", evaluatorErr)
 				}
 				gitMetadata := discoverGitMetadata(packageManager, cmdArgs[1:])
-				controller = newPyPIProxyController(newProxyPackageEvaluator(
+				controller, err = newPackageManagerPyPIController(packageManager, cmdArgs[1:], newProxyPackageEvaluator(
 					cmd.Context(), installTimestamp, cmdArgs, packageManagerName, packageManager.Executable(), gitMetadata.RepositoryURL,
 					evaluator, reporter, os.Stderr,
 				))
+				if err != nil {
+					return fmt.Errorf("scfw run: %w", err)
+				}
 			default:
 				return fmt.Errorf("scfw run: unsupported proxy controller ecosystem %q", packageManagerFactory.ProxyControllerEcosystem)
 			}
@@ -227,6 +231,9 @@ func exitOnCommandError(err error) {
 		return
 	}
 	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			os.Exit(128 + int(status.Signal()))
+		}
 		os.Exit(exitErr.ExitCode())
 	}
 	slog.Error("failed to run command", "error", err)

@@ -291,7 +291,7 @@ func (cache *MetadataCache) metadataProject(requestURL *url.URL) string {
 		return project
 	}
 	segments := strings.Split(strings.Trim(path.Clean(requestURL.Path), "/"), "/")
-	if strings.EqualFold(requestURL.Hostname(), "pypi.org") && (len(segments) == 3 || len(segments) == 4) &&
+	if strings.EqualFold(requestURL.Hostname(), registryHost) && (len(segments) == 3 || len(segments) == 4) &&
 		segments[0] == "pypi" && segments[len(segments)-1] == "json" && pyPIProjectName.MatchString(segments[1]) {
 		return NormalizeName(segments[1])
 	}
@@ -794,4 +794,10 @@ func (cache *MetadataCache) ResolveArtifactPublishDate(
 		publishErr = errors.New("publication date unavailable")
 	}
 	return publishDate, publishErr
+}
+
+// DecodeResponseBody decodes a bounded registry document while leaving the
+// original encoded bytes available for forwarding to the package manager.
+func DecodeResponseBody(encoded []byte, contentEncoding string) ([]byte, error) {
+	return decodePyPIMetadata(encoded, contentEncoding)
 }

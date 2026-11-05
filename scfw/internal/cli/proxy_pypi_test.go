@@ -28,44 +28,23 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"golang.org/x/net/http/httpproxy"
 
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
-type proxyEvaluatorFunc func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error)
-
-func (f proxyEvaluatorFunc) EvaluateInstallTargets(ctx context.Context, interactive bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
-	return f(ctx, interactive, targets)
-}
-
-type proxyReporterFunc func(context.Context, time.Time, []string, string, string, string, *pm.Set[pm.Package], evaluation.ScfwPolicyEvaluationReport, evaluation.Outcome) error
-
-func (f proxyReporterFunc) ReportFirewallOutcome(
-	ctx context.Context,
-	timestamp time.Time,
-	command []string,
-	manager, executable, repository string,
-	targets *pm.Set[pm.Package],
-	report evaluation.ScfwPolicyEvaluationReport,
-	resolved evaluation.Outcome,
-) error {
-	return f(ctx, timestamp, command, manager, executable, repository, targets, report, resolved)
-}
-
 func TestPyPIProxyControllerExposesEcosystemHooks(t *testing.T) {
 	runContext, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	handler := newProxyPackageEvaluator(
+	handler := newTestPyPIController(
 		context.Background(), time.Now(), nil, "future-python-manager", "python-manager", "",
 		proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, nil
 		}),
 		nopReporter{}, io.Discard,
 	)
-	controller, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{
+	controller, err := configureTestPyPIController(handler, pypi.RequestClassifierOptions{
 		SimpleIndexURLs: []string{
 			"https://index.example/python-packages/",
 			"https://index.example/simple/v1+json/",
@@ -75,8 +54,8 @@ func TestPyPIProxyControllerExposesEcosystemHooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	options := controller(runContext, httpproxy.Config{HTTPSProxy: "http://upstream.example:8080"})
-	if handler.runContext != runContext || handler.metadataClient == nil {
+	options := controller(runContext, proxy.Options{Upstream: httpproxy.Config{HTTPSProxy: "http://upstream.example:8080"}})
+	if handler.packageEvaluator.runContext != runContext || handler.metadataClient == nil {
 		t.Fatal("PyPI controller did not bind the run lifecycle and publication client")
 	}
 	if len(options.RequestHooks) != 1 {
@@ -104,7 +83,7 @@ func TestConfiguredPyPISimpleBasesCacheOpaqueArtifacts(t *testing.T) {
 	} {
 		t.Run(base, func(t *testing.T) {
 			var evaluations atomic.Int32
-			handler := newProxyPackageEvaluator(
+			handler := newTestPyPIController(
 				context.Background(), time.Now(), nil, "future-python-manager", "python-manager", "",
 				proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 					evaluations.Add(1)
@@ -112,7 +91,7 @@ func TestConfiguredPyPISimpleBasesCacheOpaqueArtifacts(t *testing.T) {
 				}),
 				nopReporter{}, io.Discard,
 			)
-			if _, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{
+			if _, err := configureTestPyPIController(handler, pypi.RequestClassifierOptions{
 				SimpleIndexURLs: []string{base},
 			}); err != nil {
 				t.Fatal(err)
@@ -197,7 +176,7 @@ func TestPyPIProxyDiscoversConfiguredIndexArtifactsBeforeForwarding(t *testing.T
 	}))
 	defer index.Close()
 
-	handler := newProxyPackageEvaluator(
+	handler := newTestPyPIController(
 		context.Background(), time.Now(), nil, "future-python-manager", "python-manager", "",
 		proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			evaluations.Add(1)
@@ -216,13 +195,13 @@ func TestPyPIProxyDiscoversConfiguredIndexArtifactsBeforeForwarding(t *testing.T
 	}
 	indexURL.User = url.UserPassword("index-user", "index-password")
 	indexURL.Path = "/python-packages/"
-	controller, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{
+	controller, err := configureTestPyPIController(handler, pypi.RequestClassifierOptions{
 		SimpleIndexURLs: []string{indexURL.String()},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := proxy.Start(context.Background(), controller(context.Background(), httpproxy.Config{}))
+	server, err := proxy.Start(context.Background(), controller(context.Background(), proxy.Options{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,16 +286,16 @@ func TestPyPIProxyDiscoversArchiveShapedSimpleDownloads(t *testing.T) {
 					}
 				}))
 				defer index.Close()
-				handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "",
+				handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "",
 					proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 						evaluations.Add(1)
 						return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeBlock}, nil
 					}), nopReporter{}, io.Discard)
-				controller, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{SimpleIndexURLs: []string{index.URL + base}})
+				controller, err := configureTestPyPIController(handler, pypi.RequestClassifierOptions{SimpleIndexURLs: []string{index.URL + base}})
 				if err != nil {
 					t.Fatal(err)
 				}
-				server, err := proxy.Start(context.Background(), controller(context.Background(), httpproxy.Config{}))
+				server, err := proxy.Start(context.Background(), controller(context.Background(), proxy.Options{}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -366,16 +345,16 @@ func TestPyPIProxyKeepsUnadvertisedArchiveRedirectsTentative(t *testing.T) {
 		}
 	}))
 	defer index.Close()
-	handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "",
+	handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "",
 		proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			evaluations.Add(1)
 			return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeBlock}, nil
 		}), nopReporter{}, io.Discard)
-	controller, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{SimpleIndexURLs: []string{index.URL + "/simple/"}})
+	controller, err := configureTestPyPIController(handler, pypi.RequestClassifierOptions{SimpleIndexURLs: []string{index.URL + "/simple/"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := proxy.Start(context.Background(), controller(context.Background(), httpproxy.Config{}))
+	server, err := proxy.Start(context.Background(), controller(context.Background(), proxy.Options{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -418,16 +397,16 @@ func TestPyPIProxyPreservesTentativeBinaryNotModified(t *testing.T) {
 				_, _ = io.WriteString(w, "archive bytes")
 			}))
 			defer index.Close()
-			handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "",
+			handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "",
 				proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 					t.Error("unadvertised binary was evaluated")
 					return evaluation.ScfwPolicyEvaluationReport{}, nil
 				}), nopReporter{}, io.Discard)
-			controller, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{SimpleIndexURLs: []string{index.URL + "/simple/"}})
+			controller, err := configureTestPyPIController(handler, pypi.RequestClassifierOptions{SimpleIndexURLs: []string{index.URL + "/simple/"}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			server, err := proxy.Start(context.Background(), controller(context.Background(), httpproxy.Config{}))
+			server, err := proxy.Start(context.Background(), controller(context.Background(), proxy.Options{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -498,7 +477,7 @@ func TestPyPIProxyPreservesArchiveShapedProjectContext(t *testing.T) {
 				}
 			}))
 			defer index.Close()
-			handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "",
+			handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "",
 				proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 					evaluations.Add(1)
 					for target := range targets.Items() {
@@ -508,11 +487,11 @@ func TestPyPIProxyPreservesArchiveShapedProjectContext(t *testing.T) {
 					}
 					return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeBlock}, nil
 				}), nopReporter{}, io.Discard)
-			controller, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{SimpleIndexURLs: []string{index.URL + "/simple/"}})
+			controller, err := configureTestPyPIController(handler, pypi.RequestClassifierOptions{SimpleIndexURLs: []string{index.URL + "/simple/"}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			server, err := proxy.Start(context.Background(), controller(context.Background(), httpproxy.Config{}))
+			server, err := proxy.Start(context.Background(), controller(context.Background(), proxy.Options{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -571,7 +550,7 @@ func TestPyPIProxyRetainsAgeEvidenceAcrossMetadataRepresentations(t *testing.T) 
 		}
 	}))
 	defer index.Close()
-	handler := newProxyPackageEvaluator(context.Background(), now, nil, "pip", "pip", "",
+	handler := newTestPyPIController(context.Background(), now, nil, "pip", "pip", "",
 		proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			evaluations.Add(1)
 			for target := range targets.Items() {
@@ -581,8 +560,8 @@ func TestPyPIProxyRetainsAgeEvidenceAcrossMetadataRepresentations(t *testing.T) 
 			}
 			return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, nil
 		}), nopReporter{}, io.Discard)
-	options := newPyPIProxyController(handler)(context.Background(), httpproxy.Config{})
-	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+	options := handler.configure(context.Background(), proxy.Options{})
+	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		return time.Time{}, nil
 	}
 	server, err := proxy.Start(context.Background(), options)
@@ -639,7 +618,7 @@ func TestPyPIProxyBlocksHTMLBaseArtifactBeforeForwarding(t *testing.T) {
 				_, _ = io.WriteString(w, metadataBody)
 			}))
 			defer index.Close()
-			handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "",
+			handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "",
 				proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 					evaluations.Add(1)
 					for target := range targets.Items() {
@@ -656,13 +635,13 @@ func TestPyPIProxyBlocksHTMLBaseArtifactBeforeForwarding(t *testing.T) {
 					}
 					return nil
 				}), io.Discard)
-			controller, err := newPyPIProxyControllerWithOptions(handler, pypi.RequestClassifierOptions{
+			controller, err := configureTestPyPIController(handler, pypi.RequestClassifierOptions{
 				SimpleIndexURLs: []string{index.URL + "/simple/"},
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			server, err := proxy.Start(context.Background(), controller(context.Background(), httpproxy.Config{}))
+			server, err := proxy.Start(context.Background(), controller(context.Background(), proxy.Options{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -760,7 +739,7 @@ func TestPyPIProxyBlocksArtifactsFromRedirectedSimpleHTML(t *testing.T) {
 					indexURL = index.URL
 				}
 
-				handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "",
+				handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "",
 					proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 						evaluations.Add(1)
 						for target := range targets.Items() {
@@ -774,7 +753,7 @@ func TestPyPIProxyBlocksArtifactsFromRedirectedSimpleHTML(t *testing.T) {
 					}), nopReporter{}, io.Discard)
 				// The default controller has no configured indexes to discover an
 				// artifact if observation of the redirected listing is missed.
-				options := newPyPIProxyController(handler)(context.Background(), httpproxy.Config{})
+				options := handler.configure(context.Background(), proxy.Options{})
 				server, err := proxy.Start(context.Background(), options)
 				if err != nil {
 					t.Fatal(err)
@@ -827,13 +806,13 @@ func TestPyPIProxyBlocksArtifactsFromRedirectedSimpleHTML(t *testing.T) {
 	}
 }
 
-func TestProxyPackageEvaluatorTracksOnlyMetadataRedirects(t *testing.T) {
+func TestPyPIControllerTracksOnlyMetadataRedirects(t *testing.T) {
 	for _, status := range []int{
 		http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
 		http.StatusTemporaryRedirect, http.StatusPermanentRedirect, http.StatusOK, http.StatusNotModified,
 	} {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
-			handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "", nil, nil, io.Discard)
+			handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "", nil, nil, io.Discard)
 			source := mustParseURL(t, "https://index.example/simple/project/")
 			target := mustParseURL(t, "https://index.example/catalog/opaque/")
 			handler.pypiHandler().ObserveMetadataHeaders(context.Background(), proxy.Response{
@@ -846,7 +825,7 @@ func TestProxyPackageEvaluatorTracksOnlyMetadataRedirects(t *testing.T) {
 			}
 		})
 	}
-	handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "", nil, nil, io.Discard)
+	handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "", nil, nil, io.Discard)
 	source := mustParseURL(t, "https://index.example/unrelated/")
 	target := mustParseURL(t, "https://index.example/catalog/opaque/")
 	handler.pypiHandler().ObserveMetadataHeaders(context.Background(), proxy.Response{
@@ -884,8 +863,8 @@ func TestRunThroughProxyCancelsArtifactWorkWithLifecycleContext(t *testing.T) {
 				}
 				return nil
 			})
-			handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "", evaluator, reporter, io.Discard)
-			handler.resolveDate = func(ctx context.Context, _ ecosystem.Ecosystem, _, _, _ string) (time.Time, error) {
+			handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "", evaluator, reporter, io.Discard)
+			handler.resolveDate = func(ctx context.Context, _, _, _ string) (time.Time, error) {
 				if phase == "publication" {
 					return time.Time{}, waitForCancellation(ctx)
 				}
@@ -893,9 +872,9 @@ func TestRunThroughProxyCancelsArtifactWorkWithLifecycleContext(t *testing.T) {
 			}
 
 			var lifecycleContext context.Context
-			manager := &fakeProxyPackageManager{runProxied: func(ctx context.Context, _ []string, _ proxy.ClientConfig) error {
-				if lifecycleContext == nil || ctx != lifecycleContext {
-					return errors.New("command and artifact work did not receive the same lifecycle context")
+			manager := &fakeProxyPackageManager{prepareCommand: func(ctx context.Context, _ []string, _ proxy.ClientConfig) error {
+				if lifecycleContext == nil {
+					return errors.New("artifact work did not receive the invocation lifecycle context")
 				}
 				requestURL, _ := url.Parse("https://files.pythonhosted.org/packages/project-1.0-py3-none-any.whl")
 				request := proxy.Request{Method: http.MethodGet, URL: *requestURL}
@@ -913,32 +892,29 @@ func TestRunThroughProxyCancelsArtifactWorkWithLifecycleContext(t *testing.T) {
 				case <-time.After(5 * time.Second):
 					return errors.New("artifact work did not stop after SIGTERM")
 				}
-				handler.mutex.Lock()
-				decisionCount := len(handler.decisions)
-				handler.mutex.Unlock()
+				handler.packageEvaluator.mutex.Lock()
+				decisionCount := len(handler.packageEvaluator.decisions)
+				handler.packageEvaluator.mutex.Unlock()
 				if decisionCount != 0 {
 					return fmt.Errorf("incomplete decision count = %d, want 0 so a later attempt can retry", decisionCount)
 				}
 				return ctx.Err()
 			}}
 
-			configure := func(ctx context.Context, _ httpproxy.Config) proxy.Options {
+			configure := func(ctx context.Context, _ proxy.Options) proxy.Options {
 				lifecycleContext = ctx
-				handler.runContext = ctx
+				handler.packageEvaluator.runContext = ctx
 				return proxy.Options{RequestHooks: []proxy.RequestHook{handler.pypiHandler().HandleRequest}}
 			}
 			commandErr, setupErr := runThroughProxy(context.Background(), manager, []string{"install", "project"}, configure)
-			if setupErr != nil {
-				t.Fatalf("runThroughProxy() setup error = %v", setupErr)
-			}
-			if !errors.Is(commandErr, context.Canceled) {
-				t.Fatalf("runThroughProxy() command error = %v, want context canceled", commandErr)
+			if commandErr != nil || !errors.Is(setupErr, context.Canceled) {
+				t.Fatalf("runThroughProxy() command=%v setup=%v, want canceled preparation", commandErr, setupErr)
 			}
 		})
 	}
 }
 
-func TestProxyPackageEvaluatorDecisions(t *testing.T) {
+func TestPyPIControllerDecisions(t *testing.T) {
 	tests := []struct {
 		name           string
 		outcome        evaluation.Outcome
@@ -994,8 +970,8 @@ func TestProxyPackageEvaluatorDecisions(t *testing.T) {
 				reported, resolved = report, final
 				return tt.reportErr
 			})
-			handler := newProxyPackageEvaluator(context.Background(), time.Now(), []string{"pip", "install", "--index-url=https://user:secret@index.example/simple?token=secret"}, "pip", "pip", "", evaluator, reporter, &output)
-			handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+			handler := newTestPyPIController(context.Background(), time.Now(), []string{"pip", "install", "--index-url=https://user:secret@index.example/simple?token=secret"}, "pip", "pip", "", evaluator, reporter, &output)
+			handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 				if tt.publicationErr != nil {
 					return time.Time{}, tt.publicationErr
 				}
@@ -1022,7 +998,7 @@ func TestProxyPackageEvaluatorDecisions(t *testing.T) {
 	}
 }
 
-func TestProxyPackageEvaluatorDoesNotReuseOtherArtifactPolicyInputs(t *testing.T) {
+func TestPyPIControllerDoesNotReuseOtherArtifactPolicyInputs(t *testing.T) {
 	now := time.Now().UTC()
 	oldDate := now.Add(-48 * time.Hour)
 	recentDate := now.Add(-time.Hour)
@@ -1064,7 +1040,7 @@ func TestProxyPackageEvaluatorDoesNotReuseOtherArtifactPolicyInputs(t *testing.T
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var evaluations, reports atomic.Int32
-			handler := newProxyPackageEvaluator(context.Background(), now, nil, "pip", "pip", "",
+			handler := newTestPyPIController(context.Background(), now, nil, "pip", "pip", "",
 				proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 					evaluations.Add(1)
 					for target := range targets.Items() {
@@ -1078,7 +1054,7 @@ func TestProxyPackageEvaluatorDoesNotReuseOtherArtifactPolicyInputs(t *testing.T
 					reports.Add(1)
 					return nil
 				}), io.Discard)
-			handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+			handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 				t.Fatal("exact artifact date should come from observed metadata")
 				return time.Time{}, nil
 			}
@@ -1133,7 +1109,7 @@ func TestPyPIProxyDoesNotForwardRecentArtifactAfterAllowingOlderWheel(t *testing
 		}
 	}))
 	defer index.Close()
-	handler := newProxyPackageEvaluator(context.Background(), now, nil, "pip", "pip", "",
+	handler := newTestPyPIController(context.Background(), now, nil, "pip", "pip", "",
 		proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			evaluations.Add(1)
 			for target := range targets.Items() {
@@ -1143,7 +1119,7 @@ func TestPyPIProxyDoesNotForwardRecentArtifactAfterAllowingOlderWheel(t *testing
 			}
 			return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, nil
 		}), nopReporter{}, io.Discard)
-	options := newPyPIProxyController(handler)(context.Background(), httpproxy.Config{})
+	options := handler.configure(context.Background(), proxy.Options{})
 	server, err := proxy.Start(context.Background(), options)
 	if err != nil {
 		t.Fatal(err)
@@ -1176,16 +1152,16 @@ func TestPyPIProxyDoesNotForwardRecentArtifactAfterAllowingOlderWheel(t *testing
 	}
 }
 
-func TestProxyPackageEvaluatorMatchesExactUploadInstants(t *testing.T) {
+func TestPyPIControllerMatchesExactUploadInstants(t *testing.T) {
 	date := time.Now().UTC()
 	dates := []time.Time{date, date.In(time.FixedZone("offset", 3600)), date.Add(time.Nanosecond)}
 	var lookups, evaluations atomic.Int32
-	handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "",
+	handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "",
 		proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			evaluations.Add(1)
 			return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, nil
 		}), nopReporter{}, io.Discard)
-	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		return dates[lookups.Add(1)-1], nil
 	}
 	request := proxy.Request{Method: http.MethodGet, URL: mustParseURL(t, "https://files.pythonhosted.org/project-1.0.tar.gz")}
@@ -1203,10 +1179,10 @@ func TestProxyPackageEvaluatorMatchesExactUploadInstants(t *testing.T) {
 	}
 }
 
-func TestProxyPackageEvaluatorResolvesPublicationBeforeReusingDecision(t *testing.T) {
+func TestPyPIControllerResolvesPublicationBeforeReusingDecision(t *testing.T) {
 	now := time.Now().UTC()
 	var lookups, evaluations atomic.Int32
-	handler := newProxyPackageEvaluator(context.Background(), now, nil, "pip", "pip", "",
+	handler := newTestPyPIController(context.Background(), now, nil, "pip", "pip", "",
 		proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			evaluations.Add(1)
 			for target := range targets.Items() {
@@ -1216,7 +1192,7 @@ func TestProxyPackageEvaluatorResolvesPublicationBeforeReusingDecision(t *testin
 			}
 			return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, nil
 		}), nopReporter{}, io.Discard)
-	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		if lookups.Add(1) == 1 {
 			return time.Time{}, errors.New("publication lookup temporarily unavailable")
 		}
@@ -1234,7 +1210,7 @@ func TestProxyPackageEvaluatorResolvesPublicationBeforeReusingDecision(t *testin
 	}
 }
 
-func TestProxyPackageEvaluatorDeduplicatesConcurrentRequests(t *testing.T) {
+func TestPyPIControllerDeduplicatesConcurrentRequests(t *testing.T) {
 	var resolves, evaluations, reports atomic.Int32
 	const resolvedSource = "https://files.pythonhosted.org/packages/project-1.0-py3-none-any.whl"
 	resolvedDate := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -1253,8 +1229,8 @@ func TestProxyPackageEvaluatorDeduplicatesConcurrentRequests(t *testing.T) {
 		}
 		return nil
 	})
-	handler := newProxyPackageEvaluator(context.Background(), time.Now(), []string{"uv", "pip", "install"}, "uv", "uv", "", evaluator, reporter, io.Discard)
-	handler.resolveDate = func(_ context.Context, _ ecosystem.Ecosystem, _, _, source string) (time.Time, error) {
+	handler := newTestPyPIController(context.Background(), time.Now(), []string{"uv", "pip", "install"}, "uv", "uv", "", evaluator, reporter, io.Discard)
+	handler.resolveDate = func(_ context.Context, _, _, source string) (time.Time, error) {
 		resolves.Add(1)
 		if source != resolvedSource {
 			t.Errorf("resolved source = %q, want %q", source, resolvedSource)
@@ -1296,7 +1272,7 @@ func TestProxyPackageEvaluatorDeduplicatesConcurrentRequests(t *testing.T) {
 	}
 }
 
-func TestProxyPackageEvaluatorRequestCancellationDoesNotCancelRunDecision(t *testing.T) {
+func TestPyPIControllerRequestCancellationDoesNotCancelRunDecision(t *testing.T) {
 	var resolves, evaluations, reports atomic.Int32
 	publishDate := time.Now().UTC()
 	resolveStarted, releaseResolve := make(chan struct{}), make(chan struct{})
@@ -1314,8 +1290,8 @@ func TestProxyPackageEvaluatorRequestCancellationDoesNotCancelRunDecision(t *tes
 		reports.Add(1)
 		return nil
 	})
-	handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "", evaluator, reporter, io.Discard)
-	handler.resolveDate = func(ctx context.Context, _ ecosystem.Ecosystem, _, _, _ string) (time.Time, error) {
+	handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "", evaluator, reporter, io.Discard)
+	handler.resolveDate = func(ctx context.Context, _, _, _ string) (time.Time, error) {
 		if resolves.Add(1) == 1 {
 			close(resolveStarted)
 		}
@@ -1345,7 +1321,7 @@ func TestProxyPackageEvaluatorRequestCancellationDoesNotCancelRunDecision(t *tes
 	}
 }
 
-func TestProxyPackageEvaluatorRetriesIncompleteCanceledDecision(t *testing.T) {
+func TestPyPIControllerRetriesIncompleteCanceledDecision(t *testing.T) {
 	var resolves, evaluations, reports atomic.Int32
 	evaluator := proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 		evaluations.Add(1)
@@ -1355,8 +1331,8 @@ func TestProxyPackageEvaluatorRetriesIncompleteCanceledDecision(t *testing.T) {
 		reports.Add(1)
 		return nil
 	})
-	handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "", evaluator, reporter, io.Discard)
-	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+	handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "", evaluator, reporter, io.Discard)
+	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		if resolves.Add(1) == 1 {
 			return time.Time{}, context.Canceled
 		}
@@ -1375,7 +1351,7 @@ func TestProxyPackageEvaluatorRetriesIncompleteCanceledDecision(t *testing.T) {
 	}
 }
 
-func TestProxyPackageEvaluatorUsesObservedMetadataBeforeArtifactRequest(t *testing.T) {
+func TestPyPIControllerUsesObservedMetadataBeforeArtifactRequest(t *testing.T) {
 	wantDate := time.Date(2025, 4, 5, 6, 7, 8, 0, time.UTC)
 	var gotDate time.Time
 	evaluator := proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
@@ -1384,8 +1360,8 @@ func TestProxyPackageEvaluatorUsesObservedMetadataBeforeArtifactRequest(t *testi
 		}
 		return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, nil
 	})
-	handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "", evaluator, nopReporter{}, io.Discard)
-	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+	handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "", evaluator, nopReporter{}, io.Discard)
+	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		t.Fatal("independent publication lookup called despite exact cached metadata")
 		return time.Time{}, nil
 	}
@@ -1418,16 +1394,16 @@ func TestProxyPackageEvaluatorUsesObservedMetadataBeforeArtifactRequest(t *testi
 	}
 }
 
-func TestProxyPackageEvaluatorFallsBackAfterUncachedMetadata304(t *testing.T) {
+func TestPyPIControllerFallsBackAfterUncachedMetadata304(t *testing.T) {
 	var lookups atomic.Int32
-	handler := newProxyPackageEvaluator(
+	handler := newTestPyPIController(
 		context.Background(), time.Now(), nil, "pip", "pip", "",
 		proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, nil
 		}),
 		nopReporter{}, io.Discard,
 	)
-	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		lookups.Add(1)
 		return time.Now(), nil
 	}
@@ -1454,10 +1430,10 @@ func TestProxyPackageEvaluatorFallsBackAfterUncachedMetadata304(t *testing.T) {
 	}
 }
 
-func TestProxyPackageEvaluatorUsesJSONFallbackForOrdinarySimpleHTML(t *testing.T) {
+func TestPyPIControllerUsesJSONFallbackForOrdinarySimpleHTML(t *testing.T) {
 	var lookups atomic.Int32
 	var gotDate time.Time
-	handler := newProxyPackageEvaluator(
+	handler := newTestPyPIController(
 		context.Background(), time.Now(), nil, "future-python-manager", "python-manager", "",
 		proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			for target := range targets.Items() {
@@ -1468,10 +1444,10 @@ func TestProxyPackageEvaluatorUsesJSONFallbackForOrdinarySimpleHTML(t *testing.T
 		nopReporter{}, io.Discard,
 	)
 	wantDate := time.Date(2025, 4, 3, 2, 1, 0, 0, time.UTC)
-	handler.resolveDate = func(_ context.Context, packageEcosystem ecosystem.Ecosystem, name, version, source string) (time.Time, error) {
+	handler.resolveDate = func(_ context.Context, name, version, source string) (time.Time, error) {
 		lookups.Add(1)
-		if packageEcosystem != ecosystem.PYPI || name != "project" || version != "1.0" || source != "https://files.pythonhosted.org/project-1.0.tar.gz" {
-			t.Fatalf("JSON fallback arguments = %s %s@%s %q", packageEcosystem, name, version, source)
+		if name != "project" || version != "1.0" || source != "https://files.pythonhosted.org/project-1.0.tar.gz" {
+			t.Fatalf("JSON fallback arguments = %s@%s %q", name, version, source)
 		}
 		return wantDate, nil
 	}
@@ -1498,13 +1474,13 @@ func TestProxyPackageEvaluatorUsesJSONFallbackForOrdinarySimpleHTML(t *testing.T
 	}
 }
 
-func TestProxyPackageEvaluatorLeavesMetadataAndUnrelatedTrafficAlone(t *testing.T) {
+func TestPyPIControllerLeavesMetadataAndUnrelatedTrafficAlone(t *testing.T) {
 	var calls atomic.Int32
 	evaluator := proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 		calls.Add(1)
 		return evaluation.ScfwPolicyEvaluationReport{}, nil
 	})
-	handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "", evaluator, nopReporter{}, io.Discard)
+	handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "", evaluator, nopReporter{}, io.Discard)
 	for _, rawURL := range []string{
 		"https://pypi.org/pypi/requests/json",
 		"https://pypi.org/simple/requests/",
@@ -1524,9 +1500,9 @@ func TestProxyPackageEvaluatorLeavesMetadataAndUnrelatedTrafficAlone(t *testing.
 	}
 }
 
-func TestProxyPackageEvaluatorClassifiesRangesAndPassesCoreMetadata(t *testing.T) {
+func TestPyPIControllerClassifiesRangesAndPassesCoreMetadata(t *testing.T) {
 	var calls atomic.Int32
-	handler := newProxyPackageEvaluator(
+	handler := newTestPyPIController(
 		context.Background(), time.Now(), nil, "future-python-manager", "python-manager", "",
 		proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			calls.Add(1)
@@ -1534,7 +1510,7 @@ func TestProxyPackageEvaluatorClassifiesRangesAndPassesCoreMetadata(t *testing.T
 		}),
 		nopReporter{}, io.Discard,
 	)
-	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		return time.Now(), nil
 	}
 	classifier, err := pypi.NewRequestClassifier(pypi.RequestClassifierOptions{
@@ -1611,8 +1587,8 @@ func TestPyPIProxyBlocksArtifactBeforeForwardingAndPassesMetadata(t *testing.T) 
 		}
 		return nil
 	})
-	handler := newProxyPackageEvaluator(context.Background(), time.Now(), []string{"pip", "install", "project"}, "pip", "pip", "", evaluator, reporter, io.Discard)
-	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+	handler := newTestPyPIController(context.Background(), time.Now(), []string{"pip", "install", "project"}, "pip", "pip", "", evaluator, reporter, io.Discard)
+	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		lookupCalls.Add(1)
 		return time.Time{}, errors.New("unexpected fallback")
 	}
@@ -1715,7 +1691,7 @@ func TestPyPIProxyEvaluatesLegacySdistUsingMetadataProject(t *testing.T) {
 				}
 				return true
 			}
-			handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "",
+			handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "",
 				proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 					evaluations.Add(1)
 					outcome := evaluation.OutcomeAllow
@@ -1729,7 +1705,7 @@ func TestPyPIProxyEvaluatesLegacySdistUsingMetadataProject(t *testing.T) {
 					checkTarget(targets)
 					return nil
 				}), io.Discard)
-			server, err := proxy.Start(context.Background(), newPyPIProxyController(handler)(context.Background(), httpproxy.Config{}))
+			server, err := proxy.Start(context.Background(), handler.configure(context.Background(), proxy.Options{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1770,7 +1746,7 @@ func TestPyPIProxyWarnsBeforeForwardingArtifact(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	handler := newProxyPackageEvaluator(
+	handler := newTestPyPIController(
 		context.Background(), time.Now(), nil, "pip", "pip", "",
 		proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			evaluated.Add(1)
@@ -1782,7 +1758,7 @@ func TestPyPIProxyWarnsBeforeForwardingArtifact(t *testing.T) {
 		}),
 		io.Discard,
 	)
-	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		return time.Now(), nil
 	}
 	classifier, err := pypi.NewRequestClassifier(pypi.RequestClassifierOptions{
@@ -1860,7 +1836,7 @@ func TestPyPIProxyProcessesStreamingMetadataBeforeExposingLinks(t *testing.T) {
 				}))
 				defer index.Close()
 				defer release()
-				handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "",
+				handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "",
 					proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 						evaluations.Add(1)
 						for target := range targets.Items() {
@@ -1874,7 +1850,7 @@ func TestPyPIProxyProcessesStreamingMetadataBeforeExposingLinks(t *testing.T) {
 						reports.Add(1)
 						return nil
 					}), io.Discard)
-				server, err := proxy.Start(context.Background(), newPyPIProxyController(handler)(context.Background(), httpproxy.Config{}))
+				server, err := proxy.Start(context.Background(), handler.configure(context.Background(), proxy.Options{}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1958,12 +1934,12 @@ func TestPyPIProxyRejectsUnreadableMetadataBeforeForwarding(t *testing.T) {
 				_, _ = io.WriteString(w, test.body)
 			}))
 			defer index.Close()
-			handler := newProxyPackageEvaluator(context.Background(), time.Now(), nil, "pip", "pip", "",
+			handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "",
 				proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 					t.Error("metadata request evaluated as an artifact")
 					return evaluation.ScfwPolicyEvaluationReport{}, nil
 				}), nopReporter{}, io.Discard)
-			server, err := proxy.Start(context.Background(), newPyPIProxyController(handler)(context.Background(), httpproxy.Config{}))
+			server, err := proxy.Start(context.Background(), handler.configure(context.Background(), proxy.Options{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2006,7 +1982,7 @@ func TestPyPIProxyBlocksOpaqueAdvertisedArtifactBeforeUpstream(t *testing.T) {
 
 	var reportedDate time.Time
 	var reportedSource string
-	handler := newProxyPackageEvaluator(
+	handler := newTestPyPIController(
 		context.Background(), time.Now(), nil, "pip", "pip", "",
 		proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeBlock}, nil
@@ -2019,7 +1995,7 @@ func TestPyPIProxyBlocksOpaqueAdvertisedArtifactBeforeUpstream(t *testing.T) {
 		}),
 		io.Discard,
 	)
-	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		lookupCalls.Add(1)
 		return time.Time{}, errors.New("unexpected fallback")
 	}
@@ -2066,7 +2042,7 @@ func TestPyPIProxyBlocksAdvertisedAbsoluteUserinfoURL(t *testing.T) {
 	}
 	artifactURL.User = url.UserPassword("artifact-user", "artifact-password")
 
-	handler := newProxyPackageEvaluator(
+	handler := newTestPyPIController(
 		context.Background(), time.Now(), nil, "future-python-manager", "python-manager", "",
 		proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			evaluations.Add(1)
@@ -2115,7 +2091,7 @@ func TestPyPIProxyBlocksOpaqueArtifactWithoutAdvertisedUploadTime(t *testing.T) 
 		_, _ = io.WriteString(w, "blocked bytes")
 	}))
 	defer upstream.Close()
-	handler := newProxyPackageEvaluator(
+	handler := newTestPyPIController(
 		context.Background(), time.Now(), nil, "pip", "pip", "",
 		proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			evaluations.Add(1)
@@ -2123,7 +2099,7 @@ func TestPyPIProxyBlocksOpaqueArtifactWithoutAdvertisedUploadTime(t *testing.T) 
 		}),
 		nopReporter{}, io.Discard,
 	)
-	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		return time.Time{}, errors.New("upload time unavailable")
 	}
 	metadataURL, _ := url.Parse(upstream.URL + "/simple/project/")
@@ -2156,14 +2132,14 @@ func TestPyPIProxyBlocksArtifactUnderSimplePathBeforeUpstream(t *testing.T) {
 		_, _ = io.WriteString(w, "blocked bytes")
 	}))
 	defer upstream.Close()
-	handler := newProxyPackageEvaluator(
+	handler := newTestPyPIController(
 		context.Background(), time.Now(), nil, "pip", "pip", "",
 		proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeBlock}, nil
 		}),
 		nopReporter{}, io.Discard,
 	)
-	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		return time.Now(), nil
 	}
 	classifier, err := pypi.NewRequestClassifier(pypi.RequestClassifierOptions{
@@ -2228,7 +2204,7 @@ func TestPyPIProxyRefreshesAuthenticatedArtifactoryMetadataOn304BeforeOpaqueArti
 
 	var reportedDate time.Time
 	var reportedSource string
-	handler := newProxyPackageEvaluator(
+	handler := newTestPyPIController(
 		context.Background(), time.Now(), nil, "uv", "uv", "",
 		proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 			return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeBlock}, nil
@@ -2242,7 +2218,7 @@ func TestPyPIProxyRefreshesAuthenticatedArtifactoryMetadataOn304BeforeOpaqueArti
 		io.Discard,
 	)
 	handler.metadataClient = upstream.Client()
-	handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		return time.Time{}, errors.New("unexpected fallback")
 	}
 	previousLogger := slog.Default()
@@ -2311,7 +2287,7 @@ func TestPyPIProxyObservesModernCompressedMetadataWithoutChangingBytes(t *testin
 			defer upstream.Close()
 
 			var reportedDate time.Time
-			handler := newProxyPackageEvaluator(
+			handler := newTestPyPIController(
 				context.Background(), time.Now(), nil, "pip", "pip", "",
 				proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 					return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeBlock}, nil
@@ -2324,7 +2300,7 @@ func TestPyPIProxyObservesModernCompressedMetadataWithoutChangingBytes(t *testin
 				}),
 				io.Discard,
 			)
-			handler.resolveDate = func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error) {
+			handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 				return time.Time{}, errors.New("unexpected fallback")
 			}
 			server, err := proxy.Start(context.Background(), proxy.Options{
@@ -2387,4 +2363,25 @@ func compressPyPIMetadata(t *testing.T, encoding string, body []byte) []byte {
 		t.Fatalf("unsupported test encoding %q", encoding)
 	}
 	return compressed.Bytes()
+}
+
+// Test fixtures build the same per-invocation controller as production while
+// allowing metadata and publication responses to be supplied without the network.
+func newTestPyPIController(
+	ctx context.Context, timestamp time.Time, command []string,
+	manager, executable, repository string,
+	evaluator evaluation.Evaluator, reporter evaluation.Reporter, output io.Writer,
+) *pyPIProxyController {
+	controller, err := newPyPIProxyController(newProxyPackageEvaluator(ctx, timestamp, command, manager, executable, repository, evaluator, reporter, output), pypi.RequestClassifierOptions{})
+	if err != nil {
+		panic(err)
+	}
+	return controller
+}
+
+func configureTestPyPIController(controller *pyPIProxyController, options pypi.RequestClassifierOptions) (ecosystemProxyController, error) {
+	if err := controller.addClassifierContext(options); err != nil {
+		return nil, err
+	}
+	return controller.configure, nil
 }

@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -89,6 +90,20 @@ type Options struct {
 	// routing to itself through the variables it sets for its child.
 	Upstream httpproxy.Config
 
+	// ProxyForURL overrides flattened proxy settings when the caller has
+	// request-specific proxy precedence, such as an explicit fallback proxy.
+	ProxyForURL func(*url.URL) (*url.URL, error)
+
+	// UpstreamTLS preserves the caller's registry CA and trust configuration.
+	UpstreamTLS *tls.Config
+
+	// TrustedHosts skips registry certificate verification only for matching
+	// hosts, optionally constrained to a port.
+	TrustedHosts []string
+
+	// TrustURL applies a caller-owned, invocation-scoped trust exception.
+	TrustURL func(*url.URL) bool
+
 	// RequestHooks run, in order, for each request. The first rejection wins.
 	RequestHooks []RequestHook
 
@@ -112,7 +127,7 @@ type ClientConfig struct {
 type Server struct {
 	listener     net.Listener
 	httpServer   *http.Server
-	transport    *http.Transport
+	transport    *Transport
 	clientConfig ClientConfig
 	served       chan error
 
@@ -162,7 +177,7 @@ func Start(ctx context.Context, options Options) (*Server, error) {
 	serverCtx, cancel := context.WithCancel(ctx)
 	server := &Server{
 		listener:     listener,
-		transport:    newUpstreamTransport(options),
+		transport:    NewTransport(options),
 		clientConfig: ClientConfig{URL: proxyURL, CACertificatePath: certificatePath},
 		served:       make(chan error, 1),
 		ctx:          serverCtx,
@@ -240,7 +255,7 @@ func (server *Server) newHandler(
 ) *goproxy.ProxyHttpServer {
 	handler := goproxy.NewProxyHttpServer()
 	handler.Logger = proxyLogger{}
-	handler.Tr = server.transport
+	handler.Tr = server.transport.secure
 	// goproxy's default CONNECT dialer reads HTTPS_PROXY from the environment.
 	// Every CONNECT is intercepted below, so no dialer is needed; clear them
 	// rather than leave an environment-driven path in place.
@@ -418,12 +433,18 @@ func newUpstreamTransport(options Options) *http.Transport {
 	// Route through the supplied upstream proxy only; never consult the
 	// process environment.
 	proxyFunc := options.Upstream.ProxyFunc()
+	if options.ProxyForURL != nil {
+		proxyFunc = options.ProxyForURL
+	}
 	transport.Proxy = func(request *http.Request) (*url.URL, error) {
 		return proxyFunc(request.URL)
 	}
 	// Intercepted HTTPS is re-encrypted toward the registry, so the proxy, not
 	// the package manager, now verifies the registry's certificate.
 	transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: options.upstreamRootCAs}
+	if options.UpstreamTLS != nil {
+		transport.TLSClientConfig = options.UpstreamTLS.Clone()
+	}
 	transport.DisableCompression = true
 	transport.MaxIdleConnsPerHost = maxIdleConnsPerHost
 	if options.dialContext != nil {
@@ -452,4 +473,57 @@ type proxyLogger struct{}
 
 func (proxyLogger) Printf(format string, _ ...any) {
 	slog.Debug("package manager proxy diagnostic", "detail", format)
+}
+
+// Transport routes outbound traffic with invocation-scoped proxy and TLS trust.
+// Separate connection pools keep trusted-host exceptions from leaking to other ports.
+type Transport struct {
+	secure   *http.Transport
+	trusted  *http.Transport
+	hosts    []string
+	trustURL func(*url.URL) bool
+}
+
+// NewTransport creates an outbound transport using only the supplied settings.
+func NewTransport(options Options) *Transport {
+	secure := newUpstreamTransport(options)
+	trusted := secure.Clone()
+	trusted.TLSClientConfig = secure.TLSClientConfig.Clone()
+	trusted.TLSClientConfig.InsecureSkipVerify = true // Only selected by an explicit host/port match.
+	return &Transport{secure: secure, trusted: trusted, hosts: options.TrustedHosts, trustURL: options.TrustURL}
+}
+
+func (transport *Transport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if transport.trustURL != nil && transport.trustURL(request.URL) {
+		return transport.trusted.RoundTrip(request)
+	}
+	for _, trusted := range transport.hosts {
+		host, port, err := net.SplitHostPort(trusted)
+		if err != nil {
+			// Bracketed IPv6 hosts can omit the port. Parse an explicit empty
+			// port to remove the brackets without changing bare IPv6 hosts.
+			host, port, err = net.SplitHostPort(trusted + ":")
+			if err != nil {
+				host, port = trusted, ""
+			}
+		}
+		targetPort := request.URL.Port()
+		if targetPort == "" {
+			if request.URL.Scheme == "https" {
+				targetPort = "443"
+			} else {
+				targetPort = "80"
+			}
+		}
+		if (host == "*" || strings.EqualFold(host, request.URL.Hostname())) && (port == "" || port == targetPort) {
+			return transport.trusted.RoundTrip(request)
+		}
+	}
+	return transport.secure.RoundTrip(request)
+}
+
+// CloseIdleConnections releases idle connections in both trust pools.
+func (transport *Transport) CloseIdleConnections() {
+	transport.secure.CloseIdleConnections()
+	transport.trusted.CloseIdleConnections()
 }

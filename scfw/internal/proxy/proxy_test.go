@@ -428,7 +428,8 @@ func TestRequestHookRejectsBeforeUpstream(t *testing.T) {
 }
 
 func TestResponseBodyHookFinishesBeforeDeclaredLengthIsDelivered(t *testing.T) {
-	const metadataBody = `{"files":[{"filename":"project-1.0.tar.gz","url":"/objects/opaque"}]}`
+	metadataFixture := readProxyFixture(t, "metadata.json")
+	metadataBody := metadataFixture
 	endStream := make(chan struct{})
 	defer close(endStream)
 	var artifactHits atomic.Int32
@@ -734,8 +735,9 @@ func TestRequestHooksRunInOrderUntilRejection(t *testing.T) {
 }
 
 func TestHooksObserveRequestsAndResponses(t *testing.T) {
+	packageFixture := readProxyFixture(t, "package.json")
 	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, `{"name":"left-pad"}`)
+		_, _ = io.WriteString(w, packageFixture)
 	}), true)
 
 	var mutex sync.Mutex
@@ -765,25 +767,26 @@ func TestHooksObserveRequestsAndResponses(t *testing.T) {
 	if len(responses) != 1 || responses[0] != "200 "+target {
 		t.Errorf("observed responses = %q, want [%q]", responses, "200 "+target)
 	}
-	if body != `{"name":"left-pad"}` {
-		t.Errorf("client body = %q, want %q", body, `{"name":"left-pad"}`)
+	if body != packageFixture {
+		t.Errorf("client body = %q, want %q", body, packageFixture)
 	}
 }
 
 func TestRequestBodyReachesUpstreamUnchanged(t *testing.T) {
+	packageFixture := readProxyFixture(t, "package.json")
 	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(w, r.Body)
 	}), true)
 	options.RequestHooks = []RequestHook{func(context.Context, Request) (ResponseHook, error) { return nil, nil }}
 	client := newProxyClient(t, startTestProxy(t, options))
 
-	response, err := client.Post(registryURL+"/-/publish", "application/json", strings.NewReader(`{"name":"left-pad"}`))
+	response, err := client.Post(registryURL+"/-/publish", "application/json", strings.NewReader(packageFixture))
 	if err != nil {
 		t.Fatalf("Post() returned unexpected error: %v", err)
 	}
 	defer response.Body.Close()
-	if body, _ := io.ReadAll(response.Body); string(body) != `{"name":"left-pad"}` {
-		t.Errorf("registry received body %q, want %q", body, `{"name":"left-pad"}`)
+	if body, _ := io.ReadAll(response.Body); string(body) != packageFixture {
+		t.Errorf("registry received body %q, want %q", body, packageFixture)
 	}
 }
 
@@ -1221,5 +1224,48 @@ func TestParentContextCancellationAbortsRequests(t *testing.T) {
 	}
 	if upstreamHits.Load() != 0 {
 		t.Errorf("upstream served %d requests after cancellation, want 0", upstreamHits.Load())
+	}
+}
+
+func TestInvocationTrustedHosts(t *testing.T) {
+	registry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok") }))
+	defer registry.Close()
+	parsed, err := url.Parse(registry.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ipv6 := "https://" + net.JoinHostPort("::1", parsed.Port())
+	for _, test := range []struct {
+		name, host, target string
+		allowed            bool
+	}{
+		{"IPv4 exact port", parsed.Host, registry.URL, true},
+		{"IPv4 all ports", parsed.Hostname(), registry.URL, true},
+		{"IPv4 wrong port", net.JoinHostPort(parsed.Hostname(), "1"), registry.URL, false},
+		{"IPv4 wrong host", "other.example", registry.URL, false},
+		{"IPv6 bracketed all ports", "[::1]", ipv6, true},
+		{"IPv6 bare all ports", "::1", ipv6, true},
+		{"IPv6 exact port", net.JoinHostPort("::1", parsed.Port()), ipv6, true},
+		{"IPv6 wrong port", "[::1]:1", ipv6, false},
+		{"IPv6 wrong host", "[::2]", ipv6, false},
+		{"IPv6 missing closing bracket", "[::1", ipv6, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			transport := NewTransport(Options{TrustedHosts: []string{test.host},
+				// Match IPv6 URL authorities over IPv4 so every case runs
+				// even when the host does not support IPv6 loopback.
+				dialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+					return (&net.Dialer{}).DialContext(ctx, network, parsed.Host)
+				},
+			})
+			defer transport.CloseIdleConnections()
+			response, err := (&http.Client{Transport: transport}).Get(test.target)
+			if response != nil {
+				_ = response.Body.Close()
+			}
+			if (err == nil) != test.allowed {
+				t.Fatalf("trusted host %q: %v", test.host, err)
+			}
+		})
 	}
 }

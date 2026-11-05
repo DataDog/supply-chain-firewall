@@ -11,6 +11,7 @@ import (
 	"compress/zlib"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -148,34 +149,52 @@ func TestOpaqueArchiveHTTPEncodings(t *testing.T) {
 func TestOpaqueCachedAndPartialResponses(t *testing.T) {
 	payload := packageArchive(t, "gzip", []archiveTestEntry{{name: "project-1.0/PKG-INFO", body: readPyPIFixture(t, "archive/PKG-INFO")}})
 	for _, status := range []int{http.StatusNotModified, http.StatusPartialContent} {
-		for _, block := range []bool{false, true} {
-			fetched := 0
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				fetched++
-				if r.Header.Get("If-None-Match") != "" || r.Header.Get("Range") != "" || r.Header.Get("Authorization") != "Bearer credential-secret" {
-					t.Error("full inspection request lost authentication or retained conditional/range headers")
-				}
-				w.Header().Set("Content-Type", "application/octet-stream")
-				_, _ = w.Write(payload)
-			}))
-			calls := 0
-			handler, request := opaqueHandler(t, server.URL+"/download/abc123", true, func(context.Context, Artifact) error {
-				calls++
-				if block {
-					return errors.New("blocked by caller")
-				}
-				return nil
-			})
-			handler.Client = server.Client()
-			request.Header = http.Header{"If-None-Match": {`"warm-cache"`}, "Range": {"bytes=100-"}, "Authorization": {"Bearer credential-secret"}}
-			response := proxy.Response{Request: request, StatusCode: status, Header: http.Header{"Content-Type": {"application/octet-stream"}}}
-			hook, err := handler.ObserveResponseHeaders(context.Background(), response)
-			server.Close()
-			if hook != nil || calls != 1 || fetched != 1 || errors.Is(err, proxy.ErrResponseRejected) != block || (err != nil) != block {
-				t.Fatalf("status=%d block=%v hook=%v calls=%d fetches=%d error=%v", status, block, hook != nil, calls, fetched, err)
-			}
-			if request.Header.Get("Range") == "" || !strings.Contains(request.Header.Get("Authorization"), "credential-secret") {
-				t.Fatal("original request headers were mutated")
+		for _, direct := range []bool{false, true} {
+			for _, block := range []bool{false, true} {
+				t.Run(fmt.Sprintf("status=%d/direct=%t/block=%t", status, direct, block), func(t *testing.T) {
+					fetched := 0
+					server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						fetched++
+						if r.Header.Get("If-None-Match") != "" || r.Header.Get("If-Range") != "" || r.Header.Get("Range") != "" || r.Header.Get("Authorization") != "Bearer credential-secret" {
+							t.Error("full inspection request lost authentication or retained conditional/range headers")
+						}
+						w.Header().Set("Vary", "Accept, Accept-Encoding")
+						if r.Header.Get("Accept") != "application/octet-stream" || r.Header.Get("Accept-Encoding") != "identity" {
+							// This endpoint serves HTML unless the caller selects the
+							// same package representation as the cached/ranged request.
+							w.Header().Set("Content-Type", "text/html")
+							return
+						}
+						w.Header().Set("Content-Type", "application/octet-stream")
+						_, _ = w.Write(payload)
+					}))
+					defer server.Close()
+					calls := 0
+					handler, request := opaqueHandler(t, server.URL+"/download/abc123", direct, func(_ context.Context, artifact Artifact) error {
+						calls++
+						if artifact.Name != "project" || artifact.Version != "1.0" {
+							t.Errorf("unexpected archive identity: %+v", artifact)
+						}
+						if block {
+							return errors.New("blocked by caller")
+						}
+						return nil
+					})
+					handler.Client = server.Client()
+					request.Header = http.Header{
+						"Accept": {"application/octet-stream"}, "Accept-Encoding": {"identity"},
+						"If-None-Match": {`"warm-cache"`}, "If-Range": {`"resume-version"`}, "Range": {"bytes=100-"},
+						"Authorization": {"Bearer credential-secret"},
+					}
+					response := proxy.Response{Request: request, StatusCode: status, Header: http.Header{"Content-Type": {"application/octet-stream"}}}
+					hook, err := handler.ObserveResponseHeaders(context.Background(), response)
+					if hook != nil || calls != 1 || fetched != 1 || errors.Is(err, proxy.ErrResponseRejected) != block || (err != nil) != block {
+						t.Fatalf("hook=%v calls=%d fetches=%d error=%v", hook != nil, calls, fetched, err)
+					}
+					if request.Header.Get("Range") == "" || request.Header.Get("If-Range") == "" || request.Header.Get("Accept") != "application/octet-stream" || !strings.Contains(request.Header.Get("Authorization"), "credential-secret") {
+						t.Fatal("original request headers were mutated")
+					}
+				})
 			}
 		}
 	}

@@ -638,11 +638,13 @@ func (cache *MetadataCache) ResolvePublishDate(ctx context.Context, client *http
 	return time.Time{}, errors.Join(refreshErrors...)
 }
 
+// refreshRequestHeaders keeps representation selection and origin credentials
+// while removing conditional, range, and proxy connection state for a full GET.
 func refreshRequestHeaders(header http.Header) http.Header {
 	captured := make(http.Header)
 	for name, values := range header {
 		switch http.CanonicalHeaderKey(name) {
-		case "Accept", "Accept-Encoding", "Connection", "If-Match", "If-Modified-Since", "If-None-Match", "If-Unmodified-Since",
+		case "Connection", "If-Match", "If-Modified-Since", "If-None-Match", "If-Range", "If-Unmodified-Since",
 			"Keep-Alive", "Proxy-Authorization", "Proxy-Connection", "Range", "Te", "Trailer", "Transfer-Encoding", "Upgrade":
 			continue
 		}

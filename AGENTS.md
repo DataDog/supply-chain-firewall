@@ -18,7 +18,7 @@ Supply Chain Firewall (`scfw`) is a Go command-line application that protects pa
 - `scfw/internal/git` discovers local Git repository metadata and removes credentials before reporting.
 - `scfw/internal/pm` owns the shared package and package-manager abstractions (including the `ProxyRunner` interface that package managers implement to run through the proxy), version handling, and reusable collections. Keep this package independent of concrete package managers.
 - `scfw/internal/pm/npm`, `scfw/internal/pm/pip`, and `scfw/internal/pm/poetry` each own integration with that executable: supported commands and versions, dry-run or temporary-project behavior, output parsing, and conversion into the shared `pm.Package` model.
-- Tests live beside the code they cover as `*_test.go` files. Add or update focused tests with every behavioral change.
+- Tests live beside the code they cover as `*_test.go` files. Store registry payloads, package sources, configuration samples, and process scripts in the owning package’s `testdata` directory and read them from tests. Group related JSON responses as named cases in `responses.json`; keep templates and executable sources as separate files. `.tmpl` fixtures retain runtime substitutions for temporary URLs and paths. Add or update focused tests with every behavioral change.
 - `.goreleaser.yml` is the authoritative cross-platform release-build configuration. Root-level files such as `go.mod`, `go.sum`, `Makefile`, and `.golangci.yml` define dependencies and development tooling.
 - `.github` contains CI, release, and repository automation, with supporting scripts and their tests in `.github/scripts`; `images` contains documentation assets.
 

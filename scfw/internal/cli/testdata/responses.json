@@ -1,0 +1,11 @@
+{
+  "pypi/artifactory": {"files":[{"filename":"project-2.0-py3-none-any.whl","url":"objects/artifact?id=wheel&token=artifact-secret","upload-time":"2025-07-08T09:10:11Z"}]},
+  "pypi/empty-simple": {"files":[]},
+  "pypi/legacy-sdist": {"files":[{"filename":"project-1.0-1.tar.gz","url":"/objects/download","upload-time":"2025-01-02T03:04:05Z"}]},
+  "pypi/observed-wheel": {"files":[{"filename":"project-1.0-py3-none-any.whl","url":"https://cdn.example/project-1.0-py3-none-any.whl","upload-time":"2025-04-05T06:07:08Z"}]},
+  "pypi/opaque-query-sdist": {"files":[{"filename":"project-1.0.tar.gz","url":"/download?id=wheel-a&token=secret"}]},
+  "pypi/opaque-sdist": {"files":[{"filename":"project-1.0.tar.gz","url":"/objects/opaque","upload-time":"2025-01-02T03:04:05Z"}]},
+  "pypi/opaque-wheel": {"files":[{"filename":"opaque-3.0-py3-none-any.whl","url":"/objects/wheel?id=3"}]},
+  "pypi/percent-encoded-sdist": {"files":[{"filename":"project-1.0.tar.gz","url":"/objects/%61bc?token=%73ecret","upload-time":"2025-06-07T08:09:10Z"}]},
+  "pypi/simple-v1.4": {"meta":{"api-version":"1.4"},"files":[{"filename":"project-1.0-py3-none-any.whl","url":"../../packages/project-1.0-py3-none-any.whl","upload-time":"2025-05-06T07:08:09Z"}]}
+}

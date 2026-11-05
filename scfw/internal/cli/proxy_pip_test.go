@@ -467,7 +467,7 @@ func TestPipPreservesAuthenticatedUpstream(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			args := []string{"--log", filepath.Join(t.TempDir(), "help"), "--timeout=3", "download", "--no-deps", "--no-index", "--dest", t.TempDir(), "http://private:secret@registry.example/project-1.0-py3-none-any.whl"}
+			args := []string{"--log-f", filepath.Join(t.TempDir(), "help"), "--time", "3", "download", "--no-deps", "--no-index", "--dest", t.TempDir(), "http://private:secret@registry.example/project-1.0-py3-none-any.whl"}
 			if test.source == "command section" {
 				configuration := filepath.Join(t.TempDir(), "pip.conf")
 				content := fmt.Sprintf(commandConfigFixture, proxyURL, certificate)

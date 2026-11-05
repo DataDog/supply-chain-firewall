@@ -15,6 +15,7 @@ type pipOption struct {
 // Consume other value-taking global options so the first target identifies the
 // command without a command catalog. Options accept --name value or --name=value;
 // the source options also accept -i, -f, -r, and -c.
+// Only command detection accepts unambiguous global long-option abbreviations.
 func parsePipOptions(args []string) ([]pipOption, []string) {
 	var options []pipOption
 	var targets []string
@@ -72,6 +73,9 @@ func parsePipOptions(args []string) ([]pipOption, []string) {
 				value = args[index]
 			}
 		default:
+			if len(targets) == 0 && strings.HasPrefix(argument, "--") && !supplied && pipGlobalOptionTakesValue(name) {
+				index++
+			}
 			continue
 		}
 		// Consume references only; pip reads their contents.
@@ -81,6 +85,58 @@ func parsePipOptions(args []string) ([]pipOption, []string) {
 		options = append(options, pipOption{name: canonicalPipOption(name), value: value})
 	}
 	return options, targets
+}
+
+// Include valueless global options when resolving prefixes: --d is ambiguous
+// between debug, default-timeout, and disable-pip-version-check.
+var pipGlobalOptions = map[string]bool{
+	"cache-dir":                 true,
+	"cert":                      true,
+	"client-cert":               true,
+	"debug":                     false,
+	"default-timeout":           true,
+	"disable-pip-version-check": false,
+	"exists-action":             true,
+	"help":                      false,
+	"isolated":                  false,
+	"keyring-provider":          true,
+	"local-log":                 true,
+	"log":                       true,
+	"log-file":                  true,
+	"no-cache-dir":              false,
+	"no-color":                  false,
+	"no-input":                  false,
+	"no-proxy-env":              false,
+	"no-python-version-warning": false,
+	"proxy":                     true,
+	"python":                    true,
+	"quiet":                     false,
+	"require-venv":              false,
+	"require-virtualenv":        false,
+	"resume-retries":            true,
+	"retries":                   true,
+	"timeout":                   true,
+	"trusted-host":              true,
+	"use-deprecated":            true,
+	"use-feature":               true,
+	"verbose":                   false,
+	"version":                   false,
+}
+
+func pipGlobalOptionTakesValue(name string) bool {
+	if takesValue, exact := pipGlobalOptions[name]; exact {
+		return takesValue
+	}
+	found, takesValue := false, false
+	for option, consumesValue := range pipGlobalOptions {
+		if strings.HasPrefix(option, name) {
+			if found {
+				return false
+			}
+			found, takesValue = true, consumesValue
+		}
+	}
+	return found && takesValue
 }
 
 func canonicalPipOption(name string) string {

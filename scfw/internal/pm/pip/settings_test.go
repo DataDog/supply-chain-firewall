@@ -117,6 +117,8 @@ func TestGoDiscoveryCommandSections(t *testing.T) {
 			for _, args := range [][]string{
 				{command, "project"},
 				{"--log", "help", "--timeout", "1", "--cache-dir=install", command, "project"},
+				{"--time", "3", command, "project"},
+				{"--log-f", "help", "--time=3", "--no-ca", command, "project"},
 				{"--isolated", command, "project"},
 			} {
 				got, err := manager.settings(args)

@@ -83,6 +83,30 @@ func TestProxyOptionsFindCommandAfterGlobalOptionValues(t *testing.T) {
 	}
 }
 
+func TestProxyOptionsFindCommandAfterAbbreviatedGlobalOptions(t *testing.T) {
+	for _, flag := range []string{
+		"--time", "--default-t", "--retr", "--resu", "--log-f", "--loc", "--keyring-p",
+		"--ca", "--exists-a", "--use-f", "--use-d", "--py", "--prox", "--cer", "--client-c", "--trusted-h",
+	} {
+		for _, args := range [][]string{
+			{flag, "install", "future-command", "download"},
+			{flag + "=install", "future-command", "download"},
+		} {
+			options, targets := parsePipOptions(args)
+			if len(options) != 0 || !slices.Equal(targets, []string{"future-command", "download"}) {
+				t.Fatalf("%q: options=%+v command/targets=%q", args, options, targets)
+			}
+		}
+	}
+	// Valueless, ambiguous, and unknown options must not consume a command.
+	for _, flag := range []string{"--no-ca", "--isola", "--deb", "--d", "--l", "--t", "--p", "--c", "--use", "--re", "--future"} {
+		options, targets := parsePipOptions([]string{flag, "future-command", "download"})
+		if len(options) != 0 || !slices.Equal(targets, []string{"future-command", "download"}) {
+			t.Fatalf("%s consumed a positional command: options=%+v targets=%q", flag, options, targets)
+		}
+	}
+}
+
 func TestProxyOptionsExplicitShortAliases(t *testing.T) {
 	options, targets := parsePipOptions([]string{
 		"-ihttps://index.example/simple", "-f", "wheelhouse", "-cconstraints.txt",

@@ -30,7 +30,8 @@ var packageManagerFactories = []PackageManagerFactory{
 		},
 	},
 	{
-		Names: pip.PipExecutableNames,
+		Names:                    pip.PipExecutableNames,
+		ProxyControllerEcosystem: ecosystem.PYPI,
 		New: func(ctx context.Context, name, executable string) (pm.PackageManager, error) {
 			return pip.NewPip(ctx, name, executable)
 		},

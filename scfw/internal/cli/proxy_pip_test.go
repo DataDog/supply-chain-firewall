@@ -53,13 +53,16 @@ func pipWheel(t *testing.T) []byte {
 	return buffer.Bytes()
 }
 
-func pipSdist(t *testing.T) []byte {
+func pipSdist(t *testing.T, files ...string) []byte {
 	t.Helper()
 	var buffer bytes.Buffer
 	compressed := gzip.NewWriter(&buffer)
 	writer := tar.NewWriter(compressed)
 	// A stdlib-only PEP 517 backend avoids network access to install build tools.
-	for _, name := range []string{"pyproject.toml", "backend.py"} {
+	if len(files) == 0 {
+		files = []string{"pyproject.toml", "backend.py", "PKG-INFO"}
+	}
+	for _, name := range files {
 		body := readProxyFixture(t, filepath.Join("pip", "sdist", name))
 		if err := writer.WriteHeader(&tar.Header{Name: "project-1.0/" + name, Mode: 0600, Size: int64(len(body))}); err != nil {
 			t.Fatal(err)

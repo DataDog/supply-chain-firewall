@@ -8,8 +8,9 @@ package pypi
 import (
 	"context"
 	"errors"
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 	"net/http"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
 // ProxyHandler observes PyPI registry traffic during one package-manager run.
@@ -26,8 +27,8 @@ type ProxyHandler struct {
 }
 
 // HandleRequest invokes the artifact callback before forwarding upstream.
-// Metadata candidates attach a response hook so their headers can select body
-// inspection; artifact and core-metadata bodies keep streaming.
+// Metadata candidates attach a response hook for JSON inspection. HTML,
+// artifact, and core-metadata bodies keep streaming.
 func (e ProxyHandler) HandleRequest(requestContext context.Context, request proxy.Request) (proxy.ResponseHook, error) {
 	if request.Method != http.MethodGet {
 		return nil, nil
@@ -38,6 +39,16 @@ func (e ProxyHandler) HandleRequest(requestContext context.Context, request prox
 	artifact, advertised := e.Metadata.ArtifactForURL(&request.URL)
 	if !advertised {
 		kind, classified := e.Classifier.ClassifyRequest(request.Method, &request.URL)
+		// Redirect context supplements metadata classification; it cannot
+		// exempt recognizable distributions or their core-metadata sidecars.
+		if project, tentative, registered := e.Metadata.ProjectForURL(&request.URL); registered && kind != RequestArtifact && kind != RequestCoreMetadata {
+			if tentative {
+				e.Metadata.RegisterProjectCandidate(request.URL, project, request.Header)
+			} else {
+				e.Metadata.RegisterProject(request.URL, project, request.Header)
+			}
+			return e.ObserveMetadataHeaders, nil
+		}
 		if kind == RequestJSONAPI || kind == RequestSimpleAPI {
 			// Redirect context identifies the requested project more reliably
 			// than a destination path. Capture its own request credentials
@@ -83,6 +94,14 @@ func (e ProxyHandler) HandleRequest(requestContext context.Context, request prox
 // 304 through an independent request before the package manager can issue a
 // download from metadata held only in its own cache.
 func (e ProxyHandler) ObserveMetadataHeaders(ctx context.Context, response proxy.Response) (*proxy.ResponseBodyHook, error) {
+	if isHTMLMetadataContentType(response.Header) {
+		// Retain only HTTP redirect context, so an HTML index redirected to
+		// an archive-shaped path is still forwarded as metadata.
+		if response.StatusCode >= 300 && response.StatusCode < 400 && response.StatusCode != http.StatusNotModified {
+			e.Metadata.RegisterRedirect(response.Request.URL, response.Header.Get("Location"))
+		}
+		return nil, nil
+	}
 	kind, project, tentative := e.classifyMetadataResponse(response)
 	if kind != RequestJSONAPI && kind != RequestSimpleAPI {
 		return nil, nil
@@ -105,6 +124,9 @@ func (e ProxyHandler) ObserveMetadataHeaders(ctx context.Context, response proxy
 		}
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, nil
+	}
+	if response.Header.Get("Content-Type") != "" && !IsMetadataContentType(response.Header) {
 		return nil, nil
 	}
 	return &proxy.ResponseBodyHook{

@@ -25,6 +25,9 @@ import (
 const (
 	registryHost = "pypi.org"
 	registryURL  = "https://" + registryHost
+
+	// DefaultIndexURL is pip's public Simple API index.
+	DefaultIndexURL = registryURL + "/simple"
 )
 
 // pyPIRegistryDomains are the URL domains associated with the PyPI registry.
@@ -339,10 +342,9 @@ func ClassifyRequest(method string, requestURL *url.URL) (RequestKind, Artifact)
 	return defaultPyPIRequestClassifier.ClassifyRequest(method, requestURL)
 }
 
-// ClassifyRequest recognizes PyPI metadata and distribution requests. A
-// parseable archive is immediately trusted only on a supported registry host
-// or at an explicitly configured direct URL. Configured custom indexes require
-// exact advertisement through metadata discovery before evaluation.
+// ClassifyRequest recognizes distribution filenames directly, including private
+// hosts. HTML index advertisements are not needed to identify a download.
+// JSON metadata can additionally identify opaque distribution URLs.
 func (classifier *RequestClassifier) ClassifyRequest(method string, requestURL *url.URL) (RequestKind, Artifact) {
 	if requestURL == nil || (requestURL.Scheme != "http" && requestURL.Scheme != "https") {
 		return RequestUnrelated, Artifact{}
@@ -361,7 +363,7 @@ func (classifier *RequestClassifier) ClassifyRequest(method string, requestURL *
 		}
 		_, directCoreMetadata = classifier.directArtifactURLs[directPyPIURLKey(&wheelURL)]
 	}
-	artifactContext := slices.Contains(pyPIRegistryDomains, host) || directArtifact || directCoreMetadata
+	artifactContext := !strings.HasSuffix(requestURL.Path, "/") || directArtifact || directCoreMetadata
 	// Artifact parsing takes precedence over metadata path recognition: custom
 	// indexes sometimes serve distributions beneath their Simple API base.
 	if method == http.MethodGet {
@@ -380,9 +382,9 @@ func (classifier *RequestClassifier) ClassifyRequest(method string, requestURL *
 			}
 		}
 		if ok {
-			// A custom index may serve archives directly under its Simple
-			// base. Require exact advertisement through metadata discovery
-			// before interpreting this ambiguous path as a project listing.
+			// A trailing slash can make an archive-shaped name a project
+			// endpoint. Its response headers select JSON observation or
+			// uninspected HTML passthrough.
 			return RequestUnrelated, Artifact{}
 		}
 	}
@@ -459,9 +461,8 @@ func (classifier *RequestClassifier) configuredSimpleProject(requestURL *url.URL
 }
 
 // MetadataDiscovery returns a filename-derived project hint and configured
-// Simple endpoints that can prove whether the exact URL is a distribution.
-// It deliberately does not return an artifact: the filename is never policy
-// evidence unless metadata subsequently advertises the exact request URL.
+// Simple endpoints for resolving an ambiguous URL through JSON metadata.
+// Ordinary distribution filenames are classified directly by ClassifyRequest.
 func (classifier *RequestClassifier) MetadataDiscovery(requestURL *url.URL) (string, []url.URL, bool) {
 	if classifier == nil || requestURL == nil || len(classifier.simpleIndexes) == 0 ||
 		(requestURL.Scheme != "http" && requestURL.Scheme != "https") {

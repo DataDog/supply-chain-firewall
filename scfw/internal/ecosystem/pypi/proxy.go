@@ -27,8 +27,8 @@ type ProxyHandler struct {
 }
 
 // HandleRequest invokes the artifact callback before forwarding upstream.
-// Metadata candidates attach a response hook for JSON inspection. HTML,
-// artifact, and core-metadata bodies keep streaming.
+// Response hooks inspect JSON metadata and identify opaque downloads from
+// archive metadata. HTML and already-identified artifact bodies keep streaming.
 func (e ProxyHandler) HandleRequest(requestContext context.Context, request proxy.Request) (proxy.ResponseHook, error) {
 	if request.Method != http.MethodGet {
 		return nil, nil
@@ -47,7 +47,7 @@ func (e ProxyHandler) HandleRequest(requestContext context.Context, request prox
 			} else {
 				e.Metadata.RegisterProject(request.URL, project, request.Header)
 			}
-			return e.ObserveMetadataHeaders, nil
+			return e.ObserveResponseHeaders, nil
 		}
 		if kind == RequestJSONAPI || kind == RequestSimpleAPI {
 			// Redirect context identifies the requested project more reliably
@@ -64,7 +64,7 @@ func (e ProxyHandler) HandleRequest(requestContext context.Context, request prox
 			} else {
 				e.Metadata.Register(request.URL, request.Header)
 			}
-			return e.ObserveMetadataHeaders, nil
+			return e.ObserveResponseHeaders, nil
 		}
 		if kind == RequestCoreMetadata {
 			return nil, nil
@@ -80,7 +80,7 @@ func (e ProxyHandler) HandleRequest(requestContext context.Context, request prox
 				artifact, advertised = e.Metadata.ArtifactForURL(&request.URL)
 			}
 			if !advertised {
-				return e.ObserveMetadataHeaders, nil
+				return e.ObserveResponseHeaders, nil
 			}
 		} else {
 			artifact = classified

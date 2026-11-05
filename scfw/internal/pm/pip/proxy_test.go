@@ -241,10 +241,10 @@ func TestInvalidUpstreamNeverBecomesDirect(t *testing.T) {
 	}
 }
 
-func TestLocalSourcesStayOutOfNetworkClassifier(t *testing.T) {
+func TestOnlyDirectArtifactsBecomeArtifactContext(t *testing.T) {
 	manager := realPip(t)
 	artifact := "https://files.example/project-1.0-py3-none-any.whl"
-	options, err := manager.PyPIClassifierOptions([]string{"download", "--no-index", "--find-links", t.TempDir(), "--find-links", "file:///tmp/wheels", artifact})
+	options, err := manager.PyPIClassifierOptions([]string{"download", "--no-index", "--find-links", t.TempDir(), "--find-links", "file:///tmp/wheels", "--find-links", "https://index.example/wheelhouse/", artifact})
 	if err != nil {
 		t.Fatal(err)
 	}

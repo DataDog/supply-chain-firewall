@@ -26,6 +26,5 @@ func (pip Pip) PyPIClassifierOptions(command []string) (pypi.RequestClassifierOp
 		}
 		return urls
 	}
-	direct := append(settings.Direct, settings.Links...)
-	return pypi.RequestClassifierOptions{SimpleIndexURLs: httpOnly(settings.Indexes), DirectArtifactURLs: httpOnly(direct)}, nil
+	return pypi.RequestClassifierOptions{SimpleIndexURLs: httpOnly(settings.Indexes), DirectArtifactURLs: httpOnly(settings.Direct)}, nil
 }

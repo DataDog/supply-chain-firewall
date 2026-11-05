@@ -2063,9 +2063,11 @@ func newTestPyPIController(
 }
 
 func configureTestPyPIController(controller *pyPIProxyController, options pypi.RequestClassifierOptions) (ecosystemProxyController, error) {
-	if err := controller.addClassifierContext(options); err != nil {
+	classifier, err := pypi.NewRequestClassifier(options)
+	if err != nil {
 		return nil, err
 	}
+	controller.classifier = classifier
 	return controller.configure, nil
 }
 

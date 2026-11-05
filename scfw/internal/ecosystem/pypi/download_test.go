@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 	"github.com/andybalholm/brotli"
@@ -108,32 +109,38 @@ func TestOpaqueInspectionKeepsNonPackageTraffic(t *testing.T) {
 
 func TestOpaqueArchiveHTTPEncodings(t *testing.T) {
 	payload := packageArchive(t, "zip", []archiveTestEntry{{name: "project-1.0.dist-info/METADATA", body: readPyPIFixture(t, "archive/PKG-INFO")}})
-	for _, encoding := range []string{"gzip", "deflate", "br", "zstd"} {
+	for _, encoding := range []string{"identity", "gzip", "deflate", "br", "zstd", "gzip, br", "zstd, deflate"} {
 		t.Run(encoding, func(t *testing.T) {
-			var encoded bytes.Buffer
-			var writer io.WriteCloser
-			switch encoding {
-			case "gzip":
-				writer = gzip.NewWriter(&encoded)
-			case "deflate":
-				writer = zlib.NewWriter(&encoded)
-			case "br":
-				writer = brotli.NewWriter(&encoded)
-			case "zstd":
-				var err error
-				writer, err = zstd.NewWriter(&encoded)
-				if err != nil {
+			encoded := payload
+			for _, coding := range strings.Split(encoding, ",") {
+				var buffer bytes.Buffer
+				var writer io.WriteCloser
+				switch strings.TrimSpace(coding) {
+				case "identity":
+					continue
+				case "gzip":
+					writer = gzip.NewWriter(&buffer)
+				case "deflate":
+					writer = zlib.NewWriter(&buffer)
+				case "br":
+					writer = brotli.NewWriter(&buffer)
+				case "zstd":
+					var err error
+					writer, err = zstd.NewWriter(&buffer)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				if _, err := writer.Write(encoded); err != nil {
 					t.Fatal(err)
 				}
-			}
-			if _, err := writer.Write(payload); err != nil {
-				t.Fatal(err)
-			}
-			if err := writer.Close(); err != nil {
-				t.Fatal(err)
+				if err := writer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				encoded = buffer.Bytes()
 			}
 			called := false
-			err := inspectDecodedArchive(context.Background(), io.NewSectionReader(bytes.NewReader(encoded.Bytes()), 0, int64(encoded.Len())), encoding, func(body *io.SectionReader) error {
+			err := inspectDecodedArchive(context.Background(), io.NewSectionReader(bytes.NewReader(encoded), 0, int64(len(encoded))), encoding, func(body *io.SectionReader) error {
 				artifact, found, err := inspectArchive(context.Background(), body)
 				called = found && artifact.Name == "project" && artifact.Version == "1.0"
 				return err
@@ -178,5 +185,29 @@ func TestOpaqueCachedAndPartialResponses(t *testing.T) {
 				t.Fatal("original request headers were mutated")
 			}
 		}
+	}
+}
+
+func TestOpaqueRefreshFallsBackToMetadataWithOneConnection(t *testing.T) {
+	metadata := readPyPIJSONFixture(t, "metadata/empty-simple")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.pypi.simple.v1+json")
+		_, _ = io.WriteString(w, metadata)
+	}))
+	defer server.Close()
+	transport := &http.Transport{MaxConnsPerHost: 1}
+	defer transport.CloseIdleConnections()
+	handler, request := opaqueHandler(t, server.URL+"/simple/project/", false, func(context.Context, Artifact) error {
+		t.Fatal("metadata reached artifact evaluation")
+		return nil
+	})
+	handler.Client = &http.Client{Transport: transport}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	response := proxy.Response{Request: request, StatusCode: http.StatusNotModified,
+		Header: http.Header{"Content-Type": {"application/octet-stream"}}}
+	hook, err := handler.ObserveResponseHeaders(ctx, response)
+	if err != nil || hook != nil || !handler.Metadata.HasObserved(request.URL) {
+		t.Fatalf("metadata fallback: hook=%v observed=%v error=%v", hook != nil, handler.Metadata.HasObserved(request.URL), err)
 	}
 }

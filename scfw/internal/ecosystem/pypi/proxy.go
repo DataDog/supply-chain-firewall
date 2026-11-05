@@ -30,64 +30,51 @@ type ProxyHandler struct {
 // Response hooks inspect JSON metadata and identify opaque downloads from
 // archive metadata. HTML and already-identified artifact bodies keep streaming.
 func (e ProxyHandler) HandleRequest(requestContext context.Context, request proxy.Request) (proxy.ResponseHook, error) {
-	if request.Method != http.MethodGet {
+	if request.Method != http.MethodGet || e.Metadata.IsCoreMetadataURL(&request.URL) {
 		return nil, nil
 	}
-	if e.Metadata.IsCoreMetadataURL(&request.URL) {
+	if artifact, found := e.Metadata.ArtifactForURL(&request.URL); found {
+		return nil, e.EvaluateArtifact(requestContext, artifact)
+	}
+	kind, artifact := e.Classifier.ClassifyRequest(request.Method, &request.URL)
+	switch kind {
+	case RequestArtifact:
+		// Artifact identity takes precedence over metadata redirect context.
+		return nil, e.EvaluateArtifact(requestContext, artifact)
+	case RequestCoreMetadata:
 		return nil, nil
 	}
-	artifact, advertised := e.Metadata.ArtifactForURL(&request.URL)
-	if !advertised {
-		kind, classified := e.Classifier.ClassifyRequest(request.Method, &request.URL)
-		// Redirect context supplements metadata classification; it cannot
-		// exempt recognizable distributions or their core-metadata sidecars.
-		if project, tentative, registered := e.Metadata.ProjectForURL(&request.URL); registered && kind != RequestArtifact && kind != RequestCoreMetadata {
-			if tentative {
-				e.Metadata.RegisterProjectCandidate(request.URL, project, request.Header)
-			} else {
-				e.Metadata.RegisterProject(request.URL, project, request.Header)
-			}
-			return e.ObserveResponseHeaders, nil
+	project, tentative, registered := e.Metadata.ProjectForURL(&request.URL)
+	if registered || kind == RequestJSONAPI || kind == RequestSimpleAPI {
+		// Retain a redirected project's identity while capturing the current
+		// request's own credentials for subsequent metadata refreshes.
+		if !registered {
+			project, _ = e.Classifier.SimpleProject(&request.URL, nil)
 		}
-		if kind == RequestJSONAPI || kind == RequestSimpleAPI {
-			// Redirect context identifies the requested project more reliably
-			// than a destination path. Capture its own request credentials
-			// without replacing that context with the destination's name.
-			project, tentative, registered := e.Metadata.ProjectForURL(&request.URL)
-			if !registered {
-				project, _ = e.Classifier.SimpleProject(&request.URL, nil)
-			}
-			if tentative {
-				e.Metadata.RegisterProjectCandidate(request.URL, project, request.Header)
-			} else if project != "" {
-				e.Metadata.RegisterProject(request.URL, project, request.Header)
-			} else {
-				e.Metadata.Register(request.URL, request.Header)
-			}
-			return e.ObserveResponseHeaders, nil
+		e.registerMetadataRequest(request, project, tentative)
+		return e.ObserveResponseHeaders, nil
+	}
+	project, endpoints, discoverable := e.Classifier.MetadataDiscovery(&request.URL)
+	if discoverable && e.Client != nil {
+		if err := e.Metadata.Discover(e.RunContext, e.Client, project, endpoints, &request.URL, request.Header); isContextError(err) {
+			return nil, err
 		}
-		if kind == RequestCoreMetadata {
-			return nil, nil
-		}
-		if kind != RequestArtifact {
-			project, endpoints, discoverable := e.Classifier.MetadataDiscovery(&request.URL)
-			if discoverable && e.Client != nil {
-				if err := e.Metadata.Discover(
-					e.RunContext, e.Client, project, endpoints, &request.URL, request.Header,
-				); isContextError(err) {
-					return nil, err
-				}
-				artifact, advertised = e.Metadata.ArtifactForURL(&request.URL)
-			}
-			if !advertised {
-				return e.ObserveResponseHeaders, nil
-			}
-		} else {
-			artifact = classified
+		if artifact, found := e.Metadata.ArtifactForURL(&request.URL); found {
+			return nil, e.EvaluateArtifact(requestContext, artifact)
 		}
 	}
+	return e.ObserveResponseHeaders, nil
+}
 
-	return nil, e.EvaluateArtifact(requestContext, artifact)
+func (e ProxyHandler) registerMetadataRequest(request proxy.Request, project string, tentative bool) {
+	switch {
+	case tentative:
+		e.Metadata.RegisterProjectCandidate(request.URL, project, request.Header)
+	case project != "":
+		e.Metadata.RegisterProject(request.URL, project, request.Header)
+	default:
+		e.Metadata.Register(request.URL, request.Header)
+	}
 }
 
 // ObserveMetadataHeaders records metadata endpoints and resolves an uncached
@@ -106,13 +93,7 @@ func (e ProxyHandler) ObserveMetadataHeaders(ctx context.Context, response proxy
 	if kind != RequestJSONAPI && kind != RequestSimpleAPI {
 		return nil, nil
 	}
-	if tentative {
-		e.Metadata.RegisterProjectCandidate(response.Request.URL, project, response.Request.Header)
-	} else if project != "" {
-		e.Metadata.RegisterProject(response.Request.URL, project, response.Request.Header)
-	} else {
-		e.Metadata.Register(response.Request.URL, response.Request.Header)
-	}
+	e.registerMetadataRequest(response.Request, project, tentative)
 	switch response.StatusCode {
 	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
 		e.Metadata.RegisterRedirect(response.Request.URL, response.Header.Get("Location"))

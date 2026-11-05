@@ -141,7 +141,11 @@ func TestPipOpaqueDownloadsEndToEnd(t *testing.T) {
 							}
 							return evaluation.ScfwPolicyEvaluationReport{Outcome: outcome}, nil
 						}), nopReporter{}, &details)
-						controller, err := handler.forPackageManager(manager, args)
+						classifierOptions, err := manager.PyPIClassifierOptions(args)
+						if err != nil {
+							t.Fatal(err)
+						}
+						controller, err := configureTestPyPIController(handler, classifierOptions)
 						if err != nil {
 							t.Fatal(err)
 						}

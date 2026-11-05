@@ -8,7 +8,6 @@ package cli
 import (
 	"context"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
@@ -24,10 +23,7 @@ type pyPIProxyController struct {
 	metadata         pypi.MetadataCache
 	metadataClient   *http.Client
 	resolveDate      func(context.Context, string, string, string) (time.Time, error)
-
-	mutex             sync.Mutex
-	classifier        *pypi.RequestClassifier
-	classifierOptions pypi.RequestClassifierOptions
+	classifier       *pypi.RequestClassifier
 }
 
 func newPyPIProxyController(
@@ -39,10 +35,9 @@ func newPyPIProxyController(
 		return nil, err
 	}
 	return &pyPIProxyController{
-		packageEvaluator:  packageEvaluator,
-		classifier:        classifier,
-		classifierOptions: classifierOptions,
-		resolveDate:       pypi.ResolvePublishDate,
+		packageEvaluator: packageEvaluator,
+		classifier:       classifier,
+		resolveDate:      pypi.ResolvePublishDate,
 	}, nil
 }
 
@@ -52,9 +47,7 @@ func (e *pyPIProxyController) configure(runContext context.Context, options prox
 	e.resolveDate = func(ctx context.Context, name, version, source string) (time.Time, error) {
 		return pypi.ResolvePublishDateWithClient(ctx, e.metadataClient, name, version, source)
 	}
-	options.RequestHooks = append(options.RequestHooks, func(ctx context.Context, request proxy.Request) (proxy.ResponseHook, error) {
-		return e.pypiHandler().HandleRequest(ctx, request)
-	})
+	options.RequestHooks = append(options.RequestHooks, e.pypiHandler().HandleRequest)
 	return options
 }
 
@@ -63,7 +56,7 @@ func (e *pyPIProxyController) pypiHandler() pypi.ProxyHandler {
 		RunContext:       e.packageEvaluator.runContext,
 		Client:           e.metadataClient,
 		Metadata:         &e.metadata,
-		Classifier:       e.classifierSnapshot(),
+		Classifier:       e.classifier,
 		EvaluateArtifact: e.evaluateArtifactRequest,
 	}
 }
@@ -84,45 +77,20 @@ func (e *pyPIProxyController) resolveArtifact(ctx context.Context, artifact pypi
 	return pkg, err
 }
 
-func (e *pyPIProxyController) classifierSnapshot() *pypi.RequestClassifier {
-	e.mutex.Lock()
-	defer e.mutex.Unlock()
-	return e.classifier
-}
-
-func (e *pyPIProxyController) addClassifierContext(options pypi.RequestClassifierOptions) error {
-	e.mutex.Lock()
-	defer e.mutex.Unlock()
-	combined := e.classifierOptions
-	combined.SimpleIndexURLs = append(combined.SimpleIndexURLs, options.SimpleIndexURLs...)
-	combined.DirectArtifactURLs = append(combined.DirectArtifactURLs, options.DirectArtifactURLs...)
-	classifier, err := pypi.NewRequestClassifier(combined)
-	if err != nil {
-		return err
-	}
-	e.classifierOptions, e.classifier = combined, classifier
-	return nil
-}
-
 func newPackageManagerPyPIController(manager pm.PackageManager, command []string, evaluator *proxyPackageEvaluator) (ecosystemProxyController, error) {
-	controller, err := newPyPIProxyController(evaluator, pypi.RequestClassifierOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return controller.forPackageManager(manager, command)
-}
-
-func (e *pyPIProxyController) forPackageManager(manager pm.PackageManager, command []string) (ecosystemProxyController, error) {
+	var options pypi.RequestClassifierOptions
 	if provider, ok := manager.(interface {
 		PyPIClassifierOptions([]string) (pypi.RequestClassifierOptions, error)
 	}); ok {
-		options, err := provider.PyPIClassifierOptions(command)
+		var err error
+		options, err = provider.PyPIClassifierOptions(command)
 		if err != nil {
 			return nil, err
 		}
-		if err := e.addClassifierContext(options); err != nil {
-			return nil, err
-		}
 	}
-	return e.configure, nil
+	controller, err := newPyPIProxyController(evaluator, options)
+	if err != nil {
+		return nil, err
+	}
+	return controller.configure, nil
 }

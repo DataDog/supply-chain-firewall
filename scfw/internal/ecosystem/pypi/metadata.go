@@ -7,8 +7,6 @@ package pypi
 
 import (
 	"bytes"
-	"compress/gzip"
-	"compress/zlib"
 	"context"
 	"encoding/json"
 	"errors"
@@ -22,9 +20,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/andybalholm/brotli"
-	"github.com/klauspost/compress/zstd"
 )
 
 // MaxMetadataBytes bounds encoded and decoded JSON metadata retained from an
@@ -302,39 +297,11 @@ func (cache *MetadataCache) metadataProject(requestURL *url.URL) string {
 }
 
 func decodePyPIMetadata(encoded []byte, contentEncoding string) ([]byte, error) {
-	var reader io.Reader = bytes.NewReader(encoded)
-	var closeReader func()
-	switch strings.ToLower(strings.TrimSpace(contentEncoding)) {
-	case "", "identity":
-	case "gzip", "x-gzip":
-		gzipReader, err := gzip.NewReader(reader)
-		if err != nil {
-			return nil, fmt.Errorf("open gzip PyPI metadata: %w", err)
-		}
-		reader = gzipReader
-		closeReader = func() { _ = gzipReader.Close() }
-	case "deflate":
-		zlibReader, err := zlib.NewReader(reader)
-		if err != nil {
-			return nil, fmt.Errorf("open deflate PyPI metadata: %w", err)
-		}
-		reader = zlibReader
-		closeReader = func() { _ = zlibReader.Close() }
-	case "br":
-		reader = brotli.NewReader(reader)
-	case "zstd":
-		decoder, err := zstd.NewReader(reader, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(MaxMetadataBytes*2))
-		if err != nil {
-			return nil, fmt.Errorf("open Zstandard PyPI metadata: %w", err)
-		}
-		reader = decoder
-		closeReader = decoder.Close
-	default:
-		return nil, fmt.Errorf("unsupported PyPI metadata content encoding %q", contentEncoding)
+	reader, closeReader, err := newContentDecoder(bytes.NewReader(encoded), contentEncoding, MaxMetadataBytes*2)
+	if err != nil {
+		return nil, fmt.Errorf("open PyPI metadata decoder: %w", err)
 	}
-	if closeReader != nil {
-		defer closeReader()
-	}
+	defer closeReader()
 	body, err := io.ReadAll(io.LimitReader(reader, MaxMetadataBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("decode PyPI metadata: %w", err)

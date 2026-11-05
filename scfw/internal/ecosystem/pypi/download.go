@@ -6,8 +6,6 @@
 package pypi
 
 import (
-	"compress/gzip"
-	"compress/zlib"
 	"context"
 	"errors"
 	"io"
@@ -17,22 +15,13 @@ import (
 	"strings"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
-	"github.com/andybalholm/brotli"
-	"github.com/klauspost/compress/zstd"
 )
 
 // ObserveResponseHeaders selects bounded file inspection for opaque downloads
 // and delegates registry metadata to the existing JSON/HTML response handling.
 func (e ProxyHandler) ObserveResponseHeaders(ctx context.Context, response proxy.Response) (*proxy.ResponseBodyHook, error) {
-	if hook, download, err := e.observeOpaqueDownload(ctx, response); download || err != nil {
-		return hook, err
-	}
-	return e.ObserveMetadataHeaders(ctx, response)
-}
-
-func (e ProxyHandler) observeOpaqueDownload(ctx context.Context, response proxy.Response) (*proxy.ResponseBodyHook, bool, error) {
 	if response.Request.Method != http.MethodGet {
-		return nil, false, nil
+		return e.ObserveMetadataHeaders(ctx, response)
 	}
 	_, direct := e.Classifier.directArtifactURLs[directPyPIURLKey(&response.Request.URL)]
 	mediaType, _, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
@@ -46,28 +35,26 @@ func (e ProxyHandler) observeOpaqueDownload(ctx context.Context, response proxy.
 	if response.StatusCode == http.StatusNotModified && (required || !IsMetadataContentType(response.Header)) {
 		metadataKind, _, _ := e.classifyMetadataResponse(response)
 		if !required && !isDownloadMediaType(mediaType) && (metadataKind == RequestJSONAPI || metadataKind == RequestSimpleAPI) {
-			return nil, false, nil
+			return e.ObserveMetadataHeaders(ctx, response)
 		}
 		_, _, metadata := e.Metadata.ProjectForURL(&response.Request.URL)
 		if required || (e.Client != nil && (isDownloadMediaType(mediaType) || (!metadata && kind == RequestUnrelated))) {
-			download, err := e.inspectFullDownload(ctx, response, required)
-			return nil, download, err
+			return e.inspectFullDownload(ctx, response, required)
 		}
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices || response.StatusCode == http.StatusNoContent || !candidate {
-		return nil, false, nil
+		return e.ObserveMetadataHeaders(ctx, response)
 	}
 	// Index HTML/JSON and Git protocol responses retain their streaming paths.
 	if response.StatusCode == http.StatusPartialContent {
-		download, err := e.inspectFullDownload(ctx, response, required)
-		return nil, download, err
+		return e.inspectFullDownload(ctx, response, required)
 	}
 	return &proxy.ResponseBodyHook{
 		MaxBytes: MaxArtifactBytes,
 		HandleFile: func(ctx context.Context, response proxy.Response, body *io.SectionReader) error {
 			return e.evaluateDownloadedArchive(ctx, response, body, required)
 		},
-	}, true, nil
+	}, nil
 }
 
 func isDownloadMediaType(mediaType string) bool {
@@ -80,35 +67,37 @@ func isDownloadMediaType(mediaType string) bool {
 	return false
 }
 
-func (e ProxyHandler) inspectFullDownload(ctx context.Context, original proxy.Response, required bool) (bool, error) {
+func (e ProxyHandler) inspectFullDownload(ctx context.Context, original proxy.Response, required bool) (*proxy.ResponseBodyHook, error) {
 	if e.Client == nil {
-		return true, errors.New("cannot identify partial or cached Python download")
+		return nil, errors.New("cannot identify partial or cached Python download")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, original.Request.URL.String(), nil)
 	if err != nil {
-		return true, err
+		return nil, err
 	}
 	request.Header = refreshRequestHeaders(original.Request.Header)
 	client := metadataRefreshClient(e.Client, &original.Request.URL)
 	response, err := client.Do(request)
 	if err != nil {
-		return true, err
+		return nil, err
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
-		return true, errors.New("could not inspect complete Python download")
+		return nil, errors.New("could not inspect complete Python download")
 	}
 	mediaType, _, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if !required && mediaType != "" && !isDownloadMediaType(mediaType) {
 		// An archive-shaped project endpoint can initially look unrelated.
 		// Keep the original 304's metadata classification and refresh path.
-		return false, nil
+		// Release this connection before a metadata refresh acquires another.
+		_ = response.Body.Close()
+		return e.ObserveMetadataHeaders(ctx, original)
 	}
 	if response.ContentLength > MaxArtifactBytes {
-		return true, errors.New("python download exceeds inspection limit")
+		return nil, errors.New("python download exceeds inspection limit")
 	}
 	original.StatusCode, original.Header = response.StatusCode, response.Header
-	return true, proxy.InspectReader(ctx, response.Body, MaxArtifactBytes, func(body *io.SectionReader) error {
+	return nil, proxy.InspectReader(ctx, response.Body, MaxArtifactBytes, func(body *io.SectionReader) error {
 		return e.evaluateDownloadedArchive(ctx, original, body, required)
 	})
 }
@@ -148,34 +137,15 @@ func inspectDecodedArchive(ctx context.Context, body *io.SectionReader, encoding
 		return errors.New("too many Python download content encodings")
 	}
 	for index := len(encodings) - 1; index >= 0; index-- {
-		switch strings.TrimSpace(encodings[index]) {
-		case "identity":
-		case "gzip", "x-gzip":
-			decoder, err := gzip.NewReader(reader)
-			if err != nil {
-				return err
-			}
-			defer func() { _ = decoder.Close() }()
-			reader = decoder
-		case "deflate":
-			decoder, err := zlib.NewReader(reader)
-			if err != nil {
-				return err
-			}
-			defer func() { _ = decoder.Close() }()
-			reader = decoder
-		case "br":
-			reader = brotli.NewReader(reader)
-		case "zstd":
-			decoder, err := zstd.NewReader(reader, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(64<<20))
-			if err != nil {
-				return err
-			}
-			defer decoder.Close()
-			reader = decoder
-		default:
-			return errors.New("unsupported Python download content encoding")
+		if strings.TrimSpace(encodings[index]) == "" {
+			return errors.New("empty Python download content encoding")
 		}
+		decoded, closeReader, err := newContentDecoder(reader, encodings[index], 64<<20)
+		if err != nil {
+			return err
+		}
+		defer closeReader()
+		reader = decoded
 	}
 	return proxy.InspectReader(ctx, reader, MaxArtifactBytes, inspect)
 }

@@ -324,7 +324,11 @@ func TestPipProxyEndToEnd(t *testing.T) {
 						return evaluation.ScfwPolicyEvaluationReport{Outcome: test.outcome}, nil
 					}), nopReporter{}, &details)
 					var certPath, proxyURL string
-					controller, err := handler.forPackageManager(operationManager, args)
+					classifierOptions, err := operationManager.PyPIClassifierOptions(args)
+					if err != nil {
+						t.Fatal(err)
+					}
+					controller, err := configureTestPyPIController(handler, classifierOptions)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -553,9 +557,7 @@ func TestPipVCSUsesInvocationTrust(t *testing.T) {
 	}
 }
 
-// Remote requirements and find-links pages can add artifact context after the
-// controller has started. Each request must see the latest classifier snapshot.
-func TestPyPIControllerUsesUpdatedArtifactContext(t *testing.T) {
+func TestPyPIControllerEvaluatesUnconfiguredArtifactURLs(t *testing.T) {
 	var calls atomic.Int32
 	evaluator := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "", proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 		calls.Add(1)
@@ -566,7 +568,6 @@ func TestPyPIControllerUsesUpdatedArtifactContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	options := controller(context.Background(), proxy.Options{})
-	evaluator.metadataClient = nil
 	evaluator.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		return time.Now(), nil
 	}
@@ -574,11 +575,8 @@ func TestPyPIControllerUsesUpdatedArtifactContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := evaluator.addClassifierContext(pypi.RequestClassifierOptions{DirectArtifactURLs: []string{artifact.String()}}); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := options.RequestHooks[0](context.Background(), proxy.Request{Method: http.MethodGet, URL: *artifact}); err == nil {
-		t.Fatal("artifact added after startup escaped evaluation")
+		t.Fatal("artifact URL without explicit configuration escaped evaluation")
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("evaluations = %d, want 1", calls.Load())

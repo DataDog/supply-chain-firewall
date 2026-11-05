@@ -108,7 +108,7 @@ func TestPipProxyEndToEnd(t *testing.T) {
 			t.Setenv("NO_PROXY", "*")
 			t.Setenv("no_proxy", "*")
 			wheel, sdist := pipWheel(t), pipSdist(t)
-			var artifacts, nestedBodies, linksBodies atomic.Int32
+			var artifacts atomic.Int32
 			registry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				user, password, ok := r.BasicAuth()
 				if !ok || user != "private" || password != "secret" {
@@ -145,20 +145,18 @@ func TestPipProxyEndToEnd(t *testing.T) {
 				case "/quoted.txt":
 					_, _ = fmt.Fprintf(w, quotedRequirements, r.Host)
 				case "/nested.txt", "/original/nested.txt":
-					nestedBodies.Add(1)
 					w.Header().Set("Cache-Control", "public, max-age=3600")
 					_, _ = fmt.Fprintf(w, privateRequirements, r.Host)
 				case "/wheelhouse/", "/wheelhouse.gz":
 					w.Header().Set("Cache-Control", "public, max-age=3600")
 					w.Header().Set("Content-Type", "text/html")
 					w.Header().Set("ETag", `"wheelhouse-v1"`)
-					// Older pip revalidates fresh HTML listings. A 304 still reuses
-					// the cached body, so count only responses that send the listing.
+					// Older pip revalidates fresh HTML listings and reuses the
+					// cached body when the registry returns 304.
 					if r.Header.Get("If-None-Match") == `"wheelhouse-v1"` {
 						w.WriteHeader(http.StatusNotModified)
 						return
 					}
-					linksBodies.Add(1)
 					if r.URL.Path == "/wheelhouse.gz" {
 						w.Header().Set("Content-Encoding", "gzip")
 						zipped := gzip.NewWriter(w)
@@ -252,18 +250,17 @@ func TestPipProxyEndToEnd(t *testing.T) {
 						args = append(args, "--pref", "--wheel-dir", destination)
 					}
 					artifactURL := base + "/packages/" + test.artifact
-					cachedBodies := int32(0)
+					cachedDocument := ""
 					if test.mode == "cached-inner" || test.mode == "cached-links" {
-						document := "/nested.txt"
+						cachedDocument = "/nested.txt"
 						if test.mode == "cached-links" {
-							document = "/wheelhouse/"
+							cachedDocument = "/wheelhouse/"
 						}
 						script := primeCacheFixture
-						child := exec.Command("python3", "-c", script, filepath.Join(os.Getenv("PIP_CACHE_DIR"), "http-v2"), base+document, ca)
+						child := exec.Command("python3", "-c", script, filepath.Join(os.Getenv("PIP_CACHE_DIR"), "http-v2"), base+cachedDocument, ca)
 						if output, err := child.CombinedOutput(); err != nil {
 							t.Fatalf("cache prime: %v %s", err, output)
 						}
-						cachedBodies = nestedBodies.Load() + linksBodies.Load()
 						outer := "/requirements.txt"
 						if test.mode == "cached-links" {
 							outer = "/links-requirements.txt"
@@ -309,7 +306,7 @@ func TestPipProxyEndToEnd(t *testing.T) {
 					if test.isolated {
 						args = append([]string{"--isolated", "--cert", ca}, args...)
 					}
-					var calls atomic.Int32
+					var calls, discoveryBodies atomic.Int32
 					var details bytes.Buffer
 					handler := newTestPyPIController(context.Background(), time.Now(), args, alias, operationManager.Executable(), "", proxyEvaluatorFunc(func(_ context.Context, interactive bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 						calls.Add(1)
@@ -331,6 +328,21 @@ func TestPipProxyEndToEnd(t *testing.T) {
 					wrapped := func(ctx context.Context, options proxy.Options) proxy.Options {
 						// Use observed upload dates where available; avoid public metadata calls.
 						options = controller(ctx, options)
+						if cachedDocument != "" {
+							// Observe pip's responses separately from SCFW's independent
+							// inspection of URLs whose 304 omits the content type.
+							options.RequestHooks = append(options.RequestHooks, func(_ context.Context, request proxy.Request) (proxy.ResponseHook, error) {
+								if request.URL.Path != cachedDocument {
+									return nil, nil
+								}
+								return func(_ context.Context, response proxy.Response) (*proxy.ResponseBodyHook, error) {
+									if response.StatusCode == http.StatusOK {
+										discoveryBodies.Add(1)
+									}
+									return nil, nil
+								}, nil
+							})
+						}
 						handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 							return time.Now(), nil
 						}
@@ -362,7 +374,7 @@ func TestPipProxyEndToEnd(t *testing.T) {
 							t.Fatal("pip did not reuse its downloaded artifact")
 						}
 					}
-					if (test.mode == "cached-inner" || test.mode == "cached-links") && nestedBodies.Load()+linksBodies.Load() != cachedBodies {
+					if discoveryBodies.Load() != 0 {
 						t.Fatal("pip fetched a discovery body instead of reusing its warm cache")
 					}
 					if calls.Load() != 1 {

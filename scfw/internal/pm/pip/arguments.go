@@ -12,8 +12,9 @@ type pipOption struct {
 }
 
 // Inspect only settings consumed by proxy routing, trust, and discovery.
-// Unrelated arguments are left to pip. Options accept --name value or
-// --name=value; the source options also accept -i, -f, -r, and -c.
+// Consume other value-taking global options so the first target identifies the
+// command without a command catalog. Options accept --name value or --name=value;
+// the source options also accept -i, -f, -r, and -c.
 func parsePipOptions(args []string) ([]pipOption, []string) {
 	var options []pipOption
 	var targets []string
@@ -50,6 +51,12 @@ func parsePipOptions(args []string) ([]pipOption, []string) {
 			value, supplied = short[1:], len(short) > 1
 		}
 		switch name {
+		case "log", "log-file", "local-log", "keyring-provider", "retries", "timeout", "default-timeout",
+			"exists-action", "cache-dir", "use-feature", "use-deprecated", "resume-retries":
+			if !supplied {
+				index++
+			}
+			continue
 		case "isolated", "no-proxy-env":
 			if supplied {
 				continue

@@ -50,8 +50,36 @@ func TestProxyOptionsExtractOnlyUsedSettings(t *testing.T) {
 
 func TestProxyOptionsLeaveUnrelatedArgumentsToPip(t *testing.T) {
 	options, targets := parsePipOptions([]string{"download", "--log", "build.log", "--dest", "out", "-Cother=1", "project"})
-	if len(options) != 0 || !slices.Equal(targets, []string{"download", "build.log", "out", "project"}) {
+	if len(options) != 0 || !slices.Equal(targets, []string{"download", "out", "project"}) {
 		t.Fatalf("interpreted unrelated arguments: options=%+v targets=%q", options, targets)
+	}
+}
+
+func TestProxyOptionsFindCommandAfterGlobalOptionValues(t *testing.T) {
+	for _, flag := range []string{
+		"--log", "--log-file", "--local-log", "--keyring-provider", "--retries", "--timeout", "--default-timeout",
+		"--exists-action", "--cache-dir", "--use-feature", "--use-deprecated", "--resume-retries",
+		"--proxy", "--cert", "--client-cert", "--trusted-host", "--python",
+	} {
+		for _, args := range [][]string{
+			{flag, "install", "future-command", "download"},
+			{flag + "=install", "future-command", "download"},
+		} {
+			_, targets := parsePipOptions(args)
+			if !slices.Equal(targets, []string{"future-command", "download"}) {
+				t.Fatalf("%q: command/targets = %q", args, targets)
+			}
+		}
+	}
+	for _, args := range [][]string{
+		{"-vq", "--isolated", "--no-cache-dir", "--no-input", "future-command", "install"},
+		{"--log", "--help", "future-command", "install"},
+		{"--", "future-command", "install"},
+	} {
+		_, targets := parsePipOptions(args)
+		if !slices.Equal(targets, []string{"future-command", "install"}) {
+			t.Fatalf("%q: command/targets = %q", args, targets)
+		}
 	}
 }
 

@@ -1,0 +1,15 @@
+[global]
+proxy = http://global.example
+cert = /global.pem
+client-cert = /global-client.pem
+trusted-host = global.example
+index-url = https://global.example/simple
+
+[%s]
+proxy = http://section.example
+cert = /section.pem
+client-cert = /section-client.pem
+trusted-host = first.example
+    second.example:443
+index-url = https://section.example/simple
+extra-index-url = https://extra.example/simple

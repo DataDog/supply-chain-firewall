@@ -415,13 +415,17 @@ func (r capturingPipRunner) ProxyCommand(ctx context.Context, args []string, con
 }
 
 func TestPipPreservesAuthenticatedUpstream(t *testing.T) {
+	commandConfigFixture := readProxyFixture(t, "pip/command-settings.conf.tmpl")
 	executable, err := exec.LookPath("pip3")
 	if err != nil {
 		t.Skip("pip3 required")
 	}
 	wheel := pipWheel(t)
-	for _, scheme := range []string{"http", "https"} {
-		t.Run(scheme, func(t *testing.T) {
+	for _, test := range []struct{ scheme, source string }{
+		{"http", "arguments"}, {"https", "arguments"},
+		{"http", "command section"}, {"https", "command section"},
+	} {
+		t.Run(test.scheme+"/"+test.source, func(t *testing.T) {
 			var hits atomic.Int32
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Header.Get("Proxy-Authorization") != "Basic "+base64.StdEncoding.EncodeToString([]byte("proxy:secret")) {
@@ -437,7 +441,7 @@ func TestPipPreservesAuthenticatedUpstream(t *testing.T) {
 				_, _ = w.Write(wheel)
 			})
 			upstream := httptest.NewUnstartedServer(handler)
-			if scheme == "https" {
+			if test.scheme == "https" {
 				upstream.StartTLS()
 			} else {
 				upstream.Start()
@@ -451,19 +455,35 @@ func TestPipPreservesAuthenticatedUpstream(t *testing.T) {
 			t.Setenv("PIP_DISABLE_PIP_VERSION_CHECK", "1")
 			proxyURL := strings.Replace(upstream.URL, "://", "://proxy:secret@", 1)
 			t.Setenv("PIP_PROXY", "http://overridden.invalid")
-			if scheme == "https" {
-				path := filepath.Join(t.TempDir(), "upstream.pem")
-				if err := os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: upstream.Certificate().Raw}), 0600); err != nil {
+			certificate := ""
+			if test.scheme == "https" {
+				certificate = filepath.Join(t.TempDir(), "upstream.pem")
+				if err := os.WriteFile(certificate, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: upstream.Certificate().Raw}), 0600); err != nil {
 					t.Fatal(err)
 				}
-				t.Setenv("PIP_CERT", path)
+				t.Setenv("PIP_CERT", certificate)
 			}
 			manager, err := pip.NewPip(context.Background(), "pip3", executable)
 			if err != nil {
 				t.Fatal(err)
 			}
-			args := []string{"download", "--no-deps", "--no-index", "--dest", t.TempDir(), "http://private:secret@registry.example/project-1.0-py3-none-any.whl"}
-			if scheme == "http" {
+			args := []string{"--log", filepath.Join(t.TempDir(), "help"), "--timeout=3", "download", "--no-deps", "--no-index", "--dest", t.TempDir(), "http://private:secret@registry.example/project-1.0-py3-none-any.whl"}
+			if test.source == "command section" {
+				configuration := filepath.Join(t.TempDir(), "pip.conf")
+				content := fmt.Sprintf(commandConfigFixture, proxyURL, certificate)
+				if err := os.WriteFile(configuration, []byte(content), 0400); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv("PIP_CONFIG_FILE", configuration)
+				t.Setenv("PIP_PROXY", "")
+				t.Setenv("PIP_CERT", "")
+				t.Cleanup(func() {
+					data, err := os.ReadFile(configuration)
+					if err != nil || string(data) != content {
+						t.Error("pip configuration changed")
+					}
+				})
+			} else if test.scheme == "http" {
 				args = append([]string{"--proxy", proxyURL}, args...)
 			} else {
 				args = append(args, "--proxy="+proxyURL)

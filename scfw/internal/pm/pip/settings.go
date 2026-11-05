@@ -54,6 +54,10 @@ func (pip Pip) settings(args []string) (pipDiscoveryResult, error) {
 	}
 
 	options, targets := parsePipOptions(args)
+	command := ""
+	if len(targets) > 0 {
+		command = targets[0]
+	}
 	isolated := false
 	python := ""
 	pythonSpecified := false
@@ -72,7 +76,7 @@ func (pip Pip) settings(args []string) (pipDiscoveryResult, error) {
 	if err != nil {
 		return pipDiscoveryResult{}, err
 	}
-	general, err := readPipConfig(prefix, false, version)
+	general, err := readPipConfig(prefix, "", false, version)
 	if errors.Is(err, errPipConfiguration) {
 		return pipDiscoveryResult{}, nil
 	}
@@ -89,7 +93,7 @@ func (pip Pip) settings(args []string) (pipDiscoveryResult, error) {
 		}
 	}
 
-	values, err := readPipConfig(prefix, isolated, version)
+	values, err := readPipConfig(prefix, command, isolated, version)
 	if errors.Is(err, errPipConfiguration) {
 		return pipDiscoveryResult{}, nil
 	} // Let pip print its own configuration error and exit code.
@@ -225,8 +229,9 @@ func (pip Pip) installationPrefix(target string) (string, error) {
 
 // Resolve the same files and precedence as pip's RawConfigParser configuration:
 // global files, user files, installation/venv, PIP_CONFIG_FILE, then environment.
-// Only [global] entries are used; command-specific sections are left to pip.
-func readPipConfig(prefix string, isolated bool, versions ...pm.Version) (map[string]string, error) {
+// Merge each section across files before applying [global], the active command
+// section, and environment overrides, matching pip's section precedence.
+func readPipConfig(prefix, command string, isolated bool, versions ...pm.Version) (map[string]string, error) {
 	version := pm.Version{Major: 26, Minor: 2}
 	if len(versions) > 0 {
 		version = versions[0]
@@ -281,7 +286,7 @@ func readPipConfig(prefix string, isolated bool, versions ...pm.Version) (map[st
 	if envConfig == os.DevNull {
 		files = nil
 	}
-	global := map[string]string{}
+	sections := map[string]map[string]string{}
 	for _, file := range files {
 		data, err := readPipConfigFile(file)
 		if os.IsNotExist(err) || os.IsPermission(err) || file == "" {
@@ -294,14 +299,21 @@ func readPipConfig(prefix string, isolated bool, versions ...pm.Version) (map[st
 		if err != nil {
 			return nil, err
 		}
-		for key, value := range parsed["global"] {
-			global[key] = value
+		for _, section := range []string{"global", command} {
+			if sections[section] == nil {
+				sections[section] = map[string]string{}
+			}
+			for key, value := range parsed[section] {
+				sections[section][key] = value
+			}
 		}
 	}
 	values := map[string]string{"index-url": pypi.DefaultIndexURL}
-	for key, value := range global {
-		if value != "" {
-			values[key] = value
+	for _, section := range []string{"global", command} {
+		for key, value := range sections[section] {
+			if value != "" {
+				values[key] = value
+			}
 		}
 	}
 	if !isolated {

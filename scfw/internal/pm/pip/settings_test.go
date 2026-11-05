@@ -77,7 +77,7 @@ func TestGoDiscoveryConfigurationPrecedence(t *testing.T) {
 		want string
 	}{
 		{[]string{"install", "project"}, "http://site.example"},
-		{[]string{"--timeout", "1", "download", "project"}, "http://site.example"},
+		{[]string{"--timeout", "1", "download", "project"}, "http://download.example"},
 		{[]string{"--isolated", "install", "project"}, "http://site.example"},
 	} {
 		got, err := manager.settings(test.args)
@@ -105,6 +105,72 @@ func TestGoDiscoveryConfigurationPrecedence(t *testing.T) {
 	}
 }
 
+func TestGoDiscoveryCommandSections(t *testing.T) {
+	fixture := readPipFixture(t, "config/command-section.conf.tmpl")
+	for _, command := range []string{"install", "download", "wheel", "future-command"} {
+		t.Run(command, func(t *testing.T) {
+			manager := goDiscoveryPip(t)
+			configuration := filepath.Join(t.TempDir(), "pip.conf")
+			content := fmt.Sprintf(fixture, command)
+			writePipFixture(t, configuration, content)
+			t.Setenv("PIP_CONFIG_FILE", configuration)
+			for _, args := range [][]string{
+				{command, "project"},
+				{"--log", "help", "--timeout", "1", "--cache-dir=install", command, "project"},
+				{"--isolated", command, "project"},
+			} {
+				got, err := manager.settings(args)
+				if err != nil || got.HTTP != "http://section.example" || got.HTTPS != got.HTTP || got.Cert != "/section.pem" || got.ClientCert != "/section-client.pem" ||
+					!slices.Equal(got.TrustedHosts, []string{"first.example", "second.example:443"}) || !slices.Equal(got.Indexes, []string{"https://section.example/simple", "https://extra.example/simple"}) {
+					t.Fatalf("%q: settings=%+v error=%v", args, got, err)
+				}
+			}
+			writePipFixture(t, configuration, strings.Replace(content, "proxy = http://section.example", "proxy =", 1))
+			got, err := manager.settings([]string{command, "project"})
+			if err != nil || got.HTTPS != "http://global.example" {
+				t.Fatalf("empty section value must retain global setting: %+v %v", got, err)
+			}
+			writePipFixture(t, configuration, content)
+			for _, args := range [][]string{nil, {"help", command}, {"other-command", command}} {
+				got, err := manager.settings(args)
+				if err != nil || got.HTTPS != "http://global.example" || got.Cert != "/global.pem" || got.ClientCert != "/global-client.pem" || !slices.Equal(got.TrustedHosts, []string{"global.example"}) {
+					t.Fatalf("unmatched section %q: settings=%+v error=%v", args, got, err)
+				}
+			}
+			// Later files' global values cannot displace a matching section
+			// from an earlier file; files are merged within each section first.
+			t.Setenv("PIP_CONFIG_FILE", "")
+			writePipFixture(t, filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "pip", "pip.conf"), content)
+			writePipFixture(t, filepath.Join(filepath.Dir(filepath.Dir(manager.executable)), "pip.conf"), readPipFixture(t, "config/global.conf"))
+			got, err = manager.settings([]string{command, "project"})
+			if err != nil || got.HTTPS != "http://section.example" || got.Cert != "/section.pem" {
+				t.Fatalf("section versus file precedence: %+v %v", got, err)
+			}
+			t.Setenv("PIP_PROXY", "http://environment.example")
+			t.Setenv("PIP_CERT", "/environment.pem")
+			t.Setenv("PIP_CLIENT_CERT", "/environment-client.pem")
+			t.Setenv("PIP_TRUSTED_HOST", "environment.example")
+			got, err = manager.settings([]string{command, "project"})
+			if err != nil || got.HTTPS != "http://environment.example" || got.Cert != "/environment.pem" || got.ClientCert != "/environment-client.pem" || !slices.Equal(got.TrustedHosts, []string{"environment.example"}) {
+				t.Fatalf("environment over section: %+v %v", got, err)
+			}
+			got, err = manager.settings([]string{"--proxy=http://cli.example", command, "--cert", "/cli.pem", "--client-cert=/cli-client.pem", "--trusted-host", "cli.example"})
+			if err != nil || got.HTTPS != "http://cli.example" || got.Cert != "/cli.pem" || got.ClientCert != "/cli-client.pem" || !slices.Equal(got.TrustedHosts, []string{"environment.example", "cli.example"}) {
+				t.Fatalf("CLI over environment/section: %+v %v", got, err)
+			}
+			t.Setenv("PIP_CONFIG_FILE", configuration)
+			got, err = manager.settings([]string{"--isolated", command, "project"})
+			if err != nil || got.HTTPS != "http://section.example" || got.Cert != "/section.pem" || got.ClientCert != "/section-client.pem" || !slices.Equal(got.TrustedHosts, []string{"first.example", "second.example:443"}) {
+				t.Fatalf("isolated command section with environment overrides: %+v %v", got, err)
+			}
+			data, err := os.ReadFile(configuration)
+			if err != nil || string(data) != content {
+				t.Fatal("pip configuration changed")
+			}
+		})
+	}
+}
+
 func TestGoDiscoveryConfigFileAndIsolation(t *testing.T) {
 	userCertFixture := readPipFixture(t, "config/user-cert.conf")
 	customFixture := readPipFixture(t, "config/custom.conf")
@@ -120,7 +186,7 @@ func TestGoDiscoveryConfigFileAndIsolation(t *testing.T) {
 		cert string
 	}{
 		{[]string{"wheel", "project"}, "/environment.pem"},
-		{[]string{"--isolated", "wheel", "project"}, ""},
+		{[]string{"--isolated", "wheel", "project"}, "/wheel.pem"},
 		{[]string{"--isolated", "download", "project"}, ""},
 	} {
 		got, err := manager.settings(test.args)
@@ -132,7 +198,7 @@ func TestGoDiscoveryConfigFileAndIsolation(t *testing.T) {
 		}
 	}
 	writePipFixture(t, explicit, duplicateProxyFixture)
-	if _, err := readPipConfig(filepath.Dir(filepath.Dir(manager.executable)), false); err == nil || strings.Contains(err.Error(), "secret") || strings.Contains(err.Error(), explicit) {
+	if _, err := readPipConfig(filepath.Dir(filepath.Dir(manager.executable)), "", false); err == nil || strings.Contains(err.Error(), "secret") || strings.Contains(err.Error(), explicit) {
 		t.Fatalf("unsafe config diagnostic: %v", err)
 	}
 }

@@ -58,7 +58,7 @@ func TestProxyOptionsExpandsCertificatePaths(t *testing.T) {
 	if err := os.Symlink(filepath.Join(home, "ca.pem"), filepath.Join(caDirectory, "01234567.0")); err != nil {
 		t.Fatal(err)
 	}
-	for _, source := range []string{"command", "equals", "environment", "configuration", "absolute", "directory command", "directory environment", "directory requests"} {
+	for _, source := range []string{"command", "equals", "environment", "configuration", "command configuration", "absolute", "directory command", "directory environment", "directory requests"} {
 		t.Run(source, func(t *testing.T) {
 			args := []string{"download", "project"}
 			switch source {
@@ -69,9 +69,13 @@ func TestProxyOptionsExpandsCertificatePaths(t *testing.T) {
 			case "environment":
 				t.Setenv("PIP_CERT", "~/ca.pem")
 				t.Setenv("PIP_CLIENT_CERT", "~/client.pem")
-			case "configuration":
+			case "configuration", "command configuration":
 				path := filepath.Join(t.TempDir(), "pip.conf")
-				writePipFixture(t, path, configuration)
+				content := configuration
+				if source == "command configuration" {
+					content = strings.Replace(content, "[global]", "[download]", 1)
+				}
+				writePipFixture(t, path, content)
 				t.Setenv("PIP_CONFIG_FILE", path)
 			case "absolute":
 				args = append(args, "--cert", filepath.Join(home, "ca.pem"), "--client-cert", filepath.Join(home, "client.pem"))
@@ -168,6 +172,9 @@ func TestPipConfigReadOnly(t *testing.T) {
 			t.Fatal(err)
 		}
 		want := "http://global:password@proxy.example"
+		if cmd == "download" {
+			want = "http://command:password@proxy.example"
+		}
 		if got.HTTPSProxy != want {
 			t.Fatalf("%s did not preserve config proxy", cmd)
 		}

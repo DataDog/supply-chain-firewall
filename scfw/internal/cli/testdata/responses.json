@@ -1,4 +1,6 @@
 {
+  "poetry/public-simple": {"meta":{"api-version":"1.0"},"name":"project","files":[{"filename":"project-1.0-py3-none-any.whl","url":"https://files.pythonhosted.org/packages/project-1.0-py3-none-any.whl","hashes":{"sha256":"WHEEL_SHA256"},"requires-python":">=3.9","upload-time":"2025-01-01T00:00:00Z","yanked":false}]},
+  "poetry/public-project": {"info":{"name":"project","version":"1.0","summary":"SCFW fixture","requires_python":">=3.9","requires_dist":[]},"releases":{"1.0":[{"filename":"project-1.0-py3-none-any.whl","url":"https://files.pythonhosted.org/packages/project-1.0-py3-none-any.whl","packagetype":"bdist_wheel","digests":{"sha256":"WHEEL_SHA256"},"yanked":false,"upload_time_iso_8601":"2025-01-01T00:00:00Z"}]},"urls":[{"filename":"project-1.0-py3-none-any.whl","url":"https://files.pythonhosted.org/packages/project-1.0-py3-none-any.whl","packagetype":"bdist_wheel","digests":{"sha256":"WHEEL_SHA256"},"yanked":false,"upload_time_iso_8601":"2025-01-01T00:00:00Z"}]},
   "pypi/artifactory": {"files":[{"filename":"project-2.0-py3-none-any.whl","url":"objects/artifact?id=wheel&token=artifact-secret","upload-time":"2025-07-08T09:10:11Z"}]},
   "pypi/empty-simple": {"files":[]},
   "pypi/legacy-sdist": {"files":[{"filename":"project-1.0-1.tar.gz","url":"/objects/download","upload-time":"2025-01-02T03:04:05Z"}]},

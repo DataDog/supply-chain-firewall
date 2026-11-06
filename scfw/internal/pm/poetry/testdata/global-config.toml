@@ -1,0 +1,6 @@
+[certificates.private]
+cert = "global.pem"
+client-cert = "client.pem"
+
+[certificates.insecure]
+cert = false

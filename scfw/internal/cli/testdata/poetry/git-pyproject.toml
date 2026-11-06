@@ -1,0 +1,8 @@
+[tool.poetry]
+name = "git-project"
+version = "1.0"
+description = "SCFW Git fixture"
+authors = ["SCFW <scfw@example.invalid>"]
+
+[tool.poetry.dependencies]
+python = ">=3.9"

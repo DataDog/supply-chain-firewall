@@ -16,7 +16,10 @@ import (
 // TLSConfigOptions contains effective trust material resolved by an adapter.
 // The proxy does not consult package-manager configuration or environment.
 type TLSConfigOptions struct {
-	CABundlePaths         []string
+	CABundlePaths []string
+	// ReplaceSystemRoots preserves clients whose explicit CA bundle replaces
+	// their default roots instead of extending them.
+	ReplaceSystemRoots    bool
 	ClientCertificatePath string
 	// An empty key path uses ClientCertificatePath as a combined PEM file.
 	ClientKeyPath string
@@ -26,7 +29,7 @@ type TLSConfigOptions struct {
 // optionally loads a client certificate. Errors omit paths which could contain credentials.
 func NewTLSConfig(options TLSConfigOptions) (*tls.Config, error) {
 	roots, err := x509.SystemCertPool()
-	if err != nil {
+	if err != nil || options.ReplaceSystemRoots {
 		roots = x509.NewCertPool()
 	}
 	for _, path := range options.CABundlePaths {

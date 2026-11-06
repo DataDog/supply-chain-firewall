@@ -1,0 +1,6 @@
+[certificates.private]
+cert = "auth.pem"
+
+[http-basic.private]
+username = "private"
+password = "configuration-secret"

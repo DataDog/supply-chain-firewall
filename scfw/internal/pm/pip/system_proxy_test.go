@@ -7,6 +7,7 @@ package pip
 
 import (
 	"errors"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/pythonproxy"
 	"net/url"
 	"os"
 	"reflect"
@@ -147,4 +148,9 @@ func TestEnvironmentProxiesSuppressSystemDiscovery(t *testing.T) {
 	if _, err := pipProxies(func() (systemProxySettings, error) { return systemProxySettings{}, failure }); !errors.Is(err, failure) {
 		t.Fatalf("system discovery failure silently fell back to direct routing: %v", err)
 	}
+}
+
+func parseSystemProxies(value string) (systemProxySettings, error) {
+	settings, err := pythonproxy.ParseSystem(value)
+	return fromNativeProxy(settings), err
 }

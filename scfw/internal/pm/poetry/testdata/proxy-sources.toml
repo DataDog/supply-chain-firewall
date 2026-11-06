@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "example"
+version = "1.0"
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "primary"
+
+[[tool.poetry.source]]
+name = "private"
+url = "https://user:secret@index.example/python-packages/"
+priority = "supplemental"
+
+[[tool.poetry.source]]
+name = "explicit"
+url = "https://index.example/explicit/"
+priority = "explicit"

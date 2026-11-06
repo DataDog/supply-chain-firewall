@@ -3,7 +3,7 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2024-present Datadog, Inc.
 
-package ecosystem
+package npm
 
 import (
 	"context"
@@ -16,13 +16,13 @@ import (
 	"time"
 )
 
-// npmRegistryDomains are the URL domains associated with the npm registry, ported from
+// registryDomains are the URL domains associated with the npm registry, ported from
 // ecosystem.py's ECOSYSTEM.registry_domains in the Python reference.
-var npmRegistryDomains = []string{"registry.npmjs.org"}
+var registryDomains = []string{"registry.npmjs.org", "registry.yarnpkg.com"}
 
-// isNpmRegistrySource reports whether source is a known npm registry URL, ported from
+// HasRegistrySource reports whether source is a known npm registry URL, ported from
 // package.py's Package.has_registry_source in the Python reference.
-func isNpmRegistrySource(source string) bool {
+func HasRegistrySource(source string) bool {
 	u, err := url.Parse(source)
 	if err != nil {
 		return false
@@ -30,17 +30,17 @@ func isNpmRegistrySource(source string) bool {
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return false
 	}
-	return slices.Contains(npmRegistryDomains, u.Hostname())
+	return slices.Contains(registryDomains, u.Hostname())
 }
 
-// resolveNpmPublishDate returns the publication date of the given package version on npm.
+// ResolvePublishDate returns the publication date of the given package version on npm.
 //
 // A non-empty source that isn't a known npm registry URL has no publish date to resolve;
 // this is a no-op rather than an error, leaving it to the caller to decide how to handle
 // an unresolved publish date, and the zero value of time.Time is returned in that case.
 // An empty source is assumed to be the npm registry.
-func resolveNpmPublishDate(ctx context.Context, name, version, source string) (time.Time, error) {
-	if source != "" && !isNpmRegistrySource(source) {
+func ResolvePublishDate(ctx context.Context, name, version, source string) (time.Time, error) {
+	if source != "" && !HasRegistrySource(source) {
 		return time.Time{}, nil
 	}
 
@@ -65,12 +65,12 @@ func resolveNpmPublishDate(ctx context.Context, name, version, source string) (t
 		return time.Time{}, fmt.Errorf("failed to read npm response: %w", err)
 	}
 
-	return parseNpmPackageMetadata(body, name, version)
+	return parsePackageMetadata(body, name, version)
 }
 
-// parseNpmPackageMetadata decodes the JSON returned by the npm registry's package metadata
+// parsePackageMetadata decodes the JSON returned by the npm registry's package metadata
 // endpoint and returns the publish timestamp recorded for the given package version.
-func parseNpmPackageMetadata(body []byte, name, version string) (time.Time, error) {
+func parsePackageMetadata(body []byte, name, version string) (time.Time, error) {
 	var metadata struct {
 		Time map[string]string `json:"time"`
 	}

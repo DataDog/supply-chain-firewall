@@ -247,12 +247,16 @@ func TestPyPIRequestClassifierArchiveShapedSimpleProjectResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	endpoint, _ := url.Parse("https://index.example/simple/project-1.0.tar.gz/")
-	if kind, _ := classifier.ClassifyRequest(http.MethodGet, endpoint); kind != RequestUnrelated {
-		t.Fatalf("archive-shaped request = %v, want discovery before metadata classification", kind)
+	if kind, _ := classifier.ClassifyRequest(http.MethodGet, endpoint); kind != RequestArtifact {
+		t.Fatalf("archive-shaped request = %v, want evaluation before metadata observation", kind)
 	}
 	for _, contentType := range []string{"text/html", "application/json", "application/vnd.pypi.simple.v1+json"} {
-		if kind, _ := classifier.ClassifyResponse(http.MethodGet, endpoint, http.Header{"Content-Type": []string{contentType}}); kind != RequestSimpleAPI {
-			t.Fatalf("%s project listing response = %v, want Simple API", contentType, kind)
+		wantKind := RequestSimpleAPI
+		if contentType == "text/html" {
+			wantKind = RequestArtifact
+		}
+		if kind, _ := classifier.ClassifyResponse(http.MethodGet, endpoint, http.Header{"Content-Type": []string{contentType}}); kind != wantKind {
+			t.Fatalf("%s project listing response = %v, want %v", contentType, kind, wantKind)
 		}
 	}
 }
@@ -477,5 +481,27 @@ func TestResolvePyPIPublishDate_RealPyPI_NonexistentPackage(t *testing.T) {
 	got, err := ResolvePublishDate(ctx, name, "1.0.0", "")
 	if err == nil {
 		t.Fatalf("ResolvePublishDate(%q, ...) = %v, want error", name, got)
+	}
+}
+
+func TestClassifyPyPIDistributionPathsWithTrailingSlashes(t *testing.T) {
+	for _, filename := range []string{"my_project-1.0-py3-none-any.whl", "my_project-1.0.tar.gz", "my_project-1.0-py3-none-any.whl.metadata"} {
+		for _, suffix := range []string{"", "/", "///"} {
+			t.Run(filename+suffix, func(t *testing.T) {
+				endpoint, _ := url.Parse("https://user:secret@index.example/simple/" + filename + suffix + "?token=secret")
+				original := endpoint.String()
+				kind, artifact := ClassifyRequest(http.MethodGet, endpoint)
+				if strings.HasSuffix(filename, ".metadata") {
+					if kind != RequestCoreMetadata {
+						t.Fatalf("core metadata classified as %v", kind)
+					}
+				} else if kind != RequestArtifact || artifact.Name != "my-project" || artifact.Version != "1.0" || artifact.Filename != filename || artifact.Source != "https://index.example/simple/"+filename+suffix {
+					t.Fatalf("classification = %v %#v; expected distribution with its original path", kind, artifact)
+				}
+				if endpoint.String() != original {
+					t.Fatal("classification modified the request URL")
+				}
+			})
+		}
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 
@@ -28,6 +29,16 @@ func (e ProxyHandler) ObserveResponseHeaders(ctx context.Context, response proxy
 		return hook, err
 	}
 	return e.ObserveMetadataHeaders(ctx, response)
+}
+
+// directPyPIURLKey matches explicit download URLs without retaining credentials.
+func directPyPIURLKey(value *url.URL) string {
+	if value == nil {
+		return ""
+	}
+	withoutCredentials := *value
+	withoutCredentials.User = nil
+	return pyPIURLRequestKey(nil, withoutCredentials.String())
 }
 
 func (e ProxyHandler) observeOpaqueDownload(ctx context.Context, response proxy.Response) (*proxy.ResponseBodyHook, bool, error) {

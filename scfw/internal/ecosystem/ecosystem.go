@@ -10,14 +10,16 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/common"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 )
 
-type Ecosystem string
+// Ecosystem aliases the shared identifier for callers of registry operations.
+type Ecosystem = common.Ecosystem
 
 const (
-	NPM  Ecosystem = "npm"
-	PYPI Ecosystem = "PyPI"
+	NPM  = common.NPM
+	PYPI = common.PYPI
 )
 
 // NormalizePackageName returns the ecosystem's canonical package name. Names

@@ -88,13 +88,13 @@ func TestProxyEnabled(t *testing.T) {
 	}
 }
 
-func TestNpmFactoryDoesNotActivatePyPIProxyController(t *testing.T) {
+func TestNpmFactoryDoesNotActivatePyPIProxyHooks(t *testing.T) {
 	factory, found := findPackageManagerFactory("npm")
 	if !found {
 		t.Fatal("npm package-manager factory is missing")
 	}
-	if factory.ProxyControllerEcosystem != "" {
-		t.Fatalf("npm proxy controller ecosystem = %q, want generic proxy behavior", factory.ProxyControllerEcosystem)
+	if len(factory.ProxyHooks) != 0 {
+		t.Fatalf("npm proxy hooks = %d, want generic proxy behavior", len(factory.ProxyHooks))
 	}
 }
 
@@ -269,4 +269,81 @@ func registerFakePackageManager(t *testing.T, manager pm.PackageManager) {
 		},
 	}}, previous...)
 	t.Cleanup(func() { packageManagerFactories = previous })
+}
+
+func TestRunThroughProxyReportsHookConfigurationFailure(t *testing.T) {
+	manager := &fakeProxyPackageManager{}
+	failure := errors.New("invalid hook settings")
+	commandErr, setupErr := runThroughProxy(context.Background(), manager, []string{"install"}, func(context.Context, *http.Client) ([]proxy.RequestHook, error) {
+		return nil, failure
+	})
+	if commandErr != nil || !errors.Is(setupErr, failure) || manager.proxyCommandCalls != 0 {
+		t.Fatalf("command=%v setup=%v preparations=%d; want nil, configuration failure, 0", commandErr, setupErr, manager.proxyCommandCalls)
+	}
+}
+
+func TestRunFirewallConstructsAllRegisteredHooksForEachInvocation(t *testing.T) {
+	t.Setenv(proxyEnabledVar, "1")
+	t.Setenv(evaluationModeVar, string(evaluationModeDatadog))
+	t.Setenv(onWarningVar, "")
+	upstreamHits := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { upstreamHits++ }))
+	defer upstream.Close()
+	manager := &fakeProxyPackageManager{fakePackageManager: fakePackageManager{projectDirectory: t.TempDir()}}
+	registerFakePackageManager(t, manager)
+	var factories, observed []int
+	var clients []*http.Client
+	var invocationContext context.Context
+	makeFactory := func(index int) proxyHookFactory {
+		return func(ctx context.Context, gotManager pm.PackageManager, command []string, client *http.Client, evaluate func(context.Context, pm.Package, error) error) (proxy.RequestHook, error) {
+			if gotManager != manager || !slices.Equal(command, []string{"install", "project"}) || evaluate == nil {
+				t.Fatal("hook factory did not receive invocation inputs")
+			}
+			if index == 1 {
+				invocationContext = ctx
+				clients = append(clients, client)
+			} else if ctx != invocationContext || client != clients[len(clients)-1] {
+				t.Fatal("hooks did not share invocation context and registry client")
+			}
+			factories = append(factories, index)
+			return func(context.Context, proxy.Request) (proxy.ResponseHook, error) {
+				observed = append(observed, index)
+				if index == 2 {
+					return nil, errors.New("blocked by second hook")
+				}
+				return nil, nil
+			}, nil
+		}
+	}
+	packageManagerFactories[0].ProxyHooks = []proxyHookFactory{makeFactory(1), makeFactory(2)}
+	manager.prepareCommand = func(_ context.Context, _ []string, config proxy.ClientConfig) error {
+		proxyURL, _ := url.Parse(config.URL)
+		transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+		defer transport.CloseIdleConnections()
+		response, err := (&http.Client{Transport: transport}).Get(upstream.URL + "/artifact")
+		if err != nil {
+			return err
+		}
+		defer response.Body.Close() //nolint:errcheck
+		if response.StatusCode != http.StatusForbidden {
+			return fmt.Errorf("response=%d, want rejection by registered hook", response.StatusCode)
+		}
+		return nil
+	}
+	for range 2 {
+		func() {
+			cmd := RootCmd()
+			defer cmd.RemoveCommand(configureCmd, doctorCmd, runCmd)
+			cmd.SetArgs([]string{"run", "--", "fakepm", "install", "project"})
+			if err := cmd.ExecuteContext(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		}()
+		if invocationContext.Err() == nil {
+			t.Fatal("invocation context remained live after the command finished")
+		}
+	}
+	if !slices.Equal(factories, []int{1, 2, 1, 2}) || !slices.Equal(observed, factories) || upstreamHits != 0 || clients[0] == clients[1] {
+		t.Fatalf("factories=%v requests=%v upstream=%d; expected fresh, ordered hooks for each run", factories, observed, upstreamHits)
+	}
 }

@@ -885,3 +885,69 @@ func TestPyPIMetadataSizeLimitDiagnostics(t *testing.T) {
 		})
 	}
 }
+
+func TestPyPIMetadataCacheUsesJSONIdentityAtArtifactEndpoints(t *testing.T) {
+	for _, test := range []struct {
+		fixture     string
+		established bool
+	}{
+		{"metadata/artifact-endpoint-simple", false},
+		{"metadata/artifact-endpoint-release", false},
+		{"metadata/artifact-endpoint-version", false},
+		{"metadata/artifact-endpoint-filenames", false},
+		{"metadata/artifact-endpoint-conflicting-name", true},
+	} {
+		t.Run(test.fixture, func(t *testing.T) {
+			endpoint, _ := url.Parse("https://index.example/simple/decoy-1.0-py3-none-any.whl///")
+			cache := &MetadataCache{}
+			if test.established {
+				cache.RegisterProject(*endpoint, "my-project", nil)
+			}
+			if err := cache.Observe(*endpoint, http.Header{"Content-Type": {"application/json"}}, []byte(readPyPIJSONFixture(t, test.fixture))); err != nil {
+				t.Fatal(err)
+			}
+			target, _ := url.Parse("https://index.example/files/recent?token=one")
+			artifact, found := cache.ArtifactForURL(target)
+			wantDate := time.Date(2025, 6, 7, 8, 9, 10, 0, time.UTC)
+			if date, dated := cache.PublishDate(artifact); !found || artifact.Name != "my-project" || artifact.Version != "1.0" || !dated || date != wantDate {
+				t.Fatalf("artifact=%#v found=%v date=%v; expected JSON identity and exact upload time", artifact, found, date)
+			}
+			if project, _, found := cache.ProjectForURL(endpoint); !found || project != "my-project" {
+				t.Fatalf("metadata project=%q, found=%v; must come from established context or JSON", project, found)
+			}
+			other, _ := url.Parse("https://index.example/files/recent?token=two")
+			if _, found := cache.ArtifactForURL(other); found {
+				t.Fatal("publication evidence leaked into a different advertised URL")
+			}
+		})
+	}
+}
+
+func TestPyPIMetadataCacheRequiresRecognizedJSONStructure(t *testing.T) {
+	for _, fixture := range []string{"metadata/unrelated-json", "metadata/null-collections"} {
+		t.Run(fixture, func(t *testing.T) {
+			endpoint, _ := url.Parse("https://index.example/simple/decoy-1.0-py3-none-any.whl/")
+			cache := &MetadataCache{}
+			if err := cache.Observe(*endpoint, http.Header{"Content-Type": {"application/json"}}, []byte(readPyPIJSONFixture(t, fixture))); err != nil {
+				t.Fatal(err)
+			}
+			if cache.HasObserved(*endpoint) {
+				t.Fatal("unrecognized JSON marked as registry metadata")
+			}
+			if _, _, found := cache.ProjectForURL(endpoint); found {
+				t.Fatal("unrecognized JSON established project context")
+			}
+		})
+	}
+}
+
+func TestPyPIMetadataCacheRequiresAdvertisedArtifactURL(t *testing.T) {
+	endpoint, _ := url.Parse("https://index.example/simple/decoy-1.0-py3-none-any.whl/")
+	cache := &MetadataCache{}
+	if err := cache.Observe(*endpoint, http.Header{"Content-Type": {"application/json"}}, []byte(readPyPIJSONFixture(t, "metadata/missing-artifact-url"))); err != nil {
+		t.Fatal(err)
+	}
+	if artifact, found := cache.ArtifactForURL(endpoint); found {
+		t.Fatalf("missing URL turned the metadata endpoint into an advertised artifact: %#v", artifact)
+	}
+}

@@ -7,19 +7,21 @@ package cli
 
 import (
 	"context"
+	"net/http"
 	"slices"
 
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/npm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/pip"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/poetry"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
 type PackageManagerFactory struct {
-	Names                    []string
-	New                      func(ctx context.Context, name, executable string) (pm.PackageManager, error)
-	ProxyControllerEcosystem ecosystem.Ecosystem
+	Names      []string
+	New        func(ctx context.Context, name, executable string) (pm.PackageManager, error)
+	ProxyHooks []proxyHookFactory
 }
 
 var packageManagerFactories = []PackageManagerFactory{
@@ -30,8 +32,8 @@ var packageManagerFactories = []PackageManagerFactory{
 		},
 	},
 	{
-		Names:                    pip.PipExecutableNames,
-		ProxyControllerEcosystem: ecosystem.PYPI,
+		Names:      pip.PipExecutableNames,
+		ProxyHooks: []proxyHookFactory{newPyPIProxyHook},
 		New: func(ctx context.Context, name, executable string) (pm.PackageManager, error) {
 			return pip.NewPip(ctx, name, executable)
 		},
@@ -51,4 +53,31 @@ func findPackageManagerFactory(name string) (PackageManagerFactory, bool) {
 		}
 	}
 	return PackageManagerFactory{}, false
+}
+
+// proxyHookFactory binds package-manager settings to an ecosystem hook for one run.
+type proxyHookFactory func(
+	context.Context, pm.PackageManager, []string, *http.Client,
+	func(context.Context, pm.Package, error) error,
+) (proxy.RequestHook, error)
+
+func newPyPIProxyHook(
+	ctx context.Context, manager pm.PackageManager, command []string, client *http.Client,
+	evaluate func(context.Context, pm.Package, error) error,
+) (proxy.RequestHook, error) {
+	var options pypi.RequestClassifierOptions
+	if provider, ok := manager.(interface {
+		PyPIClassifierOptions([]string) (pypi.RequestClassifierOptions, error)
+	}); ok {
+		var err error
+		options, err = provider.PyPIClassifierOptions(command)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return pypi.NewProxyHook(ctx, pypi.ProxyHookOptions{
+		Client:            client,
+		ClassifierOptions: options,
+		EvaluatePackage:   evaluate,
+	})
 }

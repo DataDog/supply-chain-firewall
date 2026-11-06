@@ -353,39 +353,22 @@ func (classifier *RequestClassifier) ClassifyRequest(method string, requestURL *
 	host := strings.ToLower(requestURL.Hostname())
 	_, configuredProject := classifier.configuredSimpleProject(requestURL)
 	_, knownSimpleProject := SimpleProject(requestURL)
-	_, directArtifact := classifier.directArtifactURLs[directPyPIURLKey(requestURL)]
-	directCoreMetadata := false
-	if strings.HasSuffix(strings.ToLower(requestURL.Path), ".whl.metadata") {
-		wheelURL := *requestURL
-		wheelURL.Path = wheelURL.Path[:len(wheelURL.Path)-len(".metadata")]
-		if strings.HasSuffix(strings.ToLower(wheelURL.RawPath), ".metadata") {
-			wheelURL.RawPath = wheelURL.RawPath[:len(wheelURL.RawPath)-len(".metadata")]
-		}
-		_, directCoreMetadata = classifier.directArtifactURLs[directPyPIURLKey(&wheelURL)]
-	}
-	artifactContext := !strings.HasSuffix(requestURL.Path, "/") || directArtifact || directCoreMetadata
 	// Artifact parsing takes precedence over metadata path recognition: custom
 	// indexes sometimes serve distributions beneath their Simple API base.
 	if method == http.MethodGet {
 		filename := path.Base(requestURL.EscapedPath())
 		if strings.HasSuffix(strings.ToLower(filename), ".whl.metadata") {
 			wheelFilename := filename[:len(filename)-len(".metadata")]
-			if _, _, ok := ParseDistributionFilename(wheelFilename); ok && artifactContext {
+			if _, _, ok := ParseDistributionFilename(wheelFilename); ok {
 				return RequestCoreMetadata, Artifact{}
 			}
 		}
 		name, version, ok := ParseDistributionFilename(filename)
-		if ok && artifactContext {
+		if ok {
 			return RequestArtifact, Artifact{
 				Name: name, Version: version, Filename: artifactFilename(requestURL.String()),
 				Source: canonicalPyPIURL(nil, requestURL.String()), RequestKey: pyPIURLRequestKey(nil, requestURL.String()),
 			}
-		}
-		if ok {
-			// A trailing slash can make an archive-shaped name a project
-			// endpoint. Its response headers select JSON observation or
-			// uninspected HTML passthrough.
-			return RequestUnrelated, Artifact{}
 		}
 	}
 	if host == registryHost && strings.HasPrefix(cleanPath, "/pypi/") && strings.HasSuffix(cleanPath, "/json") {
@@ -398,10 +381,14 @@ func (classifier *RequestClassifier) ClassifyRequest(method string, requestURL *
 }
 
 // ClassifyResponse recognizes Simple API protocol evidence that is only known
-// after receiving a response. Vendor media types are safe evidence; generic
-// application/json and text/html alone are intentionally insufficient.
+// after receiving a response. Evaluated distributions can also return JSON
+// metadata; the body observer validates its structure before caching evidence.
+// Unrelated endpoints still require known paths or PyPI protocol media types.
 func (classifier *RequestClassifier) ClassifyResponse(method string, requestURL *url.URL, header http.Header) (RequestKind, Artifact) {
 	kind, artifact := classifier.ClassifyRequest(method, requestURL)
+	if kind == RequestArtifact && IsMetadataContentType(header) {
+		return RequestSimpleAPI, Artifact{}
+	}
 	if kind != RequestUnrelated || method != http.MethodGet || requestURL == nil {
 		return kind, artifact
 	}
@@ -492,15 +479,6 @@ func simpleProjectFromLastPathSegment(requestURL *url.URL) (string, bool) {
 		return "", false
 	}
 	return NormalizeName(segment), true
-}
-
-func directPyPIURLKey(value *url.URL) string {
-	if value == nil {
-		return ""
-	}
-	withoutCredentials := *value
-	withoutCredentials.User = nil
-	return pyPIURLRequestKey(nil, withoutCredentials.String())
 }
 
 // SimpleProject recognizes supported project-level Simple API paths while

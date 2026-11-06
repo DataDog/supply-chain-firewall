@@ -7,10 +7,12 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,10 +24,10 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/git"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
 // onWarningVar is the environment variable that resolves the firewall's on-warning
@@ -131,27 +133,30 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 
 	if proxyEnabled() {
 		if runner, ok := packageManager.(pm.ProxyRunner); ok {
-			var controller ecosystemProxyController
-			switch packageManagerFactory.ProxyControllerEcosystem {
-			case "":
-				// Generic proxy integrations need no ecosystem controller.
-			case ecosystem.PYPI:
-				evaluator, evaluatorErr := newEvaluator(cmd.Context(), mode)
-				if evaluatorErr != nil {
-					return fmt.Errorf("scfw run: %w", evaluatorErr)
+			var configure proxyHookConfigurer
+			if len(packageManagerFactory.ProxyHooks) > 0 {
+				configure = func(ctx context.Context, client *http.Client) ([]proxy.RequestHook, error) {
+					evaluator, err := newEvaluator(ctx, mode)
+					if err != nil {
+						return nil, err
+					}
+					gitMetadata := discoverGitMetadata(packageManager, cmdArgs[1:])
+					packageEvaluator := newProxyPackageEvaluator(
+						ctx, installTimestamp, cmdArgs, packageManagerName, packageManager.Executable(), gitMetadata.RepositoryURL,
+						evaluator, reporter, os.Stderr,
+					)
+					hooks := make([]proxy.RequestHook, 0, len(packageManagerFactory.ProxyHooks))
+					for _, factory := range packageManagerFactory.ProxyHooks {
+						hook, err := factory(ctx, packageManager, cmdArgs[1:], client, packageEvaluator.evaluatePackage)
+						if err != nil {
+							return nil, err
+						}
+						hooks = append(hooks, hook)
+					}
+					return hooks, nil
 				}
-				gitMetadata := discoverGitMetadata(packageManager, cmdArgs[1:])
-				controller, err = newPackageManagerPyPIController(packageManager, cmdArgs[1:], newProxyPackageEvaluator(
-					cmd.Context(), installTimestamp, cmdArgs, packageManagerName, packageManager.Executable(), gitMetadata.RepositoryURL,
-					evaluator, reporter, os.Stderr,
-				))
-				if err != nil {
-					return fmt.Errorf("scfw run: %w", err)
-				}
-			default:
-				return fmt.Errorf("scfw run: unsupported proxy controller ecosystem %q", packageManagerFactory.ProxyControllerEcosystem)
 			}
-			commandErr, err := runThroughProxy(cmd.Context(), runner, cmdArgs[1:], controller)
+			commandErr, err := runThroughProxy(cmd.Context(), runner, cmdArgs[1:], configure)
 			if err != nil {
 				return fmt.Errorf("scfw run: %w", err)
 			}

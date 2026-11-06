@@ -34,7 +34,7 @@ func runThroughProxy(
 	ctx context.Context,
 	runner pm.ProxyRunner,
 	command []string,
-	controller ecosystemProxyController,
+	configure proxyHookConfigurer,
 ) (commandErr, setupErr error) {
 	// SIGINT already cancels ctx (see main). Also treat SIGTERM as cancellation
 	// here, rather than letting it end the process before the proxy is cleaned up.
@@ -51,18 +51,22 @@ func runThroughProxy(
 	if err != nil {
 		return nil, fmt.Errorf("resolve upstream proxy: %w", err)
 	}
-	if controller != nil {
-		options = controller(ctx, options)
+	if configure != nil {
+		client := newPublicationHTTPClient(options)
+		defer client.CloseIdleConnections()
+		hooks, err := configure(ctx, client)
+		if err != nil {
+			return nil, err
+		}
+		options.RequestHooks = append(options.RequestHooks, hooks...)
 	}
 
 	return proxy.Run(ctx, options, command, runner)
 }
 
-// ecosystemProxyController is the narrow CLI integration boundary between a concrete
-// package-manager ProxyRunner and ecosystem-specific proxy behavior. Generic
-// ProxyRunners pass nil; Python adapters opt into PyPI without
-// moving registry parsing or policy orchestration into the adapter.
-type ecosystemProxyController func(context.Context, proxy.Options) proxy.Options
+// proxyHookConfigurer constructs invocation-scoped ecosystem hooks after the
+// lifecycle context and registry transport have been established.
+type proxyHookConfigurer func(context.Context, *http.Client) ([]proxy.RequestHook, error)
 
 func newPublicationHTTPClient(options proxy.Options) *http.Client {
 	return &http.Client{Transport: proxy.NewTransport(options)}

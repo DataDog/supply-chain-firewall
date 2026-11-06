@@ -141,14 +141,17 @@ func TestPipOpaqueDownloadsEndToEnd(t *testing.T) {
 							}
 							return evaluation.ScfwPolicyEvaluationReport{Outcome: outcome}, nil
 						}), nopReporter{}, &details)
-						controller, err := handler.forPackageManager(manager, args)
+						classifierOptions, err := manager.PyPIClassifierOptions(args)
 						if err != nil {
 							t.Fatal(err)
 						}
-						wrapped := func(ctx context.Context, options proxy.Options) proxy.Options {
-							options = controller(ctx, options)
+						handler.setClassifierOptions(classifierOptions)
+						wrapped := func(ctx context.Context, client *http.Client) ([]proxy.RequestHook, error) {
+							handler.packageEvaluator.runContext = ctx
+							handler.metadataClient = client
+							handler.hook = nil
 							handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) { return time.Now(), nil }
-							return options
+							return []proxy.RequestHook{handler.HandleRequest}, nil
 						}
 						var certificatePath string
 						runner := capturingPipRunner{Pip: manager, capture: func(config proxy.ClientConfig) { certificatePath = config.CACertificatePath }}

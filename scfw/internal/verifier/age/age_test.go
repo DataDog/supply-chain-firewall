@@ -129,3 +129,22 @@ func TestVerifyRejectsUnsupportedEcosystem(t *testing.T) {
 		t.Error("Verify() succeeded for an unsupported ecosystem, want error")
 	}
 }
+
+func TestVerifyFlagsRecentYarnRegistryPackage(t *testing.T) {
+	v := New()
+
+	recent := pm.Package{
+		Ecosystem:   ecosystem.NPM,
+		Name:        "left-pad",
+		Version:     "1.3.0",
+		Source:      "https://registry.yarnpkg.com/left-pad/-/left-pad-1.3.0.tgz",
+		PublishDate: time.Now(),
+	}
+	findings, err := v.Verify(context.Background(), recent)
+	if err != nil {
+		t.Fatalf("Verify() returned unexpected error: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("findings = %+v, want a single finding for a recent yarnpkg-sourced package", findings)
+	}
+}

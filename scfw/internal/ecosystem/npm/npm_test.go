@@ -3,7 +3,7 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2024-present Datadog, Inc.
 
-package ecosystem
+package npm
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func TestIsNpmRegistrySource(t *testing.T) {
+func TestHasRegistrySource(t *testing.T) {
 	tests := []struct {
 		name   string
 		source string
@@ -19,6 +19,7 @@ func TestIsNpmRegistrySource(t *testing.T) {
 	}{
 		{name: "registry.npmjs.org", source: "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz", want: true},
 		{name: "http scheme", source: "http://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz", want: true},
+		{name: "registry.yarnpkg.com", source: "https://registry.yarnpkg.com/left-pad/-/left-pad-1.3.0.tgz", want: true},
 		{name: "scoped package", source: "https://registry.npmjs.org/@scope/pkg/-/pkg-1.0.0.tgz", want: true},
 		{name: "unrelated domain", source: "https://example.com/left-pad-1.3.0.tgz", want: false},
 		{name: "unsupported scheme", source: "ftp://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz", want: false},
@@ -28,14 +29,14 @@ func TestIsNpmRegistrySource(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := isNpmRegistrySource(tc.source); got != tc.want {
-				t.Fatalf("isNpmRegistrySource(%q) = %v, want %v", tc.source, got, tc.want)
+			if got := HasRegistrySource(tc.source); got != tc.want {
+				t.Fatalf("HasRegistrySource(%q) = %v, want %v", tc.source, got, tc.want)
 			}
 		})
 	}
 }
 
-func TestParseNpmPackageMetadata(t *testing.T) {
+func TestParsePackageMetadata(t *testing.T) {
 	tests := []struct {
 		name    string
 		body    string
@@ -45,29 +46,30 @@ func TestParseNpmPackageMetadata(t *testing.T) {
 	}{
 		{
 			name:    "publish timestamp present",
-			body:    `{"time": {"1.3.0": "2016-04-25T18:56:20.452Z"}}`,
+			body:    readNpmJSONFixture(t, "legacy/published"),
 			version: "1.3.0",
 			want:    time.Date(2016, 4, 25, 18, 56, 20, 452000000, time.UTC),
 		},
 		{
 			name:    "missing version",
-			body:    `{"time": {"1.3.0": "2016-04-25T18:56:20.452Z"}}`,
+			body:    readNpmJSONFixture(t, "legacy/published"),
 			version: "9.9.9",
 			wantErr: true,
 		},
 		{
 			name:    "empty timestamp",
-			body:    `{"time": {"1.3.0": ""}}`,
+			body:    readNpmJSONFixture(t, "legacy/empty-timestamp"),
 			version: "1.3.0",
 			wantErr: true,
 		},
 		{
 			name:    "malformed timestamp",
-			body:    `{"time": {"1.3.0": "not a timestamp"}}`,
+			body:    readNpmJSONFixture(t, "legacy/malformed-timestamp"),
 			version: "1.3.0",
 			wantErr: true,
 		},
 		{
+			// Not JSON, so it cannot live in responses.json.
 			name:    "malformed JSON",
 			body:    `not json`,
 			version: "1.3.0",
@@ -77,34 +79,34 @@ func TestParseNpmPackageMetadata(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := parseNpmPackageMetadata([]byte(tc.body), "left-pad", tc.version)
+			got, err := parsePackageMetadata([]byte(tc.body), "left-pad", tc.version)
 			if tc.wantErr {
 				if err == nil {
-					t.Fatalf("parseNpmPackageMetadata(%q, %q) = %v, want error", tc.body, tc.version, got)
+					t.Fatalf("parsePackageMetadata(%q, %q) = %v, want error", tc.body, tc.version, got)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("parseNpmPackageMetadata(%q, %q) returned unexpected error: %v", tc.body, tc.version, err)
+				t.Fatalf("parsePackageMetadata(%q, %q) returned unexpected error: %v", tc.body, tc.version, err)
 			}
 			if !got.Equal(tc.want) {
-				t.Fatalf("parseNpmPackageMetadata(%q, %q) = %v, want %v", tc.body, tc.version, got, tc.want)
+				t.Fatalf("parsePackageMetadata(%q, %q) = %v, want %v", tc.body, tc.version, got, tc.want)
 			}
 		})
 	}
 }
 
-func TestResolveNpmPublishDate_NonRegistrySourceIsNoop(t *testing.T) {
-	got, err := resolveNpmPublishDate(context.Background(), "left-pad", "1.3.0", "https://example.com/left-pad-1.3.0.tgz")
+func TestResolvePublishDate_NonRegistrySourceIsNoop(t *testing.T) {
+	got, err := ResolvePublishDate(context.Background(), "left-pad", "1.3.0", "https://example.com/left-pad-1.3.0.tgz")
 	if err != nil {
-		t.Fatalf("resolveNpmPublishDate() returned unexpected error: %v", err)
+		t.Fatalf("ResolvePublishDate() returned unexpected error: %v", err)
 	}
 	if !got.IsZero() {
-		t.Fatalf("resolveNpmPublishDate() = %v, want zero time", got)
+		t.Fatalf("ResolvePublishDate() = %v, want zero time", got)
 	}
 }
 
-func TestResolveNpmPublishDate_RealNpm(t *testing.T) {
+func TestResolvePublishDate_RealNpm(t *testing.T) {
 	const (
 		name    = "axios"
 		version = "1.7.0"
@@ -124,25 +126,25 @@ func TestResolveNpmPublishDate_RealNpm(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
-			got, err := resolveNpmPublishDate(ctx, name, version, tc.source)
+			got, err := ResolvePublishDate(ctx, name, version, tc.source)
 			if err != nil {
-				t.Fatalf("resolveNpmPublishDate(%q, %q, %q) returned unexpected error: %v", name, version, tc.source, err)
+				t.Fatalf("ResolvePublishDate(%q, %q, %q) returned unexpected error: %v", name, version, tc.source, err)
 			}
 			if !got.Equal(want) {
-				t.Fatalf("resolveNpmPublishDate(%q, %q, %q) = %v, want %v", name, version, tc.source, got, want)
+				t.Fatalf("ResolvePublishDate(%q, %q, %q) = %v, want %v", name, version, tc.source, got, want)
 			}
 		})
 	}
 }
 
-func TestResolveNpmPublishDate_RealNpm_NonexistentPackage(t *testing.T) {
+func TestResolvePublishDate_RealNpm_NonexistentPackage(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	const name = "this-package-definitely-does-not-exist-xyz"
 
-	got, err := resolveNpmPublishDate(ctx, name, "1.0.0", "")
+	got, err := ResolvePublishDate(ctx, name, "1.0.0", "")
 	if err == nil {
-		t.Fatalf("resolveNpmPublishDate(%q, ...) = %v, want error", name, got)
+		t.Fatalf("ResolvePublishDate(%q, ...) = %v, want error", name, got)
 	}
 }

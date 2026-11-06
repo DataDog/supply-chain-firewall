@@ -191,3 +191,25 @@ func TestReadIgnoredIDsWarnsButProceedsOnMALPattern(t *testing.T) {
 		t.Errorf("readIgnoredIDs() = %v, want no ignore patterns (MAL never ignored)", ignored)
 	}
 }
+
+func TestVerifyAcceptsYarnRegistrySource(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"vulns": []any{map[string]any{"id": "GHSA-1234-5678-9abc"}}})
+	}))
+	defer server.Close()
+
+	v := newTestVerifier(t, server.URL, "")
+	findings, err := v.Verify(context.Background(), pm.Package{
+		Ecosystem: ecosystem.NPM,
+		Name:      "left-pad",
+		Version:   "1.3.0",
+		Source:    "https://registry.yarnpkg.com/left-pad/-/left-pad-1.3.0.tgz",
+	})
+	if err != nil {
+		t.Fatalf("Verify() returned unexpected error for a yarnpkg source: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("len(findings) = %d, want 1", len(findings))
+	}
+}

@@ -1,0 +1,5 @@
+{
+  "legacy/empty-timestamp": {"time": {"1.3.0": ""}},
+  "legacy/malformed-timestamp": {"time": {"1.3.0": "not a timestamp"}},
+  "legacy/published": {"time": {"1.3.0": "2016-04-25T18:56:20.452Z"}}
+}

@@ -69,12 +69,12 @@ func TestPoetryUpstreamProxy(t *testing.T) {
 
 func TestPoetryProxyCommandPreservesArgumentsAndParent(t *testing.T) {
 	t.Setenv("http_proxy", "http://original")
-	t.Setenv("REQUESTS_CA_BUNDLE", "/original/requests.pem")
-	t.Setenv("GIT_SSL_CAINFO", "/original/git.pem")
+	t.Setenv("REQUESTS_CA_BUNDLE", "")
+	t.Setenv("GIT_SSL_CAINFO", "")
 	before := os.Environ()
 	args := []string{"--directory", "a project", "add", "--source", "private", "name @ https://user:secret@example.test/project.whl", "--", "--opaque"}
 	wantArgs := slices.Clone(args)
-	config := proxy.ClientConfig{URL: "http://127.0.0.1:1234", CACertificatePath: "/tmp/scfw/ca.pem"}
+	config := proxy.ClientConfig{URL: "http://127.0.0.1:1234", CACertificatePath: filepath.Join(t.TempDir(), "ca.pem")}
 	spec, err := (Poetry{executable: "/custom/poetry"}).ProxyCommand(context.Background(), args, config)
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +85,8 @@ func TestPoetryProxyCommandPreservesArgumentsAndParent(t *testing.T) {
 	if !slices.Equal(before, os.Environ()) {
 		t.Fatal("parent environment changed")
 	}
-	for key, value := range spec.EnvOverrides {
+	for _, key := range []string{"http_proxy", "HTTP_PROXY", "https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY", "no_proxy", "NO_PROXY", "REQUESTS_CA_BUNDLE", "GIT_SSL_CAINFO", "SSL_CERT_FILE"} {
+		value := spec.EnvOverrides[key]
 		want := config.URL
 		switch key {
 		case "REQUESTS_CA_BUNDLE", "GIT_SSL_CAINFO", "SSL_CERT_FILE":
@@ -100,9 +101,7 @@ func TestPoetryProxyCommandPreservesArgumentsAndParent(t *testing.T) {
 			t.Errorf("%s=%q, want %q", key, value, want)
 		}
 	}
-	if len(spec.EnvOverrides) != 11 {
-		t.Fatal("missing routing or trust overrides")
-	}
+
 	spec.Args[0] = "changed"
 	if !slices.Equal(args, wantArgs) {
 		t.Fatal("command spec aliases input")
@@ -131,7 +130,17 @@ func TestPoetryProxyOptionsTrust(t *testing.T) {
 				t.Fatalf("trust not loaded: %v", err)
 			}
 			t.Setenv(key, "/missing/secret.pem")
-			if _, err := (Poetry{}).ProxyOptions(nil); err == nil || strings.Contains(err.Error(), "secret") {
+			options, err = (Poetry{}).ProxyOptions(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			address, _ := url.Parse("https://pypi.org/simple/project/")
+			agent := "poetry"
+			if key == "GIT_SSL_CAINFO" || key == "GIT_SSL_CAPATH" || key == "SSL_CERT_FILE" || key == "SSL_CERT_DIR" {
+				agent = "git/2"
+			}
+			_, err = options.RouteForRequest(proxy.Request{URL: *address, Header: map[string][]string{"User-Agent": {agent}}})
+			if err == nil || strings.Contains(err.Error(), "secret") {
 				t.Fatalf("unsafe/missing error: %v", err)
 			}
 		})

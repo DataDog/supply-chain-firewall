@@ -28,6 +28,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -106,6 +107,7 @@ func TestPoetryProxyEndToEnd(t *testing.T) {
 		outcome                 evaluation.Outcome
 		cached                  bool
 		auth                    string
+		tlsMode                 string
 	}{
 		{name: "install", command: "install", priority: "primary", outcome: evaluation.OutcomeAllow},
 		{name: "add", command: "add", priority: "primary", outcome: evaluation.OutcomeAllow},
@@ -118,8 +120,15 @@ func TestPoetryProxyEndToEnd(t *testing.T) {
 		{name: "block lock", command: "lock", priority: "primary", outcome: evaluation.OutcomeBlock},
 		{name: "supplemental", command: "install", priority: "supplemental", outcome: evaluation.OutcomeAllow},
 		{name: "explicit", command: "install", priority: "explicit", outcome: evaluation.OutcomeAllow},
+		{name: "inline source credentials", command: "install", priority: "primary", outcome: evaluation.OutcomeAllow, auth: "url", tlsMode: "global"},
 		{name: "auth file", command: "install", priority: "primary", outcome: evaluation.OutcomeAllow, auth: "file"},
 		{name: "keyring", command: "install", priority: "primary", outcome: evaluation.OutcomeAllow, auth: "keyring"},
+		{name: "source TLS global", command: "install", priority: "primary", outcome: evaluation.OutcomeAllow, tlsMode: "global"},
+		{name: "source TLS auth", command: "install", priority: "primary", outcome: evaluation.OutcomeAllow, tlsMode: "auth"},
+		{name: "source TLS local", command: "install", priority: "primary", outcome: evaluation.OutcomeAllow, tlsMode: "local"},
+		{name: "source TLS environment", command: "install", priority: "primary", outcome: evaluation.OutcomeAllow, tlsMode: "environment"},
+		{name: "source TLS mTLS", command: "install", priority: "primary", outcome: evaluation.OutcomeAllow, tlsMode: "mTLS"},
+		{name: "source TLS skip-verification", command: "install", priority: "primary", outcome: evaluation.OutcomeAllow, tlsMode: "skip-verification"},
 		{name: "cached metadata block", command: "install", priority: "primary", outcome: evaluation.OutcomeBlock, cached: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -127,9 +136,17 @@ func TestPoetryProxyEndToEnd(t *testing.T) {
 			t.Setenv("POETRY_CACHE_DIR", filepath.Join(root, "cache"))
 			t.Setenv("POETRY_CONFIG_DIR", root)
 			config := userConfig
-			if test.auth == "file" || test.auth == "keyring" {
+			local := localConfig
+			authTLS := ""
+			if test.auth == "file" || test.auth == "keyring" || test.auth == "url" {
 				t.Setenv("POETRY_HTTP_BASIC_PRIVATE_PASSWORD", "")
 				if err := os.Unsetenv("POETRY_HTTP_BASIC_PRIVATE_PASSWORD"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if test.auth == "url" {
+				t.Setenv("POETRY_HTTP_BASIC_PRIVATE_USERNAME", "")
+				if err := os.Unsetenv("POETRY_HTTP_BASIC_PRIVATE_USERNAME"); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -149,7 +166,12 @@ func TestPoetryProxyEndToEnd(t *testing.T) {
 			}
 			poetryTestFile(t, filepath.Join(root, "config.toml"), config)
 			var downloads, indexes atomic.Int32
-			registry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			registry := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if test.tlsMode == "mTLS" && len(r.TLS.PeerCertificates) == 0 {
+					t.Error("source client certificate missing")
+					http.Error(w, "mTLS required", 401)
+					return
+				}
 				user, password, ok := r.BasicAuth()
 				if !ok || user != "private" || password != "secret" {
 					if strings.HasPrefix(r.URL.Path, "/empty/") {
@@ -172,10 +194,46 @@ func TestPoetryProxyEndToEnd(t *testing.T) {
 					http.NotFound(w, r)
 				}
 			}))
+			if test.tlsMode == "mTLS" {
+				registry.TLS = &tls.Config{MinVersion: tls.VersionTLS12, ClientAuth: tls.RequireAnyClientCert}
+			}
+			registry.StartTLS()
 			defer registry.Close()
 			ca := filepath.Join(root, "registry.pem")
 			poetryTestFile(t, ca, string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: registry.Certificate().Raw})))
 			t.Setenv("REQUESTS_CA_BUNDLE", ca)
+			if test.tlsMode != "" {
+				t.Setenv("REQUESTS_CA_BUNDLE", "")
+				clientPath := ""
+				if test.tlsMode == "mTLS" {
+					key, err := x509.MarshalPKCS8PrivateKey(registry.TLS.Certificates[0].PrivateKey)
+					if err != nil {
+						t.Fatal(err)
+					}
+					clientPath = filepath.Join(root, "client.pem")
+					body := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: registry.Certificate().Raw})
+					body = append(body, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key})...)
+					poetryTestFile(t, clientPath, string(body))
+				}
+				cert := strconv.Quote(ca)
+				if test.tlsMode == "skip-verification" {
+					cert = "false"
+				}
+				tlsConfig := fmt.Sprintf(readProxyFixture(t, "poetry/source-tls.toml.tmpl"), cert, strconv.Quote(clientPath))
+				switch test.tlsMode {
+				case "global", "skip-verification":
+					config += "\n" + tlsConfig
+				case "auth", "mTLS":
+					authTLS = tlsConfig
+					poetryTestFile(t, filepath.Join(root, "auth.toml"), authTLS)
+				case "local":
+					local += "\n" + tlsConfig
+				case "environment":
+					config += "\n" + fmt.Sprintf(readProxyFixture(t, "poetry/source-tls.toml.tmpl"), strconv.Quote("/missing/lower-precedence-secret.pem"), strconv.Quote(""))
+					t.Setenv("POETRY_CERTIFICATES_PRIVATE_CERT", ca)
+				}
+				poetryTestFile(t, filepath.Join(root, "config.toml"), config)
+			}
 			// Bypass controls are moved to the outbound side, never left on Poetry.
 			t.Setenv("NO_PROXY", "*")
 			t.Setenv("no_proxy", "*")
@@ -190,9 +248,13 @@ func TestPoetryProxyEndToEnd(t *testing.T) {
 			if test.command == "add" {
 				dependency = ""
 			}
-			manifest := fmt.Sprintf(projectFixture, dependency, other, registry.URL, test.priority)
+			base := registry.URL
+			if test.auth == "url" {
+				base = strings.Replace(base, "://", "://private:secret@", 1)
+			}
+			manifest := fmt.Sprintf(projectFixture, dependency, other, base, test.priority)
 			poetryTestFile(t, filepath.Join(root, "pyproject.toml"), manifest)
-			poetryTestFile(t, filepath.Join(root, "poetry.toml"), localConfig)
+			poetryTestFile(t, filepath.Join(root, "poetry.toml"), local)
 			args := []string{"--directory", root, "--no-interaction", test.command}
 			if test.command == "install" {
 				args = append(args, "--no-root")
@@ -289,13 +351,19 @@ func TestPoetryProxyEndToEnd(t *testing.T) {
 					t.Fatal("Poetry did not use the inherited keyring")
 				}
 			}
+			if authTLS != "" {
+				data, err := os.ReadFile(filepath.Join(root, "auth.toml"))
+				if err != nil || string(data) != authTLS {
+					t.Fatal("certificate auth configuration changed")
+				}
+			}
 			if test.auth == "file" {
 				data, err := os.ReadFile(filepath.Join(root, "auth.toml"))
 				if err != nil || string(data) != readProxyFixture(t, "poetry/auth.toml") {
 					t.Fatal("Poetry credentials changed")
 				}
 			}
-			for name, expected := range map[string]string{"poetry.toml": localConfig, "config.toml": config} {
+			for name, expected := range map[string]string{"poetry.toml": local, "config.toml": config} {
 				data, err := os.ReadFile(filepath.Join(root, name))
 				if err != nil || string(data) != expected {
 					t.Fatalf("%s changed", name)
@@ -323,6 +391,7 @@ func TestPoetryProxyPreservesProcess(t *testing.T) {
 	poetryTestFile(t, filepath.Join(root, "pyproject.toml"), readProxyFixture(t, "poetry/git-pyproject.toml"))
 	poetryTestFile(t, filepath.Join(root, "process.py"), readProxyFixture(t, "poetry/process.py"))
 	t.Setenv("SCFW_TEST_INHERITED", "unchanged")
+	t.Setenv("GIT_SSL_NO_VERIFY", "")
 	t.Setenv("GIT_CONFIG_COUNT", "1")
 	t.Setenv("GIT_CONFIG_KEY_0", "test.inherited")
 	t.Setenv("GIT_CONFIG_VALUE_0", "inherited git value")
@@ -515,6 +584,11 @@ func TestPoetryPreservesAuthenticatedUpstream(t *testing.T) {
 
 func TestPoetryGitDependenciesUseInvocationTrust(t *testing.T) {
 	manager := poetryForProxyTest(t)
+	versionOutput, err := exec.Command(manager.Executable(), "--version").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := strings.Contains(string(versionOutput), "version 1.")
 	gitExecutable, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("Git required")
@@ -543,35 +617,67 @@ func TestPoetryGitDependenciesUseInvocationTrust(t *testing.T) {
 	upstream := poetryTestUpstream(t, false, &hits)
 	t.Setenv("https_proxy", strings.Replace(upstream.URL, "://", "://proxy:proxy-secret@", 1))
 	for _, systemGit := range []string{"false", "true"} {
-		t.Run("system-git="+systemGit, func(t *testing.T) {
-			t.Setenv("POETRY_SYSTEM_GIT_CLIENT", systemGit)
-			t.Setenv("POETRY_EXPERIMENTAL_SYSTEM_GIT_CLIENT", systemGit)
-			project := t.TempDir()
-			t.Setenv("POETRY_CACHE_DIR", filepath.Join(project, "cache"))
-			poetryTestFile(t, filepath.Join(project, "pyproject.toml"), strings.Replace(readProxyFixture(t, "poetry/git-pyproject.toml"), `name = "git-project"`, `name = "consumer"`, 1))
-			runner := &capturingPoetryRunner{Poetry: manager}
-			var observed atomic.Int32
-			configure := func(context.Context, *http.Client) ([]proxy.RequestHook, error) {
-				return []proxy.RequestHook{func(_ context.Context, request proxy.Request) (proxy.ResponseHook, error) {
-					if strings.Contains(request.URL.Path, "repository/.git/") {
-						observed.Add(1)
+		for _, discovery := range []string{"environment", "configuration"} {
+			t.Run("system-git="+systemGit+"/"+discovery, func(t *testing.T) {
+				t.Setenv("POETRY_SYSTEM_GIT_CLIENT", systemGit)
+				t.Setenv("POETRY_EXPERIMENTAL_SYSTEM_GIT_CLIENT", systemGit)
+				project := t.TempDir()
+				var originalGit []byte
+				gitConfiguration := filepath.Join(project, ".gitconfig")
+				if discovery == "configuration" {
+					originalGit = []byte(fmt.Sprintf(readProxyFixture(t, "poetry/git-network.conf.tmpl"), ca, origin.URL, strings.Replace(upstream.URL, "://", "://proxy:proxy-secret@", 1), ca))
+					poetryTestFile(t, gitConfiguration, string(originalGit))
+					t.Setenv("GIT_CONFIG_GLOBAL", gitConfiguration)
+					t.Setenv("HOME", project)
+					t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+					t.Setenv("GIT_SSL_CAINFO", "")
+					t.Setenv("https_proxy", "")
+				}
+				t.Setenv("POETRY_CACHE_DIR", filepath.Join(project, "cache"))
+				poetryTestFile(t, filepath.Join(project, "pyproject.toml"), strings.Replace(readProxyFixture(t, "poetry/git-pyproject.toml"), `name = "git-project"`, `name = "consumer"`, 1))
+				runner := &capturingPoetryRunner{Poetry: manager}
+				var observed atomic.Int32
+				configure := func(context.Context, *http.Client) ([]proxy.RequestHook, error) {
+					return []proxy.RequestHook{func(_ context.Context, request proxy.Request) (proxy.ResponseHook, error) {
+						if strings.Contains(request.URL.Path, "repository/.git/") {
+							observed.Add(1)
+						}
+						return nil, nil
+					}}, nil
+				}
+				before := hits.Load()
+				commandErr, setupErr := runThroughProxy(context.Background(), runner, []string{"--directory", project, "--no-interaction", "add", "--lock", "git+" + origin.URL + "/repository/.git"}, configure)
+				if legacy && systemGit == "false" && discovery == "configuration" {
+					if commandErr != nil || setupErr == nil || !strings.Contains(setupErr.Error(), "experimental.system-git-client") {
+						t.Fatalf("missing actionable compatibility error: %v/%v", commandErr, setupErr)
 					}
-					return nil, nil
-				}}, nil
-			}
-			before := hits.Load()
-			commandErr, setupErr := runThroughProxy(context.Background(), runner, []string{"--directory", project, "--no-interaction", "add", "--lock", "git+" + origin.URL + "/repository/.git"}, configure)
-			if commandErr != nil || setupErr != nil {
-				t.Fatalf("Git dependency: %v / %v", commandErr, setupErr)
-			}
-			if hits.Load() == before || observed.Load() == 0 || requests.Load() == 0 {
-				t.Fatal("Git traffic did not traverse SCFW and the inherited proxy")
-			}
-			if os.Getenv("GIT_SSL_CAINFO") != ca {
-				t.Fatal("parent Git CA changed")
-			}
-			assertPoetryProxyCleaned(t, runner.config)
-		})
+					if hits.Load() != before {
+						t.Fatal("incompatible client was launched")
+					}
+					data, err := os.ReadFile(gitConfiguration)
+					if err != nil || !bytes.Equal(data, originalGit) {
+						t.Fatal("compatibility failure modified Git configuration")
+					}
+					return
+				}
+				if commandErr != nil || setupErr != nil {
+					t.Fatalf("Git dependency: %v / %v", commandErr, setupErr)
+				}
+				if hits.Load() == before || observed.Load() == 0 || requests.Load() == 0 {
+					t.Fatal("Git traffic did not traverse SCFW and the inherited proxy")
+				}
+				if discovery == "environment" && os.Getenv("GIT_SSL_CAINFO") != ca {
+					t.Fatal("parent Git CA changed")
+				}
+				if discovery == "configuration" {
+					data, err := os.ReadFile(gitConfiguration)
+					if err != nil || !bytes.Equal(data, originalGit) {
+						t.Fatal("Git configuration changed")
+					}
+				}
+				assertPoetryProxyCleaned(t, runner.config)
+			})
+		}
 	}
 }
 

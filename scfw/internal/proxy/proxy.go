@@ -104,6 +104,11 @@ type Options struct {
 	// UpstreamTLS preserves the caller's registry CA and trust configuration.
 	UpstreamTLS *tls.Config
 
+	// RouteForRequest selects immutable, invocation-scoped outbound settings.
+	// Returning nil uses the default transport. Adapters own configuration
+	// discovery and selection; each returned route has its own connection pool.
+	RouteForRequest func(Request) (*OutboundRoute, error)
+
 	// TrustedHosts skips registry certificate verification only for matching
 	// hosts, optionally constrained to a port.
 	TrustedHosts []string
@@ -494,10 +499,13 @@ func (proxyLogger) Printf(format string, _ ...any) {
 // Transport routes outbound traffic with invocation-scoped proxy and TLS trust.
 // Separate connection pools keep trusted-host exceptions from leaking to other ports.
 type Transport struct {
-	secure   *http.Transport
-	trusted  *http.Transport
-	hosts    []string
-	trustURL func(*url.URL) bool
+	secure          *http.Transport
+	trusted         *http.Transport
+	hosts           []string
+	trustURL        func(*url.URL) bool
+	routeForRequest func(Request) (*OutboundRoute, error)
+	routesMutex     sync.Mutex
+	routes          map[*OutboundRoute]*http.Transport
 }
 
 // NewTransport creates an outbound transport using only the supplied settings.
@@ -506,10 +514,20 @@ func NewTransport(options Options) *Transport {
 	trusted := secure.Clone()
 	trusted.TLSClientConfig = secure.TLSClientConfig.Clone()
 	trusted.TLSClientConfig.InsecureSkipVerify = true // Only selected by an explicit host/port match.
-	return &Transport{secure: secure, trusted: trusted, hosts: options.TrustedHosts, trustURL: options.TrustURL}
+	return &Transport{secure: secure, trusted: trusted, hosts: options.TrustedHosts, trustURL: options.TrustURL,
+		routeForRequest: options.RouteForRequest, routes: make(map[*OutboundRoute]*http.Transport)}
 }
 
 func (transport *Transport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if transport.routeForRequest != nil {
+		route, err := transport.routeForRequest(Request{Method: request.Method, URL: *request.URL, Header: request.Header.Clone()})
+		if err != nil {
+			return nil, errors.New("could not resolve outbound request settings")
+		}
+		if route != nil {
+			return transport.routeTransport(route).RoundTrip(request)
+		}
+	}
 	if transport.trustURL != nil && transport.trustURL(request.URL) {
 		return transport.trusted.RoundTrip(request)
 	}
@@ -542,4 +560,9 @@ func (transport *Transport) RoundTrip(request *http.Request) (*http.Response, er
 func (transport *Transport) CloseIdleConnections() {
 	transport.secure.CloseIdleConnections()
 	transport.trusted.CloseIdleConnections()
+	transport.routesMutex.Lock()
+	defer transport.routesMutex.Unlock()
+	for _, route := range transport.routes {
+		route.CloseIdleConnections()
+	}
 }

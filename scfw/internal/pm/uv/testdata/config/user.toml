@@ -1,0 +1,7 @@
+https-proxy = "http://user:secret@user-proxy.example:8080"
+native-tls = true
+find-links = ["./wheels"]
+[[index]]
+name = "private"
+url = "https://private.example/python/"
+authenticate = "always"

@@ -1,0 +1,5 @@
+[project]
+name = "uv-fixture"
+version = "1.0"
+requires-python = ">=3.8"
+dependencies = []

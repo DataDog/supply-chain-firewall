@@ -90,6 +90,10 @@ type ResponseBodyHook struct {
 
 // Options configures a proxy.
 type Options struct {
+	// AdditionalClients supplies isolated proxy/TLS settings for other HTTP
+	// clients launched by the same command. Run owns their complete lifecycle.
+	// Profiles are not recursive; all clients share the invocation's hooks.
+	AdditionalClients map[string]Options
 	// Upstream is the proxy configuration that was in effect before SCFW, as
 	// supplied by the package manager integration. Outbound requests honor it so
 	// corporate proxies keep working. The zero value connects directly; the
@@ -123,6 +127,7 @@ type Options struct {
 // ClientConfig is what a package manager needs to route its traffic through
 // the proxy and trust its interception certificates.
 type ClientConfig struct {
+	AdditionalClients map[string]ClientConfig
 	// URL is the proxy URL, used for both HTTP and HTTPS traffic.
 	URL string
 

@@ -60,7 +60,24 @@ func Run(ctx context.Context, options Options, command []string, configurer Comm
 			slog.Warn("failed to stop command proxy cleanly", "error", err)
 		}
 	}()
-	spec, err := configurer.ProxyCommand(ctx, command, server.ClientConfig())
+	config := server.ClientConfig()
+	if len(options.AdditionalClients) > 0 {
+		config.AdditionalClients = make(map[string]ClientConfig, len(options.AdditionalClients))
+		for name, clientOptions := range options.AdditionalClients {
+			clientOptions.RequestHooks = append(slices.Clone(options.RequestHooks), clientOptions.RequestHooks...)
+			client, err := Start(ctx, clientOptions)
+			if err != nil {
+				return nil, err
+			}
+			defer func() {
+				if err := client.Close(); err != nil {
+					slog.Warn("failed to stop command proxy cleanly", "error", err)
+				}
+			}()
+			config.AdditionalClients[name] = client.ClientConfig()
+		}
+	}
+	spec, err := configurer.ProxyCommand(ctx, command, config)
 	if err != nil {
 		return nil, fmt.Errorf("configure proxied command: %w", err)
 	}

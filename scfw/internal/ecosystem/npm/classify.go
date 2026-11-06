@@ -97,14 +97,15 @@ func (classifier *Classifier) Classify(requestURL *url.URL) (RequestKind, Artifa
 }
 
 // parseTarball parses "<base>/<name>/-/<last name segment>-<version>.tgz",
-// where a scoped name's slash may be literal or percent-encoded.
+// where a scoped name's slash may be literal or percent-encoded. GitLab names
+// scoped tarballs after the full scoped name instead: "<name>-<version>.tgz".
 func parseTarball(requestURL *url.URL, escapedPath string) (Artifact, bool) {
 	separator := strings.LastIndex(escapedPath, "/-/")
 	if separator < 0 {
 		return Artifact{}, false
 	}
 	escapedFilename := escapedPath[separator+len("/-/"):]
-	if escapedFilename == "" || strings.Contains(escapedFilename, "/") {
+	if escapedFilename == "" {
 		return Artifact{}, false
 	}
 
@@ -125,10 +126,17 @@ func parseTarball(requestURL *url.URL, escapedPath string) (Artifact, bool) {
 	}
 
 	filename, err := url.PathUnescape(escapedFilename)
-	if err != nil || !strings.HasPrefix(filename, unscoped+"-") || !strings.HasSuffix(filename, ".tgz") {
+	if err != nil || !strings.HasSuffix(filename, ".tgz") {
 		return Artifact{}, false
 	}
-	version := strings.TrimSuffix(strings.TrimPrefix(filename, unscoped+"-"), ".tgz")
+	nameVersion, found := strings.CutPrefix(filename, unscoped+"-")
+	if !found || strings.Contains(escapedFilename, "/") {
+		nameVersion, found = strings.CutPrefix(filename, name+"-")
+		if !found || !strings.HasPrefix(name, "@") {
+			return Artifact{}, false
+		}
+	}
+	version := strings.TrimSuffix(nameVersion, ".tgz")
 	if !semverPattern.MatchString(version) {
 		return Artifact{}, false
 	}

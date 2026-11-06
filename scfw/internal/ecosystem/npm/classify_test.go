@@ -50,6 +50,10 @@ func TestClassify(t *testing.T) {
 		{url: "https://registry.npmjs.org/typescript/-/typescript-5.8.0-dev.20250101.tgz", kind: RequestTarball, name: "typescript", version: "5.8.0-dev.20250101", packumentPath: "/typescript"},
 		{url: "https://registry.npmjs.org/pkg/-/pkg-1.0.0+build.1.tgz", kind: RequestTarball, name: "pkg", version: "1.0.0+build.1", packumentPath: "/pkg"},
 		{url: "https://artifactory.example/artifactory/api/npm/npm-remote/left-pad/-/left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/artifactory/api/npm/npm-remote/left-pad"},
+		// GitLab names scoped tarballs after the full scoped name, literal or percent-encoded.
+		{url: "https://gitlab.example/api/v4/projects/1/packages/npm/@scope/pkg/-/@scope/pkg-1.0.0.tgz", kind: RequestTarball, name: "@scope/pkg", version: "1.0.0", packumentPath: "/api/v4/projects/1/packages/npm/@scope%2Fpkg"},
+		{url: "https://gitlab.example/api/v4/projects/1/packages/npm/@scope%2Fpkg/-/@scope%2Fpkg-1.0.0.tgz", kind: RequestTarball, name: "@scope/pkg", version: "1.0.0", packumentPath: "/api/v4/projects/1/packages/npm/@scope%2Fpkg"},
+		{url: "https://gitlab.example/api/v4/projects/1/packages/npm/@scope/pkg/-/@other/pkg-1.0.0.tgz", kind: RequestUnrelated},
 		// Tarballs are recognized on any host: an unknown host cannot opt out of evaluation.
 		{url: "https://evil.example/left-pad/-/left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
 

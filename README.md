@@ -186,6 +186,8 @@ The command was blocked. No changes have been made.
 
 Note that, once shell aliases have been configured via `scfw configure --alias-npm`/`--alias-pip`/`--alias-poetry`, the explicit `scfw run --` prefix is no longer needed: commands for these package managers run through `scfw` automatically.
 
+Set `SCFW_PROXY_ENABLED=1` to evaluate pip and Poetry packages as they are downloaded through an invocation-scoped proxy. For example, `SCFW_PROXY_ENABLED=1 scfw run -- poetry install` inspects downloads made by Poetry, including during `add`, `update`, and `lock`. Existing HTTP/HTTPS proxy URLs and CA environment settings are preserved for outbound connections. Poetry retains control of its sources, authentication, virtual environments, lockfiles, and caches; SCFW does not run `poetry config` or edit project or user configuration. Warnings print and continue without prompting; blocks reject the download. Packages served entirely from Poetry's cache generate no download traffic to inspect.
+
 `scfw run` supports the following options:
 
 | Flag | Description |

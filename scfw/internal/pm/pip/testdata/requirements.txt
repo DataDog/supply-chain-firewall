@@ -1,0 +1,4 @@
+--trusted-host unexpected.example
+--index-url https://unexpected.example/packages
+-r missing.txt
+project @ https://unexpected.example/project-1.0.tar.gz

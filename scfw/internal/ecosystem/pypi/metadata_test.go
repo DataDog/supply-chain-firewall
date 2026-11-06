@@ -81,6 +81,9 @@ func TestPyPIMetadataCacheRejectsInvalidRedirects(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheObservesJSONAPIAndSimpleAPI(t *testing.T) {
+	releaseSdistFixture := readPyPIJSONFixture(t, "metadata/release-sdist")
+	simpleWheelDateFixture := readPyPIJSONFixture(t, "metadata/simple-wheel-date")
+	versionWheelFixture := readPyPIJSONFixture(t, "metadata/version-wheel")
 	tests := []struct {
 		name        string
 		requestURL  string
@@ -94,7 +97,7 @@ func TestPyPIMetadataCacheObservesJSONAPIAndSimpleAPI(t *testing.T) {
 			name:        "JSON API exact release file",
 			requestURL:  "https://pypi.org/pypi/project/json",
 			contentType: "application/json",
-			body:        `{"releases":{"1.0":[{"filename":"project-1.0.tar.gz","url":"https://files.pythonhosted.org/project-1.0.tar.gz","upload_time_iso_8601":"2025-01-02T03:04:05Z"}]}}`,
+			body:        releaseSdistFixture,
 			filename:    "project-1.0.tar.gz",
 			source:      "https://files.pythonhosted.org/project-1.0.tar.gz",
 			want:        time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC),
@@ -103,7 +106,7 @@ func TestPyPIMetadataCacheObservesJSONAPIAndSimpleAPI(t *testing.T) {
 			name:        "Simple JSON PEP 700 upload time",
 			requestURL:  "https://index.example/simple/project/",
 			contentType: "application/vnd.pypi.simple.v1+json",
-			body:        `{"files":[{"filename":"project-1.0-py3-none-any.whl","url":"../../files/project-1.0-py3-none-any.whl#sha256=abc","upload-time":"2025-02-03T04:05:06.123Z"}]}`,
+			body:        simpleWheelDateFixture,
 			filename:    "project-1.0-py3-none-any.whl",
 			source:      "https://index.example/files/project-1.0-py3-none-any.whl#sha256=abc",
 			want:        time.Date(2025, 2, 3, 4, 5, 6, 123000000, time.UTC),
@@ -112,19 +115,10 @@ func TestPyPIMetadataCacheObservesJSONAPIAndSimpleAPI(t *testing.T) {
 			name:        "version JSON API urls",
 			requestURL:  "https://pypi.org/pypi/project/1.0/json",
 			contentType: "application/json",
-			body:        `{"urls":[{"filename":"project-1.0-py2-none-any.whl","url":"https://files.pythonhosted.org/project-1.0-py2-none-any.whl","upload_time_iso_8601":"2025-02-04T05:06:07Z"}]}`,
+			body:        versionWheelFixture,
 			filename:    "project-1.0-py2-none-any.whl",
 			source:      "https://files.pythonhosted.org/project-1.0-py2-none-any.whl",
 			want:        time.Date(2025, 2, 4, 5, 6, 7, 0, time.UTC),
-		},
-		{
-			name:        "Simple HTML optional upload-time extension",
-			requestURL:  "https://index.example/simple/project/",
-			contentType: "application/vnd.pypi.simple.v1+html; charset=UTF-8",
-			body:        `<html><body><a data-requires-python=">=3.9" data-upload-time="2025-03-04T05:06:07Z" href="../../files/project-1.0.zip?token=x#sha256=abc">project</a></body></html>`,
-			filename:    "project-1.0.zip",
-			source:      "https://index.example/files/project-1.0.zip?token=x#sha256=abc",
-			want:        time.Date(2025, 3, 4, 5, 6, 7, 0, time.UTC),
 		},
 	}
 
@@ -150,17 +144,19 @@ func TestPyPIMetadataCacheObservesJSONAPIAndSimpleAPI(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheUsesProjectContextForLegacySdists(t *testing.T) {
+	legacySdistFixture := readPyPIJSONFixture(t, "metadata/legacy-sdist")
+	legacySdistNameFixture := readPyPIJSONFixture(t, "metadata/legacy-sdist-name")
+	legacyReleaseFixture := readPyPIJSONFixture(t, "metadata/legacy-release")
+	legacyVersionInfoFixture := readPyPIJSONFixture(t, "metadata/legacy-version-info")
 	for _, test := range []struct {
 		name, endpoint, contentType, body, registered string
 	}{
-		{"simple HTML", "https://index.example/simple/project/", "text/html", `<a href="https://cdn.example/project-1.0-1.tar.gz">project</a>`, ""},
-		{"HTML base", "https://index.example/simple/project/", "text/html", `<base href="https://cdn.example/"><a href="project-1.0-1.tar.gz">project</a>`, ""},
-		{"redirected HTML", "https://index.example/opaque", "text/html", `<a href="https://cdn.example/project-1.0-1.tar.gz">project</a>`, "project"},
-		{"redirected project path", "https://index.example/simple/other/", "text/html", `<a href="https://cdn.example/project-1.0-1.tar.gz">project</a>`, "project"},
-		{"simple JSON", "https://index.example/simple/project/", "application/vnd.pypi.simple.v1+json", `{"files":[{"filename":"project-1.0-1.tar.gz","url":"https://cdn.example/project-1.0-1.tar.gz"}]}`, ""},
-		{"JSON project name", "https://index.example/opaque", "application/json", `{"name":"project","files":[{"filename":"project-1.0-1.tar.gz","url":"https://cdn.example/project-1.0-1.tar.gz"}]}`, ""},
-		{"JSON API", "https://pypi.org/pypi/project/json", "application/json", `{"releases":{"1.0-1":[{"filename":"project-1.0-1.tar.gz","url":"https://cdn.example/project-1.0-1.tar.gz"}]}}`, ""},
-		{"JSON info name", "https://index.example/opaque", "application/json", `{"info":{"name":"project"},"urls":[{"filename":"project-1.0-1.tar.gz","url":"https://cdn.example/project-1.0-1.tar.gz"}]}`, ""},
+		{"redirected JSON", "https://index.example/opaque", "application/json", legacySdistFixture, "project"},
+		{"redirected project path", "https://index.example/simple/other/", "application/json", legacySdistFixture, "project"},
+		{"simple JSON", "https://index.example/simple/project/", "application/vnd.pypi.simple.v1+json", legacySdistFixture, ""},
+		{"JSON project name", "https://index.example/opaque", "application/json", legacySdistNameFixture, ""},
+		{"JSON API", "https://pypi.org/pypi/project/json", "application/json", legacyReleaseFixture, ""},
+		{"JSON info name", "https://index.example/opaque", "application/json", legacyVersionInfoFixture, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cache := &MetadataCache{}
@@ -188,13 +184,14 @@ func TestPyPIMetadataCacheUsesProjectContextForLegacySdists(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheRefreshRetainsProjectAcrossRedirect(t *testing.T) {
+	legacySdistFixture := readPyPIJSONFixture(t, "metadata/legacy-sdist")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/simple/project/" {
 			http.Redirect(w, request, "/opaque", http.StatusFound)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html")
-		_, _ = io.WriteString(w, `<base href="https://cdn.example/"><a href="project-1.0-1.tar.gz">project</a>`)
+		w.Header().Set("Content-Type", "application/vnd.pypi.simple.v1+json")
+		_, _ = io.WriteString(w, legacySdistFixture)
 	}))
 	defer server.Close()
 	cache := &MetadataCache{}
@@ -211,10 +208,11 @@ func TestPyPIMetadataCacheRefreshRetainsProjectAcrossRedirect(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheRejectsFilesForAnotherProject(t *testing.T) {
+	otherProjectFixture := readPyPIFixture(t, "metadata/other-project.json.tmpl")
 	for _, filename := range []string{"other-1.0.tar.gz", "other-1.0-py3-none-any.whl"} {
 		cache := &MetadataCache{}
 		endpoint, _ := url.Parse("https://index.example/simple/project/")
-		body := fmt.Sprintf(`{"name":"other","files":[{"filename":%q,"url":"https://cdn.example/opaque"}]}`, filename)
+		body := fmt.Sprintf(otherProjectFixture, filename)
 		if err := cache.Observe(*endpoint, http.Header{"Content-Type": {"application/json"}}, []byte(body)); err != nil {
 			t.Fatal(err)
 		}
@@ -225,63 +223,30 @@ func TestPyPIMetadataCacheRejectsFilesForAnotherProject(t *testing.T) {
 	}
 }
 
-func TestPyPIMetadataCacheHTMLBaseURL(t *testing.T) {
-	const filename = "project-1.0-py3-none-any.whl"
-	for _, test := range []struct {
-		name string
-		html string
-		url  string
-	}{
-		{
-			name: "absolute base",
-			html: `<base href="https://cdn.example/files/"><a href="` + filename + `?token=secret">wheel</a>`,
-			url:  "https://cdn.example/files/" + filename + "?token=secret",
-		},
-		{
-			name: "relative base",
-			html: `<base href="../../files/"><a href="` + filename + `">wheel</a>`,
-			url:  "https://index.example/files/" + filename,
-		},
-		{
-			name: "first base applies to earlier anchors",
-			html: `<a href="` + filename + `">wheel</a><base href="https://cdn.example/files/"><base href="https://ignored.example/">`,
-			url:  "https://cdn.example/files/" + filename,
-		},
-		{
-			name: "base without href does not override later base",
-			html: `<base target="_blank"><base href="//cdn.example/files/"><a href="` + filename + `">wheel</a>`,
-			url:  "https://cdn.example/files/" + filename,
-		},
-		{
-			name: "empty first href uses document URL",
-			html: `<base href=""><base href="https://ignored.example/"><a href="` + filename + `">wheel</a>`,
-			url:  "https://index.example/simple/project/" + filename,
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			endpoint, _ := url.Parse("https://index.example/simple/project/")
-			cache := &MetadataCache{}
-
-			if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"text/html"}}, []byte(test.html)); err != nil {
-				t.Fatal(err)
-			}
-			artifactURL, _ := url.Parse(test.url)
-			artifact, found := cache.ArtifactForURL(artifactURL)
-			if !found || artifact.Name != "project" || artifact.Version != "1.0" || artifact.Filename != filename {
-				t.Fatalf("ArtifactForURL(%q) = %#v, %v; want project@1.0", test.url, artifact, found)
-			}
-			if artifact.Source != canonicalPyPIURL(nil, test.url) {
-				t.Fatalf("source = %q, want redacted base-resolved URL", artifact.Source)
-			}
-		})
+func TestPyPIMetadataCacheIgnoresHTML(t *testing.T) {
+	baseUploadTimeFixture := readPyPIFixture(t, "metadata/base-upload-time.html")
+	for _, contentType := range []string{"text/html", "application/vnd.pypi.simple.v1+html", "application/xhtml+xml"} {
+		endpoint, _ := url.Parse("https://index.example/simple/project/")
+		cache := &MetadataCache{}
+		header := http.Header{"Content-Type": {contentType}, "Content-Encoding": {"gzip"}}
+		// Deliberately invalid compressed bytes must not be decoded or parsed as HTML.
+		body := []byte(baseUploadTimeFixture)
+		if err := cache.Observe(*endpoint, header, body); err != nil {
+			t.Fatal(err)
+		}
+		artifactURL, _ := url.Parse("https://cdn.example/project-1.0.tar.gz")
+		if _, found := cache.ArtifactForURL(artifactURL); found || cache.HasObserved(*endpoint) {
+			t.Fatal("HTML populated JSON metadata state")
+		}
 	}
 }
 
 func TestPyPIMetadataCacheRecognizesOpaqueWheelCoreMetadata(t *testing.T) {
+	opaqueWheelFixture := readPyPIJSONFixture(t, "metadata/opaque-wheel")
 	endpoint, _ := url.Parse("https://index.example/simple/project/")
 	cache := &MetadataCache{}
 
-	if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(`{"files":[{"filename":"project-1.0-py3-none-any.whl","url":"/objects/opaque?id=wheel"}]}`)); err != nil {
+	if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(opaqueWheelFixture)); err != nil {
 		t.Fatal(err)
 	}
 	metadataURL, _ := url.Parse("https://index.example/objects/opaque.metadata?id=wheel")
@@ -294,24 +259,8 @@ func TestPyPIMetadataCacheRecognizesOpaqueWheelCoreMetadata(t *testing.T) {
 	}
 }
 
-func TestPyPIMetadataCacheOrdinaryHTMLHasNoUploadTime(t *testing.T) {
-	endpoint, _ := url.Parse("https://index.example/simple/project/")
-	cache := &MetadataCache{}
-
-	if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+html"}}, []byte(`<a href="/files/project-1.0.tar.gz#sha256=digest">project</a>`)); err != nil {
-		t.Fatal(err)
-	}
-	artifactURL, _ := url.Parse("https://index.example/files/project-1.0.tar.gz")
-	artifact, found := cache.ArtifactForURL(artifactURL)
-	if !found {
-		t.Fatal("ordinary Simple HTML did not retain advertised artifact identity")
-	}
-	if date, found := cache.PublishDate(artifact); found || !date.IsZero() {
-		t.Fatalf("PublishDate() = %v, %v; ordinary HTML must use independent JSON fallback", date, found)
-	}
-}
-
 func TestPyPIMetadataCacheDeduplicatesConcurrentDiscovery(t *testing.T) {
+	emptySimpleFixture := readPyPIJSONFixture(t, "metadata/empty-simple")
 	var requests atomic.Int32
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -324,7 +273,7 @@ func TestPyPIMetadataCacheDeduplicatesConcurrentDiscovery(t *testing.T) {
 			StatusCode: http.StatusOK,
 			Status:     "200 OK",
 			Header:     http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}},
-			Body:       io.NopCloser(strings.NewReader(`{"files":[]}`)),
+			Body:       io.NopCloser(strings.NewReader(emptySimpleFixture)),
 			Request:    request,
 		}, nil
 	})}
@@ -355,7 +304,8 @@ func TestPyPIMetadataCacheDeduplicatesConcurrentDiscovery(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheDecodesGzip(t *testing.T) {
-	body := []byte(`{"files":[{"filename":"project-1.0.tar.gz","url":"../../files/project-1.0.tar.gz","upload-time":"2025-04-05T06:07:08Z"}]}`)
+	simpleSdistDateFixture := readPyPIJSONFixture(t, "metadata/simple-sdist-date")
+	body := []byte(simpleSdistDateFixture)
 	var compressed bytes.Buffer
 	writer := gzip.NewWriter(&compressed)
 	_, _ = writer.Write(body)
@@ -383,6 +333,8 @@ func TestPyPIMetadataCacheDecodesGzip(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheKeepsOpaqueSourcesIndependent(t *testing.T) {
+	primarySourceFixture := readPyPIJSONFixture(t, "metadata/primary-source")
+	extraSourceFixture := readPyPIJSONFixture(t, "metadata/extra-source")
 	cache := &MetadataCache{}
 	for _, metadata := range []struct {
 		endpoint string
@@ -390,11 +342,11 @@ func TestPyPIMetadataCacheKeepsOpaqueSourcesIndependent(t *testing.T) {
 	}{
 		{
 			endpoint: "https://user:secret@primary.example/simple/project/",
-			body:     `{"files":[{"filename":"project-1.0.tar.gz","url":"../../objects/primary?token=secret#sha256=abc","upload-time":"2025-01-01T01:00:00Z"}]}`,
+			body:     primarySourceFixture,
 		},
 		{
 			endpoint: "https://extra.example/simple/project/",
-			body:     `{"files":[{"filename":"project-1.0.tar.gz","url":"../../objects/extra?signature=secret","upload-time":"2025-02-02T02:00:00Z"}]}`,
+			body:     extraSourceFixture,
 		},
 	} {
 		requestURL, _ := url.Parse(metadata.endpoint)
@@ -428,13 +380,15 @@ func TestPyPIMetadataCacheKeepsOpaqueSourcesIndependent(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheDistinguishesOpaqueQueryVariants(t *testing.T) {
+	queryAlphaFixture := readPyPIJSONFixture(t, "metadata/query-alpha")
+	queryBetaFixture := readPyPIJSONFixture(t, "metadata/query-beta")
 	cache := &MetadataCache{}
-	for _, input := range []struct{ project, file string }{
-		{"alpha", `{"filename":"alpha-1.0.tar.gz","url":"/download?id=wheel-a&token=first-secret","upload-time":"2025-09-01T01:00:00Z"}`},
-		{"beta", `{"filename":"beta-2.0.tar.gz","url":"/download?id=wheel-b&token=second-secret","upload-time":"2025-09-02T02:00:00Z"}`},
+	for _, input := range []struct{ project, body string }{
+		{"alpha", queryAlphaFixture},
+		{"beta", queryBetaFixture},
 	} {
 		endpoint, _ := url.Parse("https://index.example/simple/" + input.project + "/")
-		if err := cache.Observe(*endpoint, http.Header{"Content-Type": {"application/vnd.pypi.simple.v1+json"}}, []byte(`{"files":[`+input.file+`]}`)); err != nil {
+		if err := cache.Observe(*endpoint, http.Header{"Content-Type": {"application/vnd.pypi.simple.v1+json"}}, []byte(input.body)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -499,14 +453,17 @@ func TestPyPIMetadataCacheMatchesEquivalentURLEncodings(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheMatchesUniqueUserinfoFreeResource(t *testing.T) {
+	userinfoWheelFixture := readPyPIJSONFixture(t, "metadata/userinfo-wheel")
+	userinfoAlphaFixture := readPyPIJSONFixture(t, "metadata/userinfo-alpha")
+	userinfoBetaFixture := readPyPIJSONFixture(t, "metadata/userinfo-beta")
 	cache := &MetadataCache{}
-	for _, input := range []struct{ project, file string }{
-		{"project", `{"filename":"project-1.0-py3-none-any.whl","url":"https://user:password@cdn.example/project-1.0-py3-none-any.whl?id=wheel&token=secret","upload-time":"2025-09-03T03:00:00Z"}`},
-		{"alpha", `{"filename":"alpha-1.0.tar.gz","url":"https://alpha:secret@cdn.example/shared?id=collision"}`},
-		{"beta", `{"filename":"beta-2.0.tar.gz","url":"https://beta:secret@cdn.example/shared?id=collision"}`},
+	for _, input := range []struct{ project, body string }{
+		{"project", userinfoWheelFixture},
+		{"alpha", userinfoAlphaFixture},
+		{"beta", userinfoBetaFixture},
 	} {
 		endpoint, _ := url.Parse("https://index.example/simple/" + input.project + "/")
-		if err := cache.Observe(*endpoint, http.Header{"Content-Type": {"application/vnd.pypi.simple.v1+json"}}, []byte(`{"files":[`+input.file+`]}`)); err != nil {
+		if err := cache.Observe(*endpoint, http.Header{"Content-Type": {"application/vnd.pypi.simple.v1+json"}}, []byte(input.body)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -530,11 +487,13 @@ func TestPyPIMetadataCacheMatchesUniqueUserinfoFreeResource(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheRetainsArtifactIdentityWithoutValidUploadTime(t *testing.T) {
-	for _, uploadTime := range []string{"", `,"upload-time":"not-a-time"`} {
+	opaqueSdistFixture := readPyPIJSONFixture(t, "metadata/opaque-sdist")
+	invalidUploadTimeFixture := readPyPIJSONFixture(t, "metadata/invalid-upload-time")
+	for _, body := range []string{opaqueSdistFixture, invalidUploadTimeFixture} {
 		endpoint, _ := url.Parse("https://index.example/simple/project/")
 		cache := &MetadataCache{}
 
-		if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(`{"files":[{"filename":"project-1.0.tar.gz","url":"/objects/opaque"`+uploadTime+`}]}`)); err != nil {
+		if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(body)); err != nil {
 			t.Fatal(err)
 		}
 		artifactURL, _ := url.Parse("https://index.example/objects/opaque")
@@ -549,6 +508,9 @@ func TestPyPIMetadataCacheRetainsArtifactIdentityWithoutValidUploadTime(t *testi
 }
 
 func TestPyPIMetadataCachePreservesKnownUploadTime(t *testing.T) {
+	sdistSourceDateFixture := readPyPIFixture(t, "metadata/sdist-source-date.json.tmpl")
+	projectFixture := readPyPIFixture(t, "metadata/project.html.tmpl")
+	invalidUploadTimeFixture := readPyPIFixture(t, "metadata/invalid-upload-time.html.tmpl")
 	for _, credentialed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("credentialed=%t", credentialed), func(t *testing.T) {
 			cache := &MetadataCache{}
@@ -565,11 +527,11 @@ func TestPyPIMetadataCachePreservesKnownUploadTime(t *testing.T) {
 				}
 			}
 			date := time.Date(2025, 5, 6, 7, 8, 9, 123, time.UTC)
-			observe("application/vnd.pypi.simple.v1+json", fmt.Sprintf(`{"files":[{"filename":"project-1.0.tar.gz","url":%q,"upload-time":%q}]}`, source, date.Format(time.RFC3339Nano)))
+			observe("application/vnd.pypi.simple.v1+json", fmt.Sprintf(sdistSourceDateFixture, source, date.Format(time.RFC3339Nano)))
 			wireURL, _ := url.Parse("https://cdn.example/project-1.0.tar.gz?token=one")
 			for _, body := range []string{
-				fmt.Sprintf(`<a href="%s">project</a>`, source),
-				fmt.Sprintf(`<a href="%s" data-upload-time="invalid">project</a>`, source),
+				fmt.Sprintf(projectFixture, source),
+				fmt.Sprintf(invalidUploadTimeFixture, source),
 			} {
 				observe("text/html", body)
 				artifact, found := cache.ArtifactForURL(wireURL)
@@ -581,7 +543,7 @@ func TestPyPIMetadataCachePreservesKnownUploadTime(t *testing.T) {
 				}
 			}
 			newDate := date.Add(time.Hour)
-			observe("application/vnd.pypi.simple.v1+json", fmt.Sprintf(`{"files":[{"filename":"project-1.0.tar.gz","url":%q,"upload-time":%q}]}`, source, newDate.Format(time.RFC3339Nano)))
+			observe("application/vnd.pypi.simple.v1+json", fmt.Sprintf(sdistSourceDateFixture, source, newDate.Format(time.RFC3339Nano)))
 			artifact, _ := cache.ArtifactForURL(wireURL)
 			if got, found := cache.PublishDate(artifact); !found || !got.Equal(newDate) {
 				t.Fatalf("refreshed upload time = %v, %t; want %v, true", got, found, newDate)
@@ -591,6 +553,7 @@ func TestPyPIMetadataCachePreservesKnownUploadTime(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheRejectsConflictingExactIdentities(t *testing.T) {
+	artifactFixedDateFixture := readPyPIFixture(t, "metadata/artifact-fixed-date.json.tmpl")
 	for _, conflict := range []string{"beta-1.0.tar.gz", "alpha-2.0.tar.gz", "alpha-1.0-py3-none-any.whl"} {
 		t.Run(conflict, func(t *testing.T) {
 			cache := &MetadataCache{}
@@ -600,7 +563,7 @@ func TestPyPIMetadataCacheRejectsConflictingExactIdentities(t *testing.T) {
 				project, _, _ := ParseDistributionFilename(filename)
 				endpoint, _ := url.Parse(index + "/simple/" + project + "/")
 
-				if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(fmt.Sprintf(`{"files":[{"filename":%q,"url":%q,"upload-time":"2025-05-06T07:08:09Z"}]}`, filename, artifactURL.String()))); err != nil {
+				if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(fmt.Sprintf(artifactFixedDateFixture, filename, artifactURL.String()))); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -624,13 +587,15 @@ func TestPyPIMetadataCacheRejectsConflictingExactIdentities(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheRejectsExactAliasIdentityConflicts(t *testing.T) {
+	conflictingAlphaFixture := readPyPIJSONFixture(t, "metadata/conflicting-alpha")
+	conflictingBetaFixture := readPyPIJSONFixture(t, "metadata/conflicting-beta")
 	for _, aliasFirst := range []bool{false, true} {
 		t.Run(fmt.Sprintf("aliasFirst=%t", aliasFirst), func(t *testing.T) {
 			cache := &MetadataCache{}
 			endpoint, _ := url.Parse("https://index.example/catalog/")
 			bodies := []string{
-				`{"name":"alpha","files":[{"filename":"alpha-1.0.tar.gz","url":"https://cdn.example/shared?token=one"}]}`,
-				`{"name":"beta","files":[{"filename":"beta-2.0.tar.gz","url":"https://user:password@cdn.example/shared?token=one"}]}`,
+				conflictingAlphaFixture,
+				conflictingBetaFixture,
 			}
 			if aliasFirst {
 				bodies[0], bodies[1] = bodies[1], bodies[0]
@@ -650,6 +615,7 @@ func TestPyPIMetadataCacheRejectsExactAliasIdentityConflicts(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheRefreshesMatchingExactAndAliasDates(t *testing.T) {
+	sdistSourceDateFixture := readPyPIFixture(t, "metadata/sdist-source-date.json.tmpl")
 	cache := &MetadataCache{}
 	endpoint, _ := url.Parse("https://index.example/simple/project/")
 	wireURL, _ := url.Parse("https://cdn.example/project-1.0.tar.gz?token=one")
@@ -670,7 +636,7 @@ func TestPyPIMetadataCacheRefreshesMatchingExactAndAliasDates(t *testing.T) {
 			source.User = url.UserPassword("user", "password")
 		}
 
-		if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(fmt.Sprintf(`{"files":[{"filename":"project-1.0.tar.gz","url":%q,"upload-time":%q}]}`, source.String(), input.uploadTime))); err != nil {
+		if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(fmt.Sprintf(sdistSourceDateFixture, source.String(), input.uploadTime))); err != nil {
 			t.Fatal(err)
 		}
 		artifact, found := cache.ArtifactForURL(wireURL)
@@ -684,6 +650,7 @@ func TestPyPIMetadataCacheRefreshesMatchingExactAndAliasDates(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheExactConflictAlsoInvalidatesAlias(t *testing.T) {
+	artifactFixture := readPyPIFixture(t, "metadata/artifact.json.tmpl")
 	cache := &MetadataCache{}
 	endpoint, _ := url.Parse("https://index.example/simple/project/")
 	credentialed, _ := url.Parse("https://user:password@cdn.example/shared?token=one")
@@ -694,7 +661,7 @@ func TestPyPIMetadataCacheExactConflictAlsoInvalidatesAlias(t *testing.T) {
 		{"alpha-1.0.tar.gz", wireURL.String()},
 	} {
 
-		if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(fmt.Sprintf(`{"files":[{"filename":%q,"url":%q}]}`, input.filename, input.source))); err != nil {
+		if err := cache.Observe(*endpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(fmt.Sprintf(artifactFixture, input.filename, input.source))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -706,6 +673,7 @@ func TestPyPIMetadataCacheExactConflictAlsoInvalidatesAlias(t *testing.T) {
 }
 
 func TestPyPIMetadataCacheIndependentlyRefreshesCustomSimpleEndpoint(t *testing.T) {
+	customEndpointFixture := readPyPIFixture(t, "metadata/custom-endpoint.json.tmpl")
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/api/pypi/repo/simple/project/" {
@@ -717,7 +685,7 @@ func TestPyPIMetadataCacheIndependentlyRefreshesCustomSimpleEndpoint(t *testing.
 			return
 		}
 		w.Header().Set("Content-Type", "application/vnd.pypi.simple.v1+json")
-		_, _ = io.WriteString(w, `{"files":[{"filename":"project-3.0.tar.gz","url":"`+server.URL+`/packages/project-3.0.tar.gz","upload-time":"2025-08-09T10:11:12Z"}]}`)
+		_, _ = io.WriteString(w, fmt.Sprintf(customEndpointFixture, server.URL))
 	}))
 	defer server.Close()
 
@@ -755,6 +723,8 @@ func TestPyPIMetadataRefreshErrorRedactsEndpointCredentials(t *testing.T) {
 }
 
 func TestPyPIMetadataRefreshRedirectCredentialPolicy(t *testing.T) {
+	redirectCrossOriginFixture := readPyPIJSONFixture(t, "metadata/redirect-cross-origin")
+	redirectSameOriginFixture := readPyPIFixture(t, "metadata/redirect-same-origin.json.tmpl")
 	t.Run("cross origin strips credentials and resolves against final URL", func(t *testing.T) {
 		var leaked http.Header
 		var finalReferer string
@@ -762,7 +732,7 @@ func TestPyPIMetadataRefreshRedirectCredentialPolicy(t *testing.T) {
 			leaked = request.Header.Clone()
 			finalReferer = request.Referer()
 			w.Header().Set("Content-Type", "application/vnd.pypi.simple.v1+json")
-			_, _ = io.WriteString(w, `{"files":[{"filename":"project-1.0.tar.gz","url":"objects/opaque?id=artifact-secret","upload-time":"2025-10-01T01:02:03Z"}]}`)
+			_, _ = io.WriteString(w, redirectCrossOriginFixture)
 		}))
 		defer second.Close()
 		first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
@@ -813,7 +783,7 @@ func TestPyPIMetadataRefreshRedirectCredentialPolicy(t *testing.T) {
 					return
 				}
 				w.Header().Set("Content-Type", "application/vnd.pypi.simple.v1+json")
-				_, _ = io.WriteString(w, `{"files":[{"filename":"project-1.0.tar.gz","url":"`+server.URL+`/objects/opaque","upload-time":"2025-10-02T02:03:04Z"}]}`)
+				_, _ = io.WriteString(w, fmt.Sprintf(redirectSameOriginFixture, server.URL))
 			default:
 				http.NotFound(w, request)
 			}
@@ -913,5 +883,71 @@ func TestPyPIMetadataSizeLimitDiagnostics(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPyPIMetadataCacheUsesJSONIdentityAtArtifactEndpoints(t *testing.T) {
+	for _, test := range []struct {
+		fixture     string
+		established bool
+	}{
+		{"metadata/artifact-endpoint-simple", false},
+		{"metadata/artifact-endpoint-release", false},
+		{"metadata/artifact-endpoint-version", false},
+		{"metadata/artifact-endpoint-filenames", false},
+		{"metadata/artifact-endpoint-conflicting-name", true},
+	} {
+		t.Run(test.fixture, func(t *testing.T) {
+			endpoint, _ := url.Parse("https://index.example/simple/decoy-1.0-py3-none-any.whl///")
+			cache := &MetadataCache{}
+			if test.established {
+				cache.RegisterProject(*endpoint, "my-project", nil)
+			}
+			if err := cache.Observe(*endpoint, http.Header{"Content-Type": {"application/json"}}, []byte(readPyPIJSONFixture(t, test.fixture))); err != nil {
+				t.Fatal(err)
+			}
+			target, _ := url.Parse("https://index.example/files/recent?token=one")
+			artifact, found := cache.ArtifactForURL(target)
+			wantDate := time.Date(2025, 6, 7, 8, 9, 10, 0, time.UTC)
+			if date, dated := cache.PublishDate(artifact); !found || artifact.Name != "my-project" || artifact.Version != "1.0" || !dated || date != wantDate {
+				t.Fatalf("artifact=%#v found=%v date=%v; expected JSON identity and exact upload time", artifact, found, date)
+			}
+			if project, _, found := cache.ProjectForURL(endpoint); !found || project != "my-project" {
+				t.Fatalf("metadata project=%q, found=%v; must come from established context or JSON", project, found)
+			}
+			other, _ := url.Parse("https://index.example/files/recent?token=two")
+			if _, found := cache.ArtifactForURL(other); found {
+				t.Fatal("publication evidence leaked into a different advertised URL")
+			}
+		})
+	}
+}
+
+func TestPyPIMetadataCacheRequiresRecognizedJSONStructure(t *testing.T) {
+	for _, fixture := range []string{"metadata/unrelated-json", "metadata/null-collections"} {
+		t.Run(fixture, func(t *testing.T) {
+			endpoint, _ := url.Parse("https://index.example/simple/decoy-1.0-py3-none-any.whl/")
+			cache := &MetadataCache{}
+			if err := cache.Observe(*endpoint, http.Header{"Content-Type": {"application/json"}}, []byte(readPyPIJSONFixture(t, fixture))); err != nil {
+				t.Fatal(err)
+			}
+			if cache.HasObserved(*endpoint) {
+				t.Fatal("unrecognized JSON marked as registry metadata")
+			}
+			if _, _, found := cache.ProjectForURL(endpoint); found {
+				t.Fatal("unrecognized JSON established project context")
+			}
+		})
+	}
+}
+
+func TestPyPIMetadataCacheRequiresAdvertisedArtifactURL(t *testing.T) {
+	endpoint, _ := url.Parse("https://index.example/simple/decoy-1.0-py3-none-any.whl/")
+	cache := &MetadataCache{}
+	if err := cache.Observe(*endpoint, http.Header{"Content-Type": {"application/json"}}, []byte(readPyPIJSONFixture(t, "metadata/missing-artifact-url"))); err != nil {
+		t.Fatal(err)
+	}
+	if artifact, found := cache.ArtifactForURL(endpoint); found {
+		t.Fatalf("missing URL turned the metadata endpoint into an advertised artifact: %#v", artifact)
 	}
 }

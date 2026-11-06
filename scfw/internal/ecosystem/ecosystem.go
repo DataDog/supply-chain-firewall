@@ -8,16 +8,28 @@ package ecosystem
 import (
 	"context"
 	"fmt"
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 	"time"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/common"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 )
 
-type Ecosystem string
+// Ecosystem aliases the shared identifier for callers of registry operations.
+type Ecosystem = common.Ecosystem
 
 const (
-	NPM  Ecosystem = "npm"
-	PYPI Ecosystem = "PyPI"
+	NPM  = common.NPM
+	PYPI = common.PYPI
 )
+
+// NormalizePackageName returns the ecosystem's canonical package name. Names
+// without a registered normalization rule are preserved.
+func NormalizePackageName(packageEcosystem Ecosystem, name string) string {
+	if packageEcosystem == PYPI {
+		return pypi.NormalizeName(name)
+	}
+	return name
+}
 
 // HasRegistrySource reports whether source is a known registry URL in the given
 // ecosystem, dispatching to the ecosystem-specific implementation. An empty source

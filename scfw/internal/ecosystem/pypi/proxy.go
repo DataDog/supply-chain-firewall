@@ -8,8 +8,9 @@ package pypi
 import (
 	"context"
 	"errors"
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 	"net/http"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
 // ProxyHandler observes PyPI registry traffic during one package-manager run.
@@ -26,8 +27,8 @@ type ProxyHandler struct {
 }
 
 // HandleRequest invokes the artifact callback before forwarding upstream.
-// Metadata candidates attach a response hook so their headers can select body
-// inspection; artifact and core-metadata bodies keep streaming.
+// Response hooks inspect JSON metadata and identify opaque downloads from
+// archive metadata. HTML and already-identified artifact bodies keep streaming.
 func (e ProxyHandler) HandleRequest(requestContext context.Context, request proxy.Request) (proxy.ResponseHook, error) {
 	if request.Method != http.MethodGet {
 		return nil, nil
@@ -38,6 +39,16 @@ func (e ProxyHandler) HandleRequest(requestContext context.Context, request prox
 	artifact, advertised := e.Metadata.ArtifactForURL(&request.URL)
 	if !advertised {
 		kind, classified := e.Classifier.ClassifyRequest(request.Method, &request.URL)
+		// Redirect context supplements metadata classification; it cannot
+		// exempt recognizable distributions or their core-metadata sidecars.
+		if project, tentative, registered := e.Metadata.ProjectForURL(&request.URL); registered && kind != RequestArtifact && kind != RequestCoreMetadata {
+			if tentative {
+				e.Metadata.RegisterProjectCandidate(request.URL, project, request.Header)
+			} else {
+				e.Metadata.RegisterProject(request.URL, project, request.Header)
+			}
+			return e.ObserveResponseHeaders, nil
+		}
 		if kind == RequestJSONAPI || kind == RequestSimpleAPI {
 			// Redirect context identifies the requested project more reliably
 			// than a destination path. Capture its own request credentials
@@ -53,7 +64,7 @@ func (e ProxyHandler) HandleRequest(requestContext context.Context, request prox
 			} else {
 				e.Metadata.Register(request.URL, request.Header)
 			}
-			return e.ObserveMetadataHeaders, nil
+			return e.ObserveResponseHeaders, nil
 		}
 		if kind == RequestCoreMetadata {
 			return nil, nil
@@ -69,20 +80,31 @@ func (e ProxyHandler) HandleRequest(requestContext context.Context, request prox
 				artifact, advertised = e.Metadata.ArtifactForURL(&request.URL)
 			}
 			if !advertised {
-				return e.ObserveMetadataHeaders, nil
+				return e.ObserveResponseHeaders, nil
 			}
 		} else {
 			artifact = classified
 		}
 	}
 
-	return nil, e.EvaluateArtifact(requestContext, artifact)
+	if err := e.EvaluateArtifact(requestContext, artifact); err != nil {
+		return nil, err
+	}
+	return e.ObserveMetadataHeaders, nil
 }
 
 // ObserveMetadataHeaders records metadata endpoints and resolves an uncached
 // 304 through an independent request before the package manager can issue a
 // download from metadata held only in its own cache.
 func (e ProxyHandler) ObserveMetadataHeaders(ctx context.Context, response proxy.Response) (*proxy.ResponseBodyHook, error) {
+	if isHTMLMetadataContentType(response.Header) {
+		// Retain only HTTP redirect context, so an HTML index redirected to
+		// an archive-shaped path is still forwarded as metadata.
+		if response.StatusCode >= 300 && response.StatusCode < 400 && response.StatusCode != http.StatusNotModified {
+			e.Metadata.RegisterRedirect(response.Request.URL, response.Header.Get("Location"))
+		}
+		return nil, nil
+	}
 	kind, project, tentative := e.classifyMetadataResponse(response)
 	if kind != RequestJSONAPI && kind != RequestSimpleAPI {
 		return nil, nil
@@ -107,17 +129,34 @@ func (e ProxyHandler) ObserveMetadataHeaders(ctx context.Context, response proxy
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return nil, nil
 	}
+	if response.Header.Get("Content-Type") != "" && !IsMetadataContentType(response.Header) {
+		return nil, nil
+	}
 	return &proxy.ResponseBodyHook{
 		MaxBytes: MaxMetadataBytes,
 		Handle: func(_ context.Context, response proxy.Response) error {
-			return e.Metadata.Observe(response.Request.URL, response.Header, response.Body)
+			if err := e.Metadata.Observe(response.Request.URL, response.Header, response.Body); err != nil {
+				return err
+			}
+			// JSON can establish the project for an evaluated filename-shaped
+			// endpoint. Capture that request's credentials for later refreshes.
+			if project, tentative, found := e.Metadata.ProjectForURL(&response.Request.URL); found && !tentative {
+				e.Metadata.RegisterProject(response.Request.URL, project, response.Request.Header)
+			}
+			return nil
 		},
 	}, nil
 }
 
 func (e ProxyHandler) classifyMetadataResponse(response proxy.Response) (RequestKind, string, bool) {
 	kind, _ := e.Classifier.ClassifyResponse(response.Request.Method, &response.Request.URL, response.Header)
-	if response.Request.Method == http.MethodGet && (kind == RequestUnrelated || kind == RequestSimpleAPI) {
+	// JSON artifact responses have already been promoted to metadata candidates.
+	// Successful binary responses must stream even when this URL supplied JSON
+	// earlier. Bodyless redirects and 304s still use the established context.
+	if kind == RequestArtifact && response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
+		return kind, "", false
+	}
+	if response.Request.Method == http.MethodGet && (kind == RequestUnrelated || kind == RequestSimpleAPI || kind == RequestArtifact) {
 		if project, tentative, found := e.Metadata.ProjectForURL(&response.Request.URL); found {
 			if !tentative || (response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices &&
 				IsMetadataContentType(response.Header)) {
@@ -135,6 +174,11 @@ func (e ProxyHandler) classifyMetadataResponse(response proxy.Response) (Request
 				return RequestSimpleAPI, project, true
 			}
 		}
+	}
+	// A filename-shaped endpoint has already been evaluated as an artifact.
+	// Without established context, its JSON must supply the project identity.
+	if _, _, artifact := ParseDistributionFilename(artifactFilename(response.Request.URL.String())); artifact {
+		return kind, "", false
 	}
 	project, _ := e.Classifier.SimpleProject(&response.Request.URL, response.Header)
 	return kind, project, false

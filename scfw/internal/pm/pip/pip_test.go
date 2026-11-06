@@ -39,6 +39,46 @@ func runFakePip(fixtureDir string, args []string) int {
 		fmt.Println("pip 24.0 from /local/fixture/pip (python 3.12)")
 		return 0
 	}
+	if len(args) > 0 && args[0] == "debug" {
+		if marker := os.Getenv("SCFW_TEST_PIP_DEBUG_COUNT"); marker != "" {
+			file, err := os.OpenFile(marker, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+			if err != nil {
+				return 1
+			}
+			_, _ = fmt.Fprintln(file, "debug")
+			_ = file.Close()
+		}
+		mode := os.Getenv("SCFW_TEST_PIP_DEBUG_MODE")
+		if mode == "timeout" {
+			time.Sleep(time.Minute)
+			return 0
+		}
+		output, err := os.ReadFile(filepath.Join(fixtureDir, "interpreter", "debug-valid.txt.tmpl"))
+		if err != nil {
+			return 1
+		}
+		text := string(output)
+		python := os.Getenv("SCFW_TEST_PIP_PYTHON")
+		switch mode {
+		case "missing":
+			for _, line := range strings.SplitAfter(text, "\n") {
+				if strings.Contains(line, "{{PYTHON}}") {
+					text = strings.ReplaceAll(text, line, "")
+				}
+			}
+		case "relative":
+			python = "relative/python"
+		case "duplicate":
+			text += strings.ReplaceAll(text, "{{PYTHON}}", "/another/python")
+		}
+		text = strings.ReplaceAll(text, "{{PYTHON}}", python)
+		if mode == "failure" {
+			fmt.Fprint(os.Stderr, text)
+			return 1
+		}
+		fmt.Print(text)
+		return 0
+	}
 	if slices.Contains(args, "missing==1.0") || slices.Contains(args, "--non-existent-option") {
 		fmt.Fprintln(os.Stderr, "no matching distribution")
 		return 1

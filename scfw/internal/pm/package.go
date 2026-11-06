@@ -9,29 +9,29 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/common"
 )
 
 // Package is used as a Set element, so fields must compare by value; PublishDate is
 // time.Time for this reason, even though *time.Time would be the more natural choice.
 // A zero-valued PublishDate means the package's publication date is unknown.
 type Package struct {
-	Ecosystem   ecosystem.Ecosystem `json:"ecosystem"`
-	Name        string              `json:"package_name"`
-	Version     string              `json:"package_version"`
-	Source      string              `json:"package_source,omitempty"`
-	PublishDate time.Time           `json:"publish_date"`
+	Ecosystem   common.Ecosystem `json:"ecosystem"`
+	Name        string           `json:"package_name"`
+	Version     string           `json:"package_version"`
+	Source      string           `json:"package_source,omitempty"`
+	PublishDate time.Time        `json:"publish_date"`
 }
 
 // MarshalJSON omits PublishDate entirely when it is the zero value, since
 // encoding/json's "omitempty" does not detect zero-valued structs.
 func (p Package) MarshalJSON() ([]byte, error) {
 	type aliasPackage struct {
-		Ecosystem   ecosystem.Ecosystem `json:"ecosystem"`
-		Name        string              `json:"package_name"`
-		Version     string              `json:"package_version"`
-		Source      string              `json:"package_source,omitempty"`
-		PublishDate *time.Time          `json:"publish_date,omitempty"`
+		Ecosystem   common.Ecosystem `json:"ecosystem"`
+		Name        string           `json:"package_name"`
+		Version     string           `json:"package_version"`
+		Source      string           `json:"package_source,omitempty"`
+		PublishDate *time.Time       `json:"publish_date,omitempty"`
 	}
 
 	a := aliasPackage{

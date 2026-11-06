@@ -8,19 +8,14 @@ package cli
 import (
 	"context"
 	"fmt"
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
-	"golang.org/x/net/http/httpproxy"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
 	"regexp"
 	"syscall"
-	"time"
 )
 
 // proxyEnabledVar is the feature flag that routes `scfw run` through the
@@ -39,51 +34,42 @@ func runThroughProxy(
 	ctx context.Context,
 	runner pm.ProxyRunner,
 	command []string,
-	controller ecosystemProxyController,
+	configure proxyHookConfigurer,
 ) (commandErr, setupErr error) {
 	// SIGINT already cancels ctx (see main). Also treat SIGTERM as cancellation
 	// here, rather than letting it end the process before the proxy is cleaned up.
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM)
 	defer stop()
 
-	upstream, err := runner.UpstreamProxy(command)
+	var options proxy.Options
+	var err error
+	if provider, ok := runner.(pm.ProxyOptionsProvider); ok {
+		options, err = provider.ProxyOptions(command)
+	} else {
+		options.Upstream, err = runner.UpstreamProxy(command)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("resolve upstream proxy: %w", err)
 	}
-	options := proxy.Options{Upstream: upstream}
-	if controller != nil {
-		options = controller(ctx, upstream)
-		options.Upstream = upstream
-	}
-
-	server, err := proxy.Start(ctx, options)
-	if err != nil {
-		return nil, err
-	}
-	// Deferred so the proxy is also stopped if the command panics.
-	defer func() {
-		if err := server.Close(); err != nil {
-			slog.Warn("failed to stop package manager proxy cleanly", "error", err)
+	if configure != nil {
+		client := newPublicationHTTPClient(options)
+		defer client.CloseIdleConnections()
+		hooks, err := configure(ctx, client)
+		if err != nil {
+			return nil, err
 		}
-	}()
+		options.RequestHooks = append(options.RequestHooks, hooks...)
+	}
 
-	slog.Debug("running package manager command through proxy")
-	return runner.RunCommandThroughProxy(ctx, command, server.ClientConfig()), nil
+	return proxy.Run(ctx, options, command, runner)
 }
 
-// ecosystemProxyController is the narrow CLI integration boundary between a concrete
-// package-manager ProxyRunner and ecosystem-specific proxy behavior. Generic
-// ProxyRunners pass nil; future Python adapter wiring can opt into PyPI without
-// moving registry parsing or policy orchestration into the adapter.
-type ecosystemProxyController func(context.Context, httpproxy.Config) proxy.Options
+// proxyHookConfigurer constructs invocation-scoped ecosystem hooks after the
+// lifecycle context and registry transport have been established.
+type proxyHookConfigurer func(context.Context, *http.Client) ([]proxy.RequestHook, error)
 
-func newPublicationHTTPClient(upstream httpproxy.Config) *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	proxyFunc := upstream.ProxyFunc()
-	transport.Proxy = func(request *http.Request) (*url.URL, error) {
-		return proxyFunc(request.URL)
-	}
-	return &http.Client{Transport: transport}
+func newPublicationHTTPClient(options proxy.Options) *http.Client {
+	return &http.Client{Transport: proxy.NewTransport(options)}
 }
 
 // redactCommandArguments returns a reporting/logging copy of a command with
@@ -110,50 +96,4 @@ func redactCommandURL(value string) string {
 	parsed.ForceQuery = false
 	parsed.Fragment = ""
 	return parsed.String()
-}
-
-func newPyPIProxyController(packageEvaluator *proxyPackageEvaluator) ecosystemProxyController {
-	controller, err := newPyPIProxyControllerWithOptions(packageEvaluator, pypi.RequestClassifierOptions{})
-	if err != nil {
-		panic(err)
-	}
-	return controller
-}
-
-// newPyPIProxyControllerWithOptions is the future Python-adapter integration
-// surface for arbitrary index bases and direct artifact URLs. Existing package
-// managers are deliberately not wired to this controller in this change.
-func newPyPIProxyControllerWithOptions(
-	packageEvaluator *proxyPackageEvaluator,
-	classifierOptions pypi.RequestClassifierOptions,
-) (ecosystemProxyController, error) {
-	classifier, err := pypi.NewRequestClassifier(classifierOptions)
-	if err != nil {
-		return nil, err
-	}
-	packageEvaluator.classifier = classifier
-	return func(runContext context.Context, upstream httpproxy.Config) proxy.Options {
-		packageEvaluator.runContext = runContext
-		client := newPublicationHTTPClient(upstream)
-		packageEvaluator.metadataClient = client
-		packageEvaluator.resolveDate = func(ctx context.Context, packageEcosystem ecosystem.Ecosystem, name, version, source string) (time.Time, error) {
-			if packageEcosystem != ecosystem.PYPI {
-				return time.Time{}, fmt.Errorf("unsupported proxy ecosystem: %s", packageEcosystem)
-			}
-			return pypi.ResolvePublishDateWithClient(ctx, client, name, version, source)
-		}
-		return proxy.Options{
-			RequestHooks: []proxy.RequestHook{packageEvaluator.pypiHandler().HandleRequest},
-		}
-	}, nil
-}
-
-func (e *proxyPackageEvaluator) pypiHandler() pypi.ProxyHandler {
-	return pypi.ProxyHandler{
-		RunContext:       e.runContext,
-		Client:           e.metadataClient,
-		Metadata:         &e.metadata,
-		Classifier:       e.classifier,
-		EvaluateArtifact: e.evaluateArtifactRequest,
-	}
 }

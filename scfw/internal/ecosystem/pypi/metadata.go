@@ -25,18 +25,16 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
-	"golang.org/x/net/html"
 )
 
-// MaxMetadataBytes bounds both encoded and decoded metadata retained from
-// an index response. Callers must handle oversized or unsupported responses
-// before exposing uninspected metadata to the package manager.
+// MaxMetadataBytes bounds encoded and decoded JSON metadata retained from an
+// index response. HTML responses bypass body inspection and its size limit.
 const MaxMetadataBytes = 8 << 20
 
 var errPyPIMetadataTooLarge = fmt.Errorf("PyPI metadata exceeds %d bytes", MaxMetadataBytes)
 
 // MetadataCache stores exact per-distribution upload times observed in
-// PyPI JSON API and Simple API responses during one package-manager run.
+// PyPI JSON API and JSON Simple API responses during one package-manager run.
 type MetadataCache struct {
 	mutex     sync.RWMutex
 	records   map[string]pyPIMetadataRecord
@@ -95,12 +93,17 @@ func (cache *MetadataCache) ProjectForURL(requestURL *url.URL) (project string, 
 	return endpoint.project, endpoint.tentative, found
 }
 
-// IsMetadataContentType recognizes JSON/HTML representations within a known
+// IsMetadataContentType recognizes JSON representations within a known
 // or tentative metadata context. It does not identify an arbitrary URL as PyPI.
 func IsMetadataContentType(header http.Header) bool {
 	mediaType, _, _ := mime.ParseMediaType(header.Get("Content-Type"))
-	return mediaType == "application/json" || strings.HasSuffix(mediaType, "+json") ||
-		mediaType == "text/html" || strings.HasSuffix(mediaType, "+html")
+	return mediaType == "application/json" || strings.HasSuffix(mediaType, "+json")
+}
+
+// HTML metadata is forwarded without buffering or parsing, including vendor HTML.
+func isHTMLMetadataContentType(header http.Header) bool {
+	mediaType, _, _ := mime.ParseMediaType(header.Get("Content-Type"))
+	return mediaType == "text/html" || mediaType == "application/xhtml+xml" || strings.HasSuffix(mediaType, "+html")
 }
 
 // RegisterRedirect carries a known Simple project's context to its redirect
@@ -242,9 +245,15 @@ func (cache *MetadataCache) Discover(
 	return discovery.err
 }
 
-// Observe parses a complete metadata response supplied by the proxy or an
-// independent refresh. The caller owns reading and buffering the encoded body.
+// Observe parses a complete JSON metadata response supplied by the proxy or an
+// independent refresh. HTML is ignored before any decoding or size checks.
 func (cache *MetadataCache) Observe(requestURL url.URL, header http.Header, encoded []byte) error {
+	if isHTMLMetadataContentType(header) {
+		return nil
+	}
+	if header.Get("Content-Type") != "" && !IsMetadataContentType(header) {
+		return nil
+	}
 	if len(encoded) > MaxMetadataBytes {
 		logPyPIMetadataLimit(requestURL)
 		return errPyPIMetadataTooLarge
@@ -256,23 +265,24 @@ func (cache *MetadataCache) Observe(requestURL url.URL, header http.Header, enco
 		}
 		return err
 	}
-	project := cache.metadataProject(&requestURL)
-	mediaType, _, _ := mime.ParseMediaType(header.Get("Content-Type"))
-	var parseErr error
-	if strings.HasSuffix(mediaType, "+json") || mediaType == "application/json" || (mediaType == "" && firstNonSpace(body) == '{') {
-		parseErr = cache.observeJSON(body, &requestURL, project)
-	} else if mediaType == "text/html" || strings.HasSuffix(mediaType, "+html") || mediaType == "" {
-		parseErr = cache.observeHTML(body, &requestURL, project)
-	} else {
-		return fmt.Errorf("unsupported PyPI metadata content type %q", header.Get("Content-Type"))
+	if header.Get("Content-Type") == "" && firstNonSpace(body) != '{' {
+		return nil
 	}
-	if parseErr != nil {
-		return parseErr
+	project, recognized, err := cache.observeJSON(body, &requestURL, cache.metadataProject(&requestURL))
+	if err != nil {
+		return err
+	}
+	if !recognized {
+		return nil
 	}
 	// A redirected endpoint can have a path naming a different project. Do
 	// not replace the original request's context with a guess from that path.
 	if _, _, found := cache.ProjectForURL(&requestURL); !found {
-		cache.registerEndpoint(requestURL, nil)
+		if _, _, artifact := ParseDistributionFilename(artifactFilename(requestURL.String())); artifact && project != "" {
+			cache.RegisterProject(requestURL, project, nil)
+		} else {
+			cache.registerEndpoint(requestURL, nil)
+		}
 	}
 	cache.markObserved(requestURL)
 	return nil
@@ -282,16 +292,19 @@ func logPyPIMetadataLimit(requestURL url.URL) {
 	slog.Warn("PyPI metadata exceeds size limit", "url", canonicalPyPIURL(nil, requestURL.String()), "limit_bytes", MaxMetadataBytes)
 }
 
-// Resolve project context before HTML base elements change link resolution.
+// Resolve project context from the original endpoint before parsing JSON.
 func (cache *MetadataCache) metadataProject(requestURL *url.URL) string {
 	if project, _, found := cache.ProjectForURL(requestURL); found {
 		return project
+	}
+	if _, _, artifact := ParseDistributionFilename(artifactFilename(requestURL.String())); artifact {
+		return ""
 	}
 	if project, found := SimpleProject(requestURL); found {
 		return project
 	}
 	segments := strings.Split(strings.Trim(path.Clean(requestURL.Path), "/"), "/")
-	if strings.EqualFold(requestURL.Hostname(), "pypi.org") && (len(segments) == 3 || len(segments) == 4) &&
+	if strings.EqualFold(requestURL.Hostname(), registryHost) && (len(segments) == 3 || len(segments) == 4) &&
 		segments[0] == "pypi" && segments[len(segments)-1] == "json" && pyPIProjectName.MatchString(segments[1]) {
 		return NormalizeName(segments[1])
 	}
@@ -350,7 +363,7 @@ func firstNonSpace(body []byte) byte {
 	return trimmed[0]
 }
 
-func (cache *MetadataCache) observeJSON(body []byte, base *url.URL, project string) error {
+func (cache *MetadataCache) observeJSON(body []byte, base *url.URL, project string) (string, bool, error) {
 	var metadata struct {
 		Name string `json:"name"`
 		Info struct {
@@ -373,7 +386,12 @@ func (cache *MetadataCache) observeJSON(body []byte, base *url.URL, project stri
 		} `json:"files"`
 	}
 	if err := json.Unmarshal(body, &metadata); err != nil {
-		return fmt.Errorf("parse PyPI metadata JSON: %w", err)
+		return "", false, fmt.Errorf("parse PyPI metadata JSON: %w", err)
+	}
+	// A JSON content type is only a candidate: arbitrary JSON documents must
+	// not establish registry context or count as successfully observed metadata.
+	if metadata.Files == nil && metadata.URLs == nil && metadata.Releases == nil {
+		return "", false, nil
 	}
 	if project == "" {
 		if pyPIProjectName.MatchString(metadata.Name) {
@@ -382,13 +400,26 @@ func (cache *MetadataCache) observeJSON(body []byte, base *url.URL, project stri
 			project = NormalizeName(metadata.Info.Name)
 		}
 	}
+	var inferredProject string
+	multipleProjects := false
+	store := func(filename, reference, date string) {
+		name := cache.store(base, filename, reference, date, project)
+		if name == "" {
+			return
+		}
+		if inferredProject == "" {
+			inferredProject = name
+		} else if inferredProject != name {
+			multipleProjects = true
+		}
+	}
 	for _, releases := range metadata.Releases {
 		for _, release := range releases {
 			filename := release.Filename
 			if filename == "" {
 				filename = artifactFilename(release.URL)
 			}
-			cache.store(base, filename, release.URL, release.UploadTimeISO8601, project)
+			store(filename, release.URL, release.UploadTimeISO8601)
 		}
 	}
 	for _, release := range metadata.URLs {
@@ -396,81 +427,32 @@ func (cache *MetadataCache) observeJSON(body []byte, base *url.URL, project stri
 		if filename == "" {
 			filename = artifactFilename(release.URL)
 		}
-		cache.store(base, filename, release.URL, release.UploadTimeISO8601, project)
+		store(filename, release.URL, release.UploadTimeISO8601)
 	}
 	for _, file := range metadata.Files {
 		filename := file.Filename
 		if filename == "" {
 			filename = artifactFilename(canonicalPyPIURL(base, file.URL))
 		}
-		cache.store(base, filename, file.URL, file.UploadTime, project)
+		store(filename, file.URL, file.UploadTime)
 	}
-	return nil
+	if project == "" && !multipleProjects {
+		project = inferredProject
+	}
+	return project, true, nil
 }
 
-func (cache *MetadataCache) observeHTML(body []byte, base *url.URL, project string) error {
-	base = pyPIHTMLBaseURL(body, base)
-	tokenizer := html.NewTokenizer(bytes.NewReader(body))
-	for {
-		switch tokenizer.Next() {
-		case html.ErrorToken:
-			if err := tokenizer.Err(); err != nil && err != io.EOF {
-				return fmt.Errorf("parse PyPI Simple HTML: %w", err)
-			}
-			return nil
-		case html.StartTagToken, html.SelfClosingTagToken:
-			token := tokenizer.Token()
-			if !strings.EqualFold(token.Data, "a") {
-				continue
-			}
-			var href, uploadTime string
-			for _, attribute := range token.Attr {
-				switch strings.ToLower(attribute.Key) {
-				case "href":
-					href = attribute.Val
-				case "data-upload-time":
-					// This is a nonstandard compatibility extension. Standard
-					// Simple HTML has no upload date and falls back to JSON.
-					uploadTime = attribute.Val
-				}
-			}
-			cache.store(base, artifactFilename(canonicalPyPIURL(base, href)), href, uploadTime, project)
-		}
+func (cache *MetadataCache) store(base *url.URL, filename, reference, uploadTime, project string) string {
+	// Dates belong to exact advertised URLs. A missing URL must not resolve
+	// against base and turn the metadata endpoint itself into a distribution.
+	if strings.TrimSpace(reference) == "" {
+		return ""
 	}
-}
-
-// pyPIHTMLBaseURL finds the first base element with an href, as installers do
-// when resolving Simple HTML links. Scan the whole document before processing
-// anchors so that a base element also applies to links preceding it.
-func pyPIHTMLBaseURL(body []byte, fallback *url.URL) *url.URL {
-	tokenizer := html.NewTokenizer(bytes.NewReader(body))
-	for {
-		switch tokenizer.Next() {
-		case html.ErrorToken:
-			return fallback
-		case html.StartTagToken, html.SelfClosingTagToken:
-			token := tokenizer.Token()
-			if token.Data != "base" {
-				continue
-			}
-			for _, attribute := range token.Attr {
-				if attribute.Key == "href" {
-					if resolved := resolvePyPIURL(fallback, attribute.Val); resolved != nil {
-						return resolved
-					}
-					return fallback
-				}
-			}
-		}
-	}
-}
-
-func (cache *MetadataCache) store(base *url.URL, filename, reference, uploadTime, project string) {
 	name, version, ok := parsePyPIDistributionFilename(filename, project)
 	source := canonicalPyPIURL(base, reference)
 	requestKey := pyPIURLRequestKey(base, reference)
 	if !ok || source == "" || requestKey == "" {
-		return
+		return ""
 	}
 	var date time.Time
 	if uploadTime != "" {
@@ -495,10 +477,11 @@ func (cache *MetadataCache) store(base *url.URL, filename, reference, uploadTime
 		aliasKey := pyPIURLRequestKey(nil, resolved.String())
 		if !stored {
 			cache.markAmbiguous(aliasKey)
-			return
+			return ""
 		}
 		cache.storeAlias(aliasKey, record)
 	}
+	return name
 }
 
 func (cache *MetadataCache) storeAlias(key string, record pyPIMetadataRecord) {
@@ -554,6 +537,9 @@ func samePyPIArtifactIdentity(first, second Artifact) bool {
 }
 
 func (cache *MetadataCache) registerEndpoint(requestURL url.URL, requestHeader http.Header) {
+	if _, _, artifact := ParseDistributionFilename(artifactFilename(requestURL.String())); artifact {
+		return
+	}
 	project, ok := SimpleProject(&requestURL)
 	if !ok {
 		return
@@ -617,7 +603,7 @@ func (cache *MetadataCache) Refresh(ctx context.Context, client *http.Client, re
 	if refreshHeader != nil {
 		request.Header = refreshHeader
 	}
-	request.Header.Set("Accept", "application/vnd.pypi.simple.v1+json, application/vnd.pypi.simple.v1+html;q=0.9, text/html;q=0.8")
+	request.Header.Set("Accept", "application/vnd.pypi.simple.v1+json, application/json;q=0.9")
 	refreshClient := metadataRefreshClient(client, &requestURL)
 	response, err := refreshClient.Do(request)
 	if err != nil {
@@ -631,6 +617,12 @@ func (cache *MetadataCache) Refresh(ctx context.Context, client *http.Client, re
 	defer response.Body.Close() //nolint:errcheck
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("refresh PyPI metadata: unexpected status %s", response.Status)
+	}
+	if isHTMLMetadataContentType(response.Header) {
+		return nil
+	}
+	if response.Header.Get("Content-Type") != "" && !IsMetadataContentType(response.Header) {
+		return nil
 	}
 	if endpoint.tentative && !IsMetadataContentType(response.Header) {
 		// A cached archive can also return 304 at a Simple-shaped URL. Its
@@ -653,7 +645,9 @@ func (cache *MetadataCache) Refresh(ctx context.Context, client *http.Client, re
 	if err := cache.Observe(*responseURL, response.Header, body); err != nil {
 		return fmt.Errorf("observe PyPI metadata refresh: %w", err)
 	}
-	cache.markObserved(requestURL)
+	if cache.HasObserved(*responseURL) {
+		cache.markObserved(requestURL)
+	}
 	return nil
 }
 
@@ -684,11 +678,13 @@ func (cache *MetadataCache) ResolvePublishDate(ctx context.Context, client *http
 	return time.Time{}, errors.Join(refreshErrors...)
 }
 
+// refreshRequestHeaders keeps representation selection and origin credentials
+// while removing conditional, range, and proxy connection state for a full GET.
 func refreshRequestHeaders(header http.Header) http.Header {
 	captured := make(http.Header)
 	for name, values := range header {
 		switch http.CanonicalHeaderKey(name) {
-		case "Accept", "Accept-Encoding", "Connection", "If-Match", "If-Modified-Since", "If-None-Match", "If-Unmodified-Since",
+		case "Connection", "If-Match", "If-Modified-Since", "If-None-Match", "If-Range", "If-Unmodified-Since",
 			"Keep-Alive", "Proxy-Authorization", "Proxy-Connection", "Range", "Te", "Trailer", "Transfer-Encoding", "Upgrade":
 			continue
 		}

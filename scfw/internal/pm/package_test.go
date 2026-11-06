@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/common"
 )
 
 func TestPackageMarshalJSON(t *testing.T) {
@@ -22,7 +22,7 @@ func TestPackageMarshalJSON(t *testing.T) {
 		{
 			name: "zero PublishDate is omitted",
 			pkg: Package{
-				Ecosystem: ecosystem.PYPI,
+				Ecosystem: common.PYPI,
 				Name:      "six",
 				Version:   "1.16.0",
 				Source:    "https://example.com",
@@ -32,7 +32,7 @@ func TestPackageMarshalJSON(t *testing.T) {
 		{
 			name: "empty Source is omitted",
 			pkg: Package{
-				Ecosystem: ecosystem.NPM,
+				Ecosystem: common.NPM,
 				Name:      "lodash",
 				Version:   "4.17.21",
 			},
@@ -41,7 +41,7 @@ func TestPackageMarshalJSON(t *testing.T) {
 		{
 			name: "non-zero PublishDate is included",
 			pkg: Package{
-				Ecosystem:   ecosystem.PYPI,
+				Ecosystem:   common.PYPI,
 				Name:        "six",
 				Version:     "1.16.0",
 				PublishDate: time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC),
@@ -51,7 +51,7 @@ func TestPackageMarshalJSON(t *testing.T) {
 		{
 			name: "Source and PublishDate both included",
 			pkg: Package{
-				Ecosystem:   ecosystem.PYPI,
+				Ecosystem:   common.PYPI,
 				Name:        "six",
 				Version:     "1.16.0",
 				Source:      "https://example.com",

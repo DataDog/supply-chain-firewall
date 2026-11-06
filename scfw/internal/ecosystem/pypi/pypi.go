@@ -22,9 +22,16 @@ import (
 	"time"
 )
 
-// pyPIRegistryDomains are the URL domains associated with the PyPI registry, ported from
-// ecosystem.py's ECOSYSTEM.registry_domains in the Python reference.
-var pyPIRegistryDomains = []string{"pypi.org", "files.pythonhosted.org", "pypi.python.org"}
+const (
+	registryHost = "pypi.org"
+	registryURL  = "https://" + registryHost
+
+	// DefaultIndexURL is pip's public Simple API index.
+	DefaultIndexURL = registryURL + "/simple"
+)
+
+// pyPIRegistryDomains are the URL domains associated with the PyPI registry.
+var pyPIRegistryDomains = []string{registryHost, "files.pythonhosted.org", "pypi.python.org"}
 
 // RequestKind describes the role of an HTTP request in the PyPI protocols.
 // Metadata requests never need policy evaluation; artifact requests do.
@@ -335,10 +342,9 @@ func ClassifyRequest(method string, requestURL *url.URL) (RequestKind, Artifact)
 	return defaultPyPIRequestClassifier.ClassifyRequest(method, requestURL)
 }
 
-// ClassifyRequest recognizes PyPI metadata and distribution requests. A
-// parseable archive is immediately trusted only on a supported registry host
-// or at an explicitly configured direct URL. Configured custom indexes require
-// exact advertisement through metadata discovery before evaluation.
+// ClassifyRequest recognizes distribution filenames directly, including private
+// hosts. HTML index advertisements are not needed to identify a download.
+// JSON metadata can additionally identify opaque distribution URLs.
 func (classifier *RequestClassifier) ClassifyRequest(method string, requestURL *url.URL) (RequestKind, Artifact) {
 	if requestURL == nil || (requestURL.Scheme != "http" && requestURL.Scheme != "https") {
 		return RequestUnrelated, Artifact{}
@@ -347,42 +353,25 @@ func (classifier *RequestClassifier) ClassifyRequest(method string, requestURL *
 	host := strings.ToLower(requestURL.Hostname())
 	_, configuredProject := classifier.configuredSimpleProject(requestURL)
 	_, knownSimpleProject := SimpleProject(requestURL)
-	_, directArtifact := classifier.directArtifactURLs[directPyPIURLKey(requestURL)]
-	directCoreMetadata := false
-	if strings.HasSuffix(strings.ToLower(requestURL.Path), ".whl.metadata") {
-		wheelURL := *requestURL
-		wheelURL.Path = wheelURL.Path[:len(wheelURL.Path)-len(".metadata")]
-		if strings.HasSuffix(strings.ToLower(wheelURL.RawPath), ".metadata") {
-			wheelURL.RawPath = wheelURL.RawPath[:len(wheelURL.RawPath)-len(".metadata")]
-		}
-		_, directCoreMetadata = classifier.directArtifactURLs[directPyPIURLKey(&wheelURL)]
-	}
-	artifactContext := slices.Contains(pyPIRegistryDomains, host) || directArtifact || directCoreMetadata
 	// Artifact parsing takes precedence over metadata path recognition: custom
 	// indexes sometimes serve distributions beneath their Simple API base.
 	if method == http.MethodGet {
 		filename := path.Base(requestURL.EscapedPath())
 		if strings.HasSuffix(strings.ToLower(filename), ".whl.metadata") {
 			wheelFilename := filename[:len(filename)-len(".metadata")]
-			if _, _, ok := ParseDistributionFilename(wheelFilename); ok && artifactContext {
+			if _, _, ok := ParseDistributionFilename(wheelFilename); ok {
 				return RequestCoreMetadata, Artifact{}
 			}
 		}
 		name, version, ok := ParseDistributionFilename(filename)
-		if ok && artifactContext {
+		if ok {
 			return RequestArtifact, Artifact{
 				Name: name, Version: version, Filename: artifactFilename(requestURL.String()),
 				Source: canonicalPyPIURL(nil, requestURL.String()), RequestKey: pyPIURLRequestKey(nil, requestURL.String()),
 			}
 		}
-		if ok {
-			// A custom index may serve archives directly under its Simple
-			// base. Require exact advertisement through metadata discovery
-			// before interpreting this ambiguous path as a project listing.
-			return RequestUnrelated, Artifact{}
-		}
 	}
-	if host == "pypi.org" && strings.HasPrefix(cleanPath, "/pypi/") && strings.HasSuffix(cleanPath, "/json") {
+	if host == registryHost && strings.HasPrefix(cleanPath, "/pypi/") && strings.HasSuffix(cleanPath, "/json") {
 		return RequestJSONAPI, Artifact{}
 	}
 	if knownSimpleProject || configuredProject || cleanPath == "/simple" {
@@ -392,10 +381,14 @@ func (classifier *RequestClassifier) ClassifyRequest(method string, requestURL *
 }
 
 // ClassifyResponse recognizes Simple API protocol evidence that is only known
-// after receiving a response. Vendor media types are safe evidence; generic
-// application/json and text/html alone are intentionally insufficient.
+// after receiving a response. Evaluated distributions can also return JSON
+// metadata; the body observer validates its structure before caching evidence.
+// Unrelated endpoints still require known paths or PyPI protocol media types.
 func (classifier *RequestClassifier) ClassifyResponse(method string, requestURL *url.URL, header http.Header) (RequestKind, Artifact) {
 	kind, artifact := classifier.ClassifyRequest(method, requestURL)
+	if kind == RequestArtifact && IsMetadataContentType(header) {
+		return RequestSimpleAPI, Artifact{}
+	}
 	if kind != RequestUnrelated || method != http.MethodGet || requestURL == nil {
 		return kind, artifact
 	}
@@ -455,9 +448,8 @@ func (classifier *RequestClassifier) configuredSimpleProject(requestURL *url.URL
 }
 
 // MetadataDiscovery returns a filename-derived project hint and configured
-// Simple endpoints that can prove whether the exact URL is a distribution.
-// It deliberately does not return an artifact: the filename is never policy
-// evidence unless metadata subsequently advertises the exact request URL.
+// Simple endpoints for resolving an ambiguous URL through JSON metadata.
+// Ordinary distribution filenames are classified directly by ClassifyRequest.
 func (classifier *RequestClassifier) MetadataDiscovery(requestURL *url.URL) (string, []url.URL, bool) {
 	if classifier == nil || requestURL == nil || len(classifier.simpleIndexes) == 0 ||
 		(requestURL.Scheme != "http" && requestURL.Scheme != "https") {
@@ -487,15 +479,6 @@ func simpleProjectFromLastPathSegment(requestURL *url.URL) (string, bool) {
 		return "", false
 	}
 	return NormalizeName(segment), true
-}
-
-func directPyPIURLKey(value *url.URL) string {
-	if value == nil {
-		return ""
-	}
-	withoutCredentials := *value
-	withoutCredentials.User = nil
-	return pyPIURLRequestKey(nil, withoutCredentials.String())
 }
 
 // SimpleProject recognizes supported project-level Simple API paths while
@@ -631,7 +614,7 @@ func resolvePyPIPublishDateWithClient(ctx context.Context, client *http.Client, 
 		return time.Time{}, nil
 	}
 
-	url := fmt.Sprintf("https://pypi.org/pypi/%s/json", name)
+	url := fmt.Sprintf(registryURL+"/pypi/%s/json", name)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to build PyPI request: %w", err)

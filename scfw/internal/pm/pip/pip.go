@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
@@ -63,6 +64,7 @@ type Pip struct {
 	executable         string
 	version            pm.Version
 	versionErr         error
+	resolveInterpreter func() (string, error)
 	resolvePublishDate func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error)
 }
 
@@ -88,7 +90,12 @@ func NewPip(ctx context.Context, name, executable string) (Pip, error) {
 	// actually need the version, not every use of this pip executable.
 	version, versionErr := resolvePipVersion(ctx, executable)
 
-	return Pip{executable: executable, version: version, versionErr: versionErr}, nil
+	return Pip{
+		executable: executable, version: version, versionErr: versionErr,
+		resolveInterpreter: sync.OnceValues(func() (string, error) {
+			return discoverPipInterpreter(executable)
+		}),
+	}, nil
 }
 
 func (pip Pip) checkVersion() error {

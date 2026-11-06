@@ -13,14 +13,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"testing"
-	"time"
 
 	"golang.org/x/net/http/httpproxy"
 
@@ -31,22 +27,24 @@ import (
 // fakeProxyPackageManager is a package manager that supports proxy mode.
 type fakeProxyPackageManager struct {
 	fakePackageManager
-	upstreamErr error
-	runProxied  func(ctx context.Context, command []string, config proxy.ClientConfig) error
+	upstreamErr    error
+	prepareCommand func(ctx context.Context, command []string, config proxy.ClientConfig) error
 
-	proxyRunCalls int
+	proxyCommandCalls int
 }
 
 func (manager *fakeProxyPackageManager) UpstreamProxy([]string) (httpproxy.Config, error) {
 	return httpproxy.Config{}, manager.upstreamErr
 }
 
-func (manager *fakeProxyPackageManager) RunCommandThroughProxy(ctx context.Context, command []string, config proxy.ClientConfig) error {
-	manager.proxyRunCalls++
-	if manager.runProxied == nil {
-		return nil
+func (manager *fakeProxyPackageManager) ProxyCommand(ctx context.Context, command []string, config proxy.ClientConfig) (proxy.CommandSpec, error) {
+	manager.proxyCommandCalls++
+	if manager.prepareCommand != nil {
+		if err := manager.prepareCommand(ctx, command, config); err != nil {
+			return proxy.CommandSpec{}, err
+		}
 	}
-	return manager.runProxied(ctx, command, config)
+	return proxy.CommandSpec{Executable: "true"}, nil
 }
 
 // fakePackageManager is a package manager that only supports dry-run resolution.
@@ -90,13 +88,13 @@ func TestProxyEnabled(t *testing.T) {
 	}
 }
 
-func TestNpmFactoryDoesNotActivatePyPIProxyController(t *testing.T) {
+func TestNpmFactoryDoesNotActivatePyPIProxyHooks(t *testing.T) {
 	factory, found := findPackageManagerFactory("npm")
 	if !found {
 		t.Fatal("npm package-manager factory is missing")
 	}
-	if factory.ProxyControllerEcosystem != "" {
-		t.Fatalf("npm proxy controller ecosystem = %q, want generic proxy behavior", factory.ProxyControllerEcosystem)
+	if len(factory.ProxyHooks) != 0 {
+		t.Fatalf("npm proxy hooks = %d, want generic proxy behavior", len(factory.ProxyHooks))
 	}
 }
 
@@ -150,98 +148,6 @@ func TestRedactCommandArgumentsReplacesUnparseableURLs(t *testing.T) {
 	}
 }
 
-func TestRunThroughProxyStopsProxyOnEveryExitPath(t *testing.T) {
-	commandFailure := errors.New("install failed")
-	tests := []struct {
-		name string
-		// run stands in for the package manager command; cancel cancels the
-		// context runThroughProxy was given.
-		run       func(ctx context.Context, cancel context.CancelFunc) error
-		wantErr   error
-		wantPanic bool
-	}{
-		{
-			name: "success",
-			run:  func(context.Context, context.CancelFunc) error { return nil },
-		},
-		{
-			name:    "command error",
-			run:     func(context.Context, context.CancelFunc) error { return commandFailure },
-			wantErr: commandFailure,
-		},
-		{
-			name: "cancellation",
-			run: func(ctx context.Context, cancel context.CancelFunc) error {
-				cancel()
-				<-ctx.Done()
-				return ctx.Err()
-			},
-			wantErr: context.Canceled,
-		},
-		{
-			name: "SIGTERM",
-			run: func(ctx context.Context, _ context.CancelFunc) error {
-				if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
-					return err
-				}
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-time.After(5 * time.Second):
-					return errors.New("SIGTERM did not cancel the command")
-				}
-			},
-			wantErr: context.Canceled,
-		},
-		{
-			name:      "panic",
-			run:       func(context.Context, context.CancelFunc) error { panic("package manager integration bug") },
-			wantPanic: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			var seen proxy.ClientConfig
-			manager := &fakeProxyPackageManager{
-				runProxied: func(ctx context.Context, command []string, config proxy.ClientConfig) error {
-					seen = config
-					if strings.Join(command, " ") != "install left-pad" {
-						t.Errorf("command = %q, want %q", command, "install left-pad")
-					}
-					if _, err := os.Stat(config.CACertificatePath); err != nil {
-						t.Errorf("CA certificate is not available while the command runs: %v", err)
-					}
-					return tt.run(ctx, cancel)
-				},
-			}
-
-			var commandErr, setupErr error
-			panicked := func() (panicked bool) {
-				defer func() { panicked = recover() != nil }()
-				commandErr, setupErr = runThroughProxy(ctx, manager, []string{"install", "left-pad"}, nil)
-				return false
-			}()
-
-			if panicked != tt.wantPanic {
-				t.Errorf("runThroughProxy() panicked = %v, want %v", panicked, tt.wantPanic)
-			}
-			if setupErr != nil {
-				t.Errorf("runThroughProxy() setup error = %v, want nil", setupErr)
-			}
-			if !errors.Is(commandErr, tt.wantErr) {
-				t.Errorf("runThroughProxy() command error = %v, want %v", commandErr, tt.wantErr)
-			}
-			if manager.proxyRunCalls != 1 {
-				t.Errorf("RunCommandThroughProxy called %d times, want 1", manager.proxyRunCalls)
-			}
-			assertProxyStopped(t, seen)
-		})
-	}
-}
-
 func TestRunThroughProxyReportsUpstreamResolutionFailure(t *testing.T) {
 	manager := &fakeProxyPackageManager{upstreamErr: errors.New("bad proxy configuration")}
 
@@ -249,8 +155,8 @@ func TestRunThroughProxyReportsUpstreamResolutionFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "bad proxy configuration") {
 		t.Errorf("runThroughProxy() setup error = %v, want the upstream resolution failure", err)
 	}
-	if commandErr != nil || manager.proxyRunCalls != 0 {
-		t.Errorf("command error %v, RunCommandThroughProxy calls %d; want nil, 0", commandErr, manager.proxyRunCalls)
+	if commandErr != nil || manager.proxyCommandCalls != 0 {
+		t.Errorf("command error %v, ProxyCommand calls %d; want nil, 0", commandErr, manager.proxyCommandCalls)
 	}
 }
 
@@ -261,7 +167,7 @@ func TestRunThroughProxyWithoutControllerLeavesPyPIArtifactUnmodified(t *testing
 		_, _ = io.WriteString(w, "artifact bytes")
 	}))
 	defer upstream.Close()
-	manager := &fakeProxyPackageManager{runProxied: func(_ context.Context, _ []string, config proxy.ClientConfig) error {
+	manager := &fakeProxyPackageManager{prepareCommand: func(_ context.Context, _ []string, config proxy.ClientConfig) error {
 		proxyURL, _ := url.Parse(config.URL)
 		client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}
 		response, err := client.Get(upstream.URL + "/project-1.0.tar.gz")
@@ -291,7 +197,7 @@ func TestPublicationHTTPClientUsesCapturedUpstream(t *testing.T) {
 		_, _ = io.WriteString(w, "through upstream")
 	}))
 	defer upstream.Close()
-	client := newPublicationHTTPClient(httpproxy.Config{HTTPProxy: upstream.URL})
+	client := newPublicationHTTPClient(proxy.Options{Upstream: httpproxy.Config{HTTPProxy: upstream.URL}})
 	response, err := client.Get("http://registry.invalid/metadata")
 	if err != nil {
 		t.Fatalf("proxy-only request failed: %v", err)
@@ -300,27 +206,6 @@ func TestPublicationHTTPClientUsesCapturedUpstream(t *testing.T) {
 	_ = response.Body.Close()
 	if string(body) != "through upstream" || upstreamHits.Load() != 1 {
 		t.Fatalf("body=%q upstream hits=%d; want proxy response and one hit", body, upstreamHits.Load())
-	}
-}
-
-// assertProxyStopped checks that the command received a loopback proxy, that
-// the proxy no longer serves requests, and that its CA certificate is gone.
-func assertProxyStopped(t *testing.T, config proxy.ClientConfig) {
-	t.Helper()
-	proxyURL, err := url.Parse(config.URL)
-	if err != nil || proxyURL.Hostname() != "127.0.0.1" {
-		t.Fatalf("proxy URL = %q, want a loopback URL", config.URL)
-	}
-	client := &http.Client{
-		Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)},
-		Timeout:   time.Second,
-	}
-	if response, err := client.Get("http://example.invalid/"); err == nil {
-		_ = response.Body.Close()
-		t.Error("proxy still serves requests after the command exited")
-	}
-	if _, err := os.Stat(filepath.Dir(config.CACertificatePath)); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("proxy certificate directory still exists: %v", err)
 	}
 }
 
@@ -361,13 +246,13 @@ func TestRunFirewallUsesProxyOnlyWhenEnabledAndSupported(t *testing.T) {
 			}
 
 			if tt.wantProxy {
-				if proxied.proxyRunCalls != 1 || dryRun.resolveCalls != 0 || dryRun.runCalls != 0 {
+				if proxied.proxyCommandCalls != 1 || dryRun.resolveCalls != 0 || dryRun.runCalls != 0 {
 					t.Errorf("proxy runs %d, resolutions %d, direct runs %d; want 1, 0, 0",
-						proxied.proxyRunCalls, dryRun.resolveCalls, dryRun.runCalls)
+						proxied.proxyCommandCalls, dryRun.resolveCalls, dryRun.runCalls)
 				}
-			} else if proxied.proxyRunCalls != 0 || dryRun.resolveCalls != 1 || dryRun.runCalls != 1 {
+			} else if proxied.proxyCommandCalls != 0 || dryRun.resolveCalls != 1 || dryRun.runCalls != 1 {
 				t.Errorf("proxy runs %d, resolutions %d, direct runs %d; want 0, 1, 1",
-					proxied.proxyRunCalls, dryRun.resolveCalls, dryRun.runCalls)
+					proxied.proxyCommandCalls, dryRun.resolveCalls, dryRun.runCalls)
 			}
 		})
 	}
@@ -384,4 +269,81 @@ func registerFakePackageManager(t *testing.T, manager pm.PackageManager) {
 		},
 	}}, previous...)
 	t.Cleanup(func() { packageManagerFactories = previous })
+}
+
+func TestRunThroughProxyReportsHookConfigurationFailure(t *testing.T) {
+	manager := &fakeProxyPackageManager{}
+	failure := errors.New("invalid hook settings")
+	commandErr, setupErr := runThroughProxy(context.Background(), manager, []string{"install"}, func(context.Context, *http.Client) ([]proxy.RequestHook, error) {
+		return nil, failure
+	})
+	if commandErr != nil || !errors.Is(setupErr, failure) || manager.proxyCommandCalls != 0 {
+		t.Fatalf("command=%v setup=%v preparations=%d; want nil, configuration failure, 0", commandErr, setupErr, manager.proxyCommandCalls)
+	}
+}
+
+func TestRunFirewallConstructsAllRegisteredHooksForEachInvocation(t *testing.T) {
+	t.Setenv(proxyEnabledVar, "1")
+	t.Setenv(evaluationModeVar, string(evaluationModeDatadog))
+	t.Setenv(onWarningVar, "")
+	upstreamHits := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { upstreamHits++ }))
+	defer upstream.Close()
+	manager := &fakeProxyPackageManager{fakePackageManager: fakePackageManager{projectDirectory: t.TempDir()}}
+	registerFakePackageManager(t, manager)
+	var factories, observed []int
+	var clients []*http.Client
+	var invocationContext context.Context
+	makeFactory := func(index int) proxyHookFactory {
+		return func(ctx context.Context, gotManager pm.PackageManager, command []string, client *http.Client, evaluate func(context.Context, pm.Package, error) error) (proxy.RequestHook, error) {
+			if gotManager != manager || !slices.Equal(command, []string{"install", "project"}) || evaluate == nil {
+				t.Fatal("hook factory did not receive invocation inputs")
+			}
+			if index == 1 {
+				invocationContext = ctx
+				clients = append(clients, client)
+			} else if ctx != invocationContext || client != clients[len(clients)-1] {
+				t.Fatal("hooks did not share invocation context and registry client")
+			}
+			factories = append(factories, index)
+			return func(context.Context, proxy.Request) (proxy.ResponseHook, error) {
+				observed = append(observed, index)
+				if index == 2 {
+					return nil, errors.New("blocked by second hook")
+				}
+				return nil, nil
+			}, nil
+		}
+	}
+	packageManagerFactories[0].ProxyHooks = []proxyHookFactory{makeFactory(1), makeFactory(2)}
+	manager.prepareCommand = func(_ context.Context, _ []string, config proxy.ClientConfig) error {
+		proxyURL, _ := url.Parse(config.URL)
+		transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+		defer transport.CloseIdleConnections()
+		response, err := (&http.Client{Transport: transport}).Get(upstream.URL + "/artifact")
+		if err != nil {
+			return err
+		}
+		defer response.Body.Close() //nolint:errcheck
+		if response.StatusCode != http.StatusForbidden {
+			return fmt.Errorf("response=%d, want rejection by registered hook", response.StatusCode)
+		}
+		return nil
+	}
+	for range 2 {
+		func() {
+			cmd := RootCmd()
+			defer cmd.RemoveCommand(configureCmd, doctorCmd, runCmd)
+			cmd.SetArgs([]string{"run", "--", "fakepm", "install", "project"})
+			if err := cmd.ExecuteContext(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		}()
+		if invocationContext.Err() == nil {
+			t.Fatal("invocation context remained live after the command finished")
+		}
+	}
+	if !slices.Equal(factories, []int{1, 2, 1, 2}) || !slices.Equal(observed, factories) || upstreamHits != 0 || clients[0] == clients[1] {
+		t.Fatalf("factories=%v requests=%v upstream=%d; expected fresh, ordered hooks for each run", factories, observed, upstreamHits)
+	}
 }

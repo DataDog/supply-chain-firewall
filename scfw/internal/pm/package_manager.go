@@ -28,10 +28,15 @@ type ProxyRunner interface {
 	// UpstreamProxy returns the proxy configuration the package manager would
 	// use for command without SCFW, so that the SCFW proxy can chain to it.
 	UpstreamProxy(command []string) (httpproxy.Config, error)
-	// RunCommandThroughProxy runs command configured to route its traffic
-	// through the given proxy, without changing any persistent package manager
-	// configuration.
-	RunCommandThroughProxy(ctx context.Context, command []string, config proxy.ClientConfig) error
+	// The core defines the command contract; adapters implement it without
+	// making the core depend on this package.
+	proxy.CommandConfigurer
+}
+
+// ProxyOptionsProvider extends upstream discovery with invocation-scoped TLS
+// trust for package managers whose registry trust differs from the system roots.
+type ProxyOptionsProvider interface {
+	ProxyOptions(command []string) (proxy.Options, error)
 }
 
 // ErrUnsupportedVersion indicates that a package manager's version is too

@@ -162,6 +162,8 @@ Enable uv interception with `SCFW_PROXY_ENABLED=1`, then use `scfw run -- uv pip
 
 The uv adapter preserves existing HTTP/HTTPS upstream proxies, index authentication, and custom TLS settings. Overrides apply only to the child process. If `uv.toml` configures a proxy, SCFW uses a temporary merged configuration that is removed with the invocation CA. Existing configuration files are untouched; uv itself continues managing its cache, virtual environments, and project files.
 
+For upstream TLS, SCFW uses Go's system trust store by default. Explicit custom CA sources (`--cert`, `SSL_CERT_FILE`, `SSL_CERT_DIR`) replace defaults, even when a configured file/directory is missing or empty; empty environment-variable values are ignored. Native-TLS flags and settings are passed to uv unchanged. SCFW does not replicate uv's bundled root store. String and structured `allow-insecure-host` entries retain their host, scheme, and port scope. Git receives a separate temporary proxy and CA so its certificate settings do not widen uv registry trust.
+
 Supply Chain Firewall may only know how to inspect some of the "installish" subcommands for its supported package managers. These are shown in the above table. Any other subcommands are always allowed to run.
 
 Note that `scfw` will refuse to run inspected subcommands on an unsupported version of a supported package manager. In order to get the most out of `scfw`, please verify that you are running a supported version of your package manager and upgrade accordingly before using this tool.

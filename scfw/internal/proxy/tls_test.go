@@ -94,3 +94,41 @@ func TestTLSConfigErrorsDoNotExposePaths(t *testing.T) {
 		}
 	}
 }
+
+func TestTLSConfigUsesExplicitRootsWithoutChangingTheCallerPool(t *testing.T) {
+	registry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	defer registry.Close()
+	base := x509.NewCertPool()
+	certificate := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(certificate, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: registry.Certificate().Raw}), 0600); err != nil {
+		t.Fatal(err)
+	}
+	config, err := NewTLSConfig(TLSConfigOptions{RootCAs: base, CABundlePaths: []string{certificate}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(base.Subjects()) != 0 {
+		t.Fatal("the caller's root pool was mutated")
+	}
+	for _, test := range []struct {
+		name    string
+		roots   *x509.CertPool
+		allowed bool
+	}{{"selected CA", config.RootCAs, true}, {"empty pool", base, false}} {
+		t.Run(test.name, func(t *testing.T) {
+			tlsConfig, err := NewTLSConfig(TLSConfigOptions{RootCAs: test.roots})
+			if err != nil {
+				t.Fatal(err)
+			}
+			transport := &http.Transport{TLSClientConfig: tlsConfig}
+			defer transport.CloseIdleConnections()
+			response, err := (&http.Client{Transport: transport}).Get(registry.URL)
+			if response != nil {
+				_ = response.Body.Close()
+			}
+			if (err == nil) != test.allowed {
+				t.Fatalf("TLS error=%v, allowed=%v", err, test.allowed)
+			}
+		})
+	}
+}

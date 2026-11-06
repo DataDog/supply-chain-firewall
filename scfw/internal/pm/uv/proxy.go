@@ -120,25 +120,21 @@ func (uv UV) ProxyOptions(command []string) (proxy.Options, error) {
 	if err != nil {
 		return proxy.Options{}, err
 	}
-	options := proxy.Options{Upstream: upstream, ProxyForURL: proxyForURL(upstream)}
-	certificate := parseOptions(command).value("cert", "SSL_CERT_FILE")
-	paths := []string{certificate, os.Getenv("GIT_SSL_CAINFO")}
-	paths = append(paths, filepath.SplitList(os.Getenv("SSL_CERT_DIR"))...)
-	working, err := workingDirectory(command)
+	trust, err := trustURL(settings, parseOptions(command))
 	if err != nil {
 		return proxy.Options{}, err
 	}
-	for i, path := range paths {
-		if path != "" {
-			paths[i] = resolvePath(working, path)
-		}
+	options := proxy.Options{Upstream: upstream, ProxyForURL: proxyForURL(upstream), TrustURL: trust}
+	options.UpstreamTLS, err = uvTLSConfig(command)
+	if err != nil {
+		return proxy.Options{}, err
 	}
-	clientCertificate := os.Getenv("SSL_CLIENT_CERT")
-	if clientCertificate != "" {
-		clientCertificate = resolvePath(working, clientCertificate)
-	}
-	options.UpstreamTLS, err = proxy.NewTLSConfig(proxy.TLSConfigOptions{CABundlePaths: paths, ClientCertificatePath: clientCertificate})
-	return options, err
+	// Git is a separate TLS client: its CA settings must not widen uv's roots.
+	options.AdditionalClients = map[string]proxy.Options{"git": {
+		Upstream: upstream, ProxyForURL: options.ProxyForURL, UpstreamTLS: gitTLSConfig(),
+	}}
+
+	return options, nil
 }
 
 func proxyForURL(config httpproxy.Config) func(*url.URL) (*url.URL, error) {
@@ -187,13 +183,17 @@ func (uv UV) ProxyCommand(_ context.Context, command []string, config proxy.Clie
 			}
 		}
 	}
+	gitConfig := config
+	if git, exists := config.AdditionalClients["git"]; exists {
+		gitConfig = git
+	}
 	environment := map[string]string{
 		"HTTP_PROXY": config.URL, "http_proxy": config.URL,
 		"HTTPS_PROXY": config.URL, "https_proxy": config.URL,
 		"ALL_PROXY": config.URL, "all_proxy": config.URL,
 		"NO_PROXY": "", "no_proxy": "",
 		"SSL_CERT_FILE":  config.CACertificatePath,
-		"GIT_SSL_CAINFO": config.CACertificatePath,
+		"GIT_SSL_CAINFO": gitConfig.CACertificatePath,
 	}
 	settings, err := uv.settings(command)
 	if err != nil {
@@ -235,6 +235,6 @@ func (uv UV) ProxyCommand(_ context.Context, command []string, config proxy.Clie
 	}
 	environment["GIT_CONFIG_COUNT"] = strconv.Itoa(count + 1)
 	environment["GIT_CONFIG_KEY_"+strconv.Itoa(count)] = "http.proxy"
-	environment["GIT_CONFIG_VALUE_"+strconv.Itoa(count)] = config.URL
+	environment["GIT_CONFIG_VALUE_"+strconv.Itoa(count)] = gitConfig.URL
 	return proxy.CommandSpec{Executable: uv.executable, Args: args, EnvOverrides: environment}, nil
 }

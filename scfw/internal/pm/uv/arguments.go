@@ -83,6 +83,9 @@ func (o *commandOptions) readOption(args []string, index int) int {
 	if strings.HasPrefix(argument, "-i") {
 		name, value, equal = "index-url", argument[2:], len(argument) > 2
 	}
+	if name == "trusted-host" {
+		name = "allow-insecure-host"
+	}
 	switch name {
 	case "help", "version", "-h", "-V":
 		o.help = true

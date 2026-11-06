@@ -42,7 +42,7 @@ func uvTestEnvironment(t *testing.T) string {
 	if err != nil {
 		t.Skip("uv required for integration tests")
 	}
-	for _, key := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy", "UV_CONFIG_FILE", "UV_NO_CONFIG", "UV_PROJECT", "UV_WORKING_DIR", "UV_INDEX", "UV_INDEX_URL", "UV_EXTRA_INDEX_URL", "UV_DEFAULT_INDEX", "UV_FIND_LINKS", "UV_INSECURE_HOST", "SSL_CERT_FILE", "SSL_CERT_DIR", "SSL_CLIENT_CERT", "GIT_SSL_CAINFO", "VIRTUAL_ENV", "CONDA_PREFIX"} {
+	for _, key := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy", "UV_CONFIG_FILE", "UV_NO_CONFIG", "UV_PROJECT", "UV_WORKING_DIR", "UV_INDEX", "UV_INDEX_URL", "UV_EXTRA_INDEX_URL", "UV_DEFAULT_INDEX", "UV_FIND_LINKS", "UV_INSECURE_HOST", "UV_NATIVE_TLS", "UV_SYSTEM_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "SSL_CLIENT_CERT", "GIT_SSL_CAINFO", "GIT_SSL_CAPATH", "VIRTUAL_ENV", "CONDA_PREFIX"} {
 		t.Setenv(key, "")
 		if err := os.Unsetenv(key); err != nil {
 			t.Fatal(err)
@@ -73,6 +73,9 @@ func (runner *capturingUVRunner) ProxyCommand(ctx context.Context, command []str
 
 func assertUVProxyCleaned(t *testing.T, runner *capturingUVRunner) {
 	t.Helper()
+	for _, config := range runner.config.AdditionalClients {
+		assertUVProxyCleaned(t, &capturingUVRunner{config: config})
+	}
 	for _, path := range []string{runner.config.CACertificatePath, runner.invocationConfig} {
 		if path != "" {
 			if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -407,7 +410,7 @@ func TestUVFailuresAndSignalsCleanUp(t *testing.T) {
 				Proxy, CA string
 				GitCA     string `json:"git_ca"`
 			}
-			if err := json.Unmarshal(content, &state); err != nil || !slices.Equal(state.Args, args) || state.Proxy != runner.config.URL || state.CA != runner.config.CACertificatePath || state.GitCA != state.CA {
+			if err := json.Unmarshal(content, &state); err != nil || !slices.Equal(state.Args, args) || state.Proxy != runner.config.URL || state.CA != runner.config.CACertificatePath || state.GitCA != runner.config.AdditionalClients["git"].CACertificatePath {
 				t.Fatalf("child arguments/environment: %+v, %v", state, err)
 			}
 			assertUVProxyCleaned(t, runner)
@@ -470,6 +473,9 @@ func TestUVGitDependencyUsesInvocationTrust(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("GIT_SSL_CAINFO", certificate)
+	// uv's registry trust must neither replace nor widen Git's independent CA.
+	_, unrelatedCA, _ := uvTLSIdentity(t)
+	t.Setenv("SSL_CERT_FILE", writeUVTLSFile(t, unrelatedCA))
 	// Even a configured Git proxy must be redirected through SCFW for this
 	// child; the parent configuration remains intact.
 	t.Setenv("GIT_CONFIG_COUNT", "1")

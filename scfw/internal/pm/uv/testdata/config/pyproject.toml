@@ -1,0 +1,10 @@
+[project]
+name = "fixture"
+version = "1.0"
+[tool.uv]
+native-tls = true
+index-url = "https://project.example/custom/"
+package = false
+constraint-dependencies = ["project<2"]
+[tool.uv.workspace]
+members = ["members/*"]

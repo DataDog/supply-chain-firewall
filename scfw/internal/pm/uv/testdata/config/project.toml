@@ -1,0 +1,5 @@
+http-proxy = "http://project:secret@project-proxy.example:8080"
+no-proxy = ["internal.example"]
+find-links = ["./project-wheels"]
+[pip]
+index-url = "https://pip.example/custom/"

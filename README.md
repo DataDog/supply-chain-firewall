@@ -156,6 +156,11 @@ When inspecting package manager commands, Datadog credentials and the Datadog si
 | npm               | >= 7.0                | `install` (including aliases)      |
 | pip               | >= 22.2               | `install`                          |
 | poetry            | >= 1.7                | `add`, `install`, `sync`, `update` |
+| uv (proxy mode)   | 0.13.4 tested         | `pip install`, `pip sync`, `pip compile`, `add`, `remove`, `sync`, `lock`, `run`, `export`, `tree`, `build`, `tool install`, `tool upgrade`, `tool run` |
+
+Enable uv interception with `SCFW_PROXY_ENABLED=1`, then use `scfw run -- uv pip install requests` or configure `--alias-uv`. Unrelated uv commands pass through unchanged. Proxy mode evaluates distributions requested over HTTP(S); packages already available in uv's cache, local paths, and Git source contents are not evaluated. Git HTTPS traffic still traverses the proxy and trusts its invocation CA.
+
+The uv adapter preserves existing HTTP/HTTPS upstream proxies, index authentication, and custom TLS settings. Overrides apply only to the child process. If `uv.toml` configures a proxy, SCFW uses a temporary merged configuration that is removed with the invocation CA. Existing configuration files are untouched; uv itself continues managing its cache, virtual environments, and project files.
 
 Supply Chain Firewall may only know how to inspect some of the "installish" subcommands for its supported package managers. These are shown in the above table. Any other subcommands are always allowed to run.
 

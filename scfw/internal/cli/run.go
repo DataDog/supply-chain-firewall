@@ -131,6 +131,11 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scfw run: %w", err)
 	}
 
+	if selector, ok := packageManager.(pm.ProxyCommandSelector); ok && !selector.ProxyCommandSupported(cmdArgs[1:]) {
+		exitOnCommandError(packageManager.RunCommand(cmd.Context(), cmdArgs[1:]))
+		return nil
+	}
+
 	if proxyEnabled() {
 		if runner, ok := packageManager.(pm.ProxyRunner); ok {
 			var configure proxyHookConfigurer

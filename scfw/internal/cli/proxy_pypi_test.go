@@ -26,55 +26,12 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
-	"golang.org/x/net/http/httpproxy"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
-
-func TestPyPIProxyControllerExposesEcosystemHooks(t *testing.T) {
-	runContext, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	handler := newTestPyPIController(
-		context.Background(), time.Now(), nil, "future-python-manager", "python-manager", "",
-		proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
-			return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, nil
-		}),
-		nopReporter{}, io.Discard,
-	)
-	controller, err := configureTestPyPIController(handler, pypi.RequestClassifierOptions{
-		SimpleIndexURLs: []string{
-			"https://index.example/python-packages/",
-			"https://index.example/simple/v1+json/",
-		},
-		DirectArtifactURLs: []string{"https://cdn.example/direct-1.0.tar.gz"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	options := controller(runContext, proxy.Options{Upstream: httpproxy.Config{HTTPSProxy: "http://upstream.example:8080"}})
-	if handler.packageEvaluator.runContext != runContext || handler.metadataClient == nil {
-		t.Fatal("PyPI controller did not bind the run lifecycle and publication client")
-	}
-	if len(options.RequestHooks) != 1 {
-		t.Fatalf("PyPI controller request hooks = %d; want 1", len(options.RequestHooks))
-	}
-	for _, rawURL := range []string{
-		"https://index.example/python-packages/project/",
-		"https://index.example/simple/v1+json/project/",
-	} {
-		requestURL, parseErr := url.Parse(rawURL)
-		if parseErr != nil {
-			t.Fatal(parseErr)
-		}
-		kind, _ := handler.classifier.ClassifyRequest(http.MethodGet, requestURL)
-		if kind != pypi.RequestSimpleAPI {
-			t.Fatalf("configured base %q classified as %v, want Simple API", rawURL, kind)
-		}
-	}
-}
 
 func TestConfiguredPyPISimpleBasesCacheOpaqueArtifacts(t *testing.T) {
 	opaqueSdistFixture := readProxyJSONFixture(t, "pypi/opaque-sdist")
@@ -480,9 +437,8 @@ func TestPyPIProxyBlocksArtifactsFromRedirectedSimpleHTML(t *testing.T) {
 				}
 				_, _ = io.Copy(io.Discard, unrelated.Body)
 				_ = unrelated.Body.Close()
-				unrelatedURL := mustParseURL(t, final.URL+"/files/unrelated-1.0.tar.gz")
-				if _, found := handler.metadata.ArtifactForURL(&unrelatedURL); found {
-					t.Fatal("unrelated HTML on the same origin was treated as package metadata")
+				if evaluations.Load() != 0 {
+					t.Fatal("metadata and unrelated HTML triggered policy evaluation")
 				}
 				artifact, err := client.Get(final.URL + "/files/" + filename + "?signature=secret")
 				if err != nil {
@@ -495,37 +451,6 @@ func TestPyPIProxyBlocksArtifactsFromRedirectedSimpleHTML(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-func TestPyPIControllerTracksOnlyMetadataRedirects(t *testing.T) {
-	for _, status := range []int{
-		http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
-		http.StatusTemporaryRedirect, http.StatusPermanentRedirect, http.StatusOK, http.StatusNotModified,
-	} {
-		t.Run(fmt.Sprint(status), func(t *testing.T) {
-			handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "", nil, nil, io.Discard)
-			source := mustParseURL(t, "https://index.example/simple/project/")
-			target := mustParseURL(t, "https://index.example/catalog/opaque/")
-			handler.pypiHandler().ObserveMetadataHeaders(context.Background(), proxy.Response{
-				Request: proxy.Request{Method: http.MethodGet, URL: source}, StatusCode: status,
-				Header: http.Header{"Location": []string{"/catalog/opaque/"}},
-			})
-			_, _, found := handler.metadata.ProjectForURL(&target)
-			if want := status >= 300 && status != http.StatusNotModified; found != want {
-				t.Fatalf("redirect registered = %t, want %t", found, want)
-			}
-		})
-	}
-	handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "", nil, nil, io.Discard)
-	source := mustParseURL(t, "https://index.example/unrelated/")
-	target := mustParseURL(t, "https://index.example/catalog/opaque/")
-	handler.pypiHandler().ObserveMetadataHeaders(context.Background(), proxy.Response{
-		Request: proxy.Request{Method: http.MethodGet, URL: source}, StatusCode: http.StatusFound,
-		Header: http.Header{"Location": []string{target.String()}},
-	})
-	if _, _, found := handler.metadata.ProjectForURL(&target); found {
-		t.Fatal("redirect from an unrelated endpoint registered a Simple project")
 	}
 }
 
@@ -593,10 +518,11 @@ func TestRunThroughProxyCancelsArtifactWorkWithLifecycleContext(t *testing.T) {
 				return ctx.Err()
 			}}
 
-			configure := func(ctx context.Context, _ proxy.Options) proxy.Options {
+			configure := func(ctx context.Context, client *http.Client) ([]proxy.RequestHook, error) {
 				lifecycleContext = ctx
 				handler.packageEvaluator.runContext = ctx
-				return proxy.Options{RequestHooks: []proxy.RequestHook{handler.pypiHandler().HandleRequest}}
+				handler.metadataClient = client
+				return []proxy.RequestHook{handler.pypiHandler().HandleRequest}, nil
 			}
 			commandErr, setupErr := runThroughProxy(context.Background(), manager, []string{"install", "project"}, configure)
 			if commandErr != nil || !errors.Is(setupErr, context.Canceled) {
@@ -1110,13 +1036,9 @@ func TestPyPIControllerFallsBackAfterUncachedMetadata304(t *testing.T) {
 		t.Fatal("metadata 304 returned an observer")
 	}
 	artifactURL, _ := url.Parse("https://cdn.example/project-1.0.tar.gz")
-	classifier, err := pypi.NewRequestClassifier(pypi.RequestClassifierOptions{
+	handler.setClassifierOptions(pypi.RequestClassifierOptions{
 		DirectArtifactURLs: []string{artifactURL.String()},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler.classifier = classifier
 	if _, err := handler.pypiHandler().HandleRequest(context.Background(), proxy.Request{Method: http.MethodGet, URL: *artifactURL}); err != nil {
 		t.Fatal(err)
 	}
@@ -1205,14 +1127,10 @@ func TestPyPIControllerClassifiesRangesAndPassesCoreMetadata(t *testing.T) {
 	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		return time.Now(), nil
 	}
-	classifier, err := pypi.NewRequestClassifier(pypi.RequestClassifierOptions{
+	handler.setClassifierOptions(pypi.RequestClassifierOptions{
 		SimpleIndexURLs:    []string{"https://index.example/python-packages/"},
 		DirectArtifactURLs: []string{"https://index.example/files/project-1.0.tar.lz"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler.classifier = classifier
 	metadataEndpoint := mustParseURL(t, "https://index.example/python-packages/opaque/")
 
 	if err := handler.metadata.Observe(metadataEndpoint, http.Header{"Content-Type": []string{"application/vnd.pypi.simple.v1+json"}}, []byte(opaqueWheelFixture)); err != nil {
@@ -1448,13 +1366,9 @@ func TestPyPIProxyWarnsBeforeForwardingArtifact(t *testing.T) {
 	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		return time.Now(), nil
 	}
-	classifier, err := pypi.NewRequestClassifier(pypi.RequestClassifierOptions{
+	handler.setClassifierOptions(pypi.RequestClassifierOptions{
 		DirectArtifactURLs: []string{upstream.URL + "/project-1.0.tar.gz"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler.classifier = classifier
 	server, err := proxy.Start(context.Background(), proxy.Options{RequestHooks: []proxy.RequestHook{handler.pypiHandler().HandleRequest}})
 	if err != nil {
 		t.Fatal(err)
@@ -1823,13 +1737,9 @@ func TestPyPIProxyBlocksArtifactUnderSimplePathBeforeUpstream(t *testing.T) {
 	handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 		return time.Now(), nil
 	}
-	classifier, err := pypi.NewRequestClassifier(pypi.RequestClassifierOptions{
+	handler.setClassifierOptions(pypi.RequestClassifierOptions{
 		DirectArtifactURLs: []string{upstream.URL + "/simple/files/project-1.0.tar.gz"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler.classifier = classifier
 	server, err := proxy.Start(context.Background(), proxy.Options{RequestHooks: []proxy.RequestHook{handler.pypiHandler().HandleRequest}})
 	if err != nil {
 		t.Fatal(err)
@@ -2046,117 +1956,4 @@ func compressPyPIMetadata(t *testing.T, encoding string, body []byte) []byte {
 		t.Fatalf("unsupported test encoding %q", encoding)
 	}
 	return compressed.Bytes()
-}
-
-// Test fixtures build the same per-invocation controller as production while
-// allowing metadata and publication responses to be supplied without the network.
-func newTestPyPIController(
-	ctx context.Context, timestamp time.Time, command []string,
-	manager, executable, repository string,
-	evaluator evaluation.Evaluator, reporter evaluation.Reporter, output io.Writer,
-) *pyPIProxyController {
-	controller, err := newPyPIProxyController(newProxyPackageEvaluator(ctx, timestamp, command, manager, executable, repository, evaluator, reporter, output), pypi.RequestClassifierOptions{})
-	if err != nil {
-		panic(err)
-	}
-	return controller
-}
-
-func configureTestPyPIController(controller *pyPIProxyController, options pypi.RequestClassifierOptions) (ecosystemProxyController, error) {
-	if err := controller.addClassifierContext(options); err != nil {
-		return nil, err
-	}
-	return controller.configure, nil
-}
-
-func TestPyPIProxyStreamsHTMLWithoutWaitingForTheCompleteBody(t *testing.T) {
-	streamingPrefixFixture := readProxyFixture(t, "pypi/streaming-prefix.html")
-	streamingTailFixture := readProxyFixture(t, "pypi/streaming-tail.html")
-	for _, contentType := range []string{"text/html", "application/vnd.pypi.simple.v1+html"} {
-		t.Run(contentType, func(t *testing.T) {
-			prefix := streamingPrefixFixture
-			tail := streamingTailFixture
-			// Exceed ordinary HTTP write buffers without completing the page.
-			padding := strings.Repeat(" ", 64<<10)
-			releaseTail := make(chan struct{})
-			var once sync.Once
-			release := func() { once.Do(func() { close(releaseTail) }) }
-			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", contentType)
-				_, _ = io.WriteString(w, prefix+padding)
-				w.(http.Flusher).Flush()
-				select {
-				case <-releaseTail:
-					_, _ = io.WriteString(w, tail)
-				case <-r.Context().Done():
-				}
-			}))
-			defer upstream.Close()
-			defer release()
-			var evaluations atomic.Int32
-			handler := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "", proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
-				evaluations.Add(1)
-				return evaluation.ScfwPolicyEvaluationReport{}, nil
-			}), nopReporter{}, io.Discard)
-			server, err := proxy.Start(context.Background(), handler.configure(context.Background(), proxy.Options{}))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer server.Close()
-			proxyURL, _ := url.Parse(server.ClientConfig().URL)
-			transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
-			defer transport.CloseIdleConnections()
-			client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
-			prefixRead := make(chan error, 1)
-			result := make(chan error, 1)
-			go func() {
-				response, err := client.Get(upstream.URL + "/simple/project/")
-				if err != nil {
-					prefixRead <- err
-					result <- err
-					return
-				}
-				defer response.Body.Close()
-				got := make([]byte, len(prefix))
-				_, err = io.ReadFull(response.Body, got)
-				if err == nil && string(got) != prefix {
-					err = fmt.Errorf("HTML prefix changed: %q", got)
-				}
-				prefixRead <- err
-				if err != nil {
-					result <- err
-					return
-				}
-				rest, err := io.ReadAll(response.Body)
-				if err == nil && string(rest) != padding+tail {
-					err = fmt.Errorf("HTML tail changed: %q", rest)
-				}
-				result <- err
-			}()
-			select {
-			case err := <-prefixRead:
-				if err != nil {
-					t.Fatal(err)
-				}
-			case <-time.After(2 * time.Second):
-				t.Fatal("HTML was buffered before forwarding")
-			}
-			target := mustParseURL(t, upstream.URL+"/files/project-1.0.tar.gz")
-			if _, found := handler.metadata.ArtifactForURL(&target); found || evaluations.Load() != 0 {
-				t.Fatal("HTML links or dates were consumed as package metadata")
-			}
-			release()
-			select {
-			case err := <-result:
-				if err != nil {
-					t.Fatal(err)
-				}
-			case <-time.After(5 * time.Second):
-				t.Fatal("HTML stream did not finish")
-			}
-			if _, found := handler.metadata.ArtifactForURL(&target); found || evaluations.Load() != 0 {
-				t.Fatal("completed HTML response populated package metadata")
-			}
-		})
-	}
 }

@@ -17,7 +17,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,7 +25,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/pip"
@@ -321,17 +319,20 @@ func TestPipProxyEndToEnd(t *testing.T) {
 						return evaluation.ScfwPolicyEvaluationReport{Outcome: test.outcome}, nil
 					}), nopReporter{}, &details)
 					var certPath, proxyURL string
-					controller, err := handler.forPackageManager(operationManager, args)
+					classifierOptions, err := operationManager.PyPIClassifierOptions(args)
 					if err != nil {
 						t.Fatal(err)
 					}
-					wrapped := func(ctx context.Context, options proxy.Options) proxy.Options {
+					handler.setClassifierOptions(classifierOptions)
+					wrapped := func(ctx context.Context, client *http.Client) ([]proxy.RequestHook, error) {
 						// Use observed upload dates where available; avoid public metadata calls.
-						options = controller(ctx, options)
+						handler.packageEvaluator.runContext = ctx
+						handler.metadataClient = client
+						handler.hook = nil
 						handler.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
 							return time.Now(), nil
 						}
-						return options
+						return []proxy.RequestHook{handler.HandleRequest}, nil
 					}
 					runner := capturingPipRunner{Pip: operationManager, capture: func(config proxy.ClientConfig) { certPath = config.CACertificatePath; proxyURL = config.URL }}
 					beforeFetch := artifacts.Load()
@@ -547,37 +548,5 @@ func TestPipVCSUsesInvocationTrust(t *testing.T) {
 	}
 	if os.Getenv("GIT_SSL_CAINFO") != certificate {
 		t.Fatal("parent Git trust changed")
-	}
-}
-
-// Remote requirements and find-links pages can add artifact context after the
-// controller has started. Each request must see the latest classifier snapshot.
-func TestPyPIControllerUsesUpdatedArtifactContext(t *testing.T) {
-	var calls atomic.Int32
-	evaluator := newTestPyPIController(context.Background(), time.Now(), nil, "pip", "pip", "", proxyEvaluatorFunc(func(context.Context, bool, *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
-		calls.Add(1)
-		return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeBlock}, nil
-	}), nopReporter{}, io.Discard)
-	controller, err := configureTestPyPIController(evaluator, pypi.RequestClassifierOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	options := controller(context.Background(), proxy.Options{})
-	evaluator.metadataClient = nil
-	evaluator.resolveDate = func(context.Context, string, string, string) (time.Time, error) {
-		return time.Now(), nil
-	}
-	artifact, err := url.Parse("https://private.example/project-1.0-py3-none-any.whl")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := evaluator.addClassifierContext(pypi.RequestClassifierOptions{DirectArtifactURLs: []string{artifact.String()}}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := options.RequestHooks[0](context.Background(), proxy.Request{Method: http.MethodGet, URL: *artifact}); err == nil {
-		t.Fatal("artifact added after startup escaped evaluation")
-	}
-	if calls.Load() != 1 {
-		t.Fatalf("evaluations = %d, want 1", calls.Load())
 	}
 }

@@ -125,6 +125,9 @@ func TestPyPIProxyPreservesArchiveShapedProjectContext(t *testing.T) {
 				proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 					evaluations.Add(1)
 					for target := range targets.Items() {
+						if target.Name == "project" && target.PublishDate.IsZero() {
+							return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, nil
+						}
 						if target.Name != "project-1-0-tar-gz" || target.Version != "1.0" {
 							t.Errorf("wrong project identity: %#v", target)
 						}
@@ -164,8 +167,8 @@ func TestPyPIProxyPreservesArchiveShapedProjectContext(t *testing.T) {
 				t.Fatal(err)
 			}
 			_ = artifact.Body.Close()
-			if artifact.StatusCode != http.StatusForbidden || artifactHits.Load() != 0 || evaluations.Load() != 1 {
-				t.Fatalf("status=%d hits=%d evaluations=%d; want 403, 0, 1", artifact.StatusCode, artifactHits.Load(), evaluations.Load())
+			if artifact.StatusCode != http.StatusForbidden || artifactHits.Load() != 0 || evaluations.Load() != 2 {
+				t.Fatalf("status=%d hits=%d evaluations=%d; want 403, 0, 2", artifact.StatusCode, artifactHits.Load(), evaluations.Load())
 			}
 		})
 	}
@@ -1393,8 +1396,10 @@ func TestPyPIProxyWarnsBeforeForwardingArtifact(t *testing.T) {
 
 func TestPyPIProxyProcessesStreamingMetadataBeforeExposingLinks(t *testing.T) {
 	streamingPrefixFixture := readProxyFixture(t, "pypi/streaming-prefix.json.tmpl")
-	for _, knownLength := range []bool{false, true} {
-		t.Run(fmt.Sprintf("knownLength=%t", knownLength), func(t *testing.T) {
+	for _, test := range []struct{ knownLength, artifactPath bool }{
+		{false, false}, {true, false}, {false, true}, {true, true},
+	} {
+		t.Run(fmt.Sprintf("knownLength=%t/artifactPath=%t", test.knownLength, test.artifactPath), func(t *testing.T) {
 			var artifactHits, evaluations, reports atomic.Int32
 			cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				artifactHits.Add(1)
@@ -1403,6 +1408,11 @@ func TestPyPIProxyProcessesStreamingMetadataBeforeExposingLinks(t *testing.T) {
 			defer cdn.Close()
 			artifactURL := cdn.URL + "/objects/opaque?token=secret"
 			metadataPath := "/catalog/project/"
+			wantEvaluations := int32(1)
+			if test.artifactPath {
+				metadataPath = "/catalog/decoy-1.0-py3-none-any.whl/"
+				wantEvaluations++
+			}
 			prefix := fmt.Sprintf(streamingPrefixFixture, artifactURL) + "\n"
 			tail, contentType := "]}", "application/vnd.pypi.simple.v1+json"
 			// Exceed HTTP write buffers so the old streaming observer exposes
@@ -1413,7 +1423,7 @@ func TestPyPIProxyProcessesStreamingMetadataBeforeExposingLinks(t *testing.T) {
 			release := func() { releaseOnce.Do(func() { close(releaseTail) }) }
 			index := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 				w.Header().Set("Content-Type", contentType)
-				if knownLength {
+				if test.knownLength {
 					w.Header().Set("Content-Length", fmt.Sprint(len(prefix)+len(tail)))
 				}
 				_, _ = io.WriteString(w, prefix)
@@ -1431,6 +1441,9 @@ func TestPyPIProxyProcessesStreamingMetadataBeforeExposingLinks(t *testing.T) {
 				proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 					evaluations.Add(1)
 					for target := range targets.Items() {
+						if test.artifactPath && target.Name == "decoy" && target.PublishDate.IsZero() {
+							return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, nil
+						}
 						if target.Name != "project" || target.Version != "1.0" || target.PublishDate.IsZero() {
 							t.Errorf("incomplete metadata at evaluation: %#v", target)
 						}
@@ -1502,8 +1515,8 @@ func TestPyPIProxyProcessesStreamingMetadataBeforeExposingLinks(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("installer did not complete")
 			}
-			if artifactHits.Load() != 0 || evaluations.Load() != 1 || reports.Load() != 1 {
-				t.Fatalf("upstream=%d evaluations=%d reports=%d; want 0, 1, 1", artifactHits.Load(), evaluations.Load(), reports.Load())
+			if artifactHits.Load() != 0 || evaluations.Load() != wantEvaluations || reports.Load() != wantEvaluations {
+				t.Fatalf("upstream=%d evaluations=%d reports=%d; want 0, %d, %d", artifactHits.Load(), evaluations.Load(), reports.Load(), wantEvaluations, wantEvaluations)
 			}
 		})
 	}
@@ -1956,4 +1969,96 @@ func compressPyPIMetadata(t *testing.T, encoding string, body []byte) []byte {
 		t.Fatalf("unsupported test encoding %q", encoding)
 	}
 	return compressed.Bytes()
+}
+
+func TestPyPIProxyLearnsJSONAfterAllowingWheelShapedEndpoint(t *testing.T) {
+	fixture := readProxyFixture(t, "pypi/wheel-shaped-listing.json.tmpl")
+	for _, test := range []struct{ name, metadataPath, artifactPath, encoding string }{
+		{"new artifact", "/simple/decoy-1.0-py3-none-any.whl/", "/objects/recent", ""},
+		{"same source acquires date", "/files/project-1.0-py3-none-any.whl///", "/files/project-1.0-py3-none-any.whl///", ""},
+		{"brotli", "/catalog/decoy-1.0-py3-none-any.whl", "/objects/recent", "br"},
+		{"zstd", "/catalog/decoy-1.0-py3-none-any.whl///", "/objects/recent", "zstd"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			now := time.Now().UTC()
+			recent := now.Add(-time.Hour)
+			metadata := []byte(fmt.Sprintf(fixture, test.artifactPath+"?token=secret", recent.Format(time.RFC3339Nano)))
+			if test.encoding != "" {
+				metadata = compressPyPIMetadata(t, test.encoding, metadata)
+			}
+			var metadataHits, artifactHits, evaluations, fallbacks atomic.Int32
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				if request.URL.Path == test.metadataPath {
+					metadataHits.Add(1)
+					if evaluations.Load() != 1 {
+						t.Errorf("metadata reached upstream before the initial policy decision")
+					}
+					w.Header().Set("Content-Type", "application/json")
+					if test.encoding != "" {
+						w.Header().Set("Content-Encoding", test.encoding)
+					}
+					_, _ = w.Write(metadata)
+				} else {
+					artifactHits.Add(1)
+					_, _ = io.WriteString(w, "blocked artifact bytes")
+				}
+			}))
+			defer upstream.Close()
+			packageEvaluator := newProxyPackageEvaluator(context.Background(), now, nil, "pip", "pip", "",
+				proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
+					call := evaluations.Add(1)
+					for pkg := range targets.Items() {
+						if call == 1 {
+							if !pkg.PublishDate.IsZero() {
+								t.Errorf("initial evaluation unexpectedly had a date: %#v", pkg)
+							}
+							return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, nil
+						}
+						if pkg.Name != "project" || pkg.Version != "1.0" || pkg.Source != upstream.URL+test.artifactPath || pkg.PublishDate != recent {
+							t.Errorf("subsequent evaluation did not use the observed JSON: %#v", pkg)
+						}
+						if !pkg.PublishDate.IsZero() && now.Sub(pkg.PublishDate) < 24*time.Hour {
+							return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeBlock}, nil
+						}
+					}
+					return evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}, nil
+				}), nopReporter{}, io.Discard)
+			hook, err := pypi.NewProxyHook(context.Background(), pypi.ProxyHookOptions{
+				EvaluatePackage: packageEvaluator.evaluatePackage,
+				ResolvePublishDate: func(context.Context, string, string, string) (time.Time, error) {
+					fallbacks.Add(1)
+					return time.Time{}, errors.New("publication date unavailable")
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			server, err := proxy.Start(context.Background(), proxy.Options{RequestHooks: []proxy.RequestHook{hook}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer server.Close()
+			proxyURL, _ := url.Parse(server.ClientConfig().URL)
+			transport := &http.Transport{Proxy: http.ProxyURL(proxyURL), DisableCompression: true}
+			defer transport.CloseIdleConnections()
+			client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
+			response, err := client.Get(upstream.URL + test.metadataPath + "?token=secret")
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, readErr := io.ReadAll(response.Body)
+			_ = response.Body.Close()
+			if readErr != nil || response.StatusCode != http.StatusOK || !bytes.Equal(body, metadata) {
+				t.Fatalf("metadata response=%d bytes unchanged=%v error=%v", response.StatusCode, bytes.Equal(body, metadata), readErr)
+			}
+			response, err = client.Get(upstream.URL + test.artifactPath + "?token=secret")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = response.Body.Close()
+			if response.StatusCode != http.StatusForbidden || metadataHits.Load() != 1 || artifactHits.Load() != 0 || evaluations.Load() != 2 || fallbacks.Load() != 1 {
+				t.Fatalf("download status=%d metadata hits=%d artifact hits=%d evaluations=%d fallbacks=%d; want 403, 1, 0, 2, 1", response.StatusCode, metadataHits.Load(), artifactHits.Load(), evaluations.Load(), fallbacks.Load())
+			}
+		})
+	}
 }

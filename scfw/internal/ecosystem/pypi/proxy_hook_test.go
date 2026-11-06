@@ -78,8 +78,16 @@ func TestPyPIControllerTracksOnlyMetadataRedirects(t *testing.T) {
 func TestPyPIProxyStreamsHTMLWithoutWaitingForTheCompleteBody(t *testing.T) {
 	streamingPrefixFixture := readPyPIFixture(t, "metadata/streaming-prefix.html")
 	streamingTailFixture := readPyPIFixture(t, "metadata/streaming-tail.html")
-	for _, contentType := range []string{"text/html", "application/vnd.pypi.simple.v1+html"} {
-		t.Run(contentType, func(t *testing.T) {
+	for _, test := range []struct {
+		contentType, path string
+		evaluations       int32
+	}{
+		{"text/html", "/simple/project/", 0},
+		{"application/vnd.pypi.simple.v1+html", "/simple/project/", 0},
+		{"text/html", "/files/project-1.0-py3-none-any.whl/", 1},
+		{"application/octet-stream", "/files/project-1.0-py3-none-any.whl///", 1},
+	} {
+		t.Run(test.contentType+test.path, func(t *testing.T) {
 			prefix := streamingPrefixFixture
 			tail := streamingTailFixture
 			// Exceed ordinary HTTP write buffers without completing the page.
@@ -88,7 +96,7 @@ func TestPyPIProxyStreamsHTMLWithoutWaitingForTheCompleteBody(t *testing.T) {
 			var once sync.Once
 			release := func() { once.Do(func() { close(releaseTail) }) }
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", contentType)
+				w.Header().Set("Content-Type", test.contentType)
 				_, _ = io.WriteString(w, prefix+padding)
 				w.(http.Flusher).Flush()
 				select {
@@ -114,7 +122,7 @@ func TestPyPIProxyStreamsHTMLWithoutWaitingForTheCompleteBody(t *testing.T) {
 			prefixRead := make(chan error, 1)
 			result := make(chan error, 1)
 			go func() {
-				response, err := client.Get(upstream.URL + "/simple/project/")
+				response, err := client.Get(upstream.URL + test.path)
 				if err != nil {
 					prefixRead <- err
 					result <- err
@@ -146,7 +154,7 @@ func TestPyPIProxyStreamsHTMLWithoutWaitingForTheCompleteBody(t *testing.T) {
 				t.Fatal("HTML was buffered before forwarding")
 			}
 			target := mustParseHookURL(t, upstream.URL+"/files/project-1.0.tar.gz")
-			if _, found := handler.Metadata.ArtifactForURL(&target); found || evaluations.Load() != 0 {
+			if _, found := handler.Metadata.ArtifactForURL(&target); found || evaluations.Load() != test.evaluations {
 				t.Fatal("HTML links or dates were consumed as package metadata")
 			}
 			release()
@@ -158,7 +166,7 @@ func TestPyPIProxyStreamsHTMLWithoutWaitingForTheCompleteBody(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("HTML stream did not finish")
 			}
-			if _, found := handler.Metadata.ArtifactForURL(&target); found || evaluations.Load() != 0 {
+			if _, found := handler.Metadata.ArtifactForURL(&target); found || evaluations.Load() != test.evaluations {
 				t.Fatal("completed HTML response populated package metadata")
 			}
 		})

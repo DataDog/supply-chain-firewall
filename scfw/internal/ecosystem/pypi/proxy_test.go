@@ -198,3 +198,98 @@ func TestProxyHandlerBlocksArtifactsAtMetadataRedirectDestinations(t *testing.T)
 		})
 	}
 }
+
+func TestProxyHandlerBlocksSlashTerminatedWheelsBeforeUpstream(t *testing.T) {
+	for _, suffix := range []string{"/", "///"} {
+		t.Run(suffix, func(t *testing.T) {
+			var upstreamHits, evaluations atomic.Int32
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				upstreamHits.Add(1)
+				w.Header().Set("Content-Type", "text/html")
+			}))
+			defer upstream.Close()
+			handler := testProxyHook(t)
+			handler.EvaluateArtifact = func(_ context.Context, artifact Artifact) error {
+				evaluations.Add(1)
+				if artifact.Name != "project" || artifact.Source != upstream.URL+"/files/project-1.0-py3-none-any.whl"+suffix {
+					t.Errorf("incorrect slash-terminated wheel identity: %#v", artifact)
+				}
+				return errors.New("blocked by policy")
+			}
+			server, err := proxy.Start(context.Background(), proxy.Options{RequestHooks: []proxy.RequestHook{handler.HandleRequest}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer server.Close()
+			proxyURL, _ := url.Parse(server.ClientConfig().URL)
+			transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+			defer transport.CloseIdleConnections()
+			response, err := (&http.Client{Transport: transport}).Get(upstream.URL + "/files/project-1.0-py3-none-any.whl" + suffix)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = response.Body.Close()
+			if response.StatusCode != http.StatusForbidden || upstreamHits.Load() != 0 || evaluations.Load() != 1 {
+				t.Fatalf("response=%d upstream=%d evaluations=%d; want 403, 0, 1", response.StatusCode, upstreamHits.Load(), evaluations.Load())
+			}
+		})
+	}
+}
+
+func TestProxyHandlerRetainsJSONDerivedContextAndRequestCredentials(t *testing.T) {
+	handler := testProxyHook(t)
+	endpoint := mustParseHookURL(t, "https://index.example/simple/decoy-1.0-py3-none-any.whl/?token=secret")
+	request := proxy.Request{Method: http.MethodGet, URL: endpoint, Header: http.Header{"Authorization": {"Bearer request-secret"}}}
+	handler.EvaluateArtifact = func(context.Context, Artifact) error { return nil }
+	responseHook, err := handler.HandleRequest(context.Background(), request)
+	if err != nil || responseHook == nil {
+		t.Fatalf("allowed wheel did not retain its response hook: %v", err)
+	}
+	response := proxy.Response{Request: request, StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: []byte(readPyPIJSONFixture(t, "metadata/artifact-endpoint-simple"))}
+	bodyHook, err := responseHook(context.Background(), response)
+	if err != nil || bodyHook == nil {
+		t.Fatalf("JSON body observer=%v error=%v", bodyHook != nil, err)
+	}
+	if err := bodyHook.Handle(context.Background(), response); err != nil {
+		t.Fatal(err)
+	}
+	registered := handler.Metadata.endpoints[pyPIURLRequestKey(nil, endpoint.String())]
+	if registered.project != "my-project" || registered.header.Get("Authorization") != "Bearer request-secret" || registered.tentative {
+		t.Fatalf("JSON-derived refresh context = %#v", registered)
+	}
+	// A conditional response must keep the established identity and reuse the
+	// observed JSON instead of deriving the project from the endpoint filename.
+	response.StatusCode = http.StatusNotModified
+	response.Header = nil
+	if bodyHook, err := responseHook(context.Background(), response); err != nil || bodyHook != nil {
+		t.Fatalf("observed 304 body hook=%v error=%v", bodyHook != nil, err)
+	}
+	if project, _, found := handler.Metadata.ProjectForURL(&endpoint); !found || project != "my-project" {
+		t.Fatalf("304 changed established JSON project: %q, %v", project, found)
+	}
+}
+
+func TestProxyHandlerStreamsNonJSONArtifactsWithExistingMetadataContext(t *testing.T) {
+	for _, contentType := range []string{"", "application/octet-stream", "text/html"} {
+		t.Run(contentType, func(t *testing.T) {
+			handler := testProxyHook(t)
+			endpoint := mustParseHookURL(t, "https://index.example/packages/project-1.0-py3-none-any.whl/")
+			handler.Metadata.RegisterProject(endpoint, "project", nil)
+			evaluations := 0
+			handler.EvaluateArtifact = func(context.Context, Artifact) error { evaluations++; return nil }
+			request := proxy.Request{Method: http.MethodGet, URL: endpoint}
+			responseHook, err := handler.HandleRequest(context.Background(), request)
+			if err != nil || responseHook == nil || evaluations != 1 {
+				t.Fatalf("evaluations=%d response hook=%v error=%v", evaluations, responseHook != nil, err)
+			}
+			header := http.Header{"Content-Encoding": {"unsupported"}}
+			if contentType != "" {
+				header.Set("Content-Type", contentType)
+			}
+			bodyHook, err := responseHook(context.Background(), proxy.Response{Request: request, StatusCode: http.StatusOK, Header: header})
+			if err != nil || bodyHook != nil {
+				t.Fatalf("non-JSON artifact body hook=%v error=%v; must keep streaming", bodyHook != nil, err)
+			}
+		})
+	}
+}

@@ -268,14 +268,21 @@ func (cache *MetadataCache) Observe(requestURL url.URL, header http.Header, enco
 	if header.Get("Content-Type") == "" && firstNonSpace(body) != '{' {
 		return nil
 	}
-	project := cache.metadataProject(&requestURL)
-	if err := cache.observeJSON(body, &requestURL, project); err != nil {
+	project, recognized, err := cache.observeJSON(body, &requestURL, cache.metadataProject(&requestURL))
+	if err != nil {
 		return err
+	}
+	if !recognized {
+		return nil
 	}
 	// A redirected endpoint can have a path naming a different project. Do
 	// not replace the original request's context with a guess from that path.
 	if _, _, found := cache.ProjectForURL(&requestURL); !found {
-		cache.registerEndpoint(requestURL, nil)
+		if _, _, artifact := ParseDistributionFilename(artifactFilename(requestURL.String())); artifact && project != "" {
+			cache.RegisterProject(requestURL, project, nil)
+		} else {
+			cache.registerEndpoint(requestURL, nil)
+		}
 	}
 	cache.markObserved(requestURL)
 	return nil
@@ -289,6 +296,9 @@ func logPyPIMetadataLimit(requestURL url.URL) {
 func (cache *MetadataCache) metadataProject(requestURL *url.URL) string {
 	if project, _, found := cache.ProjectForURL(requestURL); found {
 		return project
+	}
+	if _, _, artifact := ParseDistributionFilename(artifactFilename(requestURL.String())); artifact {
+		return ""
 	}
 	if project, found := SimpleProject(requestURL); found {
 		return project
@@ -353,7 +363,7 @@ func firstNonSpace(body []byte) byte {
 	return trimmed[0]
 }
 
-func (cache *MetadataCache) observeJSON(body []byte, base *url.URL, project string) error {
+func (cache *MetadataCache) observeJSON(body []byte, base *url.URL, project string) (string, bool, error) {
 	var metadata struct {
 		Name string `json:"name"`
 		Info struct {
@@ -376,7 +386,12 @@ func (cache *MetadataCache) observeJSON(body []byte, base *url.URL, project stri
 		} `json:"files"`
 	}
 	if err := json.Unmarshal(body, &metadata); err != nil {
-		return fmt.Errorf("parse PyPI metadata JSON: %w", err)
+		return "", false, fmt.Errorf("parse PyPI metadata JSON: %w", err)
+	}
+	// A JSON content type is only a candidate: arbitrary JSON documents must
+	// not establish registry context or count as successfully observed metadata.
+	if metadata.Files == nil && metadata.URLs == nil && metadata.Releases == nil {
+		return "", false, nil
 	}
 	if project == "" {
 		if pyPIProjectName.MatchString(metadata.Name) {
@@ -385,13 +400,26 @@ func (cache *MetadataCache) observeJSON(body []byte, base *url.URL, project stri
 			project = NormalizeName(metadata.Info.Name)
 		}
 	}
+	var inferredProject string
+	multipleProjects := false
+	store := func(filename, reference, date string) {
+		name := cache.store(base, filename, reference, date, project)
+		if name == "" {
+			return
+		}
+		if inferredProject == "" {
+			inferredProject = name
+		} else if inferredProject != name {
+			multipleProjects = true
+		}
+	}
 	for _, releases := range metadata.Releases {
 		for _, release := range releases {
 			filename := release.Filename
 			if filename == "" {
 				filename = artifactFilename(release.URL)
 			}
-			cache.store(base, filename, release.URL, release.UploadTimeISO8601, project)
+			store(filename, release.URL, release.UploadTimeISO8601)
 		}
 	}
 	for _, release := range metadata.URLs {
@@ -399,24 +427,32 @@ func (cache *MetadataCache) observeJSON(body []byte, base *url.URL, project stri
 		if filename == "" {
 			filename = artifactFilename(release.URL)
 		}
-		cache.store(base, filename, release.URL, release.UploadTimeISO8601, project)
+		store(filename, release.URL, release.UploadTimeISO8601)
 	}
 	for _, file := range metadata.Files {
 		filename := file.Filename
 		if filename == "" {
 			filename = artifactFilename(canonicalPyPIURL(base, file.URL))
 		}
-		cache.store(base, filename, file.URL, file.UploadTime, project)
+		store(filename, file.URL, file.UploadTime)
 	}
-	return nil
+	if project == "" && !multipleProjects {
+		project = inferredProject
+	}
+	return project, true, nil
 }
 
-func (cache *MetadataCache) store(base *url.URL, filename, reference, uploadTime, project string) {
+func (cache *MetadataCache) store(base *url.URL, filename, reference, uploadTime, project string) string {
+	// Dates belong to exact advertised URLs. A missing URL must not resolve
+	// against base and turn the metadata endpoint itself into a distribution.
+	if strings.TrimSpace(reference) == "" {
+		return ""
+	}
 	name, version, ok := parsePyPIDistributionFilename(filename, project)
 	source := canonicalPyPIURL(base, reference)
 	requestKey := pyPIURLRequestKey(base, reference)
 	if !ok || source == "" || requestKey == "" {
-		return
+		return ""
 	}
 	var date time.Time
 	if uploadTime != "" {
@@ -441,10 +477,11 @@ func (cache *MetadataCache) store(base *url.URL, filename, reference, uploadTime
 		aliasKey := pyPIURLRequestKey(nil, resolved.String())
 		if !stored {
 			cache.markAmbiguous(aliasKey)
-			return
+			return ""
 		}
 		cache.storeAlias(aliasKey, record)
 	}
+	return name
 }
 
 func (cache *MetadataCache) storeAlias(key string, record pyPIMetadataRecord) {
@@ -500,6 +537,9 @@ func samePyPIArtifactIdentity(first, second Artifact) bool {
 }
 
 func (cache *MetadataCache) registerEndpoint(requestURL url.URL, requestHeader http.Header) {
+	if _, _, artifact := ParseDistributionFilename(artifactFilename(requestURL.String())); artifact {
+		return
+	}
 	project, ok := SimpleProject(&requestURL)
 	if !ok {
 		return

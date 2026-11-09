@@ -7,11 +7,15 @@ package npm
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
 	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
@@ -172,6 +176,110 @@ func TestProxyOptionsRoutesLikeNpm(t *testing.T) {
 			}
 			if got != test.want {
 				t.Fatalf("proxy for %s = %q, want %q", test.target, got, test.want)
+			}
+		})
+	}
+}
+
+// verifiesRegistry reports whether the upstream TLS roots in options trust the
+// registry.test leaf certificate.
+func verifiesRegistry(t *testing.T, options proxy.Options, leafPEM string) bool {
+	t.Helper()
+	block, _ := pem.Decode([]byte(leafPEM))
+	leaf, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.UpstreamTLS == nil {
+		t.Fatal("upstream TLS configuration missing")
+	}
+	_, err = leaf.Verify(x509.VerifyOptions{Roots: options.UpstreamTLS.RootCAs, DNSName: "registry.test"})
+	return err == nil
+}
+
+func TestProxyOptionsCarriesNpmRegistryTrust(t *testing.T) {
+	caPEM, leafPEM := readNpmFixture(t, "tls/registry-ca.pem"), readNpmFixture(t, "tls/registry-leaf.pem")
+	inline, err := json.Marshal(caPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name    string
+		prepare func(t *testing.T, caPath string)
+		trusted bool
+	}{
+		{"none", func(*testing.T, string) {}, false},
+		{"npmrc cafile", func(t *testing.T, caPath string) { writeNpmFixture(t, ".npmrc", "cafile="+caPath+"\n") }, true},
+		{"npmrc cafile under home", func(t *testing.T, caPath string) {
+			writeNpmFixture(t, filepath.Join(os.Getenv("HOME"), "ca.pem"), caPEM)
+			writeNpmFixture(t, ".npmrc", "cafile=~/ca.pem\n")
+		}, true},
+		{"environment ca", func(t *testing.T, _ string) { t.Setenv("npm_config_ca", caPEM) }, true},
+		{"npmrc inline ca array", func(t *testing.T, _ string) { writeNpmFixture(t, ".npmrc", "ca[]="+string(inline)+"\n") }, true},
+		{"NODE_EXTRA_CA_CERTS", func(t *testing.T, caPath string) { t.Setenv("NODE_EXTRA_CA_CERTS", caPath) }, true},
+		{"GIT_SSL_CAINFO", func(t *testing.T, caPath string) { t.Setenv("GIT_SSL_CAINFO", caPath) }, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manager := isolatedNpm(t)
+			caPath := filepath.Join(t.TempDir(), "registry-ca.pem")
+			writeNpmFixture(t, caPath, caPEM)
+			test.prepare(t, caPath)
+			options, err := manager.ProxyOptions(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := verifiesRegistry(t, options, leafPEM); got != test.trusted {
+				t.Fatalf("trusted = %v, want %v", got, test.trusted)
+			}
+		})
+	}
+}
+
+func TestProxyOptionsLoadsTrustLikeNpm(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing-secret.pem")
+	for _, test := range []struct {
+		name     string
+		prepare  func(t *testing.T)
+		failures bool
+	}{
+		// npm ignores a missing cafile and Node one in NODE_EXTRA_CA_CERTS.
+		{"missing cafile", func(t *testing.T) { writeNpmFixture(t, ".npmrc", "cafile="+missing+"\n") }, false},
+		{"missing NODE_EXTRA_CA_CERTS", func(t *testing.T) { t.Setenv("NODE_EXTRA_CA_CERTS", missing) }, false},
+		// Git fails without its configured CA bundle, so SCFW fails like pip.
+		{"missing GIT_SSL_CAINFO", func(t *testing.T) { t.Setenv("GIT_SSL_CAINFO", missing) }, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manager := isolatedNpm(t)
+			test.prepare(t)
+			_, err := manager.ProxyOptions(nil)
+			if (err != nil) != test.failures || (err != nil && strings.Contains(err.Error(), "missing-secret")) {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+func TestProxyOptionsHonorsStrictSSLFalse(t *testing.T) {
+	target := &url.URL{Scheme: "https", Host: "registry.test"}
+	for _, test := range []struct {
+		name    string
+		npmrc   string
+		args    []string
+		trusted bool
+	}{
+		{name: "default"},
+		{name: "npmrc", npmrc: "strict-ssl=false\n", trusted: true},
+		{name: "option", args: []string{"install", "--no-strict-ssl"}, trusted: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manager := isolatedNpm(t)
+			writeNpmFixture(t, ".npmrc", test.npmrc)
+			options, err := manager.ProxyOptions(test.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if options.TrustURL == nil || options.TrustURL(target) != test.trusted {
+				t.Fatalf("TrustURL trusted = %v", options.TrustURL != nil && options.TrustURL(target))
 			}
 		})
 	}

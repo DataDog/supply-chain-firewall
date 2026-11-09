@@ -35,7 +35,7 @@ func (npm Npm) UpstreamProxy(command []string) (httpproxy.Config, error) {
 	return upstreamSettings(settings), validateUpstream(settings)
 }
 
-// ProxyOptions transfers npm's effective routing to the core.
+// ProxyOptions transfers npm's effective routing and registry trust to the core.
 func (npm Npm) ProxyOptions(command []string) (proxy.Options, error) {
 	settings, err := npm.settings(command)
 	if err != nil {
@@ -44,7 +44,28 @@ func (npm Npm) ProxyOptions(command []string) (proxy.Options, error) {
 	if err := validateUpstream(settings); err != nil {
 		return proxy.Options{}, err
 	}
-	return proxy.Options{Upstream: upstreamSettings(settings), ProxyForURL: npmProxyForURL(settings)}, nil
+	options := proxy.Options{
+		Upstream:    upstreamSettings(settings),
+		ProxyForURL: npmProxyForURL(settings),
+		TrustURL:    npmTrustURL(settings.StrictSSL),
+	}
+	// npm ignores a cafile it cannot read and Node ignores an unreadable
+	// NODE_EXTRA_CA_CERTS; Git requires GIT_SSL_CAINFO, so a missing bundle fails.
+	var paths []string
+	for _, path := range []string{settings.CAFile, os.Getenv("NODE_EXTRA_CA_CERTS")} {
+		if _, err := os.Stat(path); path != "" && err == nil {
+			paths = append(paths, path)
+		}
+	}
+	var pems [][]byte
+	for _, ca := range settings.CA {
+		pems = append(pems, []byte(ca))
+	}
+	options.UpstreamTLS, err = proxy.NewTLSConfig(proxy.TLSConfigOptions{
+		CABundlePaths: append(paths, os.Getenv("GIT_SSL_CAINFO")),
+		CABundlePEM:   pems,
+	})
+	return options, err
 }
 
 var _ pm.ProxyOptionsProvider = Npm{}

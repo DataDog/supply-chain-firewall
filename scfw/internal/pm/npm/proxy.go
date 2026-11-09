@@ -9,13 +9,56 @@ import (
 	"context"
 	"errors"
 	"maps"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 
+	"golang.org/x/net/http/httpproxy"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
+
+var _ pm.ProxyRunner = Npm{}
+
+func upstreamSettings(result npmDiscoveryResult) httpproxy.Config {
+	return httpproxy.Config{HTTPProxy: result.HTTP, HTTPSProxy: result.HTTPS, NoProxy: result.NoProxy}
+}
+
+func (npm Npm) UpstreamProxy(command []string) (httpproxy.Config, error) {
+	settings, err := npm.settings(command)
+	if err != nil {
+		return httpproxy.Config{}, err
+	}
+	return upstreamSettings(settings), validateUpstream(settings)
+}
+
+// ProxyOptions transfers npm's effective routing to the core.
+func (npm Npm) ProxyOptions(command []string) (proxy.Options, error) {
+	settings, err := npm.settings(command)
+	if err != nil {
+		return proxy.Options{}, err
+	}
+	if err := validateUpstream(settings); err != nil {
+		return proxy.Options{}, err
+	}
+	return proxy.Options{Upstream: upstreamSettings(settings)}, nil
+}
+
+// validateUpstream checks every proxy npm could select. npm parses proxies
+// with the WHATWG URL parser, which rejects a value without a scheme.
+func validateUpstream(result npmDiscoveryResult) error {
+	for _, value := range result.candidates {
+		parsed, err := url.Parse(value)
+		if err != nil || !strings.Contains(value, "://") || parsed.Hostname() == "" ||
+			(parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return errors.New("unsupported or invalid npm upstream proxy URL")
+		}
+	}
+	return nil
+}
 
 // npmNoProxySentinel replaces npm's noproxy setting with a host that matches
 // nothing. npm ignores empty npm_config_* values, so an empty override would

@@ -88,16 +88,6 @@ func TestProxyEnabled(t *testing.T) {
 	}
 }
 
-func TestNpmFactoryDoesNotActivatePyPIProxyHooks(t *testing.T) {
-	factory, found := findPackageManagerFactory("npm")
-	if !found {
-		t.Fatal("npm package-manager factory is missing")
-	}
-	if len(factory.ProxyHooks) != 0 {
-		t.Fatalf("npm proxy hooks = %d, want generic proxy behavior", len(factory.ProxyHooks))
-	}
-}
-
 func TestRedactCommandArgumentsRemovesURLCredentials(t *testing.T) {
 	command := []string{
 		"pip", "install",

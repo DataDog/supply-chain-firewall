@@ -13,6 +13,7 @@ import (
 	"maps"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -282,6 +283,41 @@ func TestProxyOptionsHonorsStrictSSLFalse(t *testing.T) {
 				t.Fatalf("TrustURL trusted = %v", options.TrustURL != nil && options.TrustURL(target))
 			}
 		})
+	}
+}
+
+func realNpm(t *testing.T) Npm {
+	t.Helper()
+	executable, err := exec.LookPath("npm")
+	if err != nil {
+		t.Skip("npm required for npm integration tests")
+	}
+	manager := isolatedNpm(t)
+	manager.executable = executable
+	t.Setenv("npm_config_cache", t.TempDir())
+	t.Setenv("npm_config_update_notifier", "false")
+	return manager
+}
+
+func TestNpmHelpRunsThroughProxy(t *testing.T) {
+	manager := realNpm(t)
+	for _, args := range [][]string{{"help"}, {"install", "--help"}, {"--version"}} {
+		commandErr, setupErr := proxy.Run(context.Background(), proxy.Options{}, args, manager)
+		if commandErr != nil || setupErr != nil {
+			t.Fatalf("%q failed: command=%v setup=%v", args, commandErr, setupErr)
+		}
+	}
+}
+
+func TestNpmCommandFailureIsPreserved(t *testing.T) {
+	manager := realNpm(t)
+	commandErr, setupErr := proxy.Run(context.Background(), proxy.Options{}, []string{"not-a-command"}, manager)
+	if setupErr != nil {
+		t.Fatal(setupErr)
+	}
+	exitErr, ok := commandErr.(*exec.ExitError)
+	if !ok || exitErr.ExitCode() != 1 {
+		t.Fatalf("command error = %v, want npm's exit status 1", commandErr)
 	}
 }
 

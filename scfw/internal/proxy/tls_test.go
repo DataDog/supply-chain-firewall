@@ -79,6 +79,45 @@ func TestTLSConfigLoadsTrustAndClientCertificates(t *testing.T) {
 	}
 }
 
+func TestTLSConfigTrustsInlinePEM(t *testing.T) {
+	registry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "trusted")
+	}))
+	defer registry.Close()
+	cert := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: registry.Certificate().Raw})
+	for _, test := range []struct {
+		name    string
+		options TLSConfigOptions
+		trusted bool
+	}{
+		{"inline", TLSConfigOptions{CABundlePEM: [][]byte{nil, cert}}, true},
+		{"none", TLSConfigOptions{}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			config, err := NewTLSConfig(test.options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			transport := &http.Transport{TLSClientConfig: config}
+			defer transport.CloseIdleConnections()
+			response, err := (&http.Client{Transport: transport}).Get(registry.URL)
+			if err == nil {
+				_ = response.Body.Close()
+			}
+			if trusted := err == nil; trusted != test.trusted {
+				t.Fatalf("trusted=%v want %v (error=%v)", trusted, test.trusted, err)
+			}
+		})
+	}
+}
+
+func TestTLSConfigRejectsInlinePEMWithoutCertificates(t *testing.T) {
+	config, err := NewTLSConfig(TLSConfigOptions{CABundlePEM: [][]byte{[]byte("not a pem")}})
+	if err == nil || config != nil || err.Error() != "could not load proxy CA bundle" {
+		t.Fatalf("config=%v error=%v", config, err)
+	}
+}
+
 func TestTLSConfigAcceptsEmptyCADirectory(t *testing.T) {
 	if _, err := NewTLSConfig(TLSConfigOptions{CABundlePaths: []string{t.TempDir()}}); err != nil {
 		t.Fatalf("an empty CA directory must not fail configuration: %v", err)

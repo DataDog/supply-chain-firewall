@@ -402,6 +402,7 @@ func TestNpmProxyBypassAttemptsAreStillEvaluated(t *testing.T) {
 		{name: "env NPM_CONFIG_CA", env: func(registry *npmTestRegistry, _ string) [2]string { return [2]string{"NPM_CONFIG_CA", registry.CAPEM} }},
 		{name: "option noproxy", args: func(*npmTestRegistry, string) []string { return []string{"--noproxy=localhost"} }},
 		{name: "option noproxy space form", args: func(*npmTestRegistry, string) []string { return []string{"--noproxy", "localhost"} }},
+		{name: "option noproxy abbreviation", args: func(*npmTestRegistry, string) []string { return []string{"--nop=localhost"} }},
 		{name: "option https-proxy", args: func(_ *npmTestRegistry, tunnel string) []string { return []string{"--https-proxy=" + tunnel} }},
 		{name: "option ca", args: func(registry *npmTestRegistry, _ string) []string { return []string{"--ca=" + registry.CAPEM} }},
 		{name: "option cafile", args: func(registry *npmTestRegistry, _ string) []string { return []string{"--cafile=" + registry.CAPath} }},

@@ -96,6 +96,21 @@ func TestProxyCommandDropsUserNoproxyOptions(t *testing.T) {
 	}
 }
 
+func TestProxyCommandDropsAbbreviatedNoproxyOptions(t *testing.T) {
+	config, pem := testClientConfig(t)
+	// npm expands any unambiguous prefix of an option; "--nop" is the shortest
+	// for noproxy, while "--no" is ambiguous and "--no-proxy" negates proxy.
+	command := []string{"install", "--nop=a.test", "--noprox", "b.test", "--no-proxy", "--no", "x"}
+	spec, err := Npm{executable: "/bin/npm"}.ProxyCommand(context.Background(), command, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := slices.Concat([]string{"install", "--no-proxy", "--no", "x"}, scfwFlags(config, pem))
+	if !slices.Equal(spec.Args, want) {
+		t.Fatalf("args = %q, want %q", spec.Args, want)
+	}
+}
+
 func TestProxyCommandDropsTrailingNoproxyWithoutValue(t *testing.T) {
 	config, pem := testClientConfig(t)
 	spec, err := Npm{executable: "/bin/npm"}.ProxyCommand(context.Background(), []string{"install", "--noproxy"}, config)

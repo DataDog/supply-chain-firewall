@@ -39,6 +39,12 @@ type ProxyOptionsProvider interface {
 	ProxyOptions(command []string) (proxy.Options, error)
 }
 
+// ProxyCommandSelector lets proxy-only adapters pass unrelated operations
+// straight through, without creating a proxy or policy evaluator.
+type ProxyCommandSelector interface {
+	ProxyCommandSupported(command []string) bool
+}
+
 // ErrUnsupportedVersion indicates that a package manager's version is too
 // old to support safely, or that its version could not be determined.
 var ErrUnsupportedVersion = errors.New("unsupported package manager version")

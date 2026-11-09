@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
+	"github.com/klauspost/compress/zstd"
 )
 
 type upstreamProxyOptions struct {
@@ -62,8 +63,25 @@ func pypiWheel(t *testing.T) []byte {
 
 func pypiSdist(t *testing.T, files ...string) []byte {
 	t.Helper()
+	return pypiSdistArchive(t, "gzip", files...)
+}
+
+func pypiSdistArchive(t *testing.T, format string, files ...string) []byte {
+	t.Helper()
 	var buffer bytes.Buffer
-	compressed := gzip.NewWriter(&buffer)
+	var compressed io.WriteCloser
+	switch format {
+	case "gzip":
+		compressed = gzip.NewWriter(&buffer)
+	case "zstd":
+		var err error
+		compressed, err = zstd.NewWriter(&buffer, zstd.WithEncoderConcurrency(1))
+		if err != nil {
+			t.Fatal(err)
+		}
+	default:
+		t.Fatalf("unsupported test archive format %q", format)
+	}
 	writer := tar.NewWriter(compressed)
 	// A stdlib-only PEP 517 backend avoids network access to install build tools.
 	if len(files) == 0 {

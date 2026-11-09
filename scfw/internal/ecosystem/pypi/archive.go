@@ -19,6 +19,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/ulikunitz/xz"
 	"github.com/ulikunitz/xz/lzma"
 )
@@ -53,12 +54,33 @@ func inspectArchive(ctx context.Context, body *io.SectionReader) (Artifact, bool
 			return Artifact{}, false, errors.New("unsupported opaque Python archive format")
 		}
 	}
+	var reader io.Reader = body
+	// Zstandard permits skippable frames before its first compressed frame.
+	if n >= 4 && (bytes.Equal(signature[:4], []byte{0x28, 0xb5, 0x2f, 0xfd}) ||
+		(signature[0]&0xf0 == 0x50 && bytes.Equal(signature[1:4], []byte{0x2a, 0x4d, 0x18}))) {
+		decoder, err := zstd.NewReader(archiveContextReader{ctx, reader},
+			zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(64<<20))
+		if err != nil {
+			return Artifact{}, false, err
+		}
+		defer decoder.Close()
+		expanded := &io.LimitedReader{R: archiveContextReader{ctx, decoder}, N: maxExpandedArchiveBytes + 1}
+		artifact, found, err := inspectTARContent(ctx, expanded)
+		if err == nil {
+			// TAR ends before the compression stream. Read through its checksum
+			// and any following frames before releasing the original bytes.
+			_, err = io.Copy(io.Discard, expanded)
+			if err == nil && expanded.N <= 0 {
+				err = errors.New("expanded Python archive exceeds inspection limit")
+			}
+		}
+		return artifact, found, err
+	}
 	if archive, err := zip.NewReader(body, body.Size()); err == nil {
 		return inspectZIP(ctx, archive)
 	} else if n >= 4 && bytes.Equal(signature[:4], []byte{'P', 'K', 3, 4}) {
 		return Artifact{}, false, err
 	}
-	var reader io.Reader = body
 	if n >= 2 && signature[0] == 0x1f && signature[1] == 0x8b {
 		decoder, err := gzip.NewReader(reader)
 		if err != nil {
@@ -81,6 +103,10 @@ func inspectArchive(ctx context.Context, body *io.SectionReader) (Artifact, bool
 		}
 		reader = decoder
 	}
+	return inspectTARContent(ctx, reader)
+}
+
+func inspectTARContent(ctx context.Context, reader io.Reader) (Artifact, bool, error) {
 	buffered := bufio.NewReaderSize(reader, 512)
 	header, err := buffered.Peek(512)
 	if err != nil && !errors.Is(err, io.EOF) {

@@ -156,6 +156,15 @@ When inspecting package manager commands, Datadog credentials and the Datadog si
 | npm               | >= 7.0                | `install` (including aliases)      |
 | pip               | >= 22.2               | `install`                          |
 | poetry            | >= 1.7                | `add`, `install`, `sync`, `update` |
+| uv (proxy mode)   | 0.13.4 tested         | `pip install`, `pip sync`, `pip compile`, `add`, `remove`, `sync`, `lock`, `run`, `export`, `tree`, `build`, `tool install`, `tool upgrade`, `tool run` |
+
+Enable uv interception with `SCFW_PROXY_ENABLED=1`, then use `scfw run -- uv pip install requests` or configure `--alias-uv`. Unrelated uv commands pass through unchanged. Proxy mode evaluates distributions requested over HTTP(S); packages already available in uv's cache, local paths, and Git source contents are not evaluated. Git HTTPS traffic still traverses the proxy and trusts its invocation CA.
+
+The uv adapter preserves existing HTTP/HTTPS upstream proxies, index authentication, and custom TLS settings. Overrides apply only to the child process. If `uv.toml` configures a proxy, SCFW uses a temporary merged configuration that is removed with the invocation CA. Existing configuration files are untouched; uv itself continues managing its cache, virtual environments, and project files.
+
+Local scripts retain their inline PEP 723 index and trust settings. Scripts declaring inline `http-proxy` or `https-proxy` settings are rejected before uv starts, because those settings override process-only routing; configure upstream proxies in the environment or `uv.toml` instead. Remote scripts, stdin scripts, and scripts larger than 16 MiB are unsupported. CGI proxy environments and pip's legacy `--isolated` configuration-discovery behavior are outside the supported scope.
+
+For upstream TLS, SCFW uses Go's system trust store by default. Explicit custom CA sources (`--cert`, `SSL_CERT_FILE`, `SSL_CERT_DIR`) replace defaults, even when a configured file/directory is missing or empty; empty environment-variable values are ignored. Native-TLS flags and settings are passed to uv unchanged. SCFW does not replicate uv's bundled root store. String and structured `allow-insecure-host` entries retain their host, scheme, and port scope. Git receives a separate temporary proxy and CA so its certificate settings do not widen uv registry trust.
 
 Supply Chain Firewall may only know how to inspect some of the "installish" subcommands for its supported package managers. These are shown in the above table. Any other subcommands are always allowed to run.
 

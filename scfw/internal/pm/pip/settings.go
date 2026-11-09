@@ -23,6 +23,7 @@ import (
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/pythonproxy"
 )
 
 // pipDiscoveryResult holds effective process settings and explicit source URLs.
@@ -156,30 +157,7 @@ func pipBoolean(value string) bool {
 	return slices.Contains([]string{"1", "true", "yes", "on", "y", "t"}, strings.ToLower(value))
 }
 
-func pipEnvironmentProxies() map[string]string {
-	proxies := map[string]string{}
-	for _, item := range os.Environ() {
-		key, value, _ := strings.Cut(item, "=")
-		if strings.HasSuffix(strings.ToLower(key), "_proxy") && value != "" {
-			proxies[strings.TrimSuffix(strings.ToLower(key), "_proxy")] = value
-		}
-	}
-	if os.Getenv("REQUEST_METHOD") != "" {
-		delete(proxies, "http")
-	}
-	for _, item := range os.Environ() {
-		key, value, _ := strings.Cut(item, "=")
-		if key == strings.ToLower(key) && strings.HasSuffix(key, "_proxy") {
-			key = strings.TrimSuffix(key, "_proxy")
-			if value == "" {
-				delete(proxies, key)
-			} else {
-				proxies[key] = value
-			}
-		}
-	}
-	return proxies
-}
+func pipEnvironmentProxies() map[string]string { return pythonproxy.Environment() }
 
 func expandPipPath(value string) string {
 	if value == "" {

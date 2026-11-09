@@ -1,0 +1,24 @@
+<dictionary> {
+  ExceptionsList : <array> {
+    0 : *.local
+    1 : 169.254/16
+    2 : 10.1
+    3 : 192.0.2.42
+    4 : private.example
+    5 : service?.example
+    6 : api[!0].internal
+  }
+  ExcludeSimpleHostnames : 1
+  HTTPEnable : 1
+  HTTPPort : 8080
+  HTTPProxy : proxy.example
+  HTTPSEnable : 1
+  HTTPSPort : 8443
+  HTTPSProxy : secure-proxy.example
+  __SCOPED__ : <dictionary> {
+    en0 : <dictionary> {
+      HTTPEnable : 1
+      HTTPProxy : ignored.example
+    }
+  }
+}

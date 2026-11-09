@@ -28,6 +28,9 @@ type CommandSpec struct {
 	Executable   string
 	Args         []string
 	EnvOverrides map[string]string
+	// EnvRemovals unsets child-only variables whose presence has meaning even
+	// when their value is empty. Overrides are applied after these removals.
+	EnvRemovals []string
 }
 
 // CommandConfigurer is implemented by adapters which configure commands to use
@@ -86,7 +89,18 @@ func Run(ctx context.Context, options Options, command []string, configurer Comm
 	}
 
 	child := exec.CommandContext(ctx, spec.Executable, spec.Args...)
-	child.Env = applyEnvironmentOverrides(os.Environ(), spec.EnvOverrides)
+	environment := os.Environ()
+	if len(spec.EnvRemovals) > 0 {
+		filtered := make([]string, 0, len(environment))
+		for _, entry := range environment {
+			key, _, _ := strings.Cut(entry, "=")
+			if !slices.Contains(spec.EnvRemovals, key) {
+				filtered = append(filtered, entry)
+			}
+		}
+		environment = filtered
+	}
+	child.Env = applyEnvironmentOverrides(environment, spec.EnvOverrides)
 	child.Stdin, child.Stdout, child.Stderr = os.Stdin, os.Stdout, os.Stderr
 	// Terminal jobs retain the shell's foreground group for Ctrl-Z and fg.
 	// Other runs use an isolated group to also cancel build/VCS descendants.

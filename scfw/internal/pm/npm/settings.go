@@ -49,10 +49,18 @@ func (npm Npm) settings(args []string) (npmDiscoveryResult, error) {
 		return npmDiscoveryResult{}, err
 	}
 	home := lookupEnvironment(environ)["HOME"]
+	// A null value is unset in npm (`npm config set proxy null` writes
+	// proxy=null), yet it still hides the same key in lower layers.
 	get := func(key string) []string {
 		for _, layer := range layers {
 			if values, found := layer[key]; found {
-				return values
+				var set []string
+				for _, value := range values {
+					if value != "null" {
+						set = append(set, value)
+					}
+				}
+				return set
 			}
 		}
 		return nil

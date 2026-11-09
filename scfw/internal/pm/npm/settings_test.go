@@ -97,6 +97,40 @@ func TestSettingsFromEnvironmentAndOptions(t *testing.T) {
 	}
 }
 
+// npm treats null as unset; `npm config set proxy null` writes proxy=null.
+func TestSettingsTreatNullAsUnset(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		npmrc string
+		env   [][2]string
+		args  []string
+	}{
+		{name: "npmrc", npmrc: "proxy=null\nhttps-proxy=null\nnoproxy=null\nca=null\ncafile=null\n"},
+		{name: "environment", env: [][2]string{{"npm_config_proxy", "null"}, {"npm_config_https_proxy", "null"}, {"npm_config_ca", "null"}}},
+		{name: "options", args: []string{"--proxy=null", "--https-proxy", "null", "--cafile=null"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manager := isolatedNpm(t)
+			t.Setenv("HTTPS_PROXY", "http://corp:1")
+			t.Setenv("NO_PROXY", "internal.test")
+			for _, pair := range test.env {
+				t.Setenv(pair[0], pair[1])
+			}
+			writeNpmFixture(t, ".npmrc", test.npmrc)
+			result, err := manager.settings(test.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.HTTPS != "http://corp:1" || result.NoProxy != "internal.test" || len(result.CA) != 0 || result.CAFile != "" {
+				t.Fatalf("https=%q noproxy=%q ca=%q cafile=%q, want the environment fallbacks and no CA", result.HTTPS, result.NoProxy, result.CA, result.CAFile)
+			}
+			if _, err := manager.ProxyOptions(test.args); err != nil {
+				t.Fatalf("ProxyOptions: %v", err)
+			}
+		})
+	}
+}
+
 func TestUpstreamProxyMatchesSettings(t *testing.T) {
 	manager := isolatedNpm(t)
 	t.Setenv("npm_config_https_proxy", "http://hp:4")

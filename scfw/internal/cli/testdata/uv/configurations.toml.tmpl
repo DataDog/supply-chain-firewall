@@ -1,0 +1,72 @@
+# Named configuration samples. Each top-level table is written as a complete file.
+
+[direct-project.project]
+name = "uv-fixture"
+version = "1.0"
+requires-python = ">=3.8"
+dependencies = ["project @ %s"]
+
+[direct-project.tool.uv]
+package = false
+
+[empty-project.project]
+name = "uv-fixture"
+version = "1.0"
+requires-python = ">=3.8"
+dependencies = []
+
+[local-dependency.project]
+name = "consumer"
+version = "1.0"
+requires-python = ">=3.8"
+dependencies = ["uv-fixture"]
+
+[local-dependency.tool.uv.sources]
+uv-fixture = { path = "member" }
+
+[member-proxy.project]
+name = "foo"
+version = "1.0"
+[member-proxy.tool.uv]
+http-proxy = "%s"
+
+[member.project]
+name = "foo"
+version = "1.0"
+[member.tool.uv]
+resolution = "highest"
+
+[proxy]
+http-proxy = "%s"
+
+[pyproject.project]
+name = "uv-fixture"
+version = "1.0"
+requires-python = ">=3.8"
+dependencies = ["project==1.0"]
+
+[uv]
+native-tls = true
+http-proxy = "%s"
+https-proxy = "%s"
+no-proxy = ["bypass.example"]
+[[uv.index]]
+name = "private"
+url = "%s/custom/"
+default = true
+authenticate = "always"
+
+[virtual-workspace.tool.uv.workspace]
+members = ["member"]
+
+[workspace-exclude.tool.uv.workspace]
+members = ["packages/**"]
+exclude = ["packages/*"]
+
+[workspace.project]
+name = "uv-workspace"
+version = "1.0"
+[workspace.tool.uv]
+http-proxy = "%s"
+[workspace.tool.uv.workspace]
+members = ["packages/[!x]*"]

@@ -1,0 +1,1 @@
+print("ordinary script fixture")

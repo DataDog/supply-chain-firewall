@@ -30,9 +30,11 @@ var (
 	aliasNpm          bool
 	aliasPip          bool
 	aliasPoetry       bool
+	aliasUV           bool
 	removeAliasNpm    bool
 	removeAliasPip    bool
 	removeAliasPoetry bool
+	removeAliasUV     bool
 	ddAPIKey          string
 	ddAppKey          string
 	ddSite            string
@@ -74,6 +76,8 @@ func init() {
 	registerConfigureArg("remove-alias-pip", false, "Remove Supply Chain Firewall's pip shell aliases.", &removeAliasPip)
 	registerConfigureArg("alias-poetry", false, "Add shell aliases to run all poetry commands through Supply Chain Firewall.", &aliasPoetry)
 	registerConfigureArg("remove-alias-poetry", false, "Remove Supply Chain Firewall's poetry shell alias.", &removeAliasPoetry)
+	registerConfigureArg("alias-uv", false, "Add a shell alias to run uv commands through Supply Chain Firewall.", &aliasUV)
+	registerConfigureArg("remove-alias-uv", false, "Remove Supply Chain Firewall's uv shell alias.", &removeAliasUV)
 	registerConfigureArg("dd-api-key", "", "Datadog API key used for policy evaluation and reporting (optional).", &ddAPIKey)
 	registerConfigureArg("dd-app-key", "", "Datadog application key used for policy evaluation and reporting (optional).", &ddAppKey)
 	registerConfigureArg("dd-site", "", "Datadog site parameter used for Datadog evaluation and reporting (optional).", &ddSite)
@@ -81,6 +85,7 @@ func init() {
 	configureCmd.MarkFlagsMutuallyExclusive("alias-npm", "remove-alias-npm")
 	configureCmd.MarkFlagsMutuallyExclusive("alias-pip", "remove-alias-pip")
 	configureCmd.MarkFlagsMutuallyExclusive("alias-poetry", "remove-alias-poetry")
+	configureCmd.MarkFlagsMutuallyExclusive("alias-uv", "remove-alias-uv")
 	configureCmd.MarkFlagsOneRequired(configureArgNames...)
 }
 
@@ -161,6 +166,9 @@ func buildManagedBlock(existingConfig managedConfiguration, scfwHomeChanged, ddS
 	}
 	if !removeAliasPoetry && (aliasPoetry || hasConfiguredAlias(existingConfig.aliases, "poetry")) {
 		b.WriteString(`alias poetry="scfw run -- poetry"` + "\n")
+	}
+	if !removeAliasUV && (aliasUV || hasConfiguredAlias(existingConfig.aliases, "uv")) {
+		b.WriteString(`alias uv="scfw run -- uv"` + "\n")
 	}
 	configuredScfwHome := existingConfig.scfwHome
 	if scfwHomeChanged || scfwHome != "" {

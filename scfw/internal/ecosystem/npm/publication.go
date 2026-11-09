@@ -109,10 +109,10 @@ func (cache *PublicationCache) packument(ctx context.Context, client *http.Clien
 // fetchPackument requests the full packument. Errors never include the URL or
 // headers, which can carry registry credentials.
 func fetchPackument(ctx context.Context, client *http.Client, packumentURL url.URL, authorization string) (packument, error) {
-	ctx, cancel := context.WithTimeout(ctx, packumentFetchTimeout)
+	fetchContext, cancel := context.WithTimeout(ctx, packumentFetchTimeout)
 	defer cancel()
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, packumentURL.String(), nil)
+	request, err := http.NewRequestWithContext(fetchContext, http.MethodGet, packumentURL.String(), nil)
 	if err != nil {
 		return packument{}, errors.New("build npm packument request")
 	}
@@ -123,8 +123,8 @@ func fetchPackument(ctx context.Context, client *http.Client, packumentURL url.U
 
 	response, err := sameOriginAuthorizationClient(client, &packumentURL).Do(request)
 	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return packument{}, ctxErr
+		if fetchErr := fetchContextErr(ctx, fetchContext); fetchErr != nil {
+			return packument{}, fetchErr
 		}
 		return packument{}, errors.New("npm packument request failed")
 	}
@@ -135,8 +135,8 @@ func fetchPackument(ctx context.Context, client *http.Client, packumentURL url.U
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxPackumentBytes+1))
 	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return packument{}, ctxErr
+		if fetchErr := fetchContextErr(ctx, fetchContext); fetchErr != nil {
+			return packument{}, fetchErr
 		}
 		return packument{}, errors.New("read npm packument failed")
 	}
@@ -148,6 +148,19 @@ func fetchPackument(ctx context.Context, client *http.Client, packumentURL url.U
 		return packument{}, fmt.Errorf("decode npm packument: %w", err)
 	}
 	return decoded, nil
+}
+
+// fetchContextErr reports why a packument fetch stopped early: the run's own
+// cancellation is returned as is, while the fetch timeout becomes a plain
+// publication error, so callers never mistake a slow registry for cancellation.
+func fetchContextErr(runContext, fetchContext context.Context) error {
+	if err := runContext.Err(); err != nil {
+		return err
+	}
+	if fetchContext.Err() != nil {
+		return errors.New("npm packument request timed out")
+	}
+	return nil
 }
 
 // sameOriginAuthorizationClient copies client so redirects keep Authorization

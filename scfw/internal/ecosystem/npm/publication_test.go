@@ -186,8 +186,14 @@ func TestResolveTimesOut(t *testing.T) {
 
 	artifact := registryArtifact(t, server.URL+"/", "/left-pad/-/left-pad-1.3.0.tgz")
 	started := time.Now()
-	if _, err := (&PublicationCache{}).Resolve(context.Background(), http.DefaultClient, artifact); err == nil {
+	_, err := (&PublicationCache{}).Resolve(context.Background(), http.DefaultClient, artifact)
+	if err == nil {
 		t.Fatal("Resolve() returned nil error for a registry slower than the timeout")
+	}
+	// A slow registry is a publication failure, not a cancellation: policy
+	// callers treat context errors as "stop", which would reject the download.
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		t.Fatalf("Resolve() timeout error = %v, want a non-context publication error", err)
 	}
 	if elapsed := time.Since(started); elapsed >= time.Second {
 		t.Fatalf("Resolve() took %v, want it bounded by the fetch timeout", elapsed)

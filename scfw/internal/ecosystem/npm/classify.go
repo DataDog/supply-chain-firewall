@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -75,10 +76,10 @@ func (classifier *Classifier) Classify(requestURL *url.URL) (RequestKind, Artifa
 	if requestURL == nil || requestURL.Host == "" || (requestURL.Scheme != "http" && requestURL.Scheme != "https") {
 		return RequestUnrelated, Artifact{}
 	}
-	escapedPath := requestURL.EscapedPath()
+	escapedPath := normalizeEscapedPath(requestURL.EscapedPath())
 	relativePath := escapedPath
 	for _, registry := range classifier.registries {
-		base := registry.EscapedPath()
+		base := normalizeEscapedPath(registry.EscapedPath())
 		if strings.EqualFold(registry.Scheme, requestURL.Scheme) && strings.EqualFold(registry.Host, requestURL.Host) &&
 			strings.HasPrefix(escapedPath, base) {
 			relativePath = "/" + strings.TrimPrefix(escapedPath, base)
@@ -94,6 +95,36 @@ func (classifier *Classifier) Classify(requestURL *url.URL) (RequestKind, Artifa
 		return RequestRegistryAPI, Artifact{}
 	}
 	return RequestUnrelated, Artifact{}
+}
+
+// normalizeEscapedPath returns the equivalent path registries actually serve:
+// percent-encoded unreserved characters are decoded (RFC 3986 section 6.2.2.2)
+// and repeated slashes collapse, so neither can hide a tarball. Other escapes,
+// notably a scoped name's %2F, are kept.
+func normalizeEscapedPath(escapedPath string) string {
+	var normalized strings.Builder
+	normalized.Grow(len(escapedPath))
+	var previous byte
+	for index := 0; index < len(escapedPath); index++ {
+		character := escapedPath[index]
+		if character == '%' && index+2 < len(escapedPath) {
+			if value, err := strconv.ParseUint(escapedPath[index+1:index+3], 16, 8); err == nil && isUnreserved(byte(value)) {
+				character = byte(value)
+				index += 2
+			}
+		}
+		if character == '/' && previous == '/' {
+			continue
+		}
+		normalized.WriteByte(character)
+		previous = character
+	}
+	return normalized.String()
+}
+
+func isUnreserved(character byte) bool {
+	return 'a' <= character && character <= 'z' || 'A' <= character && character <= 'Z' ||
+		'0' <= character && character <= '9' || strings.IndexByte("-._~", character) >= 0
 }
 
 // parseTarball parses "<base>/<name>/-/<last name segment>-<version>.tgz",

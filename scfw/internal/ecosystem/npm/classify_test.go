@@ -54,6 +54,15 @@ func TestClassify(t *testing.T) {
 		{url: "https://gitlab.example/api/v4/projects/1/packages/npm/@scope/pkg/-/@scope/pkg-1.0.0.tgz", kind: RequestTarball, name: "@scope/pkg", version: "1.0.0", packumentPath: "/api/v4/projects/1/packages/npm/@scope%2Fpkg"},
 		{url: "https://gitlab.example/api/v4/projects/1/packages/npm/@scope%2Fpkg/-/@scope%2Fpkg-1.0.0.tgz", kind: RequestTarball, name: "@scope/pkg", version: "1.0.0", packumentPath: "/api/v4/projects/1/packages/npm/@scope%2Fpkg"},
 		{url: "https://gitlab.example/api/v4/projects/1/packages/npm/@scope/pkg/-/@other/pkg-1.0.0.tgz", kind: RequestUnrelated},
+		// Registries serve equivalent paths identically: encoded unreserved
+		// characters and repeated slashes must not hide a tarball.
+		{url: "https://registry.npmjs.org/left-pad/%2D/left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
+		{url: "https://registry.npmjs.org/left-pad/%2d/left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
+		{url: "https://registry.npmjs.org/%6Ceft-pad/%2D/left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
+		{url: "https://registry.npmjs.org/left-pad//-/left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
+		{url: "https://registry.npmjs.org/left-pad/-//left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
+		{url: "https://registry.npmjs.org//left-pad/-/left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
+		{url: "https://registry.npmjs.org/%2D/v1/search?text=x", kind: RequestRegistryAPI},
 		// A "/-/" path prefix must not exempt a recognizable tarball from evaluation.
 		{url: "https://mirror.example/-/left-pad/-/left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/-/left-pad"},
 		// Tarballs are recognized on any host: an unknown host cannot opt out of evaluation.

@@ -8,6 +8,7 @@ package npm
 import (
 	"errors"
 	"net/url"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -97,29 +98,32 @@ func (classifier *Classifier) Classify(requestURL *url.URL) (RequestKind, Artifa
 	return RequestUnrelated, Artifact{}
 }
 
-// normalizeEscapedPath returns the equivalent path registries actually serve:
-// percent-encoded unreserved characters are decoded (RFC 3986 section 6.2.2.2)
-// and repeated slashes collapse, so neither can hide a tarball. Other escapes,
-// notably a scoped name's %2F, are kept.
+// normalizeEscapedPath returns the path registries actually serve for a
+// request: percent-encoded unreserved characters (RFC 3986 section 6.2.2.2) and
+// encoded slashes are decoded, then dot segments and repeated slashes are
+// resolved, so none of them can hide a tarball or change its identity. A
+// scoped name's slash becomes literal; parseTarball re-encodes it for the
+// packument URL. Other escapes, such as %40, are kept.
 func normalizeEscapedPath(escapedPath string) string {
-	var normalized strings.Builder
-	normalized.Grow(len(escapedPath))
-	var previous byte
+	var decoded strings.Builder
+	decoded.Grow(len(escapedPath))
 	for index := 0; index < len(escapedPath); index++ {
 		character := escapedPath[index]
 		if character == '%' && index+2 < len(escapedPath) {
-			if value, err := strconv.ParseUint(escapedPath[index+1:index+3], 16, 8); err == nil && isUnreserved(byte(value)) {
+			value, err := strconv.ParseUint(escapedPath[index+1:index+3], 16, 8)
+			if err == nil && (value == '/' || isUnreserved(byte(value))) {
 				character = byte(value)
 				index += 2
 			}
 		}
-		if character == '/' && previous == '/' {
-			continue
-		}
-		normalized.WriteByte(character)
-		previous = character
+		decoded.WriteByte(character)
 	}
-	return normalized.String()
+	normalized := path.Clean("/" + decoded.String())
+	// Keep a trailing slash: configured registry bases rely on it for prefix matching.
+	if strings.HasSuffix(decoded.String(), "/") && normalized != "/" {
+		normalized += "/"
+	}
+	return normalized
 }
 
 func isUnreserved(character byte) bool {

@@ -63,6 +63,20 @@ func TestClassify(t *testing.T) {
 		{url: "https://registry.npmjs.org/left-pad/-//left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
 		{url: "https://registry.npmjs.org//left-pad/-/left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
 		{url: "https://registry.npmjs.org/%2D/v1/search?text=x", kind: RequestRegistryAPI},
+		// Registries resolve dot segments, so they must not change the identity evaluated.
+		{url: "https://registry.npmjs.org/@types/x/../node/-/node-20.0.0.tgz", kind: RequestTarball, name: "@types/node", version: "20.0.0", packumentPath: "/@types%2Fnode"},
+		{url: "https://registry.npmjs.org/@types/./node/-/node-20.0.0.tgz", kind: RequestTarball, name: "@types/node", version: "20.0.0", packumentPath: "/@types%2Fnode"},
+		{url: "https://registry.npmjs.org/left-pad/-/./left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
+		{url: "https://registry.npmjs.org/left-pad/./-/left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
+		{url: "https://registry.npmjs.org/left-pad/-/x/../left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
+		{url: "https://registry.npmjs.org/left-pad/x/../-/left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
+		// Registries treat an encoded slash as a path separator.
+		{url: "https://registry.npmjs.org/left-pad/-%2Fleft-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
+		{url: "https://registry.npmjs.org/left-pad/-%2fleft-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
+		{url: "https://registry.npmjs.org/left-pad%2F-%2Fleft-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
+		{url: "https://registry.npmjs.org/left-pad%2f-/left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
+		{url: "https://registry.npmjs.org/@types/node/-%2Fnode-20.0.0.tgz", kind: RequestTarball, name: "@types/node", version: "20.0.0", packumentPath: "/@types%2Fnode"},
+		{url: "https://registry.npmjs.org/@types%2Fnode%2F-%2Fnode-20.0.0.tgz", kind: RequestTarball, name: "@types/node", version: "20.0.0", packumentPath: "/@types%2Fnode"},
 		// A "/-/" path prefix must not exempt a recognizable tarball from evaluation.
 		{url: "https://mirror.example/-/left-pad/-/left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/-/left-pad"},
 		// Tarballs are recognized on any host: an unknown host cannot opt out of evaluation.

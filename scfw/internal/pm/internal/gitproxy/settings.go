@@ -37,6 +37,7 @@ type Settings struct {
 	entries                   []gitConfigurationEntry
 	fileEntries               []gitConfigurationEntry
 	commandEntries            []gitConfigurationEntry
+	profiles                  []routeProfile
 	unscopedConfiguration     string
 	nativeRootsOnce           sync.Once
 	nativeRoots               *x509.CertPool
@@ -151,6 +152,7 @@ func Read(directory string) (*Settings, error) {
 		}
 	}
 	s.unscopedConfiguration = renderGitConfiguration(unscoped)
+	s.discoverProfiles()
 
 	s.sslPaths = append([]string{os.Getenv("SSL_CERT_FILE")}, filepath.SplitList(os.Getenv("SSL_CERT_DIR"))...)
 

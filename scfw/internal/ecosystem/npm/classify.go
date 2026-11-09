@@ -86,12 +86,12 @@ func (classifier *Classifier) Classify(requestURL *url.URL) (RequestKind, Artifa
 		}
 	}
 
+	if artifact, ok := parseTarball(requestURL, escapedPath); ok {
+		return RequestTarball, artifact
+	}
 	segments := strings.Split(strings.TrimPrefix(relativePath, "/"), "/")
 	if segments[0] == "-" {
 		return RequestRegistryAPI, Artifact{}
-	}
-	if artifact, ok := parseTarball(requestURL, escapedPath); ok {
-		return RequestTarball, artifact
 	}
 	return RequestUnrelated, Artifact{}
 }

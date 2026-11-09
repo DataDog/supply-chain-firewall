@@ -21,6 +21,8 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
@@ -345,4 +347,140 @@ func seedNpmLockfile(t *testing.T, _ *npmTestRegistry, dir string) {
 		t.Fatal(err)
 	}
 	t.Setenv("npm_config_cache", t.TempDir())
+}
+
+// startConnectTunnel is an upstream HTTP proxy that tunnels CONNECT requests
+// and counts them. With requireAuth set, it demands those Basic credentials.
+func startConnectTunnel(t *testing.T, requireAuth string) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	var tunnels atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodConnect {
+			http.Error(w, "CONNECT required", http.StatusMethodNotAllowed)
+			return
+		}
+		if requireAuth != "" && r.Header.Get("Proxy-Authorization") != "Basic "+base64.StdEncoding.EncodeToString([]byte(requireAuth)) {
+			w.Header().Set("Proxy-Authenticate", "Basic")
+			http.Error(w, "proxy authentication required", http.StatusProxyAuthRequired)
+			return
+		}
+		target, err := net.Dial("tcp", r.Host)
+		if err != nil {
+			http.Error(w, "upstream unreachable", http.StatusBadGateway)
+			return
+		}
+		client, _, err := http.NewResponseController(w).Hijack()
+		if err != nil {
+			_ = target.Close()
+			return
+		}
+		tunnels.Add(1)
+		_, _ = io.WriteString(client, "HTTP/1.1 200 Connection Established\r\n\r\n")
+		go func() { _, _ = io.Copy(target, client); _ = target.Close() }()
+		_, _ = io.Copy(client, target)
+		_ = client.Close()
+	}))
+	t.Cleanup(server.Close)
+	return server, &tunnels
+}
+
+func TestNpmProxyBypassAttemptsAreStillEvaluated(t *testing.T) {
+	if _, err := exec.LookPath("npm"); err != nil {
+		t.Skip("npm required for npm integration tests")
+	}
+	for _, test := range []struct {
+		name  string
+		npmrc func(tunnel string) string
+		env   func(registry *npmTestRegistry, tunnel string) [2]string
+		args  func(registry *npmTestRegistry, tunnel string) []string
+	}{
+		{name: "npmrc noproxy", npmrc: func(string) string { return "noproxy=localhost\n" }},
+		{name: "npmrc https-proxy", npmrc: func(tunnel string) string { return "https-proxy=" + tunnel + "\n" }},
+		{name: "env NO_PROXY", env: func(*npmTestRegistry, string) [2]string { return [2]string{"NO_PROXY", "localhost"} }},
+		{name: "env NPM_CONFIG_NOPROXY", env: func(*npmTestRegistry, string) [2]string { return [2]string{"NPM_CONFIG_NOPROXY", "localhost"} }},
+		{name: "env dashed https-proxy", env: func(_ *npmTestRegistry, tunnel string) [2]string { return [2]string{"npm_config_https-proxy", tunnel} }},
+		{name: "env NPM_CONFIG_CA", env: func(registry *npmTestRegistry, _ string) [2]string { return [2]string{"NPM_CONFIG_CA", registry.CAPEM} }},
+		{name: "option noproxy", args: func(*npmTestRegistry, string) []string { return []string{"--noproxy=localhost"} }},
+		{name: "option noproxy space form", args: func(*npmTestRegistry, string) []string { return []string{"--noproxy", "localhost"} }},
+		{name: "option https-proxy", args: func(_ *npmTestRegistry, tunnel string) []string { return []string{"--https-proxy=" + tunnel} }},
+		{name: "option ca", args: func(registry *npmTestRegistry, _ string) []string { return []string{"--ca=" + registry.CAPEM} }},
+		{name: "option cafile", args: func(registry *npmTestRegistry, _ string) []string { return []string{"--cafile=" + registry.CAPath} }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			registry := startNpmRegistry(t)
+			tunnel, _ := startConnectTunnel(t, "")
+			extra := ""
+			if test.npmrc != nil {
+				extra = test.npmrc(tunnel.URL)
+			}
+			newNpmTestProject(t, registry, extra)
+			if test.env != nil {
+				pair := test.env(registry, tunnel.URL)
+				t.Setenv(pair[0], pair[1])
+			}
+			args := []string{"install", "lab-pkg"}
+			if test.args != nil {
+				args = append(args, test.args(registry, tunnel.URL)...)
+			}
+			run := runNpmThroughProxy(t, args, evaluation.OutcomeBlock)
+			assertNpmFailed(t, run.commandErr)
+			if run.calls != 1 || registry.TarballHits.Load() != 0 {
+				t.Fatalf("evaluations=%d tarball downloads=%d, want the tarball evaluated and blocked", run.calls, registry.TarballHits.Load())
+			}
+			assertNpmRunCleanedUp(t, run)
+		})
+	}
+}
+
+func TestNpmProxyChainsToAuthenticatedUpstream(t *testing.T) {
+	executable, err := exec.LookPath("npm")
+	if err != nil {
+		t.Skip("npm required for npm integration tests")
+	}
+	registry := startNpmRegistry(t)
+	tunnel, tunnels := startConnectTunnel(t, "proxy:secret")
+	upstream := strings.Replace(tunnel.URL, "://", "://proxy:secret@", 1)
+	newNpmTestProject(t, registry, "https-proxy="+upstream+"\n")
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	manager, err := npm.NewNpm(context.Background(), "npm", executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options, err := manager.ProxyOptions([]string{"install", "lab-pkg"})
+	if err != nil || options.Upstream.HTTPSProxy != upstream {
+		t.Fatalf("upstream = %q (error %v), want the credentialed URL verbatim", options.Upstream.HTTPSProxy, err)
+	}
+	run := runNpmThroughProxy(t, []string{"install", "lab-pkg"}, evaluation.OutcomeAllow)
+	if run.commandErr != nil {
+		t.Fatalf("npm failed: %v", run.commandErr)
+	}
+	if tunnels.Load() < 1 || registry.TarballHits.Load() != 1 || run.calls != 1 {
+		t.Fatalf("tunnels=%d tarball downloads=%d evaluations=%d", tunnels.Load(), registry.TarballHits.Load(), run.calls)
+	}
+	for _, output := range append([]string{logs.String(), run.details}, run.sources...) {
+		if strings.Contains(output, "secret") {
+			t.Fatalf("upstream credential leaked: %s", output)
+		}
+	}
+	assertNpmRunCleanedUp(t, run)
+}
+
+func TestNpmProxyWithoutUpstreamConnectsDirectly(t *testing.T) {
+	if _, err := exec.LookPath("npm"); err != nil {
+		t.Skip("npm required for npm integration tests")
+	}
+	registry := startNpmRegistry(t)
+	_, tunnels := startConnectTunnel(t, "")
+	newNpmTestProject(t, registry, "")
+	run := runNpmThroughProxy(t, []string{"install", "lab-pkg"}, evaluation.OutcomeAllow)
+	if run.commandErr != nil {
+		t.Fatalf("npm failed: %v", run.commandErr)
+	}
+	if tunnels.Load() != 0 || registry.TarballHits.Load() != 1 {
+		t.Fatalf("tunnels=%d tarball downloads=%d, want a direct download", tunnels.Load(), registry.TarballHits.Load())
+	}
 }

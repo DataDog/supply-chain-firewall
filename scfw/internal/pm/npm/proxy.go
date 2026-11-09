@@ -113,10 +113,14 @@ func npmBypasses(target *url.URL, noProxy string) bool {
 	return false
 }
 
-// validateUpstream checks every proxy npm could select. npm parses proxies
-// with the WHATWG URL parser, which rejects a value without a scheme.
+// validateUpstream checks the proxies npm selects; npm never parses the
+// variables it does not select. npm parses proxies with the WHATWG URL
+// parser, which rejects a value without a scheme.
 func validateUpstream(result npmDiscoveryResult) error {
-	for _, value := range result.candidates {
+	for _, value := range []string{result.HTTPS, result.HTTP} {
+		if value == "" {
+			continue
+		}
 		parsed, err := url.Parse(value)
 		if err != nil || !strings.Contains(value, "://") || parsed.Hostname() == "" ||
 			(parsed.Scheme != "http" && parsed.Scheme != "https") {

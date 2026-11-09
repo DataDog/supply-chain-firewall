@@ -34,8 +34,6 @@ type npmDiscoveryResult struct {
 	CA         []string
 	StrictSSL  bool
 	Registries []string
-	// candidates lists every proxy value npm could select, for validation.
-	candidates []string
 }
 
 // npmConfig maps an npm configuration key to its values within one layer; a
@@ -84,11 +82,6 @@ func (npm Npm) settings(args []string) (npmDiscoveryResult, error) {
 		CAFile:    expandNpmPath(scalar("cafile"), home),
 		CA:        get("ca"),
 		StrictSSL: scalar("strict-ssl") != "false",
-	}
-	for _, value := range []string{httpsProxy, proxy, agent["https_proxy"], agent["http_proxy"], agent["proxy"]} {
-		if value != "" {
-			result.candidates = append(result.candidates, value)
-		}
 	}
 	noProxy := strings.Join(get("noproxy"), ",")
 	if noProxy == "" {

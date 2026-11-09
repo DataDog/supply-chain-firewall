@@ -145,6 +145,27 @@ func TestUpstreamProxyMatchesSettings(t *testing.T) {
 	}
 }
 
+// Only the proxies npm selects are validated: npm never parses the others.
+func TestUnusedInvalidProxyVariablesAreIgnored(t *testing.T) {
+	for _, unused := range [][2]string{{"http_proxy", "corp:8080"}, {"PROXY", "not a url"}} {
+		t.Run(unused[0], func(t *testing.T) {
+			manager := isolatedNpm(t)
+			t.Setenv("https_proxy", "http://corp:3128")
+			t.Setenv(unused[0], unused[1])
+			config, err := manager.UpstreamProxy([]string{"install"})
+			if err != nil {
+				t.Fatalf("UpstreamProxy: %v", err)
+			}
+			if config.HTTPSProxy != "http://corp:3128" || config.HTTPProxy != "http://corp:3128" {
+				t.Fatalf("upstream = %+v", config)
+			}
+			if _, err := manager.ProxyOptions([]string{"install"}); err != nil {
+				t.Fatalf("ProxyOptions: %v", err)
+			}
+		})
+	}
+}
+
 func TestInvalidUpstreamNeverBecomesDirect(t *testing.T) {
 	for _, test := range []struct{ key, value string }{
 		{"npm_config_https_proxy", "http://u:secret@[bad"},

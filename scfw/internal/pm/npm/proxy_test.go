@@ -69,6 +69,44 @@ func TestProxyCommandAppendsFlagsWithoutSeparator(t *testing.T) {
 	}
 }
 
+func TestProxyCommandDropsUserNoproxyOptions(t *testing.T) {
+	config, pem := testClientConfig(t)
+	command := []string{"install", "--noproxy=a.test", "x", "--noproxy", "b.test", "--", "--noproxy=c.test"}
+	original := slices.Clone(command)
+	spec, err := Npm{executable: "/bin/npm"}.ProxyCommand(context.Background(), command, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := slices.Concat([]string{"install", "x"}, scfwFlags(config, pem), []string{"--", "--noproxy=c.test"})
+	if !slices.Equal(spec.Args, want) {
+		t.Fatalf("args = %q, want %q", spec.Args, want)
+	}
+	if !slices.Equal(command, original) {
+		t.Fatalf("caller's command was mutated: %q", command)
+	}
+	// The user's bypass list still shapes SCFW's own upstream routing.
+	manager := isolatedNpm(t)
+	t.Setenv("npm_config_https_proxy", "http://corp:1")
+	result, err := manager.settings(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NoProxy != "a.test,b.test" {
+		t.Fatalf("upstream noproxy = %q, want the user's entries", result.NoProxy)
+	}
+}
+
+func TestProxyCommandDropsTrailingNoproxyWithoutValue(t *testing.T) {
+	config, pem := testClientConfig(t)
+	spec, err := Npm{executable: "/bin/npm"}.ProxyCommand(context.Background(), []string{"install", "--noproxy"}, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := slices.Concat([]string{"install"}, scfwFlags(config, pem)); !slices.Equal(spec.Args, want) {
+		t.Fatalf("args = %q, want %q", spec.Args, want)
+	}
+}
+
 func TestProxyCommandRejectsUnreadableCACertificate(t *testing.T) {
 	config := proxy.ClientConfig{URL: "http://127.0.0.1:9", CACertificatePath: filepath.Join(t.TempDir(), "missing-secret.pem")}
 	_, err := Npm{executable: "/bin/npm"}.ProxyCommand(context.Background(), []string{"install"}, config)

@@ -138,7 +138,7 @@ func (npm Npm) ProxyCommand(_ context.Context, command []string, config proxy.Cl
 	if err != nil {
 		return proxy.CommandSpec{}, errors.New("read proxy CA certificate")
 	}
-	args := slices.Clone(command)
+	args := withoutNoproxyOptions(command)
 	// npm applies the last occurrence of an option, and command-line options
 	// take precedence over environment and .npmrc settings. The PEM uses the
 	// "=" form because, as a separate argument, it would start with dashes.
@@ -161,6 +161,28 @@ func (npm Npm) ProxyCommand(_ context.Context, command []string, config proxy.Cl
 		overrides["NODE_EXTRA_CA_CERTS"] = bundle
 	}
 	return proxy.CommandSpec{Executable: npm.Executable(), Args: args, EnvOverrides: overrides}, nil
+}
+
+// withoutNoproxyOptions removes the user's --noproxy options before "--".
+// npm accumulates repeated --noproxy values instead of keeping the last one,
+// so SCFW's sentinel cannot replace them, and a listed host would bypass the
+// proxy. The user's entries still apply to SCFW's own upstream connections.
+func withoutNoproxyOptions(command []string) []string {
+	args := make([]string, 0, len(command))
+	for index := 0; index < len(command); index++ {
+		argument := command[index]
+		if argument == "--" {
+			return append(args, command[index:]...)
+		}
+		if argument == "--noproxy" {
+			index++
+			continue
+		}
+		if !strings.HasPrefix(argument, "--noproxy=") {
+			args = append(args, argument)
+		}
+	}
+	return args
 }
 
 // proxyEnvironmentOverrides routes npm, its lifecycle scripts, and Git through

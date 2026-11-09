@@ -44,7 +44,52 @@ func (npm Npm) ProxyOptions(command []string) (proxy.Options, error) {
 	if err := validateUpstream(settings); err != nil {
 		return proxy.Options{}, err
 	}
-	return proxy.Options{Upstream: upstreamSettings(settings)}, nil
+	return proxy.Options{Upstream: upstreamSettings(settings), ProxyForURL: npmProxyForURL(settings)}, nil
+}
+
+var _ pm.ProxyOptionsProvider = Npm{}
+
+// npmProxyForURL applies npm's proxy and noproxy rules, which differ from the
+// matching of a flattened httpproxy configuration.
+func npmProxyForURL(result npmDiscoveryResult) func(*url.URL) (*url.URL, error) {
+	return func(target *url.URL) (*url.URL, error) {
+		value := result.HTTP
+		if target.Scheme == "https" {
+			value = result.HTTPS
+		}
+		if value == "" || npmBypasses(target, result.NoProxy) {
+			return nil, nil
+		}
+		parsed, err := url.Parse(value)
+		if err != nil {
+			return nil, errors.New("invalid npm upstream proxy URL")
+		}
+		return parsed, nil
+	}
+}
+
+// npmBypasses mirrors @npmcli/agent: an entry matches when its non-empty dot
+// segments equal the host's, compared from the right. There is no wildcard,
+// matching is case-sensitive, and an entry with a port never matches.
+func npmBypasses(target *url.URL, noProxy string) bool {
+	host := strings.Split(target.Hostname(), ".")
+	slices.Reverse(host)
+	for entry := range strings.SplitSeq(noProxy, ",") {
+		var segments []string
+		for segment := range strings.SplitSeq(strings.TrimSpace(entry), ".") {
+			if segment != "" {
+				segments = append(segments, segment)
+			}
+		}
+		if len(segments) == 0 || len(segments) > len(host) {
+			continue
+		}
+		slices.Reverse(segments)
+		if slices.Equal(host[:len(segments)], segments) {
+			return true
+		}
+	}
+	return false
 }
 
 // validateUpstream checks every proxy npm could select. npm parses proxies

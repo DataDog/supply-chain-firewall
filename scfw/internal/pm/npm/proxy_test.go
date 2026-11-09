@@ -8,6 +8,7 @@ package npm
 import (
 	"context"
 	"maps"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -106,6 +107,73 @@ func TestProxyCommandIgnoresUnreadableNodeExtraCACerts(t *testing.T) {
 	}
 	if spec.EnvOverrides["NODE_EXTRA_CA_CERTS"] != config.CACertificatePath {
 		t.Fatalf("NODE_EXTRA_CA_CERTS = %q", spec.EnvOverrides["NODE_EXTRA_CA_CERTS"])
+	}
+}
+
+func TestNpmBypasses(t *testing.T) {
+	for _, test := range []struct {
+		host, noProxy string
+		bypass        bool
+	}{
+		{"registry.lab.test", "lab.test", true},
+		{"registry.lab.test", ".lab.test", true},
+		{"notlab.test", "lab.test", false},
+		{"registry.lab.test", "*", false},
+		{"registry.lab.test", "registry.lab.test:443", false},
+		{"registry.lab.test", "REGISTRY.LAB.TEST", false},
+		{"127.0.0.1", "127.0.0.1", true},
+		{"a.test", " a.test , b.test ", true},
+		{"b.test", " a.test , b.test ", true},
+		{"registry.lab.test", "", false},
+	} {
+		target := &url.URL{Scheme: "https", Host: test.host + ":443"}
+		if got := npmBypasses(target, test.noProxy); got != test.bypass {
+			t.Errorf("npmBypasses(%q, %q) = %v, want %v", test.host, test.noProxy, got, test.bypass)
+		}
+	}
+}
+
+func TestProxyOptionsRoutesLikeNpm(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		env    [][2]string
+		npmrc  string
+		target string
+		want   string
+	}{
+		{name: "https-proxy beats proxy", npmrc: "https-proxy=http://hp:1\nproxy=http://p:2\n", target: "https://registry.test/x", want: "http://hp:1"},
+		{name: "HTTP_PROXY never serves https", env: [][2]string{{"HTTP_PROXY", "http://h:3"}}, target: "https://registry.test/x"},
+		{name: "bare PROXY serves http", env: [][2]string{{"PROXY", "http://bare:4"}}, target: "http://registry.test/x", want: "http://bare:4"},
+		{name: "config noproxy bypasses", npmrc: "https-proxy=http://hp:1\nnoproxy=a.test\n", env: [][2]string{{"NO_PROXY", "b.test"}}, target: "https://a.test/x"},
+		{name: "environment noproxy also bypasses", npmrc: "https-proxy=http://hp:1\nnoproxy=a.test\n", env: [][2]string{{"NO_PROXY", "b.test"}}, target: "https://b.test/x"},
+		{name: "unmatched host is proxied", npmrc: "https-proxy=http://hp:1\nnoproxy=lab.test\n", target: "https://notlab.test/x", want: "http://hp:1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manager := isolatedNpm(t)
+			for _, pair := range test.env {
+				t.Setenv(pair[0], pair[1])
+			}
+			writeNpmFixture(t, ".npmrc", test.npmrc)
+			options, err := manager.ProxyOptions(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if options.ProxyForURL == nil {
+				t.Fatal("ProxyForURL must be set")
+			}
+			target, _ := url.Parse(test.target)
+			proxyURL, err := options.ProxyForURL(target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := ""
+			if proxyURL != nil {
+				got = proxyURL.String()
+			}
+			if got != test.want {
+				t.Fatalf("proxy for %s = %q, want %q", test.target, got, test.want)
+			}
+		})
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -40,11 +41,17 @@ func (npm Npm) ProxyCommand(_ context.Context, command []string, config proxy.Cl
 		"--https-proxy="+config.URL, "--proxy="+config.URL, "--noproxy="+npmNoProxySentinel,
 		"--cafile="+config.CACertificatePath, "--ca="+string(pem),
 	)
-	return proxy.CommandSpec{
-		Executable:   npm.Executable(),
-		Args:         args,
-		EnvOverrides: proxyEnvironmentOverrides(os.Environ(), config, string(pem)),
-	}, nil
+	overrides := proxyEnvironmentOverrides(os.Environ(), config, string(pem))
+	// Lifecycle scripts ignore the proxy variables unless NODE_USE_ENV_PROXY is
+	// set, so they may still connect directly and need the user's own CAs.
+	if userCAs, err := os.ReadFile(os.Getenv("NODE_EXTRA_CA_CERTS")); err == nil {
+		bundle := filepath.Join(filepath.Dir(config.CACertificatePath), "node-extra-ca.pem")
+		if err := os.WriteFile(bundle, slices.Concat(userCAs, []byte("\n"), pem), 0600); err != nil {
+			return proxy.CommandSpec{}, errors.New("write Node CA bundle")
+		}
+		overrides["NODE_EXTRA_CA_CERTS"] = bundle
+	}
+	return proxy.CommandSpec{Executable: npm.Executable(), Args: args, EnvOverrides: overrides}, nil
 }
 
 // proxyEnvironmentOverrides routes npm, its lifecycle scripts, and Git through

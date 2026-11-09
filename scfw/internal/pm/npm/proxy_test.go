@@ -8,6 +8,7 @@ package npm
 import (
 	"context"
 	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -67,6 +68,44 @@ func TestProxyCommandRejectsUnreadableCACertificate(t *testing.T) {
 	_, err := Npm{executable: "/bin/npm"}.ProxyCommand(context.Background(), []string{"install"}, config)
 	if err == nil || err.Error() != "read proxy CA certificate" {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestProxyCommandBundlesUserNodeExtraCACerts(t *testing.T) {
+	config, pem := testClientConfig(t)
+	userCA := "-----BEGIN CERTIFICATE-----\nuser\n-----END CERTIFICATE-----\n"
+	userFile := filepath.Join(t.TempDir(), "corporate.pem")
+	writeNpmFixture(t, userFile, userCA)
+	t.Setenv("NODE_EXTRA_CA_CERTS", userFile)
+	spec, err := Npm{executable: "/bin/npm"}.ProxyCommand(context.Background(), []string{"install"}, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := spec.EnvOverrides["NODE_EXTRA_CA_CERTS"]
+	if filepath.Dir(bundle) != filepath.Dir(config.CACertificatePath) || bundle == config.CACertificatePath {
+		t.Fatalf("bundle %q must be a separate file in the per-run CA directory", bundle)
+	}
+	data, err := os.ReadFile(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != userCA+"\n"+pem {
+		t.Fatalf("bundle = %q", data)
+	}
+	if spec.EnvOverrides["npm_config_cafile"] != config.CACertificatePath || spec.EnvOverrides["GIT_SSL_CAINFO"] != config.CACertificatePath {
+		t.Fatal("only NODE_EXTRA_CA_CERTS may point at the bundle")
+	}
+}
+
+func TestProxyCommandIgnoresUnreadableNodeExtraCACerts(t *testing.T) {
+	config, _ := testClientConfig(t)
+	t.Setenv("NODE_EXTRA_CA_CERTS", filepath.Join(t.TempDir(), "missing.pem"))
+	spec, err := Npm{executable: "/bin/npm"}.ProxyCommand(context.Background(), []string{"install"}, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.EnvOverrides["NODE_EXTRA_CA_CERTS"] != config.CACertificatePath {
+		t.Fatalf("NODE_EXTRA_CA_CERTS = %q", spec.EnvOverrides["NODE_EXTRA_CA_CERTS"])
 	}
 }
 

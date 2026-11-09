@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -128,5 +129,315 @@ func TestInvalidUpstreamNeverBecomesDirect(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestReadNpmrc(t *testing.T) {
+	env := map[string]string{"CORP": "http://env:1", "SCOPE": "lab"}
+	for _, test := range []struct {
+		fixture string
+		want    npmConfig
+		absent  []string
+	}{
+		// Quotes survive when an inline comment follows them, as in npm.
+		{"crlf-bom.npmrc", npmConfig{"https-proxy": {`"http://q:1"`}, "proxy": {"http://crlf:2"}}, nil},
+		{"cr-only.npmrc", npmConfig{"https-proxy": {"http://cr:1"}, "proxy": {"http://cr2:2"}}, nil},
+		{"syntax.npmrc", npmConfig{
+			"https-proxy": {"http://sp:1"}, "proxy": {"http://q:1/;x"}, "noproxy": {"http://c:1"},
+			"registry": {"http://h:1/"}, "cafile": {"/single/quoted.pem"}, "ca": {"a\nb\"c"},
+			"globalconfig": {"a;b"}, "userconfig": {`"http://u:1`}, "strict-ssl": {"true"}, "prefix": {"last"},
+		}, nil},
+		{"expansion.npmrc", npmConfig{
+			"https-proxy": {"http://env:1"}, "proxy": {"${UNSET}"}, "noproxy": {"xy"},
+			"registry": {"http://r/${CORP}"}, "@lab:registry": {"http://k:1/"},
+		}, nil},
+		{"sections.npmrc", npmConfig{"https-proxy": {"http://top:1"}}, []string{"proxy"}},
+		{"arrays.npmrc", npmConfig{"noproxy": {"a.test", "b.test"}, "ca": {"x", "y"}}, nil},
+		{"credentials.npmrc", npmConfig{}, []string{"https-proxy", "_authToken"}},
+	} {
+		t.Run(test.fixture, func(t *testing.T) {
+			got := readNpmrc([]byte(readNpmFixture(t, filepath.Join("npmrc", test.fixture))), env)
+			for key, values := range test.want {
+				if !slices.Equal(got[key], values) {
+					t.Errorf("%s = %q, want %q", key, got[key], values)
+				}
+			}
+			for _, key := range test.absent {
+				if _, found := got[key]; found {
+					t.Errorf("%s must not be set: %q", key, got[key])
+				}
+			}
+		})
+	}
+}
+
+func TestSettingsReadErrorsAreFixed(t *testing.T) {
+	for name, prepare := range map[string]func(t *testing.T, path string){
+		"fifo": func(t *testing.T, path string) {
+			if err := syscall.Mkfifo(path, 0600); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"oversized": func(t *testing.T, path string) {
+			writeNpmFixture(t, path, "proxy=http://p:1\n"+strings.Repeat("#", 8<<20))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			manager := isolatedNpm(t)
+			writeNpmFixture(t, "package.json", "{}")
+			prepare(t, ".npmrc")
+			_, err := manager.settings(nil)
+			if err == nil || err.Error() != "could not read npm configuration" {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+func TestSettingsMergesNpmrcLayersPerKey(t *testing.T) {
+	manager := isolatedNpm(t)
+	writeNpmFixture(t, "package.json", "{}")
+	writeNpmFixture(t, ".npmrc", "proxy=http://proj:2\nnoproxy=internal.test\n")
+	writeNpmFixture(t, filepath.Join(os.Getenv("HOME"), ".npmrc"), "https-proxy=http://user:1\nproxy=http://user-proxy:9\n")
+	result, err := manager.settings(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.HTTPS != "http://user:1" || result.NoProxy != "internal.test" {
+		t.Fatalf("https=%q noproxy=%q", result.HTTPS, result.NoProxy)
+	}
+	t.Setenv("npm_config_https_proxy", "http://env:3")
+	if result, _ = manager.settings(nil); result.HTTPS != "http://env:3" {
+		t.Fatalf("environment must beat npmrc files: %q", result.HTTPS)
+	}
+	if result, _ = manager.settings([]string{"--https-proxy=http://cli:4"}); result.HTTPS != "http://cli:4" {
+		t.Fatalf("options must beat environment: %q", result.HTTPS)
+	}
+}
+
+// projectProxy returns the https-proxy npm would use for args from cwd.
+func projectProxy(t *testing.T, manager Npm, args ...string) string {
+	t.Helper()
+	result, err := manager.settings(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result.HTTPS
+}
+
+func TestSettingsProjectLocation(t *testing.T) {
+	t.Run("walks up to package.json", func(t *testing.T) {
+		manager := isolatedNpm(t)
+		root, _ := os.Getwd()
+		writeNpmFixture(t, filepath.Join(root, "package.json"), "{}")
+		writeNpmFixture(t, filepath.Join(root, ".npmrc"), "https-proxy=http://root:1\n")
+		writeNpmFixture(t, filepath.Join(root, "a", "b", ".npmrc"), "https-proxy=http://cwd:1\n")
+		t.Chdir(filepath.Join(root, "a", "b"))
+		if got := projectProxy(t, manager); got != "http://root:1" {
+			t.Fatalf("got %q; a .npmrc in cwd is ignored when the project is above it", got)
+		}
+	})
+	t.Run("nearest node_modules wins", func(t *testing.T) {
+		manager := isolatedNpm(t)
+		root, _ := os.Getwd()
+		writeNpmFixture(t, filepath.Join(root, "package.json"), "{}")
+		writeNpmFixture(t, filepath.Join(root, ".npmrc"), "https-proxy=http://root:1\n")
+		writeNpmFixture(t, filepath.Join(root, "a", "node_modules", ".keep"), "")
+		writeNpmFixture(t, filepath.Join(root, "a", ".npmrc"), "https-proxy=http://a:1\n")
+		t.Chdir(filepath.Join(root, "a"))
+		if got := projectProxy(t, manager); got != "http://a:1" {
+			t.Fatalf("got %q", got)
+		}
+	})
+	t.Run("prefix options are relative to cwd", func(t *testing.T) {
+		manager := isolatedNpm(t)
+		root, _ := os.Getwd()
+		writeNpmFixture(t, filepath.Join(root, "a", "package.json"), "{}")
+		writeNpmFixture(t, filepath.Join(root, "a", ".npmrc"), "https-proxy=http://a:1\n")
+		writeNpmFixture(t, filepath.Join(root, "x", ".npmrc"), "https-proxy=http://x:1\n")
+		t.Chdir(filepath.Join(root, "a"))
+		for _, args := range [][]string{{"--prefix", "../x"}, {"-C", "../x"}, {"--prefix=../x", "install"}} {
+			if got := projectProxy(t, manager, args...); got != "http://x:1" {
+				t.Fatalf("%q: got %q", args, got)
+			}
+		}
+		t.Setenv("npm_config_prefix", filepath.Join(root, "x"))
+		if got := projectProxy(t, manager); got != "http://a:1" {
+			t.Fatalf("an environment prefix must not move the project: %q", got)
+		}
+	})
+	t.Run("no project marker uses cwd", func(t *testing.T) {
+		manager := isolatedNpm(t)
+		writeNpmFixture(t, ".npmrc", "https-proxy=http://cwd:1\n")
+		if got := projectProxy(t, manager); got != "http://cwd:1" {
+			t.Fatalf("got %q", got)
+		}
+	})
+}
+
+func TestSettingsSkipsProjectNpmrcForGlobal(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+		env  [2]string
+		skip bool
+	}{
+		{name: "-g", args: []string{"-g", "install"}, skip: true},
+		{name: "--global", args: []string{"install", "--global"}, skip: true},
+		{name: "--location=global", args: []string{"--location=global"}, skip: true},
+		{name: "env global", env: [2]string{"npm_config_global", "true"}, skip: true},
+		{name: "env location", env: [2]string{"npm_config_location", "global"}, skip: true},
+		{name: "local", args: []string{"install"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manager := isolatedNpm(t)
+			if test.env[0] != "" {
+				t.Setenv(test.env[0], test.env[1])
+			}
+			writeNpmFixture(t, "package.json", "{}")
+			writeNpmFixture(t, ".npmrc", "https-proxy=http://proj:1\n")
+			if got := projectProxy(t, manager, test.args...); (got == "") != test.skip {
+				t.Fatalf("project proxy = %q, skip = %v", got, test.skip)
+			}
+		})
+	}
+	t.Run("npmrc global does not skip", func(t *testing.T) {
+		manager := isolatedNpm(t)
+		writeNpmFixture(t, "package.json", "{}")
+		writeNpmFixture(t, ".npmrc", "https-proxy=http://proj:1\n")
+		writeNpmFixture(t, filepath.Join(os.Getenv("HOME"), ".npmrc"), "global=true\n")
+		if got := projectProxy(t, manager); got != "http://proj:1" {
+			t.Fatalf("got %q", got)
+		}
+	})
+}
+
+func TestSettingsUserConfigLocation(t *testing.T) {
+	manager := isolatedNpm(t)
+	cwd, _ := os.Getwd()
+	writeNpmFixture(t, filepath.Join(os.Getenv("HOME"), ".npmrc"), "https-proxy=http://home:1\nuserconfig="+filepath.Join(cwd, "chained.npmrc")+"\n")
+	writeNpmFixture(t, filepath.Join(cwd, "chained.npmrc"), "https-proxy=http://chained:1\n")
+	writeNpmFixture(t, filepath.Join(cwd, "u.npmrc"), "https-proxy=http://u:1\n")
+	if got := projectProxy(t, manager); got != "http://home:1" {
+		t.Fatalf("default user config: %q (a userconfig inside it must be ignored)", got)
+	}
+	if got := projectProxy(t, manager, "--userconfig", "u.npmrc"); got != "http://u:1" {
+		t.Fatalf("--userconfig: %q", got)
+	}
+	t.Setenv("npm_config_userconfig", "u.npmrc")
+	if got := projectProxy(t, manager); got != "http://u:1" {
+		t.Fatalf("npm_config_userconfig relative to cwd: %q", got)
+	}
+	t.Setenv("npm_config_userconfig", "")
+	writeNpmFixture(t, filepath.Join(cwd, ".npmrc"), "userconfig=u.npmrc\n")
+	if got := projectProxy(t, manager); got != "http://u:1" {
+		t.Fatalf("project userconfig: %q", got)
+	}
+	t.Setenv("HOME", "")
+	if err := os.Remove(filepath.Join(cwd, ".npmrc")); err != nil {
+		t.Fatal(err)
+	}
+	if got := projectProxy(t, manager); got != "" {
+		t.Fatalf("an empty HOME has no user config: %q", got)
+	}
+}
+
+func TestSettingsGlobalConfigLocation(t *testing.T) {
+	setter := func(t *testing.T, dir, name string) string {
+		path := filepath.Join(dir, name+".npmrc")
+		writeNpmFixture(t, path, "https-proxy=http://"+name+":1\n")
+		return path
+	}
+	t.Run("default under PREFIX", func(t *testing.T) {
+		manager := isolatedNpm(t)
+		writeNpmFixture(t, filepath.Join(os.Getenv("PREFIX"), "etc", "npmrc"), "https-proxy=http://prefix:1\n")
+		if got := projectProxy(t, manager); got != "http://prefix:1" {
+			t.Fatalf("got %q", got)
+		}
+	})
+	t.Run("default from node under DESTDIR", func(t *testing.T) {
+		manager := isolatedNpm(t)
+		t.Setenv("PREFIX", "")
+		install := t.TempDir()
+		writeNpmFixture(t, filepath.Join(install, "bin", "node"), "#!/bin/sh\n")
+		if err := os.Chmod(filepath.Join(install, "bin", "node"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", filepath.Join(install, "bin"))
+		destdir := t.TempDir()
+		t.Setenv("DESTDIR", destdir)
+		resolved, err := filepath.EvalSymlinks(install)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeNpmFixture(t, filepath.Join(destdir, resolved, "etc", "npmrc"), "https-proxy=http://node:1\n")
+		if got := projectProxy(t, manager); got != "http://node:1" {
+			t.Fatalf("got %q", got)
+		}
+	})
+	t.Run("prefix setting moves the default", func(t *testing.T) {
+		manager := isolatedNpm(t)
+		other := t.TempDir()
+		writeNpmFixture(t, filepath.Join(other, "etc", "npmrc"), "https-proxy=http://other:1\n")
+		if got := projectProxy(t, manager, "--prefix", other); got != "http://other:1" {
+			t.Fatalf("--prefix: %q", got)
+		}
+		writeNpmFixture(t, filepath.Join(os.Getenv("HOME"), ".npmrc"), "prefix="+other+"\n")
+		if got := projectProxy(t, manager); got != "http://other:1" {
+			t.Fatalf("user prefix: %q", got)
+		}
+	})
+	// npm's default globalconfig is an accessor whose setter absorbs the first
+	// layer, in CLI, env, project, user order, that assigns it.
+	for _, test := range []struct {
+		name                 string
+		cli, env, proj, user bool
+		want                 string
+	}{
+		{name: "only user", user: true, want: "http://user:1"},
+		{name: "env demoted below user", env: true, user: true, want: "http://user:1"},
+		{name: "cli demoted below env", cli: true, env: true, user: true, want: "http://env:1"},
+		{name: "cli demoted below project", cli: true, proj: true, user: true, want: "http://proj:1"},
+		{name: "only cli", cli: true, want: "http://cli:1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manager := isolatedNpm(t)
+			dir := t.TempDir()
+			var args []string
+			if test.cli {
+				args = []string{"--globalconfig", setter(t, dir, "cli")}
+			}
+			if test.env {
+				t.Setenv("npm_config_globalconfig", setter(t, dir, "env"))
+			}
+			if test.proj {
+				writeNpmFixture(t, ".npmrc", "globalconfig="+setter(t, dir, "proj")+"\n")
+			}
+			if test.user {
+				writeNpmFixture(t, filepath.Join(os.Getenv("HOME"), ".npmrc"), "globalconfig="+setter(t, dir, "user")+"\n")
+			}
+			if got := projectProxy(t, manager, args...); got != test.want {
+				t.Fatalf("got %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestSettingsExpandsPathKeys(t *testing.T) {
+	manager := isolatedNpm(t)
+	cwd, _ := os.Getwd()
+	for value, want := range map[string]string{
+		"~/ca.pem":   filepath.Join(os.Getenv("HOME"), "ca.pem"),
+		"rel/ca.pem": filepath.Join(cwd, "rel", "ca.pem"),
+		"/abs.pem":   "/abs.pem",
+	} {
+		writeNpmFixture(t, ".npmrc", "cafile="+value+"\n")
+		result, err := manager.settings(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.CAFile != want {
+			t.Fatalf("cafile %q = %q, want %q", value, result.CAFile, want)
+		}
 	}
 }

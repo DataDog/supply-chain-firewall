@@ -218,19 +218,35 @@ func (s *Settings) AdditionalClients() map[string]proxy.Options {
 			return s.route(request, &profile.target, profile.name, s.configuration, nil)
 		}}
 	}
+	for _, profile := range s.remoteProfiles {
+		clients[profile.name] = proxy.Options{RouteForRequest: func(request proxy.Request) (*proxy.OutboundRoute, error) {
+			original, configuration := &request.URL, s.unscopedConfiguration
+			if profile.scope != nil {
+				original, configuration = &profile.scope.target, s.configuration
+			}
+			return s.route(request, original, profile.name, configuration, &profile.upstream)
+		}}
+	}
 	return clients
 }
 
 func (s *Settings) interceptionCA(config proxy.ClientConfig) (string, error) {
-	if len(s.profiles) == 0 {
+	names := make([]string, 0, len(s.profiles)+len(s.remoteProfiles))
+	for _, profile := range s.profiles {
+		names = append(names, profile.name)
+	}
+	for _, profile := range s.remoteProfiles {
+		names = append(names, profile.name)
+	}
+	if len(names) == 0 {
 		return config.CACertificatePath, nil
 	}
 	bundle, err := os.ReadFile(config.CACertificatePath)
 	if err != nil {
 		return "", errors.New("could not read invocation Git CA")
 	}
-	for _, profile := range s.profiles {
-		client, ok := config.AdditionalClients[profile.name]
+	for _, name := range names {
+		client, ok := config.AdditionalClients[name]
 		if !ok {
 			return "", errors.New("missing Git configuration proxy")
 		}

@@ -19,8 +19,8 @@ import (
 // ChildOverrides redirects Git network settings without changing inherited files.
 func (s *Settings) ChildOverrides(overrides map[string]string, config proxy.ClientConfig) error {
 	// Rebuild inherited command settings from the flattened snapshot. Original
-	// proxies and pins belong on the outbound side; Git selects invocation
-	// listeners using its own URL-matching precedence.
+	// proxies and pins belong on the outbound side. The HTTP helper preserves
+	// Git's distinction between named remotes and raw URLs.
 	var inherited []gitConfigurationEntry
 	for _, entry := range s.commandEntries {
 		if !isOutboundOnly(entry.key) && !isInclude(entry.key) {
@@ -96,5 +96,5 @@ func (s *Settings) ChildOverrides(overrides map[string]string, config proxy.Clie
 	overrides["GIT_CONFIG_PARAMETERS"] = strings.TrimSpace(parameters)
 	overrides["GIT_SSL_CAINFO"] = ca
 	overrides["GIT_SSL_CAPATH"] = ""
-	return nil
+	return s.prepareRemoteHelpers(overrides, config)
 }

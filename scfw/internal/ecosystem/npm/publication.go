@@ -46,6 +46,11 @@ type packumentEntry struct {
 	err        error
 }
 
+// transientError marks a fetch failure worth retrying, so it is not cached.
+type transientError struct{ error }
+
+func (e transientError) Unwrap() error { return e.error }
+
 type packument struct {
 	Time map[string]string `json:"time"`
 }
@@ -96,8 +101,12 @@ func (cache *PublicationCache) packument(ctx context.Context, client *http.Clien
 
 		entry.packument, entry.err = fetchPackument(ctx, client, packumentURL, authorization)
 		cache.mutex.Lock()
-		if entry.err != nil && ctx.Err() != nil {
-			entry.incomplete = true
+		// Waiters already in flight share a transient error; only later
+		// requests fetch again.
+		canceled := entry.err != nil && ctx.Err() != nil
+		var transient transientError
+		if canceled || errors.As(entry.err, &transient) {
+			entry.incomplete = canceled
 			delete(cache.entries, key)
 		}
 		close(entry.done)
@@ -126,19 +135,23 @@ func fetchPackument(ctx context.Context, client *http.Client, packumentURL url.U
 		if fetchErr := fetchContextErr(ctx, fetchContext); fetchErr != nil {
 			return packument{}, fetchErr
 		}
-		return packument{}, errors.New("npm packument request failed")
+		return packument{}, transientError{errors.New("npm packument request failed")}
 	}
 	defer response.Body.Close() //nolint:errcheck
 
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return packument{}, fmt.Errorf("npm packument request returned status %d", response.StatusCode)
+		statusErr := fmt.Errorf("npm packument request returned status %d", response.StatusCode)
+		if response.StatusCode == http.StatusRequestTimeout || response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= http.StatusInternalServerError {
+			return packument{}, transientError{statusErr}
+		}
+		return packument{}, statusErr
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxPackumentBytes+1))
 	if err != nil {
 		if fetchErr := fetchContextErr(ctx, fetchContext); fetchErr != nil {
 			return packument{}, fetchErr
 		}
-		return packument{}, errors.New("read npm packument failed")
+		return packument{}, transientError{errors.New("read npm packument failed")}
 	}
 	if int64(len(body)) > maxPackumentBytes {
 		return packument{}, fmt.Errorf("npm packument exceeds %d bytes", maxPackumentBytes)
@@ -158,7 +171,7 @@ func fetchContextErr(runContext, fetchContext context.Context) error {
 		return err
 	}
 	if fetchContext.Err() != nil {
-		return errors.New("npm packument request timed out")
+		return transientError{errors.New("npm packument request timed out")}
 	}
 	return nil
 }

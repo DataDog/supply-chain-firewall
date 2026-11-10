@@ -242,7 +242,7 @@ func TestResolveCachesFailures(t *testing.T) {
 	var hits atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
 
@@ -255,6 +255,37 @@ func TestResolveCachesFailures(t *testing.T) {
 	}
 	if hits.Load() != 1 {
 		t.Fatalf("failing packument fetched %d times, want the failure cached for the run", hits.Load())
+	}
+}
+
+func TestResolveDoesNotCacheTransientFailures(t *testing.T) {
+	original := packumentFetchTimeout
+	packumentFetchTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { packumentFetchTimeout = original })
+
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch hits.Add(1) {
+		case 1:
+			w.WriteHeader(http.StatusServiceUnavailable)
+		case 2:
+			<-r.Context().Done()
+		default:
+			servePackument(leftPadPackument(t), nil)(w, r)
+		}
+	}))
+	defer server.Close()
+
+	cache := &PublicationCache{}
+	artifact := registryArtifact(t, server.URL+"/", "/left-pad/-/left-pad-1.3.0.tgz")
+	for _, attempt := range []string{"503", "timeout"} {
+		if _, err := cache.Resolve(context.Background(), http.DefaultClient, artifact); err == nil {
+			t.Fatalf("Resolve() returned nil error for a %s response", attempt)
+		}
+	}
+	date, err := cache.Resolve(context.Background(), http.DefaultClient, artifact)
+	if err != nil || !date.Equal(leftPad130Date) {
+		t.Fatalf("Resolve() after transient failures = %v, %v; want %v", date, err, leftPad130Date)
 	}
 }
 

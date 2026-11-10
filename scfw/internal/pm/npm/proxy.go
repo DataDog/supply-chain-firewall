@@ -197,16 +197,13 @@ func withoutNoproxyOptions(command []string) []string {
 // lowercase one. The core replaces exact keys only, so every variant already
 // present in environ receives the same value as its canonical key.
 func proxyEnvironmentOverrides(environ []string, config proxy.ClientConfig, caPEM string) map[string]string {
-	canonical := map[string]string{
-		"http_proxy": config.URL, "HTTP_PROXY": config.URL,
-		"https_proxy": config.URL, "HTTPS_PROXY": config.URL,
-		"all_proxy": config.URL, "ALL_PROXY": config.URL,
-		"no_proxy": "", "NO_PROXY": "",
+	canonical := config.EnvironmentOverrides()
+	maps.Copy(canonical, map[string]string{
 		"npm_config_proxy": config.URL, "npm_config_https_proxy": config.URL,
 		"npm_config_noproxy": npmNoProxySentinel,
 		"npm_config_cafile":  config.CACertificatePath, "npm_config_ca": caPEM,
 		"NODE_EXTRA_CA_CERTS": config.CACertificatePath, "GIT_SSL_CAINFO": config.CACertificatePath,
-	}
+	})
 	overrides := maps.Clone(canonical)
 	for _, item := range environ {
 		key, _, _ := strings.Cut(item, "=")

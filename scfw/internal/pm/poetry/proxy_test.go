@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/pythonproxy"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 	"golang.org/x/net/http/httpproxy"
 )
@@ -72,6 +73,65 @@ func TestPoetryUpstreamProxy(t *testing.T) {
 			}
 			if config.HTTPProxy != test.http || config.HTTPSProxy != test.https || config.NoProxy != test.bypass {
 				t.Fatalf("unexpected upstream settings: %#v", config)
+			}
+		})
+	}
+}
+
+func TestPoetryProxyBypassEnvironment(t *testing.T) {
+	for _, test := range []struct {
+		name, target string
+		environment  [][2]string
+		bypass       bool
+	}{
+		{"mixed hostname", "https://sub.internal.example/", [][2]string{{"No_Proxy", "INTERNAL.example"}}, true},
+		{"mixed CIDR", "http://10.1.2.3/", [][2]string{{"No_Proxy", "10.0.0.0/8"}}, false},
+		{"canonical CIDR", "http://10.1.2.3/", [][2]string{{"no_proxy", "10.0.0.0/8"}}, true},
+		{"mixed port", "https://internal.example:8443/", [][2]string{{"No_Proxy", "internal.example:8443"}}, false},
+		{"canonical port", "https://internal.example:8443/", [][2]string{{"no_proxy", "internal.example:8443"}}, true},
+		{"mixed wildcard", "https://public.example/", [][2]string{{"No_Proxy", "*"}}, true},
+		{"empty lowercase removes mixed wildcard", "https://public.example/", [][2]string{{"No_Proxy", "*"}, {"no_proxy", ""}}, false},
+		{"empty lowercase removes uppercase wildcard", "https://public.example/", [][2]string{{"NO_PROXY", "*"}, {"no_proxy", ""}}, false},
+		{"empty lowercase retains Requests domain rule", "https://internal.example/", [][2]string{{"NO_PROXY", "internal.example"}, {"no_proxy", ""}}, true},
+		{"empty lowercase removes case-insensitive fallback", "https://internal.example/", [][2]string{{"NO_PROXY", "INTERNAL.example"}, {"no_proxy", ""}}, false},
+		{"independent Requests list", "https://primary.example/", [][2]string{{"NO_PROXY", "primary.example"}, {"No_Proxy", "fallback.example"}}, true},
+		{"independent urllib list", "https://fallback.example/", [][2]string{{"NO_PROXY", "primary.example"}, {"No_Proxy", "fallback.example"}}, true},
+		{"mixed whitespace", "https://internal.example/", [][2]string{{"No_Proxy", "internal. example"}}, false},
+		{"urllib IPv6 host splitting", "https://[2001:db8::1]/", [][2]string{{"No_Proxy", "2001:db8:"}}, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, entry := range os.Environ() {
+				key, _, _ := strings.Cut(entry, "=")
+				if strings.HasSuffix(strings.ToLower(key), "_proxy") {
+					t.Setenv(key, "")
+					if err := os.Unsetenv(key); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			t.Setenv("http_proxy", "http://upstream.example")
+			t.Setenv("https_proxy", "http://upstream.example")
+			for _, entry := range test.environment {
+				t.Setenv(entry[0], entry[1])
+			}
+			config, _, err := discoverPoetryProxies(func() (pythonproxy.Settings, error) {
+				t.Fatal("environment proxies must suppress native discovery")
+				return pythonproxy.Settings{}, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			route := poetryProxyForURL(config)
+			// Route decisions must use the snapshot, even if the environment changes.
+			t.Setenv("no_proxy", "changed.example")
+			t.Setenv("No_Proxy", "changed.example")
+			target, err := url.Parse(test.target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			upstream, err := route(target)
+			if err != nil || (upstream == nil) != test.bypass {
+				t.Fatalf("bypass=%t, want %t: %v", upstream == nil, test.bypass, err)
 			}
 		})
 	}
@@ -269,7 +329,10 @@ func TestPoetryOutboundProxyRouting(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			settings := httpproxy.Config{HTTPProxy: "http://user:secret@http.example", HTTPSProxy: "https://https.example", NoProxy: test.bypass}
+			settings := poetryProxyConfiguration{
+				Config:          httpproxy.Config{HTTPProxy: "http://user:secret@http.example", HTTPSProxy: "https://https.example", NoProxy: test.bypass},
+				requestsNoProxy: test.bypass, urllibNoProxy: test.bypass,
+			}
 			got, err := poetryProxyForURL(settings)(target)
 			if err != nil {
 				t.Fatal(err)
@@ -281,7 +344,7 @@ func TestPoetryOutboundProxyRouting(t *testing.T) {
 			} else if got == nil || got.String() != test.want {
 				t.Fatalf("wrong upstream: %v", got)
 			}
-			got, err = poetryProxyForURL(httpproxy.Config{})(target)
+			got, err = poetryProxyForURL(poetryProxyConfiguration{})(target)
 			if err != nil || got != nil {
 				t.Fatalf("absent proxies must connect directly: %v / %v", got, err)
 			}

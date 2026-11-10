@@ -445,11 +445,18 @@ func TestPoetryPublicPyPIThroughProxy(t *testing.T) {
 }
 
 func TestPoetryMixedCaseUpstreamProxy(t *testing.T) {
-	for _, bypass := range []bool{false, true} {
-		t.Run(fmt.Sprintf("bypass=%t", bypass), func(t *testing.T) {
+	for _, test := range []struct {
+		name, key, rule string
+		bypass          bool
+	}{
+		{"no bypass", "No_Proxy", "", false},
+		{"mixed hostname", "No_Proxy", "127.0.0.1", true},
+		{"mixed CIDR", "No_Proxy", "127.0.0.0/8", false},
+		{"canonical CIDR", "no_proxy", "127.0.0.0/8", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
 			manager := poetryForProxyTest(t)
-			root := t.TempDir()
-			poetryTestFile(t, filepath.Join(root, "pyproject.toml"), readProxyFixture(t, "poetry/git-pyproject.toml"))
+			manifest := readProxyFixture(t, "poetry/git-pyproject.toml")
 			wheel := pypiWheel(t)
 			var downloads, proxyHits atomic.Int32
 			origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -466,20 +473,27 @@ func TestPoetryMixedCaseUpstreamProxy(t *testing.T) {
 			}
 			t.Setenv("Http_Proxy", strings.Replace(upstream.URL, "://", "://proxy:proxy-secret@", 1))
 			t.Setenv("No_Proxy", "")
-			if bypass {
-				// Exact host matching also exercises urllib's mixed-case bypass fallback.
-				t.Setenv("No_Proxy", "127.0.0.1")
+			t.Setenv(test.key, test.rule)
+			for _, proxied := range []bool{false, true} {
+				root := t.TempDir()
+				poetryTestFile(t, filepath.Join(root, "pyproject.toml"), manifest)
+				t.Setenv("POETRY_CACHE_DIR", filepath.Join(root, "cache"))
+				args := []string{"--directory", root, "--no-interaction", "add", "--lock", origin.URL + "/project-1.0-py3-none-any.whl"}
+				beforeDownloads, beforeHits := downloads.Load(), proxyHits.Load()
+				if proxied {
+					runner := &capturingPoetryRunner{Poetry: manager}
+					commandErr, setupErr := runThroughProxy(context.Background(), runner, args, nil)
+					if commandErr != nil || setupErr != nil {
+						t.Fatalf("mixed-case upstream failed: %v / %v", commandErr, setupErr)
+					}
+					assertProxyCleaned(t, runner.config)
+				} else if err := manager.RunCommand(context.Background(), args); err != nil {
+					t.Fatalf("direct Poetry failed: %v", err)
+				}
+				if downloads.Load() == beforeDownloads || (proxyHits.Load() == beforeHits) != test.bypass {
+					t.Fatalf("proxied=%t: wrong route: downloads=%d, proxy hits=%d", proxied, downloads.Load()-beforeDownloads, proxyHits.Load()-beforeHits)
+				}
 			}
-			runner := &capturingPoetryRunner{Poetry: manager}
-			args := []string{"--directory", root, "--no-interaction", "add", "--lock", origin.URL + "/project-1.0-py3-none-any.whl"}
-			commandErr, setupErr := runThroughProxy(context.Background(), runner, args, nil)
-			if commandErr != nil || setupErr != nil {
-				t.Fatalf("mixed-case upstream failed: %v / %v", commandErr, setupErr)
-			}
-			if downloads.Load() == 0 || (proxyHits.Load() == 0) != bypass {
-				t.Fatalf("wrong mixed-case proxy route: downloads=%d, proxy hits=%d", downloads.Load(), proxyHits.Load())
-			}
-			assertProxyCleaned(t, runner.config)
 		})
 	}
 }

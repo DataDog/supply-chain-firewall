@@ -23,27 +23,36 @@ var _ pm.ProxyRunner = Poetry{}
 
 var _ pm.ProxyOptionsProvider = Poetry{}
 
+// Requests' initial lookup and urllib's fallback use different environment
+// precedence and matching rules. Capture both before changing the child environment.
+type poetryProxyConfiguration struct {
+	httpproxy.Config
+	requestsNoProxy string
+	urllibNoProxy   string
+}
+
 // UpstreamProxy captures Requests' environment before the child is pointed at
 // SCFW. Lowercase variables take precedence, including an explicitly empty one.
 // ALL_PROXY supplies the fallback for either missing protocol-specific proxy.
 func (poetry Poetry) UpstreamProxy(_ []string) (httpproxy.Config, error) {
 	config, _, err := discoverPoetryProxies(pythonproxy.ReadSystem)
-	return config, err
+	return config.Config, err
 }
 
-func discoverPoetryProxies(readSystem func() (pythonproxy.Settings, error)) (httpproxy.Config, pythonproxy.Settings, error) {
+func discoverPoetryProxies(readSystem func() (pythonproxy.Settings, error)) (poetryProxyConfiguration, pythonproxy.Settings, error) {
 	environment := pythonproxy.Environment()
 	all := environment["all"]
 	bypass := os.Getenv("no_proxy")
 	if bypass == "" {
 		bypass = os.Getenv("NO_PROXY")
 	}
-	if bypass == "" {
-		// Requests also asks urllib, whose environment lookup accepts mixed case.
-		// An explicitly empty lowercase value still removes that fallback.
-		bypass = environment["no"]
+	config := poetryProxyConfiguration{
+		Config:          httpproxy.Config{HTTPProxy: all, HTTPSProxy: all, NoProxy: bypass},
+		requestsNoProxy: bypass, urllibNoProxy: environment["no"],
 	}
-	config := httpproxy.Config{HTTPProxy: all, HTTPSProxy: all, NoProxy: bypass}
+	if config.NoProxy == "" {
+		config.NoProxy = config.urllibNoProxy
+	}
 	if value := environment["http"]; value != "" {
 		config.HTTPProxy = value
 	}
@@ -62,7 +71,7 @@ func discoverPoetryProxies(readSystem func() (pythonproxy.Settings, error)) (htt
 	}
 	for _, value := range []string{config.HTTPProxy, config.HTTPSProxy} {
 		if _, err := proxy.ParseUpstreamProxyURL(value); err != nil {
-			return httpproxy.Config{}, native, err
+			return poetryProxyConfiguration{}, native, err
 		}
 	}
 	return config, native, nil
@@ -83,7 +92,7 @@ func (poetry Poetry) ProxyOptions(command []string) (proxy.Options, error) {
 	paths := []string{ca}
 	tlsConfig, err := proxy.NewTLSConfig(proxy.TLSConfigOptions{CABundlePaths: paths})
 	route := poetryProxyForURL(upstream)
-	return proxy.Options{Upstream: upstream, UpstreamTLS: tlsConfig, ProxyForURL: func(target *url.URL) (*url.URL, error) {
+	return proxy.Options{Upstream: upstream.Config, UpstreamTLS: tlsConfig, ProxyForURL: func(target *url.URL) (*url.URL, error) {
 		if native.Bypasses(target) {
 			return nil, nil
 		}
@@ -93,30 +102,27 @@ func (poetry Poetry) ProxyOptions(command []string) (proxy.Options, error) {
 
 // Requests does not implicitly bypass loopback as Go's httpproxy does. Keep
 // bypass decisions on the outbound side so NO_PROXY never avoids inspection.
-func poetryProxyForURL(config httpproxy.Config) func(*url.URL) (*url.URL, error) {
+func poetryProxyForURL(config poetryProxyConfiguration) func(*url.URL) (*url.URL, error) {
 	return func(target *url.URL) (*url.URL, error) {
 		value := config.HTTPProxy
 		if target.Scheme == "https" {
 			value = config.HTTPSProxy
 		}
-		if value == "" || poetryBypassesProxy(target, config.NoProxy) {
+		if value == "" || poetryBypassesProxy(target, config.requestsNoProxy, config.urllibNoProxy) {
 			return nil, nil
 		}
 		return proxy.ParseUpstreamProxyURL(value)
 	}
 }
 
-func poetryBypassesProxy(target *url.URL, noProxy string) bool {
-	if noProxy == "*" {
-		return true
-	}
+func poetryBypassesProxy(target *url.URL, requestsNoProxy, urllibNoProxy string) bool {
 	host := strings.ToLower(target.Hostname())
 	ip := net.ParseIP(host)
 	hostPort := host
 	if target.Port() != "" {
 		hostPort += ":" + target.Port()
 	}
-	for _, pattern := range strings.Split(strings.ReplaceAll(noProxy, " ", ""), ",") {
+	for _, pattern := range strings.Split(strings.ReplaceAll(requestsNoProxy, " ", ""), ",") {
 		if pattern == "" {
 			continue
 		}
@@ -132,14 +138,32 @@ func poetryBypassesProxy(target *url.URL, noProxy string) bool {
 				}
 			}
 		}
-		// Requests handles domain ports case sensitively, then asks urllib
-		// about the hostname only. IPv4 addresses use only this latter fallback.
+		// Requests handles domain ports case sensitively.
 		literal := strings.TrimLeft(pattern, ".")
 		if !ipv4 && (host == literal || hostPort == literal || strings.HasSuffix(host, "."+literal) || strings.HasSuffix(hostPort, "."+literal)) {
 			return true
 		}
+	}
+	return poetryUrllibBypassesProxy(host, urllibNoProxy)
+}
+
+// Requests passes only the hostname to urllib. This fallback supports domain
+// suffixes and '*', without Requests' CIDR or URL-port matching.
+func poetryUrllibBypassesProxy(host, noProxy string) bool {
+	if noProxy == "*" {
+		return true
+	}
+	// urllib strips a numeric port even from an unbracketed IPv6 hostname.
+	hostOnly := host
+	if index := strings.LastIndexByte(host, ':'); index >= 0 && strings.Trim(host[index+1:], "0123456789") == "" {
+		hostOnly = host[:index]
+	}
+	for _, pattern := range strings.Split(noProxy, ",") {
 		pattern = strings.ToLower(strings.TrimLeft(strings.TrimSpace(pattern), "."))
-		if host == pattern || strings.HasSuffix(host, "."+pattern) {
+		if pattern == "" {
+			continue
+		}
+		if host == pattern || hostOnly == pattern || strings.HasSuffix(host, "."+pattern) || strings.HasSuffix(hostOnly, "."+pattern) {
 			return true
 		}
 	}

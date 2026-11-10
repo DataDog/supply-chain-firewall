@@ -31,7 +31,6 @@ func (s *Settings) ChildOverrides(overrides map[string]string, config proxy.Clie
 	if count > 4096 {
 		return errors.New("invalid inherited Git configuration count")
 	}
-	parameters := ""
 	for index, entry := range inherited {
 		value := entry.value
 		if entry.implicit {
@@ -39,7 +38,6 @@ func (s *Settings) ChildOverrides(overrides map[string]string, config proxy.Clie
 		}
 		overrides["GIT_CONFIG_KEY_"+strconv.Itoa(index)] = entry.key
 		overrides["GIT_CONFIG_VALUE_"+strconv.Itoa(index)] = value
-		parameters += gitParameter(entry.key, value)
 	}
 	ca, err := s.interceptionCA(config)
 	if err != nil {
@@ -71,7 +69,6 @@ func (s *Settings) ChildOverrides(overrides map[string]string, config proxy.Clie
 		overrides["GIT_CONFIG_KEY_"+strconv.Itoa(count)] = key
 		overrides["GIT_CONFIG_VALUE_"+strconv.Itoa(count)] = value
 		count++
-		parameters += gitParameter(key, value)
 	}
 	// Some Git clients only read GIT_CONFIG_GLOBAL. A flattened snapshot covers
 	// those clients and native Git without
@@ -93,7 +90,9 @@ func (s *Settings) ChildOverrides(overrides map[string]string, config proxy.Clie
 	overrides["GIT_CONFIG_SYSTEM"] = os.DevNull
 	overrides["GIT_CONFIG_NOSYSTEM"] = "1"
 	overrides["GIT_CONFIG_COUNT"] = strconv.Itoa(count)
-	overrides["GIT_CONFIG_PARAMETERS"] = strings.TrimSpace(parameters)
+	// Both command-configuration mechanisms are already captured in the
+	// snapshot. Replay only through COUNT so multivalued entries occur once.
+	overrides["GIT_CONFIG_PARAMETERS"] = ""
 	overrides["GIT_SSL_CAINFO"] = ca
 	overrides["GIT_SSL_CAPATH"] = ""
 	return s.prepareRemoteHelpers(overrides, config)

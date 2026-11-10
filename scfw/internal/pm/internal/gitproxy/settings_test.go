@@ -13,9 +13,87 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
+
+func TestGitChildOverridesPreserveMultivaluedSettings(t *testing.T) {
+	entries := []gitConfigurationEntry{
+		{key: "http.extraheader", value: ""},
+		{key: "http.extraheader", value: "X-Example: user's value"},
+		{key: "http.extraheader", value: "X-Repeat: same"},
+		{key: "http.extraheader", value: "X-Repeat: same"},
+		{key: "credential.helper", value: ""},
+		{key: "credential.helper", value: "first helper"},
+		{key: "credential.helper", value: "second helper"},
+	}
+	for _, test := range []struct {
+		name  string
+		count int
+	}{
+		{name: "count", count: len(entries)},
+		{name: "parameters"},
+		{name: "mixed", count: 3},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			directory := gitNetworkEnvironment(t)
+			global := filepath.Join(directory, "global.conf")
+			fixture, err := os.ReadFile("testdata/multivalue.conf")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(global, fixture, 0600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("GIT_CONFIG_GLOBAL", global)
+			t.Setenv("GIT_CONFIG_COUNT", strconv.Itoa(test.count))
+			var parameters string
+			for index, entry := range entries {
+				if index < test.count {
+					t.Setenv("GIT_CONFIG_KEY_"+strconv.Itoa(index), entry.key)
+					t.Setenv("GIT_CONFIG_VALUE_"+strconv.Itoa(index), entry.value)
+				} else {
+					parameters += gitParameter(entry.key, entry.value)
+				}
+			}
+			t.Setenv("GIT_CONFIG_PARAMETERS", strings.TrimSpace(parameters))
+			settings, err := Read(directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			overrides := map[string]string{}
+			config := proxy.ClientConfig{URL: "http://127.0.0.1:12345", CACertificatePath: filepath.Join(directory, "ca.pem")}
+			if err := settings.ChildOverrides(overrides, config); err != nil {
+				t.Fatal(err)
+			}
+			var environment []string
+			for _, entry := range os.Environ() {
+				key, _, _ := strings.Cut(entry, "=")
+				if _, replaced := overrides[key]; !replaced {
+					environment = append(environment, entry)
+				}
+			}
+			for key, value := range overrides {
+				environment = append(environment, key+"="+value)
+			}
+			for _, key := range []string{"http.extraheader", "credential.helper"} {
+				// NUL-delimited output retains empty resets and intentional repeats.
+				before, err := runGitConfiguration(settings.executable, directory, os.Environ(), "", "config", "--null", "--get-all", key)
+				if err != nil {
+					t.Fatal(err)
+				}
+				after, err := runGitConfiguration(settings.executable, directory, environment, "", "config", "--null", "--get-all", key)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(after) != string(before) {
+					t.Errorf("%s changed through interception: before=%q after=%q", key, before, after)
+				}
+			}
+		})
+	}
+}
 
 func TestReadOnlyGitSnapshotAndProcessOverrides(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {

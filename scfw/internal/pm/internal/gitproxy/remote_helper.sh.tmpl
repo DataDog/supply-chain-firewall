@@ -30,5 +30,6 @@ export "GIT_CONFIG_VALUE_${scfw_count}=${scfw_remote_proxy}"
 GIT_CONFIG_COUNT=$((scfw_count + 1))
 export GIT_CONFIG_COUNT
 GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS-}${scfw_remote_parameter}"
-export GIT_CONFIG_PARAMETERS
+# The parent may clear PARAMETERS; Git rejects a leading separator.
+export GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS# }"
 exec {{.Helper}} "$@"

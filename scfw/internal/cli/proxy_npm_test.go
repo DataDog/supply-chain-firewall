@@ -10,21 +10,12 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/sha512"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
-	"math/big"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -96,40 +87,17 @@ func startNpmRegistry(t *testing.T) *npmTestRegistry {
 	// npm verifies an IP-literal registry reached through a proxy against
 	// "localhost" (https-proxy-agent omits the servername), so the registry is
 	// named localhost and carries its own certificate for that name.
-	certificate, der := localhostCertificate(t)
+	certificate, caPEM, _ := proxyTLSIdentity(t)
 	server.TLS = &tls.Config{Certificates: []tls.Certificate{certificate}}
 	server.StartTLS()
 	t.Cleanup(server.Close)
 	registry.URL = "https://localhost:" + server.URL[strings.LastIndex(server.URL, ":")+1:]
-	registry.CAPEM = string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+	registry.CAPEM = string(caPEM)
 	registry.CAPath = filepath.Join(t.TempDir(), "registry-ca.pem")
 	if err := os.WriteFile(registry.CAPath, []byte(registry.CAPEM), 0600); err != nil {
 		t.Fatal(err)
 	}
 	return registry
-}
-
-// localhostCertificate returns a self-signed certificate for localhost and
-// 127.0.0.1 that also serves as its own trust root.
-func localhostCertificate(t *testing.T) (tls.Certificate, []byte) {
-	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "localhost"},
-		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
-		DNSNames: []string{"localhost"}, IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)},
-		IsCA: true, BasicConstraintsValid: true,
-		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-	}
-	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}, der
 }
 
 // newNpmTestProject isolates npm from the host and enters a project whose
@@ -231,17 +199,6 @@ func runNpmThroughProxy(t *testing.T, args []string, outcome evaluation.Outcome)
 	return run
 }
 
-func assertNpmRunCleanedUp(t *testing.T, run npmProxyRun) {
-	t.Helper()
-	if _, err := os.Stat(run.config.CACertificatePath); !os.IsNotExist(err) {
-		t.Fatal("invocation CA was not removed")
-	}
-	client := http.Client{Timeout: time.Second}
-	if _, err := client.Get(run.config.URL); err == nil {
-		t.Fatal("proxy still listening")
-	}
-}
-
 func assertNpmFailed(t *testing.T, err error) {
 	t.Helper()
 	var exitErr *exec.ExitError
@@ -331,7 +288,7 @@ func TestNpmProxyEndToEnd(t *testing.T) {
 			if after, err := os.ReadFile(filepath.Join(dir, ".npmrc")); err != nil || !bytes.Equal(after, npmrc) {
 				t.Fatalf(".npmrc changed: %q (error %v)", after, err)
 			}
-			assertNpmRunCleanedUp(t, run)
+			assertProxyCleaned(t, run.config)
 		})
 	}
 }
@@ -347,41 +304,6 @@ func seedNpmLockfile(t *testing.T, _ *npmTestRegistry, dir string) {
 		t.Fatal(err)
 	}
 	t.Setenv("npm_config_cache", t.TempDir())
-}
-
-// startConnectTunnel is an upstream HTTP proxy that tunnels CONNECT requests
-// and counts them. With requireAuth set, it demands those Basic credentials.
-func startConnectTunnel(t *testing.T, requireAuth string) (*httptest.Server, *atomic.Int32) {
-	t.Helper()
-	var tunnels atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodConnect {
-			http.Error(w, "CONNECT required", http.StatusMethodNotAllowed)
-			return
-		}
-		if requireAuth != "" && r.Header.Get("Proxy-Authorization") != "Basic "+base64.StdEncoding.EncodeToString([]byte(requireAuth)) {
-			w.Header().Set("Proxy-Authenticate", "Basic")
-			http.Error(w, "proxy authentication required", http.StatusProxyAuthRequired)
-			return
-		}
-		target, err := net.Dial("tcp", r.Host)
-		if err != nil {
-			http.Error(w, "upstream unreachable", http.StatusBadGateway)
-			return
-		}
-		client, _, err := http.NewResponseController(w).Hijack()
-		if err != nil {
-			_ = target.Close()
-			return
-		}
-		tunnels.Add(1)
-		_, _ = io.WriteString(client, "HTTP/1.1 200 Connection Established\r\n\r\n")
-		go func() { _, _ = io.Copy(target, client); _ = target.Close() }()
-		_, _ = io.Copy(client, target)
-		_ = client.Close()
-	}))
-	t.Cleanup(server.Close)
-	return server, &tunnels
 }
 
 func TestNpmProxyBypassAttemptsAreStillEvaluated(t *testing.T) {
@@ -409,26 +331,28 @@ func TestNpmProxyBypassAttemptsAreStillEvaluated(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			registry := startNpmRegistry(t)
-			tunnel, _ := startConnectTunnel(t, "")
+			var hits atomic.Int32
+			upstream := proxyTestUpstream(t, upstreamProxyOptions{credentials: "proxy:secret", hits: &hits})
+			tunnel := strings.Replace(upstream.URL, "://", "://proxy:secret@", 1)
 			extra := ""
 			if test.npmrc != nil {
-				extra = test.npmrc(tunnel.URL)
+				extra = test.npmrc(tunnel)
 			}
 			newNpmTestProject(t, registry, extra)
 			if test.env != nil {
-				pair := test.env(registry, tunnel.URL)
+				pair := test.env(registry, tunnel)
 				t.Setenv(pair[0], pair[1])
 			}
 			args := []string{"install", "lab-pkg"}
 			if test.args != nil {
-				args = append(args, test.args(registry, tunnel.URL)...)
+				args = append(args, test.args(registry, tunnel)...)
 			}
 			run := runNpmThroughProxy(t, args, evaluation.OutcomeBlock)
 			assertNpmFailed(t, run.commandErr)
 			if run.calls != 1 || registry.TarballHits.Load() != 0 {
 				t.Fatalf("evaluations=%d tarball downloads=%d, want the tarball evaluated and blocked", run.calls, registry.TarballHits.Load())
 			}
-			assertNpmRunCleanedUp(t, run)
+			assertProxyCleaned(t, run.config)
 		})
 	}
 }
@@ -439,7 +363,8 @@ func TestNpmProxyChainsToAuthenticatedUpstream(t *testing.T) {
 		t.Skip("npm required for npm integration tests")
 	}
 	registry := startNpmRegistry(t)
-	tunnel, tunnels := startConnectTunnel(t, "proxy:secret")
+	var tunnels atomic.Int32
+	tunnel := proxyTestUpstream(t, upstreamProxyOptions{credentials: "proxy:secret", hits: &tunnels})
 	upstream := strings.Replace(tunnel.URL, "://", "://proxy:secret@", 1)
 	newNpmTestProject(t, registry, "https-proxy="+upstream+"\n")
 	var logs bytes.Buffer
@@ -467,7 +392,7 @@ func TestNpmProxyChainsToAuthenticatedUpstream(t *testing.T) {
 			t.Fatalf("upstream credential leaked: %s", output)
 		}
 	}
-	assertNpmRunCleanedUp(t, run)
+	assertProxyCleaned(t, run.config)
 }
 
 func TestNpmProxyWithoutUpstreamConnectsDirectly(t *testing.T) {
@@ -475,7 +400,8 @@ func TestNpmProxyWithoutUpstreamConnectsDirectly(t *testing.T) {
 		t.Skip("npm required for npm integration tests")
 	}
 	registry := startNpmRegistry(t)
-	_, tunnels := startConnectTunnel(t, "")
+	var tunnels atomic.Int32
+	proxyTestUpstream(t, upstreamProxyOptions{credentials: "proxy:secret", hits: &tunnels})
 	newNpmTestProject(t, registry, "")
 	run := runNpmThroughProxy(t, []string{"install", "lab-pkg"}, evaluation.OutcomeAllow)
 	if run.commandErr != nil {

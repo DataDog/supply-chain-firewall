@@ -286,6 +286,23 @@ func TestProxyModeRequiredOnlyForPackageOperations(t *testing.T) {
 	}
 }
 
+func TestUVXInvocationPathsSelectProxy(t *testing.T) {
+	for _, name := range []string{"uvx", "/usr/local/bin/uvx", "./bin/uvx"} {
+		t.Run(name, func(t *testing.T) {
+			manager, err := NewUV(context.Background(), name, "/custom/uvx")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !manager.ProxyCommandSupported([]string{"--from", "project", "python"}) {
+				t.Fatal("uvx package operation bypassed the proxy")
+			}
+			if manager.ProxyCommandSupported([]string{"--help"}) {
+				t.Fatal("uvx help selected proxy setup")
+			}
+		})
+	}
+}
+
 func TestWorkspaceExclusionsAndNormalizedPatterns(t *testing.T) {
 	for _, test := range []struct {
 		pattern, path   string

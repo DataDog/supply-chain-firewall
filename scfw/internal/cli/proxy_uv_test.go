@@ -161,7 +161,7 @@ func TestUVProxyEndToEnd(t *testing.T) {
 	})
 	upstreamServer := httptest.NewServer(upstream)
 	defer upstreamServer.Close()
-	for _, operation := range []string{"pip-install", "pip-sync", "pip-compile", "pip-file-proxy", "pip-cert", "pip-python-preference", "pip-python-fetch", "pip-preview-feature", "add", "sync", "lock", "script", "script-file-proxy", "uvx", "version-bump", "version-value", "version-no-sync", "venv-seed", "venv-seed-env"} {
+	for _, operation := range []string{"pip-install", "pip-sync", "pip-compile", "pip-file-proxy", "pip-cert", "pip-python-preference", "pip-python-fetch", "pip-preview-feature", "add", "sync", "lock", "script", "script-file-proxy", "uvx", "uvx-absolute", "uvx-relative", "version-bump", "version-value", "version-no-sync", "venv-seed", "venv-seed-env"} {
 		for _, outcome := range []evaluation.Outcome{evaluation.OutcomeAllow, evaluation.OutcomeWarn, evaluation.OutcomeBlock} {
 			t.Run(operation+"/"+string(outcome), func(t *testing.T) {
 				t.Chdir(t.TempDir())
@@ -200,7 +200,7 @@ func TestUVProxyEndToEnd(t *testing.T) {
 				}
 				executableName, managerExecutable, packageName := "uv", executable, "project"
 				switch operation {
-				case "uvx":
+				case "uvx", "uvx-absolute", "uvx-relative":
 					var err error
 					managerExecutable, err = exec.LookPath("uvx")
 					if err != nil {
@@ -275,10 +275,24 @@ func TestUVProxyEndToEnd(t *testing.T) {
 				if operation == "pip-cert" {
 					command = append(command, "--cert", filepath.Base(certificate), "--native-tls", "--directory", filepath.Dir(certificate), "--target", t.TempDir())
 				}
-				if operation == "uvx" {
+				if strings.HasPrefix(operation, "uvx") {
 					command = append(command, "python", "-c", "import project", "--help")
 				}
-				manager, err := uv.NewUV(context.Background(), executableName, managerExecutable)
+				invocationName := executableName
+				switch operation {
+				case "uvx-absolute":
+					invocationName = managerExecutable
+				case "uvx-relative":
+					working, err := os.Getwd()
+					if err != nil {
+						t.Fatal(err)
+					}
+					invocationName, err = filepath.Rel(working, managerExecutable)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				manager, err := uv.NewUV(context.Background(), invocationName, managerExecutable)
 				if err != nil {
 					t.Fatal(err)
 				}

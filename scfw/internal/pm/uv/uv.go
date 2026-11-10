@@ -33,7 +33,7 @@ func NewUV(_ context.Context, name, executable string) (UV, error) {
 			return UV{}, err
 		}
 	}
-	return UV{executable: executable, toolRun: name == "uvx", proxyState: &uvProxyState{}}, nil
+	return UV{executable: executable, toolRun: filepath.Base(name) == "uvx", proxyState: &uvProxyState{}}, nil
 }
 
 func (uv UV) Executable() string { return uv.executable }

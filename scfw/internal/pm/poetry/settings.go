@@ -41,48 +41,24 @@ func readPoetrySettings(command []string) (poetrySettings, error) {
 	if err != nil {
 		return settings, err
 	}
-	projectDirectory, err := filepath.Abs(directory)
+	// Poetry changes directories before opening relative TLS paths. Resolve the
+	// original directory before Abs can collapse '..' across a symlink.
+	if physical, resolveErr := filepath.EvalSymlinks(directory); resolveErr == nil {
+		settings.workingDirectory = physical
+	} else {
+		settings.workingDirectory = directory
+	}
+	settings.workingDirectory, err = filepath.Abs(settings.workingDirectory)
 	if err != nil {
 		return settings, err
 	}
-	settings.workingDirectory = projectDirectory
-	// Poetry changes directories before opening relative TLS paths. Resolve the
-	// original directory before Abs can collapse '..' across a symlink, while
-	// retaining the original project lookup path for configuration discovery.
-	if physical, resolveErr := filepath.EvalSymlinks(directory); resolveErr == nil {
-		settings.workingDirectory, err = filepath.Abs(physical)
-		if err != nil {
-			return settings, err
-		}
-	}
-	directory = projectDirectory
-	for i, argument := range command {
-		if argument == "--" {
-			break
-		}
-		project := ""
-		switch {
-		case argument == "--project" || argument == "-P":
-			if i+1 < len(command) {
-				project = command[i+1]
-			}
-		case strings.HasPrefix(argument, "--project="):
-			project = strings.TrimPrefix(argument, "--project=")
-		case strings.HasPrefix(argument, "-P"):
-			project = strings.TrimPrefix(strings.TrimPrefix(argument, "-P"), "=")
-		}
-		if project != "" {
-			if filepath.IsAbs(project) {
-				directory = project
-			} else {
-				directory = filepath.Join(directory, project)
-			}
-			break
-		}
+	directory, err = poetryProjectDirectory(command)
+	if err != nil {
+		return settings, err
 	}
 	// Poetry finds the nearest containing project, including from subdirectories.
 	for {
-		data, err := readPoetryTOML(filepath.Join(directory, "pyproject.toml"))
+		data, err := readPoetryTOML(directory + string(filepath.Separator) + "pyproject.toml")
 		if err != nil {
 			return settings, err
 		}
@@ -105,7 +81,7 @@ func readPoetrySettings(command []string) (poetrySettings, error) {
 			}
 			break
 		}
-		parent := filepath.Dir(directory)
+		parent := poetryParentDirectory(directory)
 		if parent == directory {
 			settings.projectDirectory = settings.workingDirectory
 			break
@@ -128,7 +104,7 @@ func readPoetrySettings(command []string) (poetrySettings, error) {
 			configDirectory = filepath.Join(base, "pypoetry")
 		}
 	}
-	for index, path := range []string{filepath.Join(configDirectory, "config.toml"), filepath.Join(configDirectory, "auth.toml"), filepath.Join(settings.projectDirectory, "poetry.toml")} {
+	for index, path := range []string{filepath.Join(configDirectory, "config.toml"), filepath.Join(configDirectory, "auth.toml"), settings.projectDirectory + string(filepath.Separator) + "poetry.toml"} {
 		if index == 2 {
 			global := settings
 			global.values = clonePoetryConfiguration(settings.values)

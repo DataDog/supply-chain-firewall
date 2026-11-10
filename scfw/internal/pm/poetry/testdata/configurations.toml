@@ -71,6 +71,11 @@ cert = "local.pem"
 verify = true
 '''
 
+"disabled-private-trust.toml" = '''
+[certificates.private]
+cert = false
+'''
+
 "proxy-project.toml" = '''
 [tool.poetry]
 name = "proxy-project"

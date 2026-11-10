@@ -73,6 +73,48 @@ func isolatedPoetryProject(t *testing.T) string {
 	return root
 }
 
+func TestPoetrySymlinkProjectPreservesVerification(t *testing.T) {
+	root := isolatedPoetryProject(t)
+	physical := filepath.Join(root, "real")
+	work := filepath.Join(physical, "work")
+	if err := os.MkdirAll(work, 0700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(work, link); err != nil {
+		t.Fatal(err)
+	}
+	poetrySettingsFixture(t, "proxy-project.toml", filepath.Join(physical, "pyproject.toml"))
+	paths := map[string][]byte{}
+	paths[filepath.Join(root, "poetry.toml")] = poetrySettingsFixture(t, "disabled-private-trust.toml", filepath.Join(root, "poetry.toml"))
+	paths[filepath.Join(physical, "poetry.toml")] = poetrySettingsFixture(t, "local-repository-trust.toml", filepath.Join(physical, "poetry.toml"))
+	target, err := url.Parse("https://index.example/simple/project/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"-C", link, "-P", "..", "install"},
+		{"-C", link + "/..", "install"},
+		{"-P", link + "/..", "install"},
+	} {
+		manager := Poetry{version: pm.Version{Major: 2, Minor: 5}}
+		options, err := manager.ProxyOptions(args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		route, err := options.RouteForRequest(proxy.Request{URL: *target})
+		if err != nil || route.TLS.InsecureSkipVerify {
+			t.Fatalf("selected the wrong project's TLS verification: %v", err)
+		}
+	}
+	for path, before := range paths {
+		after, err := os.ReadFile(path)
+		if err != nil || !bytes.Equal(after, before) {
+			t.Fatal("project TLS configuration changed")
+		}
+	}
+}
+
 func TestPoetryGitListenersKeepRoutingAndTrustSeparate(t *testing.T) {
 	root := isolatedPoetryProject(t)
 	t.Setenv("https_proxy", "http://environment-proxy.example:8080")

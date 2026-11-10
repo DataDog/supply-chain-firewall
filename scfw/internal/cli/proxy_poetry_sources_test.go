@@ -21,6 +21,79 @@ import (
 	"testing"
 )
 
+func TestPoetrySymlinkProjectPreservesLocalTLS(t *testing.T) {
+	manager := poetryForProxyTest(t)
+	wheel := pypiWheel(t)
+	simple := readProxyFixture(t, "poetry/simple.html")
+	var downloads atomic.Int32
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".whl") {
+			downloads.Add(1)
+			_, _ = w.Write(wheel)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = io.WriteString(w, simple)
+	}))
+	defer origin.Close()
+	for _, projectOption := range []bool{false, true} {
+		for _, proxied := range []bool{false, true} {
+			t.Run(fmt.Sprintf("project-option=%t/proxied=%t", projectOption, proxied), func(t *testing.T) {
+				root := t.TempDir()
+				physical := filepath.Join(root, "real")
+				work := filepath.Join(physical, "work")
+				if err := os.MkdirAll(work, 0700); err != nil {
+					t.Fatal(err)
+				}
+				link := filepath.Join(root, "link")
+				if err := os.Symlink(work, link); err != nil {
+					t.Fatal(err)
+				}
+				ca := filepath.Join(root, "origin.pem")
+				poetryTestFile(t, ca, string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: origin.Certificate().Raw})))
+				manifest := fmt.Sprintf(readProxyFixture(t, "poetry/pyproject.toml.tmpl"), `project = "1.0"`, "", origin.URL, "primary")
+				configuration := fmt.Sprintf(readProxyFixture(t, "poetry/source-tls.toml.tmpl"), strconv.Quote(ca), strconv.Quote(""))
+				decoy := fmt.Sprintf(readProxyFixture(t, "poetry/source-tls.toml.tmpl"), strconv.Quote("/missing/decoy.pem"), strconv.Quote(""))
+				paths := map[string]string{
+					filepath.Join(root, "pyproject.toml"):     manifest,
+					filepath.Join(root, "poetry.toml"):        decoy,
+					filepath.Join(physical, "pyproject.toml"): manifest,
+					filepath.Join(physical, "poetry.toml"):    configuration,
+				}
+				for path, content := range paths {
+					poetryTestFile(t, path, content)
+				}
+				t.Setenv("POETRY_CACHE_DIR", filepath.Join(root, "cache"))
+				args := []string{"--directory", link + "/.."}
+				if projectOption {
+					args = []string{"--directory", link, "--project", ".."}
+				}
+				args = append(args, "--no-interaction", "lock")
+				before := downloads.Load()
+				if proxied {
+					runner := &capturingPoetryRunner{Poetry: manager}
+					commandErr, setupErr := runThroughProxy(context.Background(), runner, args, nil)
+					if commandErr != nil || setupErr != nil {
+						t.Fatalf("proxied project TLS: %v / %v", commandErr, setupErr)
+					}
+					assertProxyCleaned(t, runner.config)
+				} else if err := manager.RunCommand(context.Background(), args); err != nil {
+					t.Fatalf("direct project TLS: %v", err)
+				}
+				if downloads.Load() == before {
+					t.Fatal("selected project did not download a distribution")
+				}
+				for path, content := range paths {
+					actual, err := os.ReadFile(path)
+					if err != nil || string(actual) != content {
+						t.Fatal("project configuration changed")
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestPoetryConfiguredRepositoriesPreserveTLS(t *testing.T) {
 	manager := poetryForProxyTest(t)
 	wheel := pypiWheel(t)

@@ -33,7 +33,7 @@ func TestPoetryDefaultTrustUsesSystemRootsWithoutRuntimeDiscovery(t *testing.T) 
 		t.Fatal(err)
 	}
 	target, _ := url.Parse("https://public.example/project.whl")
-	for _, agent := range []string{"poetry/2.5.1"} {
+	for _, agent := range []string{"poetry/2.5.1", "git-dulwich/0.24"} {
 		route, err := options.RouteForRequest(proxy.Request{URL: *target, Header: http.Header{"User-Agent": {agent}}})
 		if err != nil || !route.TLS.RootCAs.Equal(roots) || route.TLS.InsecureSkipVerify {
 			t.Fatalf("%s did not use system trust: %v", agent, err)
@@ -44,6 +44,31 @@ func TestPoetryDefaultTrustUsesSystemRootsWithoutRuntimeDiscovery(t *testing.T) 
 	}
 	if _, err := os.Stat(manager.executable); !os.IsNotExist(err) {
 		t.Fatal("setup required or created a Poetry launcher")
+	}
+}
+
+func TestPoetryExplicitTrustKeepsRequestsAndBundledGitSeparate(t *testing.T) {
+	root := isolatedPoetryProject(t)
+	requests, ssl := poetryInvocationConfig(t), poetryInvocationConfig(t)
+	t.Setenv("REQUESTS_CA_BUNDLE", requests.CACertificatePath)
+	t.Setenv("SSL_CERT_FILE", ssl.CACertificatePath)
+	options, err := (Poetry{version: minPoetryVersion}).ProxyOptions([]string{"-C", root, "install"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, _ := url.Parse("https://public.example/project.whl")
+	for _, test := range []struct{ agent, path string }{
+		{"poetry/2.5.1", requests.CACertificatePath},
+		{"git-dulwich/0.24", ssl.CACertificatePath},
+	} {
+		pem, err := os.ReadFile(test.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		route, err := options.RouteForRequest(proxy.Request{URL: *target, Header: http.Header{"User-Agent": {test.agent}}})
+		if err != nil || !route.TLS.RootCAs.Equal(configPool(t, pem)) {
+			t.Fatalf("%s did not use its explicit CA bundle: %v", test.agent, err)
+		}
 	}
 }
 
@@ -82,5 +107,28 @@ func TestPoetryGlobalAndProjectRepositoryContextsRemainDistinct(t *testing.T) {
 				t.Fatalf("conflicting authenticator contexts silently changed policy: %v", err)
 			}
 		}
+	}
+}
+
+func TestPoetryRequestsAgentsCannotSelectBundledGitPolicy(t *testing.T) {
+	root := isolatedPoetryProject(t)
+	t.Setenv("GIT_HTTP_USER_AGENT", "poetry/2.5.1")
+	ssl := poetryInvocationConfig(t)
+	t.Setenv("SSL_CERT_FILE", ssl.CACertificatePath)
+	requests := poetryInvocationConfig(t)
+	t.Setenv("REQUESTS_CA_BUNDLE", requests.CACertificatePath)
+	pem, err := os.ReadFile(requests.CACertificatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := Poetry{version: pm.Version{Major: 2, Minor: 5}}
+	options, err := manager.ProxyOptions([]string{"-C", root, "install"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, _ := url.Parse("https://public.example/project.whl")
+	route, err := options.RouteForRequest(proxy.Request{URL: *target, ClientIdentity: "poetry-default", Header: http.Header{"User-Agent": {"poetry/2.5.1"}}})
+	if err != nil || !route.TLS.RootCAs.Equal(configPool(t, pem)) {
+		t.Fatalf("native-only agent changed Requests trust: %v", err)
 	}
 }

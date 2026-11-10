@@ -83,11 +83,17 @@ func (poetry Poetry) ProxyOptions(command []string) (proxy.Options, error) {
 	if err != nil {
 		return proxy.Options{}, err
 	}
+	clients := settings.git.snapshot.AdditionalClients()
+	clients[poetryNativeGitClient] = proxy.Options{RouteForRequest: settings.git.snapshot.Route}
 	return proxy.Options{
 		ClientIdentity: "poetry-default",
 		Upstream:       settings.upstream.Config, UpstreamTLS: settings.registryTLS,
 		ProxyForURL: poetryProxyForURL(settings.upstream), RouteForRequest: settings.route,
-		RequestHooks: []proxy.RequestHook{settings.redirectHook},
+		// Native Git can be selected explicitly or launched automatically after
+		// Dulwich receives an authentication challenge. Its configuration and
+		// trust must never depend on which client first requested a URL.
+		AdditionalClients: clients,
+		RequestHooks:      []proxy.RequestHook{settings.redirectHook},
 	}, nil
 }
 
@@ -171,6 +177,7 @@ func (poetry Poetry) ProxyCommand(_ context.Context, command []string, config pr
 	}
 	spec := proxy.CommandSpec{
 		Executable: poetry.Executable(), Args: slices.Clone(command),
+		EnvRemovals:  []string{"GIT_SSL_NO_VERIFY"},
 		EnvOverrides: config.EnvironmentOverrides(),
 	}
 	spec.EnvOverrides["REQUESTS_CA_BUNDLE"] = config.CACertificatePath
@@ -195,6 +202,9 @@ func (poetry Poetry) ProxyCommand(_ context.Context, command []string, config pr
 			return proxy.CommandSpec{}, err
 		}
 		spec.EnvOverrides[prefix+"CLIENT_CERT"] = identity
+	}
+	if err := settings.git.childOverrides(spec.EnvOverrides, config); err != nil {
+		return proxy.CommandSpec{}, err
 	}
 	return spec, nil
 }

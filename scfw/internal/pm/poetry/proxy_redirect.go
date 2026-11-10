@@ -19,7 +19,7 @@ import (
 const poetryRedirectDiagnostic = "Poetry/Requests cannot preserve its original proxy/TLS context across this redirect with process-only overrides; use consistent NO_PROXY/no_proxy and TLS settings for the redirect chain"
 
 func (s *poetryProxySettings) redirectHook(_ context.Context, request proxy.Request) (proxy.ResponseHook, error) {
-	if strings.HasPrefix(request.ClientIdentity, "client:") {
+	if strings.HasPrefix(request.ClientIdentity, "client:") || s.git.isRequest(request) {
 		return nil, nil
 	}
 	return func(_ context.Context, response proxy.Response) (*proxy.ResponseBodyHook, error) {

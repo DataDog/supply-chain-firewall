@@ -21,7 +21,7 @@ import (
 	"log/slog"
 	"math/big"
 	"net/http"
-
+	"net/http/cgi"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -519,6 +519,93 @@ func TestPoetryPreservesAuthenticatedUpstream(t *testing.T) {
 				}
 				if strings.Contains(diagnostics.String(), "proxy-secret") || strings.Contains(diagnostics.String(), "source-secret") {
 					t.Fatal("core diagnostics exposed credentials")
+				}
+				assertProxyCleaned(t, runner.config)
+			})
+		}
+	}
+}
+
+func TestPoetryGitDependenciesUseInvocationTrust(t *testing.T) {
+	manager := poetryForProxyTest(t)
+	gitExecutable, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("Git required")
+	}
+	root := t.TempDir()
+	repository := filepath.Join(root, "repository")
+	if err := os.Mkdir(repository, 0700); err != nil {
+		t.Fatal(err)
+	}
+	poetryTestFile(t, filepath.Join(repository, "pyproject.toml"), readProxyFixture(t, "poetry/git-pyproject.toml"))
+	for _, args := range [][]string{{"init"}, {"add", "."}, {"-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "-c", "user.name=SCFW Test", "-c", "user.email=scfw@example.invalid", "commit", "-m", "fixture"}} {
+		child := exec.Command(gitExecutable, args...)
+		child.Dir = repository
+		if output, err := child.CombinedOutput(); err != nil {
+			t.Fatalf("Git fixture: %v %s", err, output)
+		}
+	}
+	backend := cgi.Handler{Path: gitExecutable, Args: []string{"http-backend"}, Env: []string{"GIT_PROJECT_ROOT=" + root, "GIT_HTTP_EXPORT_ALL=1"}}
+	var requests atomic.Int32
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests.Add(1); backend.ServeHTTP(w, r) }))
+	defer origin.Close()
+	ca := filepath.Join(root, "git-ca.pem")
+	poetryTestFile(t, ca, string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: origin.Certificate().Raw})))
+	t.Setenv("GIT_SSL_CAINFO", ca)
+	// Native Git consumes GIT_SSL_CAINFO; bundled Dulwich uses explicit SSL CA paths.
+	t.Setenv("SSL_CERT_FILE", ca)
+	t.Setenv("GIT_PROXY_SSL_CAINFO", ca)
+	var hits atomic.Int32
+	upstream := proxyTestUpstream(t, upstreamProxyOptions{credentials: "proxy:proxy-secret", tls: &tls.Config{MinVersion: tls.VersionTLS12}, hits: &hits})
+	t.Setenv("https_proxy", strings.Replace(upstream.URL, "://", "://proxy:proxy-secret@", 1))
+	for _, systemGit := range []string{"false", "true"} {
+		for _, discovery := range []string{"environment", "configuration"} {
+			if systemGit == "false" && discovery == "configuration" {
+				continue
+			}
+			t.Run("system-git="+systemGit+"/"+discovery, func(t *testing.T) {
+				t.Setenv("POETRY_SYSTEM_GIT_CLIENT", systemGit)
+				project := t.TempDir()
+				var originalGit []byte
+				gitConfiguration := filepath.Join(project, ".gitconfig")
+				if discovery == "configuration" {
+					fixture := "poetry/git-network.conf.tmpl"
+					originalGit = []byte(fmt.Sprintf(readProxyFixture(t, fixture), ca, origin.URL, strings.Replace(upstream.URL, "://", "://proxy:proxy-secret@", 1), ca))
+					poetryTestFile(t, gitConfiguration, string(originalGit))
+					t.Setenv("GIT_CONFIG_GLOBAL", gitConfiguration)
+					t.Setenv("HOME", project)
+					t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+					t.Setenv("GIT_SSL_CAINFO", "")
+					t.Setenv("https_proxy", "")
+				}
+				t.Setenv("POETRY_CACHE_DIR", filepath.Join(project, "cache"))
+				poetryTestFile(t, filepath.Join(project, "pyproject.toml"), strings.Replace(readProxyFixture(t, "poetry/git-pyproject.toml"), `name = "git-project"`, `name = "consumer"`, 1))
+				runner := &capturingPoetryRunner{Poetry: manager}
+				var observed atomic.Int32
+				configure := func(context.Context, *http.Client) ([]proxy.RequestHook, error) {
+					return []proxy.RequestHook{func(_ context.Context, request proxy.Request) (proxy.ResponseHook, error) {
+						if strings.Contains(request.URL.Path, "repository/.git/") {
+							observed.Add(1)
+						}
+						return nil, nil
+					}}, nil
+				}
+				before := hits.Load()
+				commandErr, setupErr := runThroughProxy(context.Background(), runner, []string{"--directory", project, "--no-interaction", "add", "--lock", "git+" + origin.URL + "/repository/.git"}, configure)
+				if commandErr != nil || setupErr != nil {
+					t.Fatalf("Git dependency: %v / %v", commandErr, setupErr)
+				}
+				if hits.Load() == before || observed.Load() == 0 || requests.Load() == 0 {
+					t.Fatal("Git traffic did not traverse SCFW and the inherited proxy")
+				}
+				if discovery == "environment" && os.Getenv("GIT_SSL_CAINFO") != ca {
+					t.Fatal("parent Git CA changed")
+				}
+				if discovery == "configuration" {
+					data, err := os.ReadFile(gitConfiguration)
+					if err != nil || !bytes.Equal(data, originalGit) {
+						t.Fatal("Git configuration changed")
+					}
 				}
 				assertProxyCleaned(t, runner.config)
 			})

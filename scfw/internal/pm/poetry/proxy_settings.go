@@ -52,6 +52,7 @@ type poetryProxySettings struct {
 	ambiguousIdentities map[int]bool
 	identityWarning     sync.Once
 	redirectWarning     sync.Once
+	git                 *poetryGitSettings
 	modernPaths         bool
 	mutex               sync.Mutex
 	routes              map[string]*proxy.OutboundRoute
@@ -167,6 +168,10 @@ func (poetry Poetry) prepareProxy(command []string) (*poetryProxySettings, error
 		prepared.certificates = append(prepared.certificates, poetryCertificateRoute{source: source, address: address, tls: tlsConfig})
 	}
 	prepared.prepareIdentities()
+	prepared.git, err = readPoetryGitSettings(settings)
+	if err != nil {
+		return nil, err
+	}
 	if poetry.proxyState != nil {
 		poetry.proxyState.command = slices.Clone(command)
 		poetry.proxyState.prepared = prepared
@@ -186,6 +191,13 @@ func poetryTLSOptions(path, clientCertificate string) proxy.TLSConfigOptions {
 func poetryHasEnvironmentProxies() bool { return len(pythonproxy.Environment()) != 0 }
 
 func (s *poetryProxySettings) route(request proxy.Request) (*proxy.OutboundRoute, error) {
+	if s.git.isRequest(request) {
+		upstream, err := s.upstreamProxy(&request.URL)
+		if err != nil {
+			return nil, err
+		}
+		return s.git.processRoute(request.URL.Scheme, upstream)
+	}
 	return s.requestsRoute(request)
 }
 

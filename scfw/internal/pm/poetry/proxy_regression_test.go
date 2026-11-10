@@ -6,10 +6,11 @@
 package poetry
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"fmt"
-
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -41,7 +42,7 @@ func poetryInvocationConfig(t *testing.T, clients ...map[string]proxy.Options) p
 		return server.ClientConfig()
 	}
 	config := start(proxy.Options{})
-	additional := map[string]proxy.Options{"native-git": {}}
+	additional := map[string]proxy.Options{poetryNativeGitClient: {}}
 	if len(clients) > 0 {
 		additional = clients[0]
 	}
@@ -70,6 +71,89 @@ func isolatedPoetryProject(t *testing.T) string {
 	}
 	poetrySettingsFixture(t, "proxy-project.toml", filepath.Join(root, "pyproject.toml"))
 	return root
+}
+
+func TestPoetryGitListenersKeepRoutingAndTrustSeparate(t *testing.T) {
+	root := isolatedPoetryProject(t)
+	t.Setenv("https_proxy", "http://environment-proxy.example:8080")
+	t.Setenv("GIT_CONFIG_COUNT", "2")
+	t.Setenv("GIT_CONFIG_KEY_0", "http.https://git.example/.proxy")
+	t.Setenv("GIT_CONFIG_VALUE_0", "http://native-proxy.example:8080")
+	t.Setenv("GIT_CONFIG_KEY_1", "http.userAgent")
+	t.Setenv("GIT_CONFIG_VALUE_1", "custom-agent")
+	manager := Poetry{version: pm.Version{Major: 2, Minor: 5}, proxyState: &poetryProxyState{}}
+	args := []string{"--directory", root, "install"}
+	options, err := manager.ProxyOptions(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, _ := url.Parse("https://git.example/repo/info/refs?service=git-upload-pack")
+	request := proxy.Request{URL: *target, Header: http.Header{"User-Agent": {"git-dulwich/0.24"}}}
+	bundled, err := options.RouteForRequest(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("User-Agent", "custom-agent")
+	var native *proxy.OutboundRoute
+	for name, client := range options.AdditionalClients {
+		if name == poetryNativeGitClient {
+			continue
+		}
+		native, err = client.RouteForRequest(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if native == nil {
+		t.Fatal("missing URL-scoped native Git listener")
+	}
+	if bundled.ProxyURL == nil || bundled.ProxyURL.String() != "http://environment-proxy.example:8080" || native.ProxyURL == nil || native.ProxyURL.String() != "http://native-proxy.example:8080" {
+		t.Fatalf("Git clients did not retain their distinct original routes: %v / %v", bundled.ProxyURL, native.ProxyURL)
+	}
+	config := poetryInvocationConfig(t, options.AdditionalClients)
+	spec, err := manager.ProxyCommand(context.Background(), args, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.EnvOverrides["https_proxy"] != config.URL {
+		t.Fatal("Dulwich lost the process listener")
+	}
+	count, err := strconv.Atoi(spec.EnvOverrides["GIT_CONFIG_COUNT"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 2; index < count; index++ {
+		key := spec.EnvOverrides["GIT_CONFIG_KEY_"+strconv.Itoa(index)]
+		if strings.HasSuffix(key, ".proxy") {
+			assigned := false
+			for _, client := range config.AdditionalClients {
+				if spec.EnvOverrides["GIT_CONFIG_VALUE_"+strconv.Itoa(index)] == client.URL {
+					assigned = true
+				}
+			}
+			if !assigned {
+				t.Fatal("native Git was not assigned an invocation configuration listener")
+			}
+		}
+	}
+	bundle, err := os.ReadFile(spec.EnvOverrides["GIT_SSL_CAINFO"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	clients := []proxy.ClientConfig{config}
+	for _, client := range config.AdditionalClients {
+		clients = append(clients, client)
+	}
+	for _, client := range clients {
+		ca, err := os.ReadFile(client.CACertificatePath)
+		if err != nil || !bytes.Contains(bundle, ca) {
+			t.Fatal("shared Git trust does not contain both invocation CAs")
+		}
+	}
+	delete(config.AdditionalClients, poetryNativeGitClient)
+	if _, err := manager.ProxyCommand(context.Background(), args, config); err == nil {
+		t.Fatal("missing native listener was silently accepted")
+	}
 }
 
 func TestPoetryRelativeRequestsTrust(t *testing.T) {

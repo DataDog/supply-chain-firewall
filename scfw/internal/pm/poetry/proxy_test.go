@@ -162,7 +162,7 @@ func TestPoetryProxyCommandPreservesArgumentsAndParent(t *testing.T) {
 		case "REQUESTS_CA_BUNDLE", "SSL_CERT_FILE":
 			want = config.CACertificatePath
 		case "GIT_SSL_CAINFO":
-			want = config.CACertificatePath
+			want = filepath.Join(filepath.Dir(config.CACertificatePath), "git-ca.pem")
 		case "no_proxy", "NO_PROXY":
 			want = ""
 		case "http_proxy", "HTTP_PROXY", "https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY":
@@ -190,7 +190,7 @@ func TestPoetryProxyOptionsTrust(t *testing.T) {
 	}
 	defer func() { _ = server.Close() }()
 	ca := server.ClientConfig().CACertificatePath
-	for _, key := range []string{"REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"} {
+	for _, key := range []string{"REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "GIT_SSL_CAINFO", "GIT_SSL_CAPATH", "SSL_CERT_FILE", "SSL_CERT_DIR"} {
 		t.Run(key, func(t *testing.T) {
 			path := ca
 			if key == "GIT_SSL_CAPATH" || key == "SSL_CERT_DIR" {
@@ -209,6 +209,12 @@ func TestPoetryProxyOptionsTrust(t *testing.T) {
 			address, _ := url.Parse("https://pypi.org/simple/project/")
 			request := proxy.Request{URL: *address, Header: map[string][]string{"User-Agent": {"poetry"}}}
 			route := options.RouteForRequest
+			switch key {
+			case "GIT_SSL_CAINFO", "GIT_SSL_CAPATH":
+				route = options.AdditionalClients[poetryNativeGitClient].RouteForRequest
+			case "SSL_CERT_FILE", "SSL_CERT_DIR":
+				request.Header.Set("User-Agent", "git/dulwich/1.2.20")
+			}
 			_, err = route(request)
 			if err == nil || strings.Contains(err.Error(), "secret") {
 				t.Fatalf("unsafe/missing error: %v", err)
@@ -384,7 +390,7 @@ func TestPoetryProxyRejectsUnsupportedVersions(t *testing.T) {
 func TestPoetrySourceRoutingAcross2x(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("POETRY_CONFIG_DIR", t.TempDir())
-	for _, key := range []string{"REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"} {
+	for _, key := range []string{"REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "GIT_SSL_CAINFO", "GIT_SSL_CAPATH", "SSL_CERT_FILE", "SSL_CERT_DIR"} {
 		t.Setenv(key, "")
 	}
 	poetrySettingsFixture(t, "source-matching.toml", filepath.Join(root, "pyproject.toml"))

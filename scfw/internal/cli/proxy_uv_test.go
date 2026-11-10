@@ -161,7 +161,7 @@ func TestUVProxyEndToEnd(t *testing.T) {
 	})
 	upstreamServer := httptest.NewServer(upstream)
 	defer upstreamServer.Close()
-	for _, operation := range []string{"pip-install", "pip-sync", "pip-compile", "pip-file-proxy", "pip-cert", "pip-python-preference", "pip-python-fetch", "pip-preview-feature", "add", "sync", "lock", "run", "script", "script-file-proxy", "uvx", "version-bump", "version-value", "version-no-sync", "venv-seed", "venv-seed-env"} {
+	for _, operation := range []string{"pip-install", "pip-sync", "pip-compile", "pip-file-proxy", "pip-cert", "pip-python-preference", "pip-python-fetch", "pip-preview-feature", "add", "sync", "lock", "script", "script-file-proxy", "uvx", "version-bump", "version-value", "version-no-sync", "venv-seed", "venv-seed-env"} {
 		for _, outcome := range []evaluation.Outcome{evaluation.OutcomeAllow, evaluation.OutcomeWarn, evaluation.OutcomeBlock} {
 			t.Run(operation+"/"+string(outcome), func(t *testing.T) {
 				t.Chdir(t.TempDir())
@@ -262,8 +262,8 @@ func TestUVProxyEndToEnd(t *testing.T) {
 				case "pip-preview-feature":
 					command = append([]string{"--preview-feature", "scfw-parser-test"}, command...)
 				case "script", "script-file-proxy":
-					command[len(command)-1] = "run"
-					command = append(command, "script.py", "--config-file=child.toml", "--help")
+					command[len(command)-1] = "lock"
+					command = append(command, "--script", "script.py")
 					originalScript = []byte(fmt.Sprintf(scriptTemplate, index, strings.TrimPrefix(registry.URL, "https://")))
 					if err := os.WriteFile("script.py", originalScript, 0600); err != nil {
 						t.Fatal(err)
@@ -274,9 +274,6 @@ func TestUVProxyEndToEnd(t *testing.T) {
 				}
 				if operation == "pip-cert" {
 					command = append(command, "--cert", filepath.Base(certificate), "--native-tls", "--directory", filepath.Dir(certificate), "--target", t.TempDir())
-				}
-				if operation == "run" {
-					command = append(command, "--with", "project==1.0", "--resolution", "lowest", "--config-setting", "scfw-parser=1", "python", "-c", "import project", "--directory=/nonexistent-scfw-child", "--config-file=/nonexistent-scfw-child.toml", "--help")
 				}
 				if operation == "uvx" {
 					command = append(command, "python", "-c", "import project", "--help")
@@ -388,11 +385,11 @@ func TestUVProxyEndToEnd(t *testing.T) {
 						cached := append([]string{"--offline"}, command...)
 						commandErr, setupErr = runThroughProxy(context.Background(), runner, cached, configure)
 						if commandErr != nil || setupErr != nil || calls.Load() != 1 {
-							t.Fatalf("cached script environment: %v/%v calls=%d", commandErr, setupErr, calls.Load())
+							t.Fatalf("cached script lock: %v/%v calls=%d", commandErr, setupErr, calls.Load())
 						}
 						updated, err := os.ReadFile("script.py.lock")
 						if err != nil || !bytes.Equal(updated, lockfile) {
-							t.Fatal("running cached script changed its lockfile")
+							t.Fatal("locking cached script changed its lockfile")
 						}
 						assertUVProxyCleaned(t, runner)
 					}
@@ -767,5 +764,82 @@ func TestUVUnrelatedCommandBypassesProxySetup(t *testing.T) {
 	cmd.SetArgs([]string{"run", "--executable", executablePath, "--", "uv", "--version"})
 	if err := cmd.ExecuteContext(context.Background()); err != nil {
 		t.Fatalf("unrelated uv command tried to configure the proxy: %v", err)
+	}
+}
+
+func TestUVRunBypassesProxySetup(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 required")
+	}
+	fixture := readProxyFixture(t, "uv/process.py")
+	t.Chdir(t.TempDir())
+	launcher := filepath.Join(t.TempDir(), "uv")
+	if err := os.WriteFile(launcher, []byte("#!"+python+"\n"+fixture), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(proxyEnabledVar, "1")
+	t.Setenv(evaluationModeVar, string(evaluationModeDatadog))
+	// These settings would fail SCFW proxy setup; direct execution must leave them alone.
+	for key, value := range map[string]string{
+		"HTTPS_PROXY": "http://invalid:port", "SSL_CERT_FILE": "/nonexistent-scfw-uv-certificate",
+		"GIT_SSL_CAINFO": "/nonexistent-scfw-git-certificate", "UV_CONFIG_FILE": "/nonexistent-scfw-uv.toml",
+		"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "http.proxy", "GIT_CONFIG_VALUE_0": "http://original.example",
+		"SCFW_UV_TEST_MODE": "passthrough",
+	} {
+		t.Setenv(key, value)
+	}
+	originalExecutable := executable
+	t.Cleanup(func() {
+		executable = originalExecutable
+		runCmd.Flags().Lookup("executable").Changed = false
+	})
+	cmd := RootCmd()
+	defer cmd.RemoveCommand(configureCmd, doctorCmd, runCmd)
+	for _, args := range [][]string{
+		{"run", "python", "argument with spaces", "--help"},
+		{"run", "--with", "project==1.0", "python", "app.py"},
+		{"run", "--with-requirements", "requirements.txt", "python", "app.py"},
+		{"--directory", "project with spaces", "run", "--script", "script.py"},
+		{"run", "https://example.invalid/script.py"},
+		{"run", "--", "-"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			result := filepath.Join(t.TempDir(), "result.json")
+			t.Setenv("SCFW_UV_TEST_RESULT", result)
+			input, writer, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = input.Close(); _ = writer.Close() }()
+			const stdin = "print('stdin stays with uv')\n"
+			if _, err := io.WriteString(writer, stdin); err != nil {
+				t.Fatal(err)
+			}
+			_ = writer.Close()
+			originalStdin := os.Stdin
+			os.Stdin = input
+			t.Cleanup(func() { os.Stdin = originalStdin })
+			cmd.SetArgs(append([]string{"run", "--executable", launcher, "--", "uv"}, args...))
+			if err := cmd.ExecuteContext(context.Background()); err != nil {
+				t.Fatalf("uv run tried to configure the proxy: %v", err)
+			}
+			content, err := os.ReadFile(result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var state struct {
+				Args                     []string
+				Proxy, CA, Config, Stdin string
+				GitCA                    string `json:"git_ca"`
+				GitConfig                string `json:"git_config"`
+			}
+			if err := json.Unmarshal(content, &state); err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(state.Args, args) || state.Stdin != stdin || state.Proxy != os.Getenv("HTTPS_PROXY") || state.CA != os.Getenv("SSL_CERT_FILE") || state.GitCA != os.Getenv("GIT_SSL_CAINFO") || state.Config != os.Getenv("UV_CONFIG_FILE") || state.GitConfig != os.Getenv("GIT_CONFIG_VALUE_0") {
+				t.Fatalf("uv run arguments, input, or environment changed: %+v", state)
+			}
+		})
 	}
 }

@@ -124,13 +124,14 @@ func (uv UV) ResolveInstallTargets(_ context.Context, command []string) (*pm.Set
 
 // ProxyCommandSupported selects operations which resolve or install packages.
 // Inspect command positions, never package names or arbitrary command arguments.
+// uv run always executes directly, including its dependency resolution and child.
 func (uv UV) ProxyCommandSupported(command []string) bool {
 	options := uv.parseOptions(command)
 	if options.help {
 		return false
 	}
 	switch options.command {
-	case "add", "remove", "sync", "lock", "export", "tree", "build", "run":
+	case "add", "remove", "sync", "lock", "export", "tree", "build":
 		return true
 	case "version":
 		return (options.versionValue || options.has("bump")) && !options.has("dry-run") && !enabled(options.value("frozen", "UV_FROZEN"))

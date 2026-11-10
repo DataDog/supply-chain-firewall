@@ -72,6 +72,76 @@ func TestPoetryExplicitTrustKeepsRequestsAndBundledGitSeparate(t *testing.T) {
 	}
 }
 
+func TestPoetryRelativeTrustThroughSymlinks(t *testing.T) {
+	for _, test := range []struct {
+		name, environment, path string
+		git, parent, project    bool
+	}{
+		{name: "Requests", environment: "REQUESTS_CA_BUNDLE", path: "../ca.pem"},
+		{name: "Curl", environment: "CURL_CA_BUNDLE", path: "../ca.pem"},
+		{name: "SSL file", environment: "SSL_CERT_FILE", path: "../ca.pem", git: true},
+		{name: "SSL directory", environment: "SSL_CERT_DIR", path: "..", git: true},
+		{name: "source CA", environment: "POETRY_CERTIFICATES_PRIVATE_CERT", path: "../ca.pem"},
+		{name: "nested CA symlink", environment: "REQUESTS_CA_BUNDLE", path: "ca-link/../ca.pem"},
+		{name: "nested CA directory symlink", environment: "SSL_CERT_DIR", path: "ca-link/..", git: true},
+		{name: "directory symlink parent", environment: "REQUESTS_CA_BUNDLE", path: "ca.pem", parent: true},
+		{name: "separate project", environment: "REQUESTS_CA_BUNDLE", path: "../ca.pem", project: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := isolatedPoetryProject(t)
+			real := filepath.Join(root, "real", "project")
+			trust := filepath.Join(root, "trust", "child")
+			for _, directory := range []string{real, trust} {
+				if err := os.MkdirAll(directory, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, directory := range []string{real, filepath.Dir(real)} {
+				poetrySettingsFixture(t, "proxy-project.toml", filepath.Join(directory, "pyproject.toml"))
+			}
+			link := filepath.Join(root, "linked-project")
+			if err := os.Symlink(real, link); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(trust, filepath.Join(real, "ca-link")); err != nil {
+				t.Fatal(err)
+			}
+			config := poetryInvocationConfig(t)
+			pem, err := os.ReadFile(config.CACertificatePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, directory := range []string{filepath.Dir(real), filepath.Dir(trust)} {
+				if err := os.WriteFile(filepath.Join(directory, "ca.pem"), pem, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv(test.environment, test.path)
+			directory := link
+			if test.parent {
+				directory += string(os.PathSeparator) + ".."
+			}
+			args := []string{"--directory", directory, "install"}
+			if test.project {
+				args = append(args, "--project", "..")
+			}
+			options, err := (Poetry{version: minPoetryVersion}).ProxyOptions(args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			target, _ := url.Parse("https://index.example/simple/project/")
+			request := proxy.Request{URL: *target}
+			if test.git {
+				request.Header = http.Header{"User-Agent": {"git-dulwich/0.24"}}
+			}
+			route, err := options.RouteForRequest(request)
+			if err != nil || !route.TLS.RootCAs.Equal(configPool(t, pem)) {
+				t.Fatalf("relative CA did not retain filesystem path semantics: %v", err)
+			}
+		})
+	}
+}
+
 func TestPoetryGlobalAndProjectRepositoryContextsRemainDistinct(t *testing.T) {
 	for _, localTrust := range []bool{false, true} {
 		root := isolatedPoetryProject(t)

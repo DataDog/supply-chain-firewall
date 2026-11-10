@@ -41,11 +41,21 @@ func readPoetrySettings(command []string) (poetrySettings, error) {
 	if err != nil {
 		return settings, err
 	}
-	settings.workingDirectory, err = filepath.Abs(directory)
+	projectDirectory, err := filepath.Abs(directory)
 	if err != nil {
 		return settings, err
 	}
-	directory = settings.workingDirectory
+	settings.workingDirectory = projectDirectory
+	// Poetry changes directories before opening relative TLS paths. Resolve the
+	// original directory before Abs can collapse '..' across a symlink, while
+	// retaining the original project lookup path for configuration discovery.
+	if physical, resolveErr := filepath.EvalSymlinks(directory); resolveErr == nil {
+		settings.workingDirectory, err = filepath.Abs(physical)
+		if err != nil {
+			return settings, err
+		}
+	}
+	directory = projectDirectory
 	for i, argument := range command {
 		if argument == "--" {
 			break
@@ -284,8 +294,16 @@ func (s poetrySettings) certificatePath(value any) string {
 // workingPath preserves literal Requests environment paths; unlike Poetry
 // certificate settings, those paths do not expand configuration placeholders.
 func (s poetrySettings) workingPath(path string) string {
-	if path != "" && !filepath.IsAbs(path) {
-		path = filepath.Join(s.workingDirectory, path)
+	if path == "" {
+		return ""
 	}
+	if !filepath.IsAbs(path) {
+		// Join would collapse '..' before the filesystem follows symlinks.
+		path = s.workingDirectory + string(os.PathSeparator) + path
+	}
+	if physical, err := filepath.EvalSymlinks(path); err == nil {
+		return physical
+	}
+	// Missing or invalid unused CA paths must keep their deferred validation.
 	return path
 }

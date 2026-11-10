@@ -182,3 +182,50 @@ func TestPoetryRegeneratesIgnoredLockThroughProxy(t *testing.T) {
 		})
 	}
 }
+
+func TestPoetrySymlinkDirectoryPreservesRelativeCA(t *testing.T) {
+	manager := poetryForProxyTest(t)
+	root := t.TempDir()
+	real := filepath.Join(root, "real")
+	if err := os.Mkdir(real, 0700); err != nil {
+		t.Fatal(err)
+	}
+	wheel := pypiWheel(t)
+	var downloads atomic.Int32
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		downloads.Add(1)
+		_, _ = w.Write(wheel)
+	}))
+	defer origin.Close()
+	poetryTestFile(t, filepath.Join(real, "ca.pem"), string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: origin.Certificate().Raw})))
+	t.Setenv("REQUESTS_CA_BUNDLE", "../ca.pem")
+	for _, proxied := range []bool{false, true} {
+		t.Run(fmt.Sprintf("proxied=%t", proxied), func(t *testing.T) {
+			project := filepath.Join(real, fmt.Sprintf("project-%t", proxied))
+			if err := os.Mkdir(project, 0700); err != nil {
+				t.Fatal(err)
+			}
+			poetryTestFile(t, filepath.Join(project, "pyproject.toml"), readProxyFixture(t, "poetry/git-pyproject.toml"))
+			link := filepath.Join(root, fmt.Sprintf("linked-%t", proxied))
+			if err := os.Symlink(project, link); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("POETRY_CACHE_DIR", t.TempDir())
+			args := []string{"--directory", link, "--no-interaction", "add", "--lock", origin.URL + "/project-1.0-py3-none-any.whl"}
+			before := downloads.Load()
+			if proxied {
+				runner := &capturingPoetryRunner{Poetry: manager}
+				commandErr, setupErr := runThroughProxy(context.Background(), runner, args, nil)
+				if commandErr != nil || setupErr != nil {
+					t.Fatalf("proxied relative CA: %v / %v", commandErr, setupErr)
+				}
+				assertProxyCleaned(t, runner.config)
+			} else if err := manager.RunCommand(context.Background(), args); err != nil {
+				t.Fatalf("direct relative CA: %v", err)
+			}
+			if downloads.Load() == before {
+				t.Fatal("relative CA test did not download a distribution")
+			}
+		})
+	}
+}

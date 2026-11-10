@@ -48,6 +48,9 @@ type Request struct {
 	Method string
 	URL    url.URL
 	Header http.Header
+	// ClientIdentity identifies policy through an isolated invocation listener
+	// or an invocation-only TLS certificate, without URL-wide trust.
+	ClientIdentity string
 }
 
 // Response is a copy of an upstream response. Body is populated only for a
@@ -90,6 +93,9 @@ type ResponseBodyHook struct {
 
 // Options configures a proxy.
 type Options struct {
+	// ClientIdentity identifies this listener when a request presents no TLS
+	// identity. Run assigns identities to additional client listeners.
+	ClientIdentity string
 	// AdditionalClients supplies isolated proxy/TLS settings for other HTTP
 	// clients launched by the same command. Run owns their complete lifecycle.
 	// Profiles are not recursive; all clients share the invocation's hooks.
@@ -138,6 +144,10 @@ type ClientConfig struct {
 
 	// CACertificatePath is a PEM file holding the per-run CA certificate.
 	CACertificatePath string
+	// IdentityCertificate creates a private, invocation-only PEM certificate/key
+	// for a client which carries TLS policy across redirects. Its files are
+	// removed with the proxy. Nil configurations do not support identities.
+	IdentityCertificate func(identity string) (string, error)
 }
 
 // Server is a running proxy with its own per-run certificate authority.
@@ -201,8 +211,11 @@ func Start(ctx context.Context, options Options) (*Server, error) {
 		cancel:       cancel,
 		connections:  make(map[net.Conn]struct{}),
 	}
+	server.clientConfig.IdentityCertificate = func(identity string) (string, error) {
+		return ca.identityCertificate(certificateDir, identity)
+	}
 	server.httpServer = &http.Server{
-		Handler:           server.newHandler(ca, options.RequestHooks),
+		Handler:           server.newHandler(ca, options.RequestHooks, options.ClientIdentity),
 		ReadHeaderTimeout: 30 * time.Second,
 		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelDebug),
 		ConnState:         server.trackConnection,
@@ -269,6 +282,7 @@ func (server *Server) trackConnection(conn net.Conn, state http.ConnState) {
 func (server *Server) newHandler(
 	ca *certificateAuthority,
 	requestHooks []RequestHook,
+	listenerIdentity string,
 ) *goproxy.ProxyHttpServer {
 	handler := goproxy.NewProxyHttpServer()
 	handler.Logger = proxyLogger{}
@@ -286,8 +300,10 @@ func (server *Server) newHandler(
 	// the requests inside are visible to the proxy.
 	mitm := &goproxy.ConnectAction{
 		Action: goproxy.ConnectMitm,
-		TLSConfig: func(host string, _ *goproxy.ProxyCtx) (*tls.Config, error) {
-			return ca.serverTLSConfig(host), nil
+		TLSConfig: func(host string, ctx *goproxy.ProxyCtx) (*tls.Config, error) {
+			config := ca.serverTLSConfig(host)
+			ca.clientIdentityTLS(config, func(identity string) { ctx.UserData = identity })
+			return config, nil
 		},
 	}
 	handler.OnRequest().HandleConnectFunc(func(host string, _ *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
@@ -296,7 +312,11 @@ func (server *Server) newHandler(
 
 	handler.OnRequest().DoFunc(func(request *http.Request, proxyCtx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		request = request.WithContext(server.requestContext(request.Context()))
-		observed := Request{Method: request.Method, URL: *request.URL, Header: request.Header.Clone()}
+		identity, _ := proxyCtx.UserData.(string)
+		if identity == "" {
+			identity = listenerIdentity
+		}
+		observed := Request{Method: request.Method, URL: *request.URL, Header: request.Header.Clone(), ClientIdentity: identity}
 		responseHooks, err := runRequestHooks(request.Context(), requestHooks, observed)
 		if err != nil {
 			slog.Debug("proxy rejected request", "method", request.Method, "url", redactURL(request.URL), "reason", err)
@@ -305,7 +325,8 @@ func (server *Server) newHandler(
 		// Response hooks run on upstream responses only, so responses generated
 		// above never reach them.
 		proxyCtx.RoundTripper = goproxy.RoundTripperFunc(func(request *http.Request, _ *goproxy.ProxyCtx) (*http.Response, error) {
-			response, err := server.transport.RoundTrip(request)
+			forwarded := request.WithContext(context.WithValue(request.Context(), clientIdentityContextKey{}, identity))
+			response, err := server.transport.RoundTrip(forwarded)
 			if err != nil {
 				return nil, err
 			}
@@ -526,7 +547,7 @@ func NewTransport(options Options) *Transport {
 
 func (transport *Transport) RoundTrip(request *http.Request) (*http.Response, error) {
 	if transport.routeForRequest != nil {
-		route, err := transport.routeForRequest(Request{Method: request.Method, URL: *request.URL, Header: request.Header.Clone()})
+		route, err := transport.routeForRequest(Request{Method: request.Method, URL: *request.URL, Header: request.Header.Clone(), ClientIdentity: clientIdentity(request.Context())})
 		if err != nil {
 			return nil, errors.New("could not resolve outbound request settings")
 		}

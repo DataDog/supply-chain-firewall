@@ -6,13 +6,17 @@
 package poetry
 
 import (
+	"context"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/pythonproxy"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -113,6 +117,111 @@ func TestPoetryNativeProxyDiscoveryAndBypass(t *testing.T) {
 						t.Fatal("native bypass lost")
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestPoetrySnapshotKeepsSourceTrustAndIgnoresUnusedSettings(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("POETRY_CONFIG_DIR", root)
+	for _, key := range []string{"GIT_SSL_CAINFO", "GIT_SSL_CAPATH", "SSL_CERT_FILE", "SSL_CERT_DIR"} {
+		t.Setenv(key, "")
+	}
+	poetrySettingsFixture(t, "proxy-sources.toml", filepath.Join(root, "pyproject.toml"))
+	poetrySettingsFixture(t, "global-config.toml", filepath.Join(root, "config.toml"))
+	config := poetryInvocationConfig(t)
+	t.Setenv("REQUESTS_CA_BUNDLE", "/missing/unselected-default-secret.pem")
+	t.Setenv("POETRY_CERTIFICATES_PRIVATE_CERT", config.CACertificatePath)
+	t.Setenv("POETRY_CERTIFICATES_PRIVATE_CLIENT_CERT", "")
+	manager := Poetry{version: pm.Version{Major: 2, Minor: 5}, proxyState: &poetryProxyState{}}
+	args := []string{"--directory", root, "install"}
+	options, err := manager.ProxyOptions(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	address, _ := url.Parse("https://index.example/python-packages/project/")
+	route, err := options.RouteForRequest(proxy.Request{URL: *address})
+	if err != nil || route.TLS == nil {
+		t.Fatalf("unused settings prevented selected source: %v", err)
+	}
+	t.Setenv("POETRY_CERTIFICATES_PRIVATE_CERT", "/missing/changed-after-discovery.pem")
+	spec, err := manager.ProxyCommand(context.Background(), args, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.EnvOverrides["POETRY_CERTIFICATES_PRIVATE_CERT"] != config.CACertificatePath {
+		t.Fatal("source path override missing")
+	}
+	if _, err := options.RouteForRequest(proxy.Request{URL: *address}); err != nil {
+		t.Fatal("outbound snapshot re-read parent environment")
+	}
+	other, _ := url.Parse("https://unconfigured.example/project")
+	if _, err := options.RouteForRequest(proxy.Request{URL: *other}); err == nil || strings.Contains(err.Error(), "secret") {
+		t.Fatalf("unsafe/missing unconfigured-source error: %v", err)
+	}
+}
+
+func TestPoetryCertificateConfigurationReferences(t *testing.T) {
+	root := isolatedPoetryProject(t)
+	config := poetryInvocationConfig(t)
+	data, err := os.ReadFile(config.CACertificatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "ca.pem"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("POETRY_CACHE_DIR", root)
+	poetrySettingsFixture(t, "certificate-references.toml", filepath.Join(root, "poetry.toml"))
+	manager := Poetry{version: pm.Version{Major: 2, Minor: 5}}
+	options, err := manager.ProxyOptions([]string{"--directory", root, "install"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, _ := url.Parse("https://index.example/simple/project/")
+	if _, err := options.RouteForRequest(proxy.Request{URL: *target}); err != nil {
+		t.Fatalf("nested certificate reference was not resolved: %v", err)
+	}
+	settings, err := readPoetrySettings([]string{"--directory", root, "install"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := settings.certificatePath("{virtualenvs.path}/ca.pem"); got != filepath.Join(root, "virtualenvs", "ca.pem") {
+		t.Fatalf("default configuration reference=%q", got)
+	}
+	if got := settings.certificatePath("{unknown.setting}/ca.pem"); !strings.Contains(got, "{unknown.setting}") {
+		t.Fatal("unknown reference was silently removed")
+	}
+	settings.values["cycle"] = "{cycle}"
+	if got := settings.get("cycle"); !strings.Contains(got.(string), "{cycle}") {
+		t.Fatal("cyclic reference did not remain bounded")
+	}
+}
+
+func TestPoetryHTTPDoesNotLoadUnusedTrust(t *testing.T) {
+	root := isolatedPoetryProject(t)
+	t.Setenv("REQUESTS_CA_BUNDLE", "/unused/secret.pem")
+	for _, upstream := range []string{"", "http://upstream.example:8080", "https://upstream.example:443"} {
+		t.Run(upstream, func(t *testing.T) {
+			t.Setenv("http_proxy", upstream)
+			manager := Poetry{version: pm.Version{Major: 2, Minor: 5}}
+			options, err := manager.ProxyOptions([]string{"--directory", root, "install"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			target, _ := url.Parse("http://index.example/simple/project/")
+			_, err = options.RouteForRequest(proxy.Request{URL: *target})
+			if strings.HasPrefix(upstream, "https:") {
+				if err == nil || strings.Contains(err.Error(), "secret") {
+					t.Fatalf("HTTPS proxy ignored required trust or leaked its path: %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("HTTP-only route loaded unused trust: %v", err)
+			}
+			target, _ = url.Parse("https://index.example/simple/project/")
+			if _, err := options.RouteForRequest(proxy.Request{URL: *target}); err == nil {
+				t.Fatal("HTTPS destination ignored invalid required trust")
 			}
 		})
 	}

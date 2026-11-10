@@ -7,10 +7,12 @@ package poetry
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/url"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
@@ -20,7 +22,6 @@ import (
 )
 
 var _ pm.ProxyRunner = Poetry{}
-
 var _ pm.ProxyOptionsProvider = Poetry{}
 
 // Requests' initial lookup and urllib's fallback use different environment
@@ -78,26 +79,16 @@ func discoverPoetryProxies(readSystem func() (pythonproxy.Settings, error)) (poe
 }
 
 func (poetry Poetry) ProxyOptions(command []string) (proxy.Options, error) {
-	if err := poetry.checkVersion(); err != nil {
-		return proxy.Options{}, err
-	}
-	upstream, native, err := discoverPoetryProxies(pythonproxy.ReadSystem)
+	settings, err := poetry.prepareProxy(command)
 	if err != nil {
 		return proxy.Options{}, err
 	}
-	ca := os.Getenv("REQUESTS_CA_BUNDLE")
-	if ca == "" {
-		ca = os.Getenv("CURL_CA_BUNDLE")
-	}
-	paths := []string{ca}
-	tlsConfig, err := proxy.NewTLSConfig(proxy.TLSConfigOptions{CABundlePaths: paths})
-	route := poetryProxyForURL(upstream)
-	return proxy.Options{Upstream: upstream.Config, UpstreamTLS: tlsConfig, ProxyForURL: func(target *url.URL) (*url.URL, error) {
-		if native.Bypasses(target) {
-			return nil, nil
-		}
-		return route(target)
-	}}, err
+	return proxy.Options{
+		ClientIdentity: "poetry-default",
+		Upstream:       settings.upstream.Config, UpstreamTLS: settings.registryTLS,
+		ProxyForURL: poetryProxyForURL(settings.upstream), RouteForRequest: settings.route,
+		RequestHooks: []proxy.RequestHook{settings.redirectHook},
+	}, nil
 }
 
 // Requests does not implicitly bypass loopback as Go's httpproxy does. Keep
@@ -174,7 +165,8 @@ func poetryUrllibBypassesProxy(host, noProxy string) bool {
 // sources, authentication/keyring, virtualenv, lockfile, cache and arguments;
 // the core runner owns streams, signals, exit status and per-invocation cleanup.
 func (poetry Poetry) ProxyCommand(_ context.Context, command []string, config proxy.ClientConfig) (proxy.CommandSpec, error) {
-	if err := poetry.checkVersion(); err != nil {
+	settings, err := poetry.prepareProxy(command)
+	if err != nil {
 		return proxy.CommandSpec{}, err
 	}
 	spec := proxy.CommandSpec{
@@ -183,9 +175,26 @@ func (poetry Poetry) ProxyCommand(_ context.Context, command []string, config pr
 	}
 	spec.EnvOverrides["REQUESTS_CA_BUNDLE"] = config.CACertificatePath
 	spec.EnvOverrides["GIT_SSL_CAINFO"] = config.CACertificatePath
-	// Poetry's bundled Dulwich Git client uses Python's SSL roots.
+	// Bundled Dulwich trusts the invocation CA through the SSL environment.
 	spec.EnvOverrides["SSL_CERT_FILE"] = config.CACertificatePath
+
+	// Source-specific verify paths override REQUESTS_CA_BUNDLE inside Requests.
+	// Move their original trust and mTLS to the corresponding outbound route.
+	for index, source := range settings.certificates {
+		if !source.hasHost() {
+			continue
+		}
+		prefix := poetryCertificatePrefix(source.source.Name)
+		spec.EnvOverrides[prefix+"CERT"] = config.CACertificatePath
+		spec.EnvOverrides[prefix+"VERIFY"] = config.CACertificatePath
+		if config.IdentityCertificate == nil {
+			return proxy.CommandSpec{}, errors.New("proxy TLS client identities are unavailable")
+		}
+		identity, err := config.IdentityCertificate("poetry-source-" + strconv.Itoa(settings.identityIndices[index]))
+		if err != nil {
+			return proxy.CommandSpec{}, err
+		}
+		spec.EnvOverrides[prefix+"CLIENT_CERT"] = identity
+	}
 	return spec, nil
 }
-
-func poetryHasEnvironmentProxies() bool { return len(pythonproxy.Environment()) != 0 }

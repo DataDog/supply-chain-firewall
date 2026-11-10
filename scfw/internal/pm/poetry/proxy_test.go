@@ -61,7 +61,7 @@ func TestPoetryUpstreamProxy(t *testing.T) {
 			for key, value := range test.env {
 				t.Setenv(key, value)
 			}
-			config, err := (Poetry{version: minPoetryVersion}).UpstreamProxy([]string{"install"})
+			config, err := (Poetry{}).UpstreamProxy([]string{"install"})
 			if test.invalid {
 				if err == nil || strings.Contains(err.Error(), "secret") || strings.Contains(err.Error(), "user") {
 					t.Fatalf("unsafe/missing error: %v", err)
@@ -139,13 +139,13 @@ func TestPoetryProxyBypassEnvironment(t *testing.T) {
 
 func TestPoetryProxyCommandPreservesArgumentsAndParent(t *testing.T) {
 	t.Setenv("http_proxy", "http://original")
-	t.Setenv("REQUESTS_CA_BUNDLE", "/original/requests.pem")
-	t.Setenv("GIT_SSL_CAINFO", "/original/git.pem")
+	t.Setenv("REQUESTS_CA_BUNDLE", "")
+	t.Setenv("GIT_SSL_CAINFO", "")
 	before := os.Environ()
 	args := []string{"--directory", "a project", "add", "--source", "private", "name @ https://user:secret@example.test/project.whl", "--", "--opaque"}
 	wantArgs := slices.Clone(args)
-	config := proxy.ClientConfig{URL: "http://127.0.0.1:1234", CACertificatePath: "/tmp/scfw/ca.pem"}
-	spec, err := (Poetry{version: minPoetryVersion, executable: "/custom/poetry"}).ProxyCommand(context.Background(), args, config)
+	config := poetryInvocationConfig(t)
+	spec, err := (Poetry{executable: "/custom/poetry", version: minPoetryVersion}).ProxyCommand(context.Background(), args, config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,10 +155,13 @@ func TestPoetryProxyCommandPreservesArgumentsAndParent(t *testing.T) {
 	if !slices.Equal(before, os.Environ()) {
 		t.Fatal("parent environment changed")
 	}
-	for key, value := range spec.EnvOverrides {
+	for _, key := range []string{"http_proxy", "HTTP_PROXY", "https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY", "no_proxy", "NO_PROXY", "REQUESTS_CA_BUNDLE", "GIT_SSL_CAINFO", "SSL_CERT_FILE"} {
+		value := spec.EnvOverrides[key]
 		want := config.URL
 		switch key {
-		case "REQUESTS_CA_BUNDLE", "GIT_SSL_CAINFO", "SSL_CERT_FILE":
+		case "REQUESTS_CA_BUNDLE", "SSL_CERT_FILE":
+			want = config.CACertificatePath
+		case "GIT_SSL_CAINFO":
 			want = config.CACertificatePath
 		case "no_proxy", "NO_PROXY":
 			want = ""
@@ -170,9 +173,7 @@ func TestPoetryProxyCommandPreservesArgumentsAndParent(t *testing.T) {
 			t.Errorf("%s=%q, want %q", key, value, want)
 		}
 	}
-	if len(spec.EnvOverrides) != 11 {
-		t.Fatal("missing routing or trust overrides")
-	}
+
 	spec.Args[0] = "changed"
 	if !slices.Equal(args, wantArgs) {
 		t.Fatal("command spec aliases input")
@@ -201,7 +202,15 @@ func TestPoetryProxyOptionsTrust(t *testing.T) {
 				t.Fatalf("trust not loaded: %v", err)
 			}
 			t.Setenv(key, "/missing/secret.pem")
-			if _, err := (Poetry{version: minPoetryVersion}).ProxyOptions(nil); err == nil || strings.Contains(err.Error(), "secret") {
+			options, err = (Poetry{version: minPoetryVersion}).ProxyOptions(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			address, _ := url.Parse("https://pypi.org/simple/project/")
+			request := proxy.Request{URL: *address, Header: map[string][]string{"User-Agent": {"poetry"}}}
+			route := options.RouteForRequest
+			_, err = route(request)
+			if err == nil || strings.Contains(err.Error(), "secret") {
 				t.Fatalf("unsafe/missing error: %v", err)
 			}
 		})
@@ -234,7 +243,7 @@ func TestPoetryClassifierSources(t *testing.T) {
 		{"-C" + root, "-Pproject", "add", "name"},
 		{"--project=" + project, "update"},
 	} {
-		options, err := (Poetry{version: minPoetryVersion}).PyPIClassifierOptions(args)
+		options, err := (Poetry{}).PyPIClassifierOptions(args)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -368,6 +377,39 @@ func TestPoetryProxyRejectsUnsupportedVersions(t *testing.T) {
 		}
 		if _, err := os.Stat(filepath.Join(directory, "gitconfig")); !os.IsNotExist(err) {
 			t.Fatal("unsupported Poetry created an invocation Git snapshot")
+		}
+	}
+}
+
+func TestPoetrySourceRoutingAcross2x(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("POETRY_CONFIG_DIR", t.TempDir())
+	for _, key := range []string{"REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"} {
+		t.Setenv(key, "")
+	}
+	poetrySettingsFixture(t, "source-matching.toml", filepath.Join(root, "pyproject.toml"))
+	poetrySettingsFixture(t, "source-certificates.toml", filepath.Join(root, "poetry.toml"))
+	t.Chdir(root)
+	target, _ := url.Parse("https://index.example/foo/alpine/project.whl")
+	for _, test := range []struct {
+		version  pm.Version
+		insecure bool
+	}{
+		{pm.Version{Major: 2}, false},
+		{pm.Version{Major: 2, Minor: 4}, false},
+		{pm.Version{Major: 2, Minor: 5}, true},
+	} {
+		manager := Poetry{version: test.version, proxyState: &poetryProxyState{}}
+		options, err := manager.ProxyOptions([]string{"install"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		route, err := options.RouteForRequest(proxy.Request{URL: *target})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if route.TLS.InsecureSkipVerify != test.insecure {
+			t.Fatalf("Poetry %s selected the wrong source trust", test.version)
 		}
 	}
 }

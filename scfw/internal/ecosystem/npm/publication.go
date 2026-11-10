@@ -24,7 +24,7 @@ var (
 	maxPackumentBytes int64 = 64 << 20
 	// packumentFetchTimeout bounds how long a tarball request is held while
 	// its publication data is fetched.
-	packumentFetchTimeout = 30 * time.Second
+	packumentFetchTimeout = time.Minute
 )
 
 // PublicationCache resolves tarball publication data from the registry's full

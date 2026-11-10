@@ -76,6 +76,47 @@ func poetryParentDirectory(directory string) string {
 	return parent
 }
 
+// ProxyCommandSupported keeps global informational commands independent of
+// project configuration. Only Poetry-owned options can suppress interception;
+// flags passed to a run child or after '--' do not change this decision.
+func (Poetry) ProxyCommandSupported(command []string) bool {
+	own := poetryOwnArguments(command)
+	name := ""
+	for i := 0; i < len(own); i++ {
+		argument := own[i]
+		switch argument {
+		case "--":
+			return true
+		case "--directory", "-C", "--project", "-P":
+			i++
+			continue
+		case "--help", "-h", "--version", "-V":
+			return false
+		}
+		if strings.HasPrefix(argument, "-") {
+			// Cleo also accepts combined boolean short options, e.g. -vvh.
+			short := strings.TrimPrefix(argument, "-")
+			if strings.Trim(short, "vqnVh") == "" && strings.ContainsAny(short, "Vh") {
+				return false
+			}
+			continue
+		}
+		if name == "" {
+			name = argument
+		}
+	}
+	switch name {
+	case "help", "list", "about":
+		return false
+	case "":
+		// With no command Poetry displays its command list. A truncated
+		// argument list may instead hide a command after '--'; keep that proxied.
+		return len(own) != len(command)
+	default:
+		return true
+	}
+}
+
 // poetryOwnArguments excludes the executable and arguments of `poetry run`.
 // Only Poetry's global directory/project options take values before the command
 // or before run's executable. Returned arguments are for discovery only; the

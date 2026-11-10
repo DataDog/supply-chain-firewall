@@ -229,3 +229,33 @@ func TestPoetrySymlinkDirectoryPreservesRelativeCA(t *testing.T) {
 		})
 	}
 }
+
+func TestPoetryInformationalCommandsBypassConfiguration(t *testing.T) {
+	manager := poetryForProxyTest(t)
+	root := t.TempDir()
+	poetryTestFile(t, filepath.Join(root, "pyproject.toml"), readProxyFixture(t, "poetry/invalid.lock"))
+	t.Chdir(root)
+	t.Setenv(proxyEnabledVar, "1")
+	t.Setenv(evaluationModeVar, string(evaluationModeDatadog))
+	t.Setenv("REQUESTS_CA_BUNDLE", "/missing/informational-ca.pem")
+	t.Setenv("https_proxy", "http://invalid:port")
+	originalExecutable := executable
+	t.Cleanup(func() {
+		executable = originalExecutable
+		runCmd.Flags().Lookup("executable").Changed = false
+	})
+	cmd := RootCmd()
+	defer cmd.RemoveCommand(configureCmd, doctorCmd, runCmd)
+	for _, args := range [][]string{
+		{"--version"}, {"--help"}, {"install", "--help"},
+		{"help", "install"}, {"list"}, {"about"}, {},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			command := []string{"run", "--executable", manager.Executable(), "--", "poetry", "--no-plugins"}
+			cmd.SetArgs(append(command, args...))
+			if err := cmd.ExecuteContext(context.Background()); err != nil {
+				t.Fatalf("informational command attempted project or proxy setup: %v", err)
+			}
+		})
+	}
+}

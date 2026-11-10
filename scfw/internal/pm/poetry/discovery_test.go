@@ -155,6 +155,46 @@ func TestPoetryOwnArgumentBoundary(t *testing.T) {
 	}
 }
 
+func TestPoetryInformationalCommandSelection(t *testing.T) {
+	for _, test := range []struct {
+		args  []string
+		proxy bool
+	}{
+		{nil, false},
+		{[]string{"--no-plugins"}, false},
+		{[]string{"--version"}, false},
+		{[]string{"-V"}, false},
+		{[]string{"--help"}, false},
+		{[]string{"-h"}, false},
+		{[]string{"-vvh"}, false},
+		{[]string{"-qV"}, false},
+		{[]string{"help", "install"}, false},
+		{[]string{"list"}, false},
+		{[]string{"about"}, false},
+		{[]string{"install", "--help"}, false},
+		{[]string{"--directory", "project", "install", "--help"}, false},
+		{[]string{"--project", "project", "--version"}, false},
+		{[]string{"install"}, true},
+		{[]string{"add", "help"}, true},
+		{[]string{"--directory", "help", "install"}, true},
+		{[]string{"--project", "--help", "install"}, true},
+		{[]string{"-C--help", "install"}, true},
+		{[]string{"add", "--", "--help"}, true},
+		{[]string{"--", "install", "--help"}, true},
+		{[]string{"run", "--help"}, false},
+		{[]string{"run", "app", "--help"}, true},
+		{[]string{"run", "app", "--version"}, true},
+		{[]string{"run", "--", "app", "--help"}, true},
+		{[]string{"--project", "run", "run", "app", "--help"}, true},
+	} {
+		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
+			if got := (Poetry{}).ProxyCommandSupported(test.args); got != test.proxy {
+				t.Fatalf("proxy selection=%t, want %t", got, test.proxy)
+			}
+		})
+	}
+}
+
 func TestPoetryDiscoveryIgnoresRunChildOptions(t *testing.T) {
 	root := isolatedPoetryProject(t)
 	child := filepath.Join(root, "child")

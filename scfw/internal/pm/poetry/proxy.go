@@ -23,6 +23,7 @@ import (
 
 var _ pm.ProxyRunner = Poetry{}
 var _ pm.ProxyOptionsProvider = Poetry{}
+var _ pm.ProxyCommandSelector = Poetry{}
 
 // Requests' initial lookup and urllib's fallback use different environment
 // precedence and matching rules. Capture both before changing the child environment.

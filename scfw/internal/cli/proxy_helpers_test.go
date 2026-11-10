@@ -19,6 +19,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
@@ -318,4 +319,41 @@ func pypiGzipWithZIPTail(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return append(pypiSdist(t), tail.Bytes()...)
+}
+
+// Both interpretations are valid: gzip contains project, while raw TAR contains
+// allowed. The first TAR header doubles as gzip's optional extra header field.
+func pypiGzipTARPolyglot(t *testing.T) []byte {
+	t.Helper()
+	compressed := pypiSdist(t)
+	metadata := strings.ReplaceAll(readProxyFixture(t, "pip/sdist/PKG-INFO"), "Name: project", "Name: allowed")
+	var buffer bytes.Buffer
+	writer := tar.NewWriter(&buffer)
+	for _, entry := range []struct {
+		name string
+		body []byte
+	}{{"payload", compressed[10:]}, {"allowed-1.0/PKG-INFO", []byte(metadata)}} {
+		if err := writer.WriteHeader(&tar.Header{Name: entry.name, Mode: 0600, Size: int64(len(entry.body)), Format: tar.FormatUSTAR}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := writer.Write(entry.body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	payload := buffer.Bytes()
+	copy(payload, compressed[:10])
+	payload[3] = 4 // FEXTRA: the rest of this TAR header is gzip's extra field.
+	binary.LittleEndian.PutUint16(payload[10:12], 500)
+	for index := 148; index < 156; index++ {
+		payload[index] = ' '
+	}
+	checksum := 0
+	for _, value := range payload[:512] {
+		checksum += int(value)
+	}
+	copy(payload[148:156], fmt.Sprintf("%06o\x00 ", checksum))
+	return payload
 }

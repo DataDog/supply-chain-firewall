@@ -88,9 +88,9 @@ func pipTARFormat(input pypi.ArchiveInput, filename string) (pypi.ArchiveFormat,
 		return pypi.ArchiveGzip, nil
 	case strings.HasSuffix(filename, ".tar.bz2") || strings.HasSuffix(filename, ".tbz"):
 		return pypi.ArchiveBzip2, nil
-	case strings.HasSuffix(filename, ".tar"):
-		return pypi.ArchiveTAR, nil
 	}
+	// pip opens .tar files in Python's "r" mode, which auto-detects compression.
+	// Prefer the compressed interpretation even when the bytes also form raw TAR.
 	signatures, err := input.Probe()
 	if err != nil {
 		return pypi.ArchiveUnknown, err

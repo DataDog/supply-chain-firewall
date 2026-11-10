@@ -238,6 +238,7 @@ func TestPipArchiveInterpretationMatchesInstallation(t *testing.T) {
 	t.Setenv("PIP_DISABLE_PIP_VERSION_CHECK", "1")
 	polyglot := pypiZstandardZIP(t)
 	gzipTail := pypiGzipWithZIPTail(t)
+	gzipTAR := pypiGzipTARPolyglot(t)
 	for _, test := range []struct {
 		name, filename, disposition, encoding string
 		payload                               []byte
@@ -248,6 +249,8 @@ func TestPipArchiveInterpretationMatchesInstallation(t *testing.T) {
 		{name: "disposition overrides extension", filename: "download.tar.gz", disposition: `attachment; filename="download.zip"`, payload: polyglot},
 		{name: "redirect and disposition", filename: "redirect.tar.gz", disposition: `attachment; filename="download.zip"`, payload: polyglot, redirect: true},
 		{name: "raw archive ignores HTTP encoding", filename: "download.zip", encoding: "gzip", payload: polyglot},
+		{name: "gzip under TAR filename", filename: "download.tar", payload: pypiSdist(t)},
+		{name: "gzip and raw TAR", filename: "download.tar", payload: gzipTAR},
 		// Before 26.1, pip selects the ZIP tail, which contains only data.csv.
 		// Reject it before policy evaluation because that ZIP has no package metadata.
 		{name: "gzip with ZIP tail", filename: "download.tar.gz", payload: gzipTail, legacyReject: true},
@@ -297,8 +300,8 @@ func TestPipArchiveInterpretationMatchesInstallation(t *testing.T) {
 						ResolvePublishDate: func(context.Context, string, string, string) (time.Time, error) { return time.Unix(1, 0), nil },
 						EvaluatePackage: func(_ context.Context, pkg pm.Package, _ error) error {
 							calls.Add(1)
-							// The outer Zstandard TAR declares "allowed". Evaluating it instead of
-							// the installed ZIP's "project" would bypass this policy.
+							// The polyglots' other TAR interpretation declares "allowed".
+							// Policy must evaluate the "project" that pip actually installs.
 							if pkg.Name != "project" || pkg.Version != "1.0" {
 								t.Errorf("evaluated different package: %+v", pkg)
 								return nil

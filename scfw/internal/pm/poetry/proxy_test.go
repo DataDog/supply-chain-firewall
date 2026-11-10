@@ -32,6 +32,9 @@ func TestPoetryUpstreamProxy(t *testing.T) {
 		{name: "uppercase", env: map[string]string{"HTTP_PROXY": "http://user:secret@http.example:80", "HTTPS_PROXY": "https://user:secret@https.example:443", "NO_PROXY": "internal.example"}, http: "http://user:secret@http.example:80", https: "https://user:secret@https.example:443", bypass: "internal.example"},
 		{name: "mixed case", env: map[string]string{"Http_Proxy": "http://http.example", "Https_Proxy": "http://https.example"}, http: "http://http.example", https: "http://https.example"},
 		{name: "mixed case all fallback", env: map[string]string{"All_Proxy": "http://fallback.example"}, http: "http://fallback.example", https: "http://fallback.example"},
+		{name: "mixed case bypass", env: map[string]string{"No_Proxy": "internal.example"}, bypass: "internal.example"},
+		{name: "lowercase bypass wins over mixed case", env: map[string]string{"No_Proxy": "wrong.example", "no_proxy": "internal.example"}, bypass: "internal.example"},
+		{name: "empty lowercase removes mixed case bypass", env: map[string]string{"No_Proxy": "internal.example", "no_proxy": ""}},
 		{name: "lowercase wins over mixed case", env: map[string]string{"Https_Proxy": "http://wrong", "https_proxy": "http://right"}, https: "http://right"},
 		{name: "empty lowercase removes mixed case", env: map[string]string{"Https_Proxy": "http://wrong", "https_proxy": ""}},
 		{name: "lowercase wins", env: map[string]string{"HTTP_PROXY": "http://wrong", "http_proxy": "http://right", "HTTPS_PROXY": "http://wrong", "https_proxy": "http://secure", "NO_PROXY": "wrong", "no_proxy": "right"}, http: "http://right", https: "http://secure", bypass: "right"},
@@ -48,7 +51,7 @@ func TestPoetryUpstreamProxy(t *testing.T) {
 		{name: "missing host", env: map[string]string{"http_proxy": "http://user:secret@"}, invalid: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			for _, key := range []string{"http_proxy", "HTTP_PROXY", "Http_Proxy", "https_proxy", "HTTPS_PROXY", "Https_Proxy", "all_proxy", "ALL_PROXY", "All_Proxy", "no_proxy", "NO_PROXY", "REQUEST_METHOD"} {
+			for _, key := range []string{"http_proxy", "HTTP_PROXY", "Http_Proxy", "https_proxy", "HTTPS_PROXY", "Https_Proxy", "all_proxy", "ALL_PROXY", "All_Proxy", "no_proxy", "NO_PROXY", "No_Proxy", "REQUEST_METHOD"} {
 				t.Setenv(key, "")
 				if err := os.Unsetenv(key); err != nil {
 					t.Fatal(err)
@@ -184,6 +187,64 @@ func TestPoetryClassifierSources(t *testing.T) {
 	if err != nil || !slices.Equal(data, after) {
 		t.Fatal("source configuration changed")
 	}
+}
+
+func TestPoetryClassifierSymlinkProjectSelection(t *testing.T) {
+	root := t.TempDir()
+	physical := filepath.Join(root, "real")
+	work := filepath.Join(physical, "work")
+	if err := os.MkdirAll(work, 0700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(work, link); err != nil {
+		t.Fatal(err)
+	}
+	for directory, fixture := range map[string]string{root: "proxy-project.toml", physical: "proxy-sources.toml"} {
+		data, err := readPoetryFixture(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "pyproject.toml"), data, 0400); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(root)
+	for _, test := range []struct {
+		name    string
+		command []string
+		logical bool
+	}{
+		{"relative project parent", []string{"-C", link, "-P", "..", "install"}, false},
+		{"relative project current", []string{"-C", link, "-P", ".", "install"}, false},
+		{"directory parent", []string{"-C", link + "/..", "install"}, false},
+		{"relative directory parent", []string{"-C", "link/..", "install"}, false},
+		{"project parent", []string{"-P", "link/..", "install"}, false},
+		{"absolute project parent", []string{"-P", link + "/..", "install"}, false},
+		{"logical directory ancestors", []string{"-C", link, "install"}, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			options, err := (Poetry{}).PyPIClassifierOptions(test.command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []string{"https://user:secret@index.example/python-packages/", "https://index.example/explicit/"}
+			if test.logical {
+				want = []string{"https://index.example/simple/"}
+			}
+			if !slices.Equal(options.SimpleIndexURLs, want) {
+				t.Fatalf("sources=%v, want %v", options.SimpleIndexURLs, want)
+			}
+		})
+	}
+	t.Run("physical default cwd", func(t *testing.T) {
+		t.Chdir(work)
+		t.Setenv("PWD", link)
+		options, err := (Poetry{}).PyPIClassifierOptions([]string{"install"})
+		if err != nil || len(options.SimpleIndexURLs) != 2 {
+			t.Fatalf("default cwd followed logical PWD: %v / %v", options.SimpleIndexURLs, err)
+		}
+	})
 }
 
 func TestPoetryOutboundProxyRouting(t *testing.T) {

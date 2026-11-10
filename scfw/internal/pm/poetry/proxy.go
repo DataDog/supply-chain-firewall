@@ -38,6 +38,11 @@ func discoverPoetryProxies(readSystem func() (pythonproxy.Settings, error)) (htt
 	if bypass == "" {
 		bypass = os.Getenv("NO_PROXY")
 	}
+	if bypass == "" {
+		// Requests also asks urllib, whose environment lookup accepts mixed case.
+		// An explicitly empty lowercase value still removes that fallback.
+		bypass = environment["no"]
+	}
 	config := httpproxy.Config{HTTPProxy: all, HTTPSProxy: all, NoProxy: bypass}
 	if value := environment["http"]; value != "" {
 		config.HTTPProxy = value

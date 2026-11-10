@@ -8,7 +8,6 @@ package poetry
 import (
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 	"github.com/pelletier/go-toml/v2"
@@ -20,41 +19,12 @@ import (
 // projects; recognizable downloads are always inspected.
 func (poetry Poetry) PyPIClassifierOptions(command []string) (pypi.RequestClassifierOptions, error) {
 	var options pypi.RequestClassifierOptions
-	directory, err := resolvePoetryProjectDir(command)
-	if err != nil {
-		return options, err
-	}
-	// Poetry 2's --project is relative to the effective --directory.
-	for i, argument := range poetryOwnArguments(command) {
-		if argument == "--" {
-			break
-		}
-		project := ""
-		switch {
-		case argument == "--project" || argument == "-P":
-			if i+1 < len(command) {
-				project = command[i+1]
-			}
-		case strings.HasPrefix(argument, "--project="):
-			project = strings.TrimPrefix(argument, "--project=")
-		case strings.HasPrefix(argument, "-P"):
-			project = strings.TrimPrefix(strings.TrimPrefix(argument, "-P"), "=")
-		}
-		if project != "" {
-			if filepath.IsAbs(project) {
-				directory = project
-			} else {
-				directory = filepath.Join(directory, project)
-			}
-			break
-		}
-	}
-	directory, err = filepath.Abs(directory)
+	directory, err := poetryProjectDirectory(command)
 	if err != nil {
 		return options, err
 	}
 	for {
-		data, err := os.ReadFile(filepath.Join(directory, "pyproject.toml"))
+		data, err := os.ReadFile(directory + string(filepath.Separator) + "pyproject.toml")
 		if err == nil {
 			var project struct {
 				Tool struct {
@@ -72,7 +42,7 @@ func (poetry Poetry) PyPIClassifierOptions(command []string) (pypi.RequestClassi
 			}
 			return options, nil
 		}
-		parent := filepath.Dir(directory)
+		parent := poetryParentDirectory(directory)
 		if !os.IsNotExist(err) || parent == directory {
 			return options, nil
 		}

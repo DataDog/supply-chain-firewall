@@ -111,6 +111,26 @@ func TestTLSConfigTrustsInlinePEM(t *testing.T) {
 	}
 }
 
+func TestTLSConfigAddsInlinePEMToExplicitRoots(t *testing.T) {
+	inline, unrelated := newTestCertificateAuthority(t), newTestCertificateAuthority(t)
+	config, err := NewTLSConfig(TLSConfigOptions{RootCAs: x509.NewCertPool(), CABundlePEM: [][]byte{inline.pem}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name string
+		ca   *certificateAuthority
+		want bool
+	}{{"inline certificate", inline, true}, {"unrelated certificate", unrelated, false}} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := test.ca.certificate.Verify(x509.VerifyOptions{Roots: config.RootCAs})
+			if verified := err == nil; verified != test.want {
+				t.Fatalf("verified=%v want %v (error=%v)", verified, test.want, err)
+			}
+		})
+	}
+}
+
 func TestTLSConfigRejectsInlinePEMWithoutCertificates(t *testing.T) {
 	config, err := NewTLSConfig(TLSConfigOptions{CABundlePEM: [][]byte{[]byte("not a pem")}})
 	if err == nil || config != nil || err.Error() != "could not load proxy CA bundle" {

@@ -1,0 +1,15 @@
+[http]
+proxy = "http://global:secret@global.example:8080"
+sslCAInfo = "%s"
+sslVerify = true
+extraHeader = "X-Keep: configuration-secret"
+
+[http "https://specific.example/team/"]
+proxy = "http://specific:secret@specific.example:8080"
+sslVerify = false
+
+[http "https://direct.example/"]
+proxy = ""
+
+[credential]
+helper = "!echo must-not-be-executed"

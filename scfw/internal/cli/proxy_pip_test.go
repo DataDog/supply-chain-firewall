@@ -7,7 +7,6 @@ package cli
 
 import (
 	"archive/tar"
-	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -30,53 +29,6 @@ import (
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/pip"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
-
-func pipWheel(t *testing.T) []byte {
-	t.Helper()
-	var buffer bytes.Buffer
-	writer := zip.NewWriter(&buffer)
-	for _, name := range []string{"project/__init__.py", "project-1.0.dist-info/METADATA", "project-1.0.dist-info/WHEEL", "project-1.0.dist-info/RECORD"} {
-		body := readProxyFixture(t, filepath.Join("pip", "wheel", name))
-		file, err := writer.Create(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := io.WriteString(file, body); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return buffer.Bytes()
-}
-
-func pipSdist(t *testing.T, files ...string) []byte {
-	t.Helper()
-	var buffer bytes.Buffer
-	compressed := gzip.NewWriter(&buffer)
-	writer := tar.NewWriter(compressed)
-	// A stdlib-only PEP 517 backend avoids network access to install build tools.
-	if len(files) == 0 {
-		files = []string{"pyproject.toml", "backend.py", "PKG-INFO"}
-	}
-	for _, name := range files {
-		body := readProxyFixture(t, filepath.Join("pip", "sdist", name))
-		if err := writer.WriteHeader(&tar.Header{Name: "project-1.0/" + name, Mode: 0600, Size: int64(len(body))}); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := io.WriteString(writer, body); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := compressed.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return buffer.Bytes()
-}
 
 func TestPipProxyEndToEnd(t *testing.T) {
 	nestedRequirements := readProxyFixture(t, "requirements/nested.txt")
@@ -105,7 +57,7 @@ func TestPipProxyEndToEnd(t *testing.T) {
 			// A parent's bypass must not let pip escape interception.
 			t.Setenv("NO_PROXY", "*")
 			t.Setenv("no_proxy", "*")
-			wheel, sdist := pipWheel(t), pipSdist(t)
+			wheel, sdist := pypiWheel(t), pypiSdist(t)
 			var artifacts atomic.Int32
 			registry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				user, password, ok := r.BasicAuth()
@@ -420,7 +372,7 @@ func TestPipPreservesAuthenticatedUpstream(t *testing.T) {
 	if err != nil {
 		t.Skip("pip3 required")
 	}
-	wheel := pipWheel(t)
+	wheel := pypiWheel(t)
 	for _, test := range []struct{ scheme, source string }{
 		{"http", "arguments"}, {"https", "arguments"},
 		{"http", "command section"}, {"https", "command section"},
@@ -515,7 +467,7 @@ func TestPipVCSUsesInvocationTrust(t *testing.T) {
 		t.Skip("git required")
 	}
 	directory := t.TempDir()
-	reader, err := gzip.NewReader(bytes.NewReader(pipSdist(t)))
+	reader, err := gzip.NewReader(bytes.NewReader(pypiSdist(t)))
 	if err != nil {
 		t.Fatal(err)
 	}

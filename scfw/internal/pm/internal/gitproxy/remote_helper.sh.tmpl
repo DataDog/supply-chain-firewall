@@ -1,0 +1,35 @@
+#!/bin/sh
+# Unless explicitly stated otherwise all files in this repository are licensed
+# under the Apache License 2.0.
+# This product includes software developed at Datadog (https://www.datadoghq.com/).
+# Copyright 2024-present Datadog, Inc.
+
+scfw_fail() {
+    printf '%s\n' 'could not configure intercepted Git remote' >&2
+    exit 1
+}
+
+[ "$#" -ge 2 ] || scfw_fail
+# GIT_CONFIG is a git-config command override, not a native HTTP setting.
+unset GIT_CONFIG
+scfw_profile=$({{.Git}} config --get-urlmatch http.proxy "$2" 2>/dev/null) || scfw_fail
+case "$scfw_profile" in
+{{.Allowed}}
+    *) scfw_fail ;;
+esac
+
+case "$1" in
+{{.Remotes}}
+    *) exec {{.Helper}} "$@" ;;
+esac
+
+scfw_count=${GIT_CONFIG_COUNT:-0}
+case "$scfw_count" in ''|*[!0-9]*) scfw_fail ;; esac
+export "GIT_CONFIG_KEY_${scfw_count}=remote.${1}.proxy"
+export "GIT_CONFIG_VALUE_${scfw_count}=${scfw_remote_proxy}"
+GIT_CONFIG_COUNT=$((scfw_count + 1))
+export GIT_CONFIG_COUNT
+GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS-}${scfw_remote_parameter}"
+# The parent may clear PARAMETERS; Git rejects a leading separator.
+export GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS# }"
+exec {{.Helper}} "$@"

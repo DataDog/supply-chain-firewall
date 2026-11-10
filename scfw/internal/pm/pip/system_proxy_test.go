@@ -10,8 +10,9 @@ import (
 	"net/url"
 	"os"
 	"reflect"
-	"strings"
 	"testing"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/pythonproxy"
 )
 
 func TestSystemProxySettingsAndRouting(t *testing.T) {
@@ -70,42 +71,6 @@ func TestSystemProxySettingsAndRouting(t *testing.T) {
 	}
 }
 
-func TestSystemProxyVariants(t *testing.T) {
-	fixture := readPipFixture(t, "config/system-proxy.txt")
-	for _, test := range []struct {
-		name, before, after string
-		want                map[string]string
-	}{
-		{"disabled", "HTTPEnable : 1", "HTTPEnable : 0", map[string]string{"https": "http://secure-proxy.example:8443"}},
-		{"no port", "  HTTPPort : 8080\n", "", map[string]string{"http": "http://proxy.example", "https": "http://secure-proxy.example:8443"}},
-		{"IPv6", "HTTPProxy : proxy.example", "HTTPProxy : 2001:db8::1", map[string]string{"http": "http://[2001:db8::1]:8080", "https": "http://secure-proxy.example:8443"}},
-		{"credentials", "HTTPProxy : proxy.example", "HTTPProxy : user:secret@proxy.example", map[string]string{"http": "http://user:secret@proxy.example:8080", "https": "http://secure-proxy.example:8443"}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			settings, err := parseSystemProxies(strings.ReplaceAll(fixture, test.before, test.after))
-			if err != nil || !reflect.DeepEqual(settings.proxies, test.want) {
-				t.Fatalf("settings=%+v error=%v", settings, err)
-			}
-		})
-	}
-	for _, output := range []string{"<dictionary> {\n}\n", "No proxy configuration available\n"} {
-		settings, err := parseSystemProxies(output)
-		if err != nil || len(settings.proxies) != 0 {
-			t.Fatalf("empty settings=%+v error=%v", settings, err)
-		}
-	}
-	for _, output := range []string{"credential-secret", strings.TrimSuffix(fixture, "}\n")} {
-		if _, err := parseSystemProxies(output); err == nil || strings.Contains(err.Error(), "credential-secret") {
-			t.Fatalf("unsafe parsing error: %v", err)
-		}
-	}
-	settings := systemProxySettings{exceptions: []string{"10/33", "10/bad", "10/-1"}}
-	target, _ := url.Parse("https://10.1.2.3")
-	if settings.bypasses(target) {
-		t.Fatal("invalid network masks bypassed the proxy")
-	}
-}
-
 func TestEnvironmentProxiesSuppressSystemDiscovery(t *testing.T) {
 	goDiscoveryPip(t)
 	if err := os.Unsetenv("scfw_test_proxy"); err != nil {
@@ -147,4 +112,9 @@ func TestEnvironmentProxiesSuppressSystemDiscovery(t *testing.T) {
 	if _, err := pipProxies(func() (systemProxySettings, error) { return systemProxySettings{}, failure }); !errors.Is(err, failure) {
 		t.Fatalf("system discovery failure silently fell back to direct routing: %v", err)
 	}
+}
+
+func parseSystemProxies(value string) (systemProxySettings, error) {
+	settings, err := pythonproxy.ParseSystem(value)
+	return fromNativeProxy(settings), err
 }

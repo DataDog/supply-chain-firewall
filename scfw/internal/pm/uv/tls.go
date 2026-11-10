@@ -18,9 +18,9 @@ import (
 
 // Use system trust by default, as in the shared proxy. Explicit uv CA sources
 // replace it; uv's native-TLS options remain the child process's responsibility.
-func uvTLSConfig(command []string) (*tls.Config, error) {
-	options := parseOptions(command)
-	working, err := workingDirectory(command)
+func (uv UV) tlsConfig(command []string) (*tls.Config, error) {
+	options := uv.parseOptions(command)
+	working, err := uv.workingDirectory(command)
 	if err != nil {
 		return nil, err
 	}

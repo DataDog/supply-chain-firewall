@@ -65,7 +65,7 @@ func uvTestEnvironment(t *testing.T) string {
 	if err != nil {
 		t.Skip("uv required for integration tests")
 	}
-	for _, key := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy", "UV_CONFIG_FILE", "UV_NO_CONFIG", "UV_PROJECT", "UV_WORKING_DIR", "UV_WORKING_DIRECTORY", "UV_INDEX", "UV_INDEX_URL", "UV_EXTRA_INDEX_URL", "UV_DEFAULT_INDEX", "UV_FIND_LINKS", "UV_INSECURE_HOST", "UV_NATIVE_TLS", "UV_SYSTEM_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "SSL_CLIENT_CERT", "GIT_SSL_CAINFO", "GIT_SSL_CAPATH", "VIRTUAL_ENV", "CONDA_PREFIX"} {
+	for _, key := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy", "UV_CONFIG_FILE", "UV_NO_CONFIG", "UV_PROJECT", "UV_WORKING_DIR", "UV_WORKING_DIRECTORY", "UV_INDEX", "UV_INDEX_URL", "UV_EXTRA_INDEX_URL", "UV_DEFAULT_INDEX", "UV_FIND_LINKS", "UV_INSECURE_HOST", "UV_NATIVE_TLS", "UV_SYSTEM_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "SSL_CLIENT_CERT", "GIT_SSL_CAINFO", "GIT_SSL_CAPATH", "VIRTUAL_ENV", "CONDA_PREFIX", "UV_VENV_SEED", "UV_FROZEN", "UV_NO_SYNC", "UV_TOOL_DIR"} {
 		t.Setenv(key, "")
 		if err := os.Unsetenv(key); err != nil {
 			t.Fatal(err)
@@ -107,6 +107,7 @@ func assertUVProxyCleaned(t *testing.T, runner *capturingUVRunner) {
 func TestUVProxyEndToEnd(t *testing.T) {
 	executable := uvTestEnvironment(t)
 	wheel := pypiWheel(t)
+	seedWheel := pypiWheelNamed(t, "pip")
 	simple := readProxyJSONFixture(t, "uv/simple")
 	project := uvConfigurationFixture(t, "pyproject")
 	emptyProject := uvConfigurationFixture(t, "empty-project")
@@ -122,6 +123,14 @@ func TestUVProxyEndToEnd(t *testing.T) {
 		}
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		switch r.URL.Path {
+		case "/custom/pip/":
+			w.Header().Set("Content-Type", "application/vnd.pypi.simple.v1+json")
+			_, _ = io.WriteString(w, strings.ReplaceAll(simple, "project", "pip"))
+		case "/packages/pip-1.0-py3-none-any.whl":
+			if r.Method == http.MethodGet {
+				artifacts.Add(1)
+			}
+			http.ServeContent(w, r, "pip-1.0-py3-none-any.whl", time.Time{}, bytes.NewReader(seedWheel))
 		case "/custom/project/":
 			w.Header().Set("Content-Type", "application/vnd.pypi.simple.v1+json")
 			_, _ = io.WriteString(w, simple)
@@ -152,7 +161,7 @@ func TestUVProxyEndToEnd(t *testing.T) {
 	})
 	upstreamServer := httptest.NewServer(upstream)
 	defer upstreamServer.Close()
-	for _, operation := range []string{"pip-install", "pip-sync", "pip-compile", "pip-file-proxy", "pip-cert", "pip-python-preference", "pip-python-fetch", "pip-preview-feature", "add", "sync", "lock", "run", "script", "script-file-proxy"} {
+	for _, operation := range []string{"pip-install", "pip-sync", "pip-compile", "pip-file-proxy", "pip-cert", "pip-python-preference", "pip-python-fetch", "pip-preview-feature", "add", "sync", "lock", "run", "script", "script-file-proxy", "uvx", "version-bump", "version-value", "version-no-sync", "venv-seed", "venv-seed-env"} {
 		for _, outcome := range []evaluation.Outcome{evaluation.OutcomeAllow, evaluation.OutcomeWarn, evaluation.OutcomeBlock} {
 			t.Run(operation+"/"+string(outcome), func(t *testing.T) {
 				t.Chdir(t.TempDir())
@@ -188,6 +197,49 @@ func TestUVProxyEndToEnd(t *testing.T) {
 						}
 						command = append(command, "project==1.0")
 					}
+				}
+				executableName, managerExecutable, packageName := "uv", executable, "project"
+				switch operation {
+				case "uvx":
+					var err error
+					managerExecutable, err = exec.LookPath("uvx")
+					if err != nil {
+						t.Skip("uvx required")
+					}
+					executableName = "uvx"
+					command = []string{"--no-config", "--no-python-downloads", "--from", "project==1.0"}
+					t.Setenv("UV_TOOL_DIR", t.TempDir())
+				case "version-bump", "version-no-sync":
+					command = []string{"--no-config", "version", "--bump", "patch"}
+					if operation == "version-no-sync" {
+						command = append(command, "--no-sync")
+					}
+				case "version-value":
+					command = []string{"--no-config", "version", "2.0"}
+				case "venv-seed", "venv-seed-env":
+					python, err := exec.LookPath("python3")
+					if err != nil {
+						t.Skip("Python 3.12+ required for the pip-only seed fixture")
+					}
+					versionOutput, err := exec.Command(python, "--version").Output()
+					fields := strings.Fields(string(versionOutput))
+					if err != nil || len(fields) < 2 {
+						t.Fatalf("query Python version: %v %s", err, versionOutput)
+					}
+					version, err := pm.ParseVersion(fields[1])
+					if err != nil {
+						t.Fatal(err)
+					}
+					if version.LessThan(pm.Version{Major: 3, Minor: 12}) {
+						t.Skip("Python 3.12+ required for the pip-only seed fixture")
+					}
+					command = []string{"--no-config", "venv", "--python", python, ".venv"}
+					if operation == "venv-seed" {
+						command = append(command, "--seed")
+					} else {
+						t.Setenv("UV_VENV_SEED", "1")
+					}
+					packageName = "pip"
 				}
 				var originalConfig []byte
 				var originalScript []byte
@@ -226,7 +278,10 @@ func TestUVProxyEndToEnd(t *testing.T) {
 				if operation == "run" {
 					command = append(command, "--with", "project==1.0", "--resolution", "lowest", "--config-setting", "scfw-parser=1", "python", "-c", "import project", "--directory=/nonexistent-scfw-child", "--config-file=/nonexistent-scfw-child.toml", "--help")
 				}
-				manager, err := uv.NewUV(context.Background(), "uv", executable)
+				if operation == "uvx" {
+					command = append(command, "python", "-c", "import project", "--help")
+				}
+				manager, err := uv.NewUV(context.Background(), executableName, managerExecutable)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -242,25 +297,25 @@ func TestUVProxyEndToEnd(t *testing.T) {
 						t.Error("expected one non-interactive evaluation")
 					}
 					for pkg := range targets.Items() {
-						if pkg.Name != "project" || pkg.Version != "1.0" || pkg.PublishDate.IsZero() {
+						if pkg.Name != packageName || pkg.Version != "1.0" || pkg.PublishDate.IsZero() {
 							t.Errorf("unexpected package: %+v", pkg)
 						}
 					}
-					return evaluation.ScfwPolicyEvaluationReport{Outcome: outcome, Results: []evaluation.PackageEvaluationResult{{Ecosystem: "pypi", PackageName: "project", PackageVersion: "1.0", Outcome: outcome}}}, nil
+					return evaluation.ScfwPolicyEvaluationReport{Outcome: outcome, Results: []evaluation.PackageEvaluationResult{{Ecosystem: "pypi", PackageName: packageName, PackageVersion: "1.0", Outcome: outcome}}}, nil
 				})
 				reporter := proxyReporterFunc(func(_ context.Context, _ time.Time, _ []string, name, _, _ string, _ *pm.Set[pm.Package], _ evaluation.ScfwPolicyEvaluationReport, _ evaluation.Outcome) error {
-					if name != "uv" {
+					if name != executableName {
 						t.Errorf("reported manager = %q", name)
 					}
 					reports.Add(1)
 					return nil
 				})
-				factory, found := findPackageManagerFactory("uv")
+				factory, found := findPackageManagerFactory(executableName)
 				if !found || len(factory.ProxyHooks) != 1 {
 					t.Fatal("uv registration is missing")
 				}
 				configure := func(ctx context.Context, client *http.Client) ([]proxy.RequestHook, error) {
-					evaluation := newProxyPackageEvaluator(ctx, time.Now(), append([]string{"uv"}, command...), "uv", executable, "", evaluator, reporter, &output)
+					evaluation := newProxyPackageEvaluator(ctx, time.Now(), append([]string{executableName}, command...), executableName, managerExecutable, "", evaluator, reporter, &output)
 					hook, err := factory.ProxyHooks[0](ctx, manager, command, client, evaluation.evaluatePackage)
 					return []proxy.RequestHook{hook}, err
 				}
@@ -511,7 +566,7 @@ func TestUVFailuresAndSignalsCleanUp(t *testing.T) {
 		t.Skip("python3 required")
 	}
 	fixture := readProxyFixture(t, "uv/process.py")
-	for _, mode := range []string{"exit", "signal"} {
+	for _, mode := range []string{"exit", "signal", "uvx-exit", "uvx-signal"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Chdir(t.TempDir())
 			launcher := filepath.Join(t.TempDir(), "uv")
@@ -520,15 +575,19 @@ func TestUVFailuresAndSignalsCleanUp(t *testing.T) {
 			}
 			result := filepath.Join(t.TempDir(), "result.json")
 			t.Setenv("SCFW_UV_TEST_RESULT", result)
-			t.Setenv("SCFW_UV_TEST_MODE", mode)
-			manager, err := uv.NewUV(context.Background(), "uv", launcher)
+			t.Setenv("SCFW_UV_TEST_MODE", strings.TrimPrefix(mode, "uvx-"))
+			name := "uv"
+			if strings.HasPrefix(mode, "uvx-") {
+				name = "uvx"
+			}
+			manager, err := uv.NewUV(context.Background(), name, launcher)
 			if err != nil {
 				t.Fatal(err)
 			}
 			runner := &capturingUVRunner{UV: manager}
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			if mode == "signal" {
+			if strings.HasSuffix(mode, "signal") {
 				go func() {
 					for ctx.Err() == nil {
 						if _, err := os.Stat(result + ".ready"); err == nil {
@@ -543,7 +602,7 @@ func TestUVFailuresAndSignalsCleanUp(t *testing.T) {
 			commandErr, setupErr := runThroughProxy(ctx, runner, args, nil)
 			exit, ok := errors.AsType[*exec.ExitError](commandErr)
 			want := 23
-			if mode == "signal" {
+			if strings.HasSuffix(mode, "signal") {
 				want = 42
 			}
 			if setupErr != nil || !ok || exit.ExitCode() != want {

@@ -17,10 +17,11 @@ import (
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
 
-var ExecutableNames = []string{"uv"}
+var ExecutableNames = []string{"uv", "uvx"}
 
 type UV struct {
 	executable string
+	toolRun    bool
 	proxyState *uvProxyState
 }
 
@@ -32,17 +33,17 @@ func NewUV(_ context.Context, name, executable string) (UV, error) {
 			return UV{}, err
 		}
 	}
-	return UV{executable: executable, proxyState: &uvProxyState{}}, nil
+	return UV{executable: executable, toolRun: name == "uvx", proxyState: &uvProxyState{}}, nil
 }
 
 func (uv UV) Executable() string { return uv.executable }
 
 func (uv UV) ProjectDirectory(command []string) (string, error) {
-	directory, err := workingDirectory(command)
+	directory, err := uv.workingDirectory(command)
 	if err != nil {
 		return "", err
 	}
-	options := parseOptions(command)
+	options := uv.parseOptions(command)
 	if project := options.value("project", "UV_PROJECT"); project != "" {
 		directory = resolvePath(directory, project)
 	} else if options.command == "run" {
@@ -60,12 +61,12 @@ func (uv UV) ProjectDirectory(command []string) (string, error) {
 	return physicalDirectory(directory)
 }
 
-func workingDirectory(command []string) (string, error) {
+func (uv UV) workingDirectory(command []string) (string, error) {
 	directory, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
-	path := parseOptions(command).value("directory", "UV_WORKING_DIR")
+	path := uv.parseOptions(command).value("directory", "UV_WORKING_DIR")
 	if path == "" {
 		path = os.Getenv("UV_WORKING_DIRECTORY")
 	}
@@ -123,14 +124,18 @@ func (uv UV) ResolveInstallTargets(_ context.Context, command []string) (*pm.Set
 
 // ProxyCommandSupported selects operations which resolve or install packages.
 // Inspect command positions, never package names or arbitrary command arguments.
-func (UV) ProxyCommandSupported(command []string) bool {
-	options := parseOptions(command)
+func (uv UV) ProxyCommandSupported(command []string) bool {
+	options := uv.parseOptions(command)
 	if options.help {
 		return false
 	}
 	switch options.command {
 	case "add", "remove", "sync", "lock", "export", "tree", "build", "run":
 		return true
+	case "version":
+		return (options.versionValue || options.has("bump")) && !options.has("dry-run") && !enabled(options.value("frozen", "UV_FROZEN"))
+	case "venv":
+		return enabled(options.value("seed", "UV_VENV_SEED"))
 	case "tool":
 		switch options.subcommand {
 		case "install", "upgrade", "run":

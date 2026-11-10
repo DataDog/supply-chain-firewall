@@ -17,8 +17,8 @@ import (
 // Read configuration without invoking uv or changing its files. Only routing,
 // TLS and registry discovery consume these values; uv owns all other settings.
 func (uv UV) settings(command []string) (map[string]any, error) {
-	options := parseOptions(command)
-	working, err := workingDirectory(command)
+	options := uv.parseOptions(command)
+	working, err := uv.workingDirectory(command)
 	if err != nil {
 		return nil, err
 	}

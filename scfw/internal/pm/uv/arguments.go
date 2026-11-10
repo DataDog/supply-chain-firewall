@@ -22,6 +22,7 @@ type commandOptions struct {
 	command, subcommand string
 	runTarget           string
 	help                bool
+	versionValue        bool
 }
 
 func (o commandOptions) value(name, environment string) string {
@@ -33,16 +34,32 @@ func (o commandOptions) value(name, environment string) string {
 	return os.Getenv(environment)
 }
 
-func parseOptions(args []string) commandOptions {
+func (o commandOptions) has(name string) bool {
+	for _, option := range o.options {
+		if option.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (uv UV) parseOptions(args []string) commandOptions {
 	var result commandOptions
 	var index int
-	result.command, index = result.nextCommand(args, 0)
-	if result.command == "pip" || result.command == "tool" {
+	if uv.toolRun {
+		result.command, result.subcommand = "tool", "run"
+	} else {
+		result.command, index = result.nextCommand(args, 0)
+	}
+	if !uv.toolRun && (result.command == "pip" || result.command == "tool") {
 		result.subcommand, index = result.nextCommand(args, index)
 	}
 	runsChild := result.command == "run" || (result.command == "tool" && result.subcommand == "run")
 	for index < len(args) {
 		if args[index] == "--" {
+			if result.command == "version" && index+1 < len(args) {
+				result.versionValue = true
+			}
 			if runsChild && index+1 < len(args) {
 				result.runTarget = args[index+1]
 			}
@@ -51,6 +68,9 @@ func parseOptions(args []string) commandOptions {
 		if runsChild && (args[index] == "-" || !strings.HasPrefix(args[index], "-")) {
 			result.runTarget = args[index]
 			break // All remaining arguments belong to the child command.
+		}
+		if result.command == "version" && !strings.HasPrefix(args[index], "-") {
+			result.versionValue = true
 		}
 		next := result.readOption(args, index)
 		if runsChild && next == index+1 {
@@ -90,6 +110,12 @@ func (o *commandOptions) readOption(args []string, index int) int {
 	if !strings.HasPrefix(argument, "--") && (o.command == "run" || (o.command == "tool" && o.subcommand == "run")) {
 		return o.readRunShortOptions(args, index)
 	}
+	if (o.command == "version" || o.command == "venv") && len(argument) >= 2 && !strings.HasPrefix(argument, "--") && strings.ContainsRune("pfPCcb", rune(argument[1])) {
+		if len(argument) == 2 {
+			return min(index+2, len(args))
+		}
+		return index + 1
+	}
 	name, value, equal := strings.Cut(strings.TrimPrefix(argument, "--"), "=")
 	if strings.HasPrefix(argument, "-i") {
 		name, value, equal = "index-url", argument[2:], len(argument) > 2
@@ -111,12 +137,12 @@ func (o *commandOptions) readOption(args []string, index int) int {
 	case "help", "version", "-h", "-V":
 		o.help = true
 		return index + 1
-	case "no-config":
+	case "no-config", "seed", "frozen", "dry-run":
 		o.options = append(o.options, option{name: name, value: "true", index: index})
 		return index + 1
 	case "directory", "project", "config-file", "allow-insecure-host", "cert",
 		"index", "default-index", "index-url", "extra-index-url",
-		"cache-dir", "color", "preview-features", "python-preference", "python-fetch", "script":
+		"cache-dir", "color", "preview-features", "python-preference", "python-fetch", "script", "bump":
 		if !equal {
 			index++
 			if index == len(args) {
@@ -128,6 +154,15 @@ func (o *commandOptions) readOption(args []string, index int) int {
 		case "cache-dir", "color", "preview-features", "python-preference", "python-fetch":
 		default:
 			o.options = append(o.options, option{name: name, value: value, index: index, equal: equal})
+		}
+	}
+	if (o.command == "version" || o.command == "venv") && !equal {
+		switch name {
+		case "python", "python-platform", "package", "output-format", "prompt", "index-strategy", "keyring-provider",
+			"exclude-newer", "exclude-newer-package", "resolution", "prerelease", "fork-strategy", "link-mode",
+			"find-links", "constraints", "build-constraints", "overrides", "upgrade-package", "refresh-package",
+			"config-setting", "config-settings-package", "no-build-package", "no-binary-package", "no-build-isolation-package":
+			return min(index+2, len(args))
 		}
 	}
 	return index + 1

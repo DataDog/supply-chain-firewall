@@ -94,7 +94,8 @@ func TestReportAliases(t *testing.T) {
 	if err := os.WriteFile(zshrc, []byte(blockStart+"\n"+
 		`alias npm="scfw run -- npm"`+"\n"+
 		`alias poetry="scfw run -- poetry"`+"\n"+
-		`alias uv="scfw run -- uv"`+"\n"+blockEnd+"\n"), 0o644); err != nil {
+		`alias uv="scfw run -- uv"`+"\n"+
+		`alias uvx="scfw run -- uvx"`+"\n"+blockEnd+"\n"), 0o644); err != nil {
 		t.Fatalf("failed to seed %q: %v", zshrc, err)
 	}
 
@@ -111,7 +112,8 @@ func TestReportAliases(t *testing.T) {
 		"✅ Alias pip3 is set in " + bashrc,
 		"✅ Alias poetry is set in " + zshrc,
 		"✅ Alias uv is set in " + zshrc,
-		"ℹ️ Run `alias npm pip pip3 poetry uv` to check which aliases are active in the current terminal. If an alias configured above is not found, reload your terminal.",
+		"✅ Alias uvx is set in " + zshrc,
+		"ℹ️ Run `alias npm pip pip3 poetry uv uvx` to check which aliases are active in the current terminal. If an alias configured above is not found, reload your terminal.",
 	}
 	for _, want := range wantLines {
 		if !strings.Contains(output.String(), want+"\n") {

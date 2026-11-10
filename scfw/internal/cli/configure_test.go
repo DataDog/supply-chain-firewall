@@ -1064,7 +1064,7 @@ func TestConfigureUVAliasLifecycle(t *testing.T) {
 		execute(args...)
 		for _, name := range configFiles {
 			content, err := os.ReadFile(filepath.Join(home, name))
-			if err != nil || strings.Count(string(content), `alias uv="scfw run -- uv"`) != 1 || !strings.Contains(string(content), "export EXISTING=1") {
+			if err != nil || strings.Count(string(content), `alias uv="scfw run -- uv"`) != 1 || strings.Count(string(content), `alias uvx="scfw run -- uvx"`) != 1 || !strings.Contains(string(content), "export EXISTING=1") {
 				t.Fatalf("alias add/preserve failed: %q, %v", content, err)
 			}
 		}
@@ -1072,8 +1072,24 @@ func TestConfigureUVAliasLifecycle(t *testing.T) {
 	execute("--remove-alias-uv")
 	for _, name := range configFiles {
 		content, err := os.ReadFile(filepath.Join(home, name))
-		if err != nil || strings.Contains(string(content), "alias uv=") || !strings.Contains(string(content), "datadoghq.eu") {
+		if err != nil || (strings.Contains(string(content), "alias uv=") || strings.Contains(string(content), "alias uvx=")) || !strings.Contains(string(content), "datadoghq.eu") {
 			t.Fatalf("alias removal failed: %q, %v", content, err)
+		}
+	}
+	// Repair an existing installation that has only one of the two aliases.
+	for _, alias := range []string{"uv", "uvx"} {
+		for _, name := range configFiles {
+			content := blockStart + "\n" + `alias ` + alias + `="scfw run -- ` + alias + `"` + "\n" + blockEnd + "\nexport EXISTING=1\n"
+			if err := os.WriteFile(filepath.Join(home, name), []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		execute("--dd-site", "datadoghq.eu")
+		for _, name := range configFiles {
+			content, err := os.ReadFile(filepath.Join(home, name))
+			if err != nil || !strings.Contains(string(content), `alias uv="scfw run -- uv"`) || !strings.Contains(string(content), `alias uvx="scfw run -- uvx"`) {
+				t.Fatalf("incomplete uv alias repair: %s, %v", content, err)
+			}
 		}
 	}
 	execute("--alias-uv")

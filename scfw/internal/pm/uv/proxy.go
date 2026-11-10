@@ -107,12 +107,12 @@ func (uv UV) ProxyOptions(command []string) (proxy.Options, error) {
 	if err != nil {
 		return proxy.Options{}, err
 	}
-	trust, err := trustURL(settings, parseOptions(command))
+	trust, err := trustURL(settings, uv.parseOptions(command))
 	if err != nil {
 		return proxy.Options{}, err
 	}
 	options := proxy.Options{Upstream: upstream, ProxyForURL: proxyForURL(upstream), TrustURL: trust}
-	options.UpstreamTLS, err = uvTLSConfig(command)
+	options.UpstreamTLS, err = uv.tlsConfig(command)
 	if err != nil {
 		return proxy.Options{}, err
 	}
@@ -164,7 +164,7 @@ func bypassProxy(host, patterns string) bool {
 // routing and CA inputs. The core owns execution and deletes invocation files.
 func (uv UV) ProxyCommand(_ context.Context, command []string, config proxy.ClientConfig) (proxy.CommandSpec, error) {
 	args := slices.Clone(command)
-	for _, option := range parseOptions(command).options {
+	for _, option := range uv.parseOptions(command).options {
 		if option.name == "cert" {
 			args[option.index] = config.CACertificatePath
 			if option.equal {
@@ -185,13 +185,13 @@ func (uv UV) ProxyCommand(_ context.Context, command []string, config proxy.Clie
 		return proxy.CommandSpec{}, err
 	}
 	if settings["http-proxy"] != nil || settings["https-proxy"] != nil {
-		working, err := workingDirectory(command)
+		working, err := uv.workingDirectory(command)
 		if err != nil {
 			return proxy.CommandSpec{}, err
 		}
 		// uv applies inline script settings itself. Copy only filesystem settings
 		// so arrays and named indexes are not merged a second time in the child.
-		settings, err = uv.filesystemSettings(command, parseOptions(command), working)
+		settings, err = uv.filesystemSettings(command, uv.parseOptions(command), working)
 		if err != nil {
 			return proxy.CommandSpec{}, err
 		}
@@ -209,7 +209,7 @@ func (uv UV) ProxyCommand(_ context.Context, command []string, config proxy.Clie
 			return proxy.CommandSpec{}, errors.New("could not write invocation uv configuration")
 		}
 		environment["UV_CONFIG_FILE"] = path
-		for _, option := range parseOptions(command).options {
+		for _, option := range uv.parseOptions(command).options {
 			if option.name == "config-file" {
 				args[option.index] = path
 				if option.equal {
@@ -243,7 +243,7 @@ func (uv UV) gitSettings(command []string) (*gitproxy.Settings, error) {
 			return uv.proxyState.git, nil
 		}
 	}
-	directory, err := workingDirectory(command)
+	directory, err := uv.workingDirectory(command)
 	if err != nil {
 		return nil, err
 	}

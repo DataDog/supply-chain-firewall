@@ -137,8 +137,8 @@ Available `configure` options:
 | `--remove-alias-npm` | Remove the npm shell alias managed by `scfw`. |
 | `--alias-pip` | Add shell aliases to run all pip/pip3 commands through `scfw`. |
 | `--remove-alias-pip` | Remove the pip/pip3 shell aliases managed by `scfw`. |
-| `--alias-uv` | Add a shell alias to run uv commands through `scfw`. Requires proxy mode for package operations. |
-| `--remove-alias-uv` | Remove the uv shell alias managed by `scfw`. |
+| `--alias-uv` | Add shell aliases to run uv and uvx commands through `scfw`. Requires proxy mode for package operations. |
+| `--remove-alias-uv` | Remove the uv and uvx shell aliases managed by `scfw`. |
 | `--alias-poetry` | Add a shell alias to run all poetry commands through `scfw`. |
 | `--remove-alias-poetry` | Remove the poetry shell alias managed by `scfw`. |
 | `--scfw-home` | Directory Supply Chain Firewall can use as a local cache. |
@@ -156,7 +156,7 @@ When inspecting package manager commands, Datadog credentials and the Datadog si
 | npm               | >= 7.0                | `install` (including aliases)      |
 | pip               | >= 22.2               | `install`                          |
 | poetry            | >= 1.7                | `add`, `install`, `sync`, `update` |
-| uv (proxy mode)   | 0.13.4 tested         | `pip install`, `pip sync`, `pip compile`, `add`, `remove`, `sync`, `lock`, `run`, `export`, `tree`, `build`, `tool install`, `tool upgrade`, `tool run` |
+| uv (proxy mode)   | 0.13.4 tested         | `pip install`, `pip sync`, `pip compile`, `add`, `remove`, `sync`, `lock`, `run`, `export`, `tree`, `build`, `tool install`, `tool upgrade`, `tool run`/`uvx`, version updates, `venv --seed` |
 
 Enable uv interception with `SCFW_PROXY_ENABLED=1`, then use `scfw run -- uv pip install requests` or configure `--alias-uv`. Unrelated uv commands pass through unchanged. Proxy mode evaluates distributions requested over HTTP(S); packages already available in uv's cache, local paths, and Git source contents are not evaluated. Git HTTPS traffic still traverses the proxy and trusts its invocation CA.
 

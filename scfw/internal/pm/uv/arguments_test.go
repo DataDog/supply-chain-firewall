@@ -78,7 +78,7 @@ func TestParseOptionsSeparatesCommandsAndSettings(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			got := parseOptions(strings.Fields(test.args))
+			got := (UV{}).parseOptions(strings.Fields(test.args))
 			if got.command != test.command || got.subcommand != test.subcommand || got.help != test.help || !reflect.DeepEqual(got.options, test.options) {
 				t.Fatalf("parsed %+v, want command=%q subcommand=%q help=%v options=%+v", got, test.command, test.subcommand, test.help, test.options)
 			}
@@ -99,7 +99,7 @@ func TestGlobalOptionValuesDoNotSelectCommands(t *testing.T) {
 				if got := (UV{}).ProxyCommandSupported(args); got != want {
 					t.Fatalf("%v: supported=%v, want %v", args, got, want)
 				}
-				parsed := parseOptions(args)
+				parsed := (UV{}).parseOptions(args)
 				if parsed.command != command[0] || len(parsed.options) != 0 {
 					t.Fatalf("%v: parsed %+v", args, parsed)
 				}
@@ -112,7 +112,7 @@ func TestGlobalOptionValuesDoNotSelectCommands(t *testing.T) {
 		}
 	}
 	args := strings.Fields("run --python-preference only-system --python-fetch never --preview-feature script --directory selected python --help --script child.py")
-	parsed := parseOptions(args)
+	parsed := (UV{}).parseOptions(args)
 	if parsed.runTarget != "python" || parsed.help || len(parsed.options) != 1 || parsed.options[0].value != "selected" {
 		t.Fatalf("run boundary: %+v", parsed)
 	}
@@ -131,7 +131,7 @@ func TestRunShortOptionBoundaries(t *testing.T) {
 		{args: "run -vm module.py", target: "module.py", module: true},
 		{args: "run -vi https://index.example program --help", target: "program"},
 	} {
-		parsed := parseOptions(strings.Fields(test.args))
+		parsed := (UV{}).parseOptions(strings.Fields(test.args))
 		var script, module bool
 		for _, option := range parsed.options {
 			script = script || option.name == "script"
@@ -139,6 +139,65 @@ func TestRunShortOptionBoundaries(t *testing.T) {
 		}
 		if parsed.runTarget != test.target || parsed.help != test.help || script != test.script || module != test.module {
 			t.Fatalf("%s: parsed %+v", test.args, parsed)
+		}
+	}
+}
+
+func TestAdditionalPackageCommands(t *testing.T) {
+	for _, test := range []struct {
+		args string
+		want bool
+	}{
+		{"version", false}, {"version --short", false}, {"version --output-format json", false},
+		{"version --python 3.12 --package member", false}, {"version -p 3.12 -i https://index.example", false},
+		{"version --bump patch", true}, {"version --bump=minor --no-sync", true},
+		{"version 2.0", true}, {"version -- 2.0", true},
+		{"version --bump patch --dry-run", false}, {"version 2.0 --frozen", false},
+		{"version --bump patch --help", false}, {"--directory version version --bump patch", true},
+		{"venv", false}, {"venv --prompt seed", false}, {"venv --prompt=--seed", false},
+		{"venv --seed", true}, {"venv --seed .venv", true}, {"venv -- --seed", false},
+		{"venv --seed --help", false}, {"--directory venv venv --seed", true},
+	} {
+		t.Run(test.args, func(t *testing.T) {
+			t.Setenv("UV_FROZEN", "")
+			t.Setenv("UV_VENV_SEED", "")
+			if got := (UV{}).ProxyCommandSupported(strings.Fields(test.args)); got != test.want {
+				t.Fatalf("supported=%v, want %v", got, test.want)
+			}
+		})
+	}
+	t.Setenv("UV_FROZEN", "true")
+	if (UV{}).ProxyCommandSupported([]string{"version", "--bump", "patch"}) {
+		t.Fatal("frozen version update should not resolve dependencies")
+	}
+	for _, value := range []string{"1", "true", "yes", "on", "0", "false", ""} {
+		t.Setenv("UV_VENV_SEED", value)
+		if got := (UV{}).ProxyCommandSupported([]string{"venv"}); got != enabled(value) {
+			t.Fatalf("UV_VENV_SEED=%q: supported=%v", value, got)
+		}
+	}
+}
+
+func TestUVXCommandBoundaries(t *testing.T) {
+	manager := UV{toolRun: true}
+	for _, test := range []struct {
+		args, target string
+		supported    bool
+	}{
+		{"--help", "", false}, {"--version", "", false},
+		{"--from project --with dependency --directory chosen python --help --config-file child.toml", "python", true},
+		{"--from=project -p3.12 -- python --help", "python", true},
+		{"project --help", "project", true},
+	} {
+		args := strings.Fields(test.args)
+		options := manager.parseOptions(args)
+		if options.command != "tool" || options.subcommand != "run" || options.runTarget != test.target || manager.ProxyCommandSupported(args) != test.supported {
+			t.Fatalf("%s: %+v", test.args, options)
+		}
+		for _, option := range options.options {
+			if option.name == "config-file" {
+				t.Fatal("parsed a child flag as a uvx setting")
+			}
 		}
 	}
 }

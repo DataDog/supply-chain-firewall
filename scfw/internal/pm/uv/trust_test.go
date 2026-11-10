@@ -56,7 +56,7 @@ func TestTrustedHosts(t *testing.T) {
 		}
 	}
 	for _, args := range [][]string{{"pip", "install", "--trusted-host", "cli.example other.example"}, {"pip", "install", "--allow-insecure-host="}} {
-		match, err := trustURL(cases["mixed"], parseOptions(args))
+		match, err := trustURL(cases["mixed"], (UV{}).parseOptions(args))
 		if err != nil {
 			t.Fatal(err)
 		}

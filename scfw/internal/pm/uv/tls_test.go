@@ -49,7 +49,7 @@ func TestTLSUsesSystemRootsByDefault(t *testing.T) {
 			if flags != "" {
 				args = append(args, flags)
 			}
-			config, err := uvTLSConfig(args)
+			config, err := (UV{}).tlsConfig(args)
 			if err != nil || !config.RootCAs.Equal(system) {
 				t.Fatalf("system trust was not selected: %v", err)
 			}
@@ -91,7 +91,7 @@ func TestCustomSourcesReplaceDefaultRoots(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("SSL_CERT_FILE", test.file)
 			t.Setenv("SSL_CERT_DIR", test.dir)
-			config, err := uvTLSConfig(test.args)
+			config, err := (UV{}).tlsConfig(test.args)
 			if (err != nil) != test.failure {
 				t.Fatalf("error=%v", err)
 			}

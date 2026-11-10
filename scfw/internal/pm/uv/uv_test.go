@@ -78,6 +78,7 @@ func writeFixture(t *testing.T, content []byte, destination string) []byte {
 }
 
 func TestCommandSelection(t *testing.T) {
+	t.Setenv("UV_VENV_SEED", "")
 	for _, test := range []struct {
 		args string
 		want bool

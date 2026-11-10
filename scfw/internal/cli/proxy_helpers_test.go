@@ -43,11 +43,17 @@ type upstreamProxyOptions struct {
 
 func pypiWheel(t *testing.T) []byte {
 	t.Helper()
+	return pypiWheelNamed(t, "project")
+}
+
+func pypiWheelNamed(t *testing.T, packageName string) []byte {
+	t.Helper()
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
 	for _, name := range []string{"project/__init__.py", "project-1.0.dist-info/METADATA", "project-1.0.dist-info/WHEEL", "project-1.0.dist-info/RECORD"} {
 		body := readProxyFixture(t, filepath.Join("pip", "wheel", name))
-		file, err := writer.Create(name)
+		body = strings.ReplaceAll(body, "project", packageName)
+		file, err := writer.Create(strings.ReplaceAll(name, "project", packageName))
 		if err != nil {
 			t.Fatal(err)
 		}

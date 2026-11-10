@@ -46,7 +46,7 @@ func (uv UV) PyPIClassifierOptions(command []string) (pypi.RequestClassifierOpti
 		}
 	}
 	addSettings(settings)
-	options := parseOptions(command)
+	options := uv.parseOptions(command)
 	if options.command == "pip" {
 		pip, _ := settings["pip"].(map[string]any)
 		addSettings(pip)

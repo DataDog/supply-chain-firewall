@@ -17,6 +17,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/pem"
 	"io"
 	"math/big"
@@ -243,4 +244,78 @@ func assertProxyCleaned(t *testing.T, config proxy.ClientConfig) {
 		_ = connection.Close()
 		t.Fatal("invocation proxy is still listening")
 	}
+}
+
+// The source fixtures remain shared; construct adversarial containers in memory.
+func pypiZstandardZIP(t *testing.T) []byte {
+	t.Helper()
+	compressed, err := gzip.NewReader(bytes.NewReader(pypiSdist(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = compressed.Close() }()
+	source := tar.NewReader(compressed)
+	var inner bytes.Buffer
+	zipWriter := zip.NewWriter(&inner)
+	for {
+		header, err := source.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		file, err := zipWriter.Create(header.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.Copy(file, source); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	metadata := strings.ReplaceAll(readProxyFixture(t, "pip/sdist/PKG-INFO"), "Name: project", "Name: allowed")
+	var outer bytes.Buffer
+	tarWriter := tar.NewWriter(&outer)
+	for _, entry := range []struct {
+		name string
+		body []byte
+	}{{"allowed-1.0/PKG-INFO", []byte(metadata)}, {"allowed-1.0/payload.zip", inner.Bytes()}} {
+		if err := tarWriter.WriteHeader(&tar.Header{Name: entry.name, Mode: 0600, Size: int64(len(entry.body))}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tarWriter.Write(entry.body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tarWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if outer.Len() > 128<<10 {
+		t.Fatal("test Zstandard raw block exceeds its format limit")
+	}
+	payload := []byte{0x28, 0xb5, 0x2f, 0xfd, 0xa0}
+	payload = binary.LittleEndian.AppendUint32(payload, uint32(outer.Len()))
+	block := uint32(outer.Len())<<3 | 1
+	payload = append(payload, byte(block), byte(block>>8), byte(block>>16))
+	return append(payload, outer.Bytes()...)
+}
+
+func pypiGzipWithZIPTail(t *testing.T) []byte {
+	t.Helper()
+	var tail bytes.Buffer
+	writer := zip.NewWriter(&tail)
+	file, err := writer.Create("data.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(file, "unrelated"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return append(pypiSdist(t), tail.Bytes()...)
 }

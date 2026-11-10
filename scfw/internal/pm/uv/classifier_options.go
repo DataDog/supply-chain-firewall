@@ -18,7 +18,7 @@ func (uv UV) PyPIClassifierOptions(command []string) (pypi.RequestClassifierOpti
 	if err != nil {
 		return pypi.RequestClassifierOptions{}, err
 	}
-	result := pypi.RequestClassifierOptions{InspectArchiveURLs: true}
+	result := pypi.RequestClassifierOptions{InspectArchiveURLs: true, SelectArchive: selectArchive}
 	add := func(value string) {
 		// --index accepts name=URL, while URL arguments may contain '=' too.
 		if name, named, ok := strings.Cut(value, "="); ok && !strings.Contains(name, ":") {

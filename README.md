@@ -160,6 +160,8 @@ When inspecting package manager commands, Datadog credentials and the Datadog si
 
 Enable uv interception with `SCFW_PROXY_ENABLED=1`, then use `scfw run -- uv pip install requests` or configure `--alias-uv`. Unrelated uv commands pass through unchanged. Proxy mode evaluates distributions requested over HTTP(S); packages already available in uv's cache, local paths, and Git source contents are not evaluated. Git HTTPS traffic still traverses the proxy and trusts its invocation CA.
 
+Opaque archive inspection follows each manager's format selection: uv uses the original or registry-advertised source extension; pip uses its installed version's filename, MIME, and signature rules. Pip inspection retains raw download bytes, while uv inspection decodes HTTP content encodings. Uncertain or unsupported package archive interpretations, including conflicting redirect names, are rejected.
+
 The uv adapter preserves existing HTTP/HTTPS upstream proxies, index authentication, and custom TLS settings. Overrides apply only to the child process. If `uv.toml` configures a proxy, SCFW uses a temporary merged configuration that is removed with the invocation CA. Existing configuration files are untouched; uv itself continues managing its cache, virtual environments, and project files.
 
 Local scripts retain their inline PEP 723 index and trust settings. Scripts declaring inline `http-proxy` or `https-proxy` settings are rejected before uv starts, because those settings override process-only routing; configure upstream proxies in the environment or `uv.toml` instead. Remote scripts, stdin scripts, and scripts larger than 16 MiB are unsupported. CGI proxy environments and pip's legacy `--isolated` configuration-discovery behavior are outside the supported scope.

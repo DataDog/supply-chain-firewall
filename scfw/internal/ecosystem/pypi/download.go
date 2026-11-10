@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 	"github.com/andybalholm/brotli"
@@ -48,7 +49,7 @@ func (c *RequestClassifier) archiveURLCandidate(value *url.URL) bool {
 	if !c.inspectArchiveURLs {
 		return false
 	}
-	if _, found := c.archiveRedirects.Load(directPyPIURLKey(value)); found {
+	if source, found := c.archiveRedirects.Load(directPyPIURLKey(value)); found && source.(archiveSource).candidate {
 		return true
 	}
 	filename := strings.ToLower(strings.TrimRight(value.Path, "/"))
@@ -66,11 +67,12 @@ func (e ProxyHandler) observeOpaqueDownload(ctx context.Context, response proxy.
 	}
 	_, direct := e.Classifier.directArtifactURLs[directPyPIURLKey(&response.Request.URL)]
 	archiveURL := e.Classifier.archiveURLCandidate(&response.Request.URL)
-	if archiveURL && response.StatusCode >= 300 && response.StatusCode < 400 && response.StatusCode != http.StatusNotModified {
-		if target, err := response.Request.URL.Parse(response.Header.Get("Location")); err == nil && (target.Scheme == "http" || target.Scheme == "https") {
-			e.Classifier.archiveRedirects.Store(directPyPIURLKey(target), struct{}{})
-		}
+	source := e.Classifier.archiveSource(response.Request.URL)
+	direct = direct || source.required
+	if response.StatusCode >= 300 && response.StatusCode < 400 && response.StatusCode != http.StatusNotModified {
+		e.Classifier.recordArchiveRedirect(response, source, archiveURL, direct)
 	}
+
 	mediaType, _, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	kind, _ := e.Classifier.ClassifyRequest(response.Request.Method, &response.Request.URL)
 	_, parameters, _ := mime.ParseMediaType(response.Header.Get("Content-Disposition"))
@@ -101,7 +103,7 @@ func (e ProxyHandler) observeOpaqueDownload(ctx context.Context, response proxy.
 	return &proxy.ResponseBodyHook{
 		MaxBytes: MaxArtifactBytes,
 		HandleFile: func(ctx context.Context, response proxy.Response, body *io.SectionReader) error {
-			return e.evaluateDownloadedArchive(ctx, response, body, required)
+			return e.evaluateDownloadedArchive(ctx, response, body, required, archiveInspection{header: response.Header})
 		},
 	}, true, nil
 }
@@ -143,16 +145,31 @@ func (e ProxyHandler) inspectFullDownload(ctx context.Context, original proxy.Re
 	if response.ContentLength > MaxArtifactBytes {
 		return true, errors.New("python download exceeds inspection limit")
 	}
+	selection := archiveInspection{header: original.Header}
+	if original.StatusCode == http.StatusNotModified {
+		// Pip's cache may contain older MIME/disposition headers. The adapter
+		// must reject competing interpretations when those headers are unknown.
+		selection.header, selection.cachedHeaders = response.Header, true
+	}
 	original.StatusCode, original.Header = response.StatusCode, response.Header
 	return true, proxy.InspectReader(ctx, response.Body, MaxArtifactBytes, func(body *io.SectionReader) error {
-		return e.evaluateDownloadedArchive(ctx, original, body, required)
+		return e.evaluateDownloadedArchive(ctx, original, body, required, selection)
 	})
 }
 
-func (e ProxyHandler) evaluateDownloadedArchive(ctx context.Context, response proxy.Response, body *io.SectionReader, required bool) error {
+type archiveInspection struct {
+	header        http.Header
+	cachedHeaders bool
+}
+
+func (e ProxyHandler) evaluateDownloadedArchive(ctx context.Context, response proxy.Response, body *io.SectionReader, required bool, selection archiveInspection) error {
 	foundPackage := false
-	err := inspectDecodedArchive(ctx, body, response.Header.Get("Content-Encoding"), func(body *io.SectionReader) error {
-		artifact, found, err := inspectArchive(ctx, body)
+	encoding := response.Header.Get("Content-Encoding")
+	if e.Classifier.retainArchiveContentEncoding {
+		encoding = ""
+	}
+	err := inspectDecodedArchive(ctx, body, encoding, func(body *io.SectionReader) error {
+		artifact, found, err := e.inspectDownloadArchive(ctx, response, body, required, selection)
 		if err != nil {
 			return err
 		}
@@ -233,4 +250,99 @@ func inspectDecodedArchive(ctx context.Context, body *io.SectionReader, encoding
 		}
 	}
 	return proxy.InspectReader(ctx, reader, MaxArtifactBytes, inspect)
+}
+
+// A redirect must retain the name used by the manager before following it.
+// Colliding origins are rejected at inspection instead of choosing arbitrarily.
+type archiveSource struct {
+	url                            url.URL
+	filename                       string
+	candidate, required, ambiguous bool
+}
+
+func (c *RequestClassifier) archiveSource(value url.URL) archiveSource {
+	if source, found := c.archiveRedirects.Load(directPyPIURLKey(&value)); found {
+		return source.(archiveSource)
+	}
+	return archiveSource{url: value}
+}
+
+func (c *RequestClassifier) recordArchiveRedirect(response proxy.Response, source archiveSource, candidate, required bool) {
+	target, err := response.Request.URL.Parse(response.Header.Get("Location"))
+	if err != nil || (target.Scheme != "http" && target.Scheme != "https") {
+		return
+	}
+	source.candidate = source.candidate || candidate
+	source.required = source.required || required
+	key := directPyPIURLKey(target)
+	if previous, loaded := c.archiveRedirects.LoadOrStore(key, source); loaded {
+		old := previous.(archiveSource)
+		if directPyPIURLKey(&old.url) != directPyPIURLKey(&source.url) || old.filename != source.filename || source.ambiguous {
+			old.ambiguous = true
+			old.candidate = old.candidate || source.candidate
+			old.required = old.required || source.required
+			c.archiveRedirects.Store(key, old)
+		}
+	}
+}
+
+func (e ProxyHandler) inspectDownloadArchive(ctx context.Context, response proxy.Response, body *io.SectionReader, required bool, selection archiveInspection) (Artifact, bool, error) {
+	if e.Classifier.selectArchive == nil {
+		return inspectArchive(ctx, body)
+	}
+	probe := sync.OnceValues(func() (ArchiveSignatures, error) { return probeArchive(ctx, body) })
+	signatures, err := probe()
+	if err != nil {
+		return Artifact{}, false, err
+	}
+	if !required && !signatures.ZIP && signatures.TAR == ArchiveUnknown {
+		// Archive-shaped index endpoints still need normal JSON/HTML handling.
+		return Artifact{}, false, nil
+	}
+	source := e.Classifier.archiveSource(response.Request.URL)
+	if source.ambiguous {
+		return Artifact{}, false, errors.New("ambiguous Python download origin")
+	}
+	format, err := e.Classifier.selectArchive(ArchiveInput{RegistryFilename: source.filename, CachedHeaders: selection.cachedHeaders, URL: source.url, ResponseURL: response.Request.URL, Header: selection.header, Probe: probe})
+	if err != nil {
+		return Artifact{}, false, err
+	}
+	packageDownload := required || e.Classifier.archiveURLCandidate(&response.Request.URL)
+	if format == ArchiveUnknown {
+		if !packageDownload {
+			// A compressed requirements file or other non-package response is
+			// not an unknown package archive merely because it has a signature.
+			_, found, err := inspectArchive(ctx, body)
+			if err != nil || !found {
+				return Artifact{}, false, err
+			}
+		}
+		return Artifact{}, false, errors.New("cannot determine package manager archive format")
+	}
+	if directPyPIURLKey(&source.url) != directPyPIURLKey(&response.Request.URL) {
+		// A later direct request to the same target cannot be distinguished from a
+		// redirected request. Reject if both source names permit different readers.
+		alternative, alternativeErr := e.Classifier.selectArchive(ArchiveInput{CachedHeaders: selection.cachedHeaders, URL: response.Request.URL, ResponseURL: response.Request.URL, Header: selection.header, Probe: probe})
+		if alternativeErr == nil && alternative != ArchiveUnknown && alternative != format {
+			return Artifact{}, false, errors.New("conflicting Python archive formats across redirect")
+		}
+	}
+	artifact, found, err := inspectArchiveFormat(ctx, body, format)
+	if err == nil && !found && packageDownload {
+		err = errors.New("python download has no usable package metadata")
+	}
+	return artifact, found, err
+}
+
+func (e ProxyHandler) observeArtifactHeaders(ctx context.Context, response proxy.Response, filename string) (*proxy.ResponseBodyHook, error) {
+	if response.StatusCode >= 300 && response.StatusCode < 400 && response.StatusCode != http.StatusNotModified {
+		kind, _, _ := e.classifyMetadataResponse(response)
+		if kind == RequestSimpleAPI || kind == RequestJSONAPI {
+			return e.ObserveMetadataHeaders(ctx, response)
+		}
+		source := e.Classifier.archiveSource(response.Request.URL)
+		source.filename = filename
+		e.Classifier.recordArchiveRedirect(response, source, true, true)
+	}
+	return e.ObserveMetadataHeaders(ctx, response)
 }

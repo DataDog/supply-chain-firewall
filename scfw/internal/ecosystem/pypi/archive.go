@@ -42,24 +42,33 @@ type archiveScan struct {
 // build hooks. Non-package downloads return found=false. Python source archives
 // without usable metadata fail closed, including source trees accepted by pip.
 func inspectArchive(ctx context.Context, body *io.SectionReader) (Artifact, bool, error) {
+	signatures, err := probeArchive(ctx, body)
+	if err != nil {
+		return Artifact{}, false, err
+	}
+	format, err := uniqueArchiveFormat(signatures)
+	if err != nil {
+		return Artifact{}, false, err
+	}
+	return inspectArchiveFormat(ctx, body, format)
+}
+
+func inspectArchiveFormat(ctx context.Context, body *io.SectionReader, format ArchiveFormat) (Artifact, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return Artifact{}, false, err
 	}
-	var signature [512]byte
-	n, _ := body.ReadAt(signature[:], 0)
-	// Older source archive formats remain supported by the filename path.
-	// An opaque archive in a format we cannot inspect must never pass silently.
-	for _, magic := range [][]byte{{'L', 'Z', 'I', 'P'}, {0x1f, 0x9d}} {
-		if n >= len(magic) && bytes.Equal(signature[:len(magic)], magic) {
-			return Artifact{}, false, errors.New("unsupported opaque Python archive format")
-		}
-	}
 	var reader io.Reader = body
-	// Zstandard permits skippable frames before its first compressed frame.
-	if n >= 4 && (bytes.Equal(signature[:4], []byte{0x28, 0xb5, 0x2f, 0xfd}) ||
-		(signature[0]&0xf0 == 0x50 && bytes.Equal(signature[1:4], []byte{0x2a, 0x4d, 0x18}))) {
-		decoder, err := zstd.NewReader(archiveContextReader{ctx, reader},
-			zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(64<<20))
+	switch format {
+	case ArchiveUnknown:
+		return Artifact{}, false, nil
+	case ArchiveZIP:
+		archive, err := zip.NewReader(body, body.Size())
+		if err != nil {
+			return Artifact{}, false, err
+		}
+		return inspectZIP(ctx, archive)
+	case ArchiveZstandard:
+		decoder, err := zstd.NewReader(archiveContextReader{ctx, reader}, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(64<<20))
 		if err != nil {
 			return Artifact{}, false, err
 		}
@@ -67,41 +76,37 @@ func inspectArchive(ctx context.Context, body *io.SectionReader) (Artifact, bool
 		expanded := &io.LimitedReader{R: archiveContextReader{ctx, decoder}, N: maxExpandedArchiveBytes + 1}
 		artifact, found, err := inspectTARContent(ctx, expanded)
 		if err == nil {
-			// TAR ends before the compression stream. Read through its checksum
-			// and any following frames before releasing the original bytes.
+			// Validate checksums and following frames before releasing the original bytes.
 			_, err = io.Copy(io.Discard, expanded)
 			if err == nil && expanded.N <= 0 {
 				err = errors.New("expanded Python archive exceeds inspection limit")
 			}
 		}
 		return artifact, found, err
-	}
-	if archive, err := zip.NewReader(body, body.Size()); err == nil {
-		return inspectZIP(ctx, archive)
-	} else if n >= 4 && bytes.Equal(signature[:4], []byte{'P', 'K', 3, 4}) {
-		return Artifact{}, false, err
-	}
-	if n >= 2 && signature[0] == 0x1f && signature[1] == 0x8b {
+	case ArchiveGzip:
 		decoder, err := gzip.NewReader(reader)
 		if err != nil {
 			return Artifact{}, false, err
 		}
 		defer func() { _ = decoder.Close() }()
 		reader = decoder
-	} else if n >= 3 && string(signature[:3]) == "BZh" {
+	case ArchiveBzip2:
 		reader = bzip2.NewReader(reader)
-	} else if n >= 6 && bytes.Equal(signature[:6], []byte{0xfd, '7', 'z', 'X', 'Z', 0}) {
+	case ArchiveXZ:
 		decoder, err := (xz.ReaderConfig{DictCap: 64 << 20}).NewReader(reader)
 		if err != nil {
 			return Artifact{}, false, err
 		}
 		reader = decoder
-	} else if n >= lzma.HeaderLen && lzma.ValidHeader(signature[:lzma.HeaderLen]) {
+	case ArchiveLZMA:
 		decoder, err := (lzma.ReaderConfig{DictCap: 64 << 20}).NewReader(reader)
 		if err != nil {
 			return Artifact{}, false, err
 		}
 		reader = decoder
+	case ArchiveTAR:
+	default:
+		return Artifact{}, false, errors.New("unsupported opaque Python archive format")
 	}
 	return inspectTARContent(ctx, reader)
 }

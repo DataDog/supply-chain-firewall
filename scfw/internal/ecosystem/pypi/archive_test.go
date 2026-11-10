@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/binary"
 	"io"
 	"strings"
 	"testing"
@@ -103,6 +104,7 @@ func TestArchiveIdentityWithoutExecutingPackageCode(t *testing.T) {
 		{"zstd", "project-1.0/PKG-INFO"},
 		{"zstd-skippable", "project-1.0/PKG-INFO"},
 		{"tar", "./project-1.0/PKG-INFO"},
+		{"tar", strings.Repeat("p", 200) + "/PKG-INFO"},
 		{"xz", "project-1.0/PKG-INFO"},
 		{"lzma", "project-1.0/PKG-INFO"},
 		{"zip", "project-1.0/PKG-INFO"},
@@ -265,5 +267,30 @@ func TestZstandardArchiveIntegrityAndLimits(t *testing.T) {
 	cancel()
 	if _, _, err := inspectTestArchive(ctx, valid); err == nil {
 		t.Fatal("canceled Zstandard inspection succeeded")
+	}
+}
+
+func TestArchiveInterpretationsHaveDifferentIdentities(t *testing.T) {
+	metadata := readPyPIFixture(t, "archive/PKG-INFO")
+	inner := packageArchive(t, "zip", []archiveTestEntry{{name: "project-1.0/PKG-INFO", body: metadata}})
+	outer := packageArchive(t, "tar", []archiveTestEntry{{name: "allowed-1.0/PKG-INFO", body: strings.ReplaceAll(metadata, "Name: project", "Name: allowed")}, {name: "allowed-1.0/payload.zip", body: string(inner)}})
+	// A raw Zstandard block leaves the embedded ZIP visible to ZIP readers.
+	payload := []byte{0x28, 0xb5, 0x2f, 0xfd, 0xa0}
+	payload = binary.LittleEndian.AppendUint32(payload, uint32(len(outer)))
+	block := uint32(len(outer))<<3 | 1
+	payload = append(payload, byte(block), byte(block>>8), byte(block>>16))
+	payload = append(payload, outer...)
+	reader := func() *io.SectionReader { return io.NewSectionReader(bytes.NewReader(payload), 0, int64(len(payload))) }
+	for _, test := range []struct {
+		format ArchiveFormat
+		name   string
+	}{{ArchiveZstandard, "allowed"}, {ArchiveZIP, "project"}} {
+		artifact, found, err := inspectArchiveFormat(context.Background(), reader(), test.format)
+		if err != nil || !found || artifact.Name != test.name {
+			t.Fatalf("format=%v artifact=%+v found=%v err=%v", test.format, artifact, found, err)
+		}
+	}
+	if _, _, err := inspectArchive(context.Background(), reader()); err == nil {
+		t.Fatal("accepted ambiguous archive without an adapter selection policy")
 	}
 }

@@ -59,9 +59,20 @@ func TestUVOpaqueDirectDownloads(t *testing.T) {
 	project := uvConfigurationFixture(t, "direct-project")
 	requirements := readProxyFixture(t, "uv/requirements.txt.tmpl")
 	workspace := uvConfigurationFixture(t, "virtual-workspace")
+	simpleRedirect := strings.ReplaceAll(readProxyJSONFixture(t, "uv/simple-zstd"), ".tar.zst", ".tar.gz")
+	simpleRedirect = strings.ReplaceAll(simpleRedirect, "../../download.tar.gz", "../../objects/source")
 	local := uvConfigurationFixture(t, "local-dependency")
 	for _, mediaType := range []string{"text/plain", "text/html", "application/json"} {
 		origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/simple/project/" {
+				w.Header().Set("Content-Type", "application/vnd.pypi.simple.v1+json")
+				_, _ = io.WriteString(w, simpleRedirect)
+				return
+			}
+			if r.URL.Path == "/objects/source" {
+				http.Redirect(w, r, "/objects/final", http.StatusFound)
+				return
+			}
 			if r.URL.Path == "/redirect.tar.gz" {
 				http.Redirect(w, r, "/opaque?token=secret", http.StatusFound)
 				return
@@ -71,7 +82,7 @@ func TestUVOpaqueDirectDownloads(t *testing.T) {
 		}))
 		t.Cleanup(origin.Close)
 		address := origin.URL + "/download.tar.gz"
-		for _, mode := range []string{"bare", "named", "redirect", "with", "with-comma", "script", "project", "environment", "requirements", "pip-sync", "stdin", "workspace", "local"} {
+		for _, mode := range []string{"bare", "named", "redirect", "index-redirect", "with", "with-comma", "script", "project", "environment", "requirements", "pip-sync", "stdin", "workspace", "local"} {
 			for _, block := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/%s/block=%v", mediaType, mode, block), func(t *testing.T) {
 					t.Chdir(t.TempDir())
@@ -80,6 +91,8 @@ func TestUVOpaqueDirectDownloads(t *testing.T) {
 					t.Setenv("SCFW_TEST_BACKEND_MARKER", marker)
 					args := []string{"--no-config", "pip", "install", "--no-deps", "--no-build-isolation", "--target", t.TempDir()}
 					switch mode {
+					case "index-redirect":
+						args = append(args, "--index-url", origin.URL+"/simple/", "project==1.0")
 					case "bare":
 						args = append(args, address)
 					case "redirect":
@@ -343,5 +356,39 @@ func TestUVZstandardDownloads(t *testing.T) {
 				assertUVProxyCleaned(t, runner)
 			})
 		}
+	}
+}
+
+func TestUVGzipArchiveWithZIPTail(t *testing.T) {
+	executable := uvTestEnvironment(t)
+	payload := pypiGzipWithZIPTail(t)
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		http.ServeContent(w, r, "download.tar.gz", time.Time{}, bytes.NewReader(payload))
+	}))
+	defer origin.Close()
+	for _, block := range []bool{false, true} {
+		t.Run(fmt.Sprintf("block=%v", block), func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			t.Setenv("UV_CACHE_DIR", t.TempDir())
+			marker := filepath.Join(t.TempDir(), "backend-executed")
+			t.Setenv("SCFW_TEST_BACKEND_MARKER", marker)
+			args := []string{"--no-config", "pip", "install", "--no-deps", "--no-build-isolation", "--target", t.TempDir(), "project @ " + origin.URL + "/download.tar.gz"}
+			manager, err := uv.NewUV(context.Background(), "uv", executable)
+			if err != nil {
+				t.Fatal(err)
+			}
+			runner := &capturingUVRunner{UV: manager}
+			var calls atomic.Int32
+			commandErr, setupErr := runThroughProxy(context.Background(), runner, args, uvRegressionPolicy(t, manager, args, &calls, block))
+			if setupErr != nil || (commandErr != nil) != block || calls.Load() == 0 {
+				t.Fatalf("archive policy: %v/%v calls=%d", commandErr, setupErr, calls.Load())
+			}
+			_, markerErr := os.Stat(marker)
+			if (block && !os.IsNotExist(markerErr)) || (!block && markerErr != nil) {
+				t.Fatalf("build execution did not match policy: block=%v error=%v", block, markerErr)
+			}
+			assertUVProxyCleaned(t, runner)
+		})
 	}
 }

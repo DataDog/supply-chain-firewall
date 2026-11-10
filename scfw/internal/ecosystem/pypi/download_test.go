@@ -220,6 +220,21 @@ func TestArchiveURLInspectionIgnoresMediaTypeAndFollowsRedirects(t *testing.T) {
 				t.Run(fmt.Sprintf("%s/%s/%d", format, mediaType, status), func(t *testing.T) {
 					handler, request := opaqueHandler(t, "https://packages.example/download"+suffix+"?token=secret", false, func(context.Context, Artifact) error { return proxy.ErrResponseRejected })
 					handler.Classifier.inspectArchiveURLs = true
+					handler.Classifier.selectArchive = func(input ArchiveInput) (ArchiveFormat, error) {
+						if input.CachedHeaders != (status == http.StatusNotModified) {
+							t.Errorf("cached header provenance=%v, status=%d", input.CachedHeaders, status)
+						}
+						if input.URL.Path == input.ResponseURL.Path {
+							return ArchiveUnknown, nil
+						}
+						if !strings.HasSuffix(input.URL.Path, suffix) || input.ResponseURL.Host != "cdn.example" {
+							t.Errorf("lost archive provenance: %s -> %s", input.URL.Path, input.ResponseURL.Host)
+						}
+						if strings.HasPrefix(format, "zstd") {
+							return ArchiveZstandard, nil
+						}
+						return ArchiveGzip, nil
+					}
 					for _, destination := range []string{"https://cdn.example/redirect", "https://cdn.example/opaque?token=secret"} {
 						hook, err := handler.ObserveResponseHeaders(context.Background(), proxy.Response{Request: request, StatusCode: http.StatusFound, Header: http.Header{"Location": {destination}}})
 						if err != nil || hook != nil {
@@ -257,6 +272,10 @@ func TestArchiveURLInspectionRetainsMetadata(t *testing.T) {
 	for _, encoding := range []string{"", "gzip"} {
 		handler, request := opaqueHandler(t, "https://index.example/listing/download.tar.gz", false, func(context.Context, Artifact) error { t.Fatal("metadata reached policy"); return nil })
 		handler.Classifier.inspectArchiveURLs = true
+		handler.Classifier.selectArchive = func(ArchiveInput) (ArchiveFormat, error) {
+			t.Fatal("registry JSON reached archive selection")
+			return ArchiveUnknown, nil
+		}
 		handler.Metadata.RegisterProject(request.URL, "my-project", nil)
 		payload := []byte(readPyPIJSONFixture(t, "metadata/artifact-endpoint-simple"))
 		if encoding == "gzip" {
@@ -293,3 +312,129 @@ func downloadTestURL(t *testing.T, raw string) *url.URL {
 type downloadRoundTripper func(*http.Request) (*http.Response, error)
 
 func (f downloadRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestArchiveRedirectRejectsConflictingInterpretations(t *testing.T) {
+	for _, collision := range []bool{false, true} {
+		t.Run(fmt.Sprintf("colliding-origins=%v", collision), func(t *testing.T) {
+			handler, request := opaqueHandler(t, "https://source.example/start.tar.gz", true, func(context.Context, Artifact) error { t.Fatal("uncertain archive reached policy"); return nil })
+			handler.Classifier.inspectArchiveURLs = true
+			handler.Classifier.selectArchive = func(input ArchiveInput) (ArchiveFormat, error) {
+				if strings.HasSuffix(input.URL.Path, ".zip") {
+					return ArchiveZIP, nil
+				}
+				return ArchiveGzip, nil
+			}
+			destination := "https://cdn.example/allowed-1.0.zip"
+			_, err := handler.ObserveResponseHeaders(context.Background(), proxy.Response{Request: request, StatusCode: http.StatusFound, Header: http.Header{"Location": {destination}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if collision {
+				second := request
+				second.URL = *downloadTestURL(t, "https://other.example/different.tar.gz")
+				_, err = handler.ObserveResponseHeaders(context.Background(), proxy.Response{Request: second, StatusCode: http.StatusFound, Header: http.Header{"Location": {destination}}})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			request.URL = *downloadTestURL(t, destination)
+			response := proxy.Response{Request: request, StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/octet-stream"}}}
+			headers, err := handler.HandleRequest(context.Background(), request)
+			if err != nil || headers == nil {
+				t.Fatalf("redirect request hook: %v/%v", headers != nil, err)
+			}
+			hook, err := headers(context.Background(), response)
+			if err != nil || hook == nil {
+				t.Fatalf("body hook: %v/%v", hook, err)
+			}
+			payload := packageArchive(t, "gzip", []archiveTestEntry{{name: "project-1.0/PKG-INFO", body: readPyPIFixture(t, "archive/PKG-INFO")}})
+			err = hook.HandleFile(context.Background(), response, io.NewSectionReader(bytes.NewReader(payload), 0, int64(len(payload))))
+			if err == nil || strings.Contains(err.Error(), "source.example") {
+				t.Fatalf("conflicting archive origin was not safely rejected: %v", err)
+			}
+		})
+	}
+}
+
+func TestArchiveSelectionCannotFallBackOrReleaseUnknownPackage(t *testing.T) {
+	payload := packageArchive(t, "zip", []archiveTestEntry{{name: "data.csv", body: "unrelated"}})
+	for _, test := range []struct {
+		name   string
+		format ArchiveFormat
+		err    error
+	}{
+		{name: "unusable selected archive", format: ArchiveZIP},
+		{name: "wrong selected format", format: ArchiveGzip},
+		{name: "unknown interpretation", format: ArchiveUnknown},
+		{name: "selector failed", err: errors.New("archive selection failed")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler, request := opaqueHandler(t, "https://source.example/download.zip", true, func(context.Context, Artifact) error { t.Fatal("unidentified archive reached policy"); return nil })
+			handler.Classifier.selectArchive = func(ArchiveInput) (ArchiveFormat, error) { return test.format, test.err }
+			response := proxy.Response{Request: request, StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/octet-stream"}}}
+			hook, err := handler.ObserveResponseHeaders(context.Background(), response)
+			if err != nil || hook == nil {
+				t.Fatalf("body hook: %v/%v", hook, err)
+			}
+			if err := hook.HandleFile(context.Background(), response, io.NewSectionReader(bytes.NewReader(payload), 0, int64(len(payload)))); err == nil {
+				t.Fatal("unidentified package bytes were released")
+			}
+		})
+	}
+}
+
+func TestManagerArchiveInspectionKeepsCompressedRequirements(t *testing.T) {
+	for _, retain := range []bool{false, true} {
+		handler, request := opaqueHandler(t, "https://source.example/requirements.gz", false, func(context.Context, Artifact) error { t.Fatal("requirements reached package policy"); return nil })
+		handler.Classifier.retainArchiveContentEncoding = retain
+		handler.Classifier.selectArchive = func(ArchiveInput) (ArchiveFormat, error) {
+			if retain {
+				return ArchiveGzip, nil
+			}
+			return ArchiveUnknown, nil
+		}
+		var payload bytes.Buffer
+		writer := gzip.NewWriter(&payload)
+		if _, err := io.WriteString(writer, "project==1.0\n"); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		response := proxy.Response{Request: request, StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/octet-stream"}, "Content-Encoding": {"gzip"}}}
+		hook, err := handler.ObserveResponseHeaders(context.Background(), response)
+		if err != nil || hook == nil {
+			t.Fatalf("body hook: %v/%v", hook, err)
+		}
+		if err := hook.HandleFile(context.Background(), response, io.NewSectionReader(bytes.NewReader(payload.Bytes()), 0, int64(payload.Len()))); err != nil {
+			t.Fatalf("compressed requirements were rejected: retain=%v err=%v", retain, err)
+		}
+	}
+}
+
+func TestPartialArchiveSelectionUsesManagerVisibleHeaders(t *testing.T) {
+	payload := packageArchive(t, "zip", []archiveTestEntry{{name: "project-1.0/PKG-INFO", body: readPyPIFixture(t, "archive/PKG-INFO")}})
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// A refresh must not replace the interpretation visible on the original 206.
+		w.Header().Set("Content-Type", "application/x-gzip")
+		_, _ = w.Write(payload)
+	}))
+	defer origin.Close()
+	calls := 0
+	handler, request := opaqueHandler(t, origin.URL+"/download.zip", true, func(context.Context, Artifact) error { calls++; return proxy.ErrResponseRejected })
+	handler.Client = origin.Client()
+	handler.Classifier.selectArchive = func(input ArchiveInput) (ArchiveFormat, error) {
+		if input.Header.Get("Content-Type") != "application/zip" || input.CachedHeaders {
+			t.Error("partial response lost its manager-visible headers")
+		}
+		return ArchiveZIP, nil
+	}
+	response := proxy.Response{Request: request, StatusCode: http.StatusPartialContent, Header: http.Header{"Content-Type": {"application/zip"}}}
+	hook, err := handler.ObserveResponseHeaders(context.Background(), response)
+	if hook != nil || !errors.Is(err, proxy.ErrResponseRejected) || calls != 1 {
+		t.Fatalf("partial archive: hook=%v err=%v calls=%d", hook != nil, err, calls)
+	}
+	if response.Header.Get("Content-Type") != "application/zip" || response.StatusCode != http.StatusPartialContent {
+		t.Fatal("mutated forwarded response metadata")
+	}
+}

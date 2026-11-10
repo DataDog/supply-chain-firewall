@@ -11,10 +11,12 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/binary"
 	"io"
 	"strings"
 	"testing"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/ulikunitz/xz"
 	"github.com/ulikunitz/xz/lzma"
 )
@@ -49,6 +51,11 @@ func packageArchive(t *testing.T, format string, entries []archiveTestEntry) []b
 	switch format {
 	case "gzip":
 		compressed = gzip.NewWriter(target)
+	case "zstd", "zstd-skippable":
+		if format == "zstd-skippable" {
+			_, _ = output.Write([]byte{0x5f, 0x2a, 0x4d, 0x18, 4, 0, 0, 0, 's', 'k', 'i', 'p'})
+		}
+		compressed, err = zstd.NewWriter(target, zstd.WithEncoderConcurrency(1))
 	case "xz":
 		compressed, err = (xz.WriterConfig{DictCap: 1 << 12}).NewWriter(target)
 	case "lzma":
@@ -94,7 +101,10 @@ func TestArchiveIdentityWithoutExecutingPackageCode(t *testing.T) {
 	metadata := readPyPIFixture(t, "archive/PKG-INFO")
 	for _, test := range []struct{ format, metadataPath string }{
 		{"gzip", "project-1.0/PKG-INFO"},
+		{"zstd", "project-1.0/PKG-INFO"},
+		{"zstd-skippable", "project-1.0/PKG-INFO"},
 		{"tar", "./project-1.0/PKG-INFO"},
+		{"tar", strings.Repeat("p", 200) + "/PKG-INFO"},
 		{"xz", "project-1.0/PKG-INFO"},
 		{"lzma", "project-1.0/PKG-INFO"},
 		{"zip", "project-1.0/PKG-INFO"},
@@ -123,7 +133,7 @@ func TestArchiveMetadataValidation(t *testing.T) {
 		{"oversized metadata", metadata + strings.Repeat("x", int(maxArchiveMetadataBytes))},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			for _, format := range []string{"gzip", "zip"} {
+			for _, format := range []string{"gzip", "zip", "zstd"} {
 				body := packageArchive(t, format, []archiveTestEntry{{name: "project-1.0/PKG-INFO", body: test.metadata}})
 				if _, _, err := inspectTestArchive(context.Background(), body); err == nil {
 					t.Fatalf("%s accepted invalid metadata", format)
@@ -148,9 +158,11 @@ func TestArchiveRejectsAmbiguousAndUnsafeEntries(t *testing.T) {
 		{{name: "../outside/PKG-INFO", body: metadata}},
 		{{name: "project-1.0/PKG-INFO", typeflag: tar.TypeSymlink}},
 	} {
-		body := packageArchive(t, "gzip", entries)
-		if _, _, err := inspectTestArchive(context.Background(), body); err == nil {
-			t.Fatalf("accepted ambiguous or unsafe archive: %+v", entries)
+		for _, format := range []string{"gzip", "zstd"} {
+			body := packageArchive(t, format, entries)
+			if _, _, err := inspectTestArchive(context.Background(), body); err == nil {
+				t.Fatalf("accepted ambiguous or unsafe %s archive: %+v", format, entries)
+			}
 		}
 	}
 }
@@ -180,7 +192,7 @@ func TestArchiveLimitsAndNonPackages(t *testing.T) {
 	for index := range entries {
 		entries[index].name = "empty"
 	}
-	for _, format := range []string{"tar", "zip"} {
+	for _, format := range []string{"tar", "zip", "zstd"} {
 		if _, _, err := inspectTestArchive(context.Background(), packageArchive(t, format, entries)); err == nil {
 			t.Fatalf("%s archive exceeded the entry limit", format)
 		}
@@ -195,7 +207,7 @@ func TestArchiveLimitsAndNonPackages(t *testing.T) {
 	if _, found, err := inspectTestArchive(context.Background(), selfExtracting); err != nil || !found {
 		t.Fatalf("ZIP with a prefix lost its identity: %v %v", found, err)
 	}
-	for _, body := range [][]byte{[]byte("unrelated download"), packageArchive(t, "zip", []archiveTestEntry{{name: "data.csv"}})} {
+	for _, body := range [][]byte{[]byte("unrelated download"), packageArchive(t, "zip", []archiveTestEntry{{name: "data.csv"}}), packageArchive(t, "zstd", []archiveTestEntry{{name: "data.csv"}})} {
 		if _, found, err := inspectTestArchive(context.Background(), body); err != nil || found {
 			t.Fatalf("non-package: found=%v error=%v", found, err)
 		}
@@ -204,5 +216,81 @@ func TestArchiveLimitsAndNonPackages(t *testing.T) {
 	cancel()
 	if _, _, err := inspectTestArchive(ctx, valid); err == nil {
 		t.Fatal("canceled inspection succeeded")
+	}
+}
+
+func TestZstandardArchiveIntegrityAndLimits(t *testing.T) {
+	encoder, err := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer encoder.Close()
+	valid := packageArchive(t, "zstd", []archiveTestEntry{{name: "project-1.0/PKG-INFO", body: readPyPIFixture(t, "archive/PKG-INFO")}})
+	checksum := bytes.Clone(valid)
+	checksum[len(checksum)-1] ^= 1
+	for _, test := range []struct {
+		name string
+		body []byte
+	}{
+		{"truncated header", valid[:4]},
+		{"truncated body", valid[:len(valid)/2]},
+		{"truncated checksum", valid[:len(valid)-1]},
+		{"invalid checksum", checksum},
+		{"trailing corrupt frame", append(bytes.Clone(valid), valid[:4]...)},
+		{"ZIP tail cannot disguise stream", append(bytes.Clone(valid), packageArchive(t, "zip", []archiveTestEntry{{name: "data.csv"}})...)},
+		{"truncated skippable frame", []byte{0x50, 0x2a, 0x4d, 0x18, 4, 0, 0, 0}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, _, err := inspectTestArchive(context.Background(), test.body); err == nil {
+				t.Fatal("corrupt Zstandard archive was accepted")
+			}
+		})
+	}
+	// A 256 MiB advertised window exceeds the decoder's 64 MiB memory cap.
+	window := []byte{0x28, 0xb5, 0x2f, 0xfd, 0, 0x90, 1, 0, 0}
+	if _, _, err := inspectTestArchive(context.Background(), window); err == nil || !strings.Contains(err.Error(), "window") {
+		t.Fatalf("unbounded Zstandard window: %v", err)
+	}
+	var huge bytes.Buffer
+	writer := tar.NewWriter(&huge)
+	if err := writer.WriteHeader(&tar.Header{Name: "project-1.0/data", Mode: 0600, Size: maxExpandedArchiveBytes + 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := inspectTestArchive(context.Background(), encoder.EncodeAll(huge.Bytes(), nil)); err == nil {
+		t.Fatal("unbounded expanded Zstandard archive was accepted")
+	}
+	// Valid non-archive streams retain the non-package path.
+	if _, found, err := inspectTestArchive(context.Background(), encoder.EncodeAll([]byte("unrelated download"), nil)); err != nil || found {
+		t.Fatalf("non-package: %v/%v", found, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := inspectTestArchive(ctx, valid); err == nil {
+		t.Fatal("canceled Zstandard inspection succeeded")
+	}
+}
+
+func TestArchiveInterpretationsHaveDifferentIdentities(t *testing.T) {
+	metadata := readPyPIFixture(t, "archive/PKG-INFO")
+	inner := packageArchive(t, "zip", []archiveTestEntry{{name: "project-1.0/PKG-INFO", body: metadata}})
+	outer := packageArchive(t, "tar", []archiveTestEntry{{name: "allowed-1.0/PKG-INFO", body: strings.ReplaceAll(metadata, "Name: project", "Name: allowed")}, {name: "allowed-1.0/payload.zip", body: string(inner)}})
+	// A raw Zstandard block leaves the embedded ZIP visible to ZIP readers.
+	payload := []byte{0x28, 0xb5, 0x2f, 0xfd, 0xa0}
+	payload = binary.LittleEndian.AppendUint32(payload, uint32(len(outer)))
+	block := uint32(len(outer))<<3 | 1
+	payload = append(payload, byte(block), byte(block>>8), byte(block>>16))
+	payload = append(payload, outer...)
+	reader := func() *io.SectionReader { return io.NewSectionReader(bytes.NewReader(payload), 0, int64(len(payload))) }
+	for _, test := range []struct {
+		format ArchiveFormat
+		name   string
+	}{{ArchiveZstandard, "allowed"}, {ArchiveZIP, "project"}} {
+		artifact, found, err := inspectArchiveFormat(context.Background(), reader(), test.format)
+		if err != nil || !found || artifact.Name != test.name {
+			t.Fatalf("format=%v artifact=%+v found=%v err=%v", test.format, artifact, found, err)
+		}
+	}
+	if _, _, err := inspectArchive(context.Background(), reader()); err == nil {
+		t.Fatal("accepted ambiguous archive without an adapter selection policy")
 	}
 }

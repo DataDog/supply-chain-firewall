@@ -42,6 +42,8 @@ func TestParsePyPIDistributionFilename(t *testing.T) {
 		{filename: "project-1.0rc1.tar.bz2", wantName: "project", wantVersion: "1.0rc1", wantOK: true},
 		{filename: "project-1.0dev.tar.gz", wantName: "project", wantVersion: "1.0.dev0", wantOK: true},
 		{filename: "project-1.0.tar.xz", wantName: "project", wantVersion: "1.0", wantOK: true},
+		{filename: "project-1.0.tar.zst", wantName: "project", wantVersion: "1.0", wantOK: true},
+		{filename: "download.tar.zst", wantOK: false},
 		{filename: "project-1.0.tar", wantName: "project", wantVersion: "1.0", wantOK: true},
 		{filename: "project-1.0.tbz", wantName: "project", wantVersion: "1.0", wantOK: true},
 		{filename: "project-1.0.txz", wantName: "project", wantVersion: "1.0", wantOK: true},
@@ -74,6 +76,7 @@ func TestParsePyPIDistributionFilenameWithProjectContext(t *testing.T) {
 		filename, project, version string
 	}{
 		{"project-1.0-1.tar.gz", "project", "1.0.post1"},
+		{"project-1.0-1.tar.zst", "project", "1.0.post1"},
 		{"project-1.0-1.tar.gz", "project-1-0", "1"},
 		{"legacy-project-1.0-2.zip", "legacy-project", "1.0.post2"},
 		{"My.Project-1.0-rc1.tar.gz", "my-project", "1.0rc1"},

@@ -1,0 +1,6 @@
+# /// script
+# dependencies = ["project @ %s"]
+# ///
+import importlib.metadata
+
+assert importlib.metadata.version("project") == "1.0"

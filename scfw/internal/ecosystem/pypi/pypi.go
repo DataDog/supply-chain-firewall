@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -52,14 +53,26 @@ const (
 type RequestClassifierOptions struct {
 	SimpleIndexURLs    []string
 	DirectArtifactURLs []string
+	// InspectArchiveURLs inspects archive-shaped paths regardless of media type,
+	// following their redirects. Non-package bodies retain metadata observation.
+	InspectArchiveURLs bool
+	// SelectArchive is supplied by the package-manager adapter.
+	SelectArchive ArchiveSelector
+	// RetainArchiveContentEncoding inspects wire bytes for managers whose archive
+	// downloads do not decode HTTP Content-Encoding (pip's raw stream).
+	RetainArchiveContentEncoding bool
 }
 
 // RequestClassifier classifies requests within one package-manager run.
 // Advertised artifact URLs remain the metadata cache's responsibility because
 // they may be opaque and can point at an otherwise unknown CDN.
 type RequestClassifier struct {
-	simpleIndexes      []pyPISimpleIndex
-	directArtifactURLs map[string]struct{}
+	simpleIndexes                []pyPISimpleIndex
+	directArtifactURLs           map[string]struct{}
+	inspectArchiveURLs           bool
+	archiveRedirects             sync.Map
+	selectArchive                ArchiveSelector
+	retainArchiveContentEncoding bool
 }
 
 type pyPISimpleIndex struct {
@@ -89,7 +102,7 @@ var (
 )
 
 var pyPISdistExtensions = []string{
-	".tar.lzma", ".tar.bz2", ".tar.gz", ".tar.lz", ".tar.xz", ".tar.z",
+	".tar.lzma", ".tar.bz2", ".tar.gz", ".tar.lz", ".tar.xz", ".tar.zst", ".tar.z",
 	".tbz", ".tgz", ".tlz", ".txz", ".tar", ".zip",
 }
 
@@ -303,7 +316,12 @@ func onlyDigits(value string) bool {
 // NewRequestClassifier creates a run-scoped classifier for configured
 // custom index and direct-artifact contexts.
 func NewRequestClassifier(options RequestClassifierOptions) (*RequestClassifier, error) {
-	classifier := &RequestClassifier{directArtifactURLs: make(map[string]struct{})}
+	classifier := &RequestClassifier{
+		directArtifactURLs:           make(map[string]struct{}),
+		inspectArchiveURLs:           options.InspectArchiveURLs,
+		selectArchive:                options.SelectArchive,
+		retainArchiveContentEncoding: options.RetainArchiveContentEncoding,
+	}
 	for _, value := range options.SimpleIndexURLs {
 		parsed, err := parsePyPIContextURL(value)
 		if err != nil {

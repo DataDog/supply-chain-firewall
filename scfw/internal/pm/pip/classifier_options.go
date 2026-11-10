@@ -26,5 +26,5 @@ func (pip Pip) PyPIClassifierOptions(command []string) (pypi.RequestClassifierOp
 		}
 		return urls
 	}
-	return pypi.RequestClassifierOptions{SimpleIndexURLs: httpOnly(settings.Indexes), DirectArtifactURLs: httpOnly(settings.Direct)}, nil
+	return pypi.RequestClassifierOptions{SimpleIndexURLs: httpOnly(settings.Indexes), DirectArtifactURLs: httpOnly(settings.Direct), SelectArchive: pip.selectArchive, RetainArchiveContentEncoding: true}, nil
 }

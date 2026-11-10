@@ -141,3 +141,30 @@ func TestNewWithoutFindingsListsHasNoFindings(t *testing.T) {
 		t.Fatalf("findings = %+v, want none without any findings list", findings)
 	}
 }
+
+func TestVerifyAcceptsYarnRegistrySource(t *testing.T) {
+	t.Setenv("SCFW_HOME", t.TempDir())
+	writeList(t, "findings.yml", `
+findings:
+  - severity: CRITICAL
+    finding: known-malicious-package
+    packages:
+      - ecosystem: npm
+        name: evil-1
+`)
+
+	v := New()
+
+	findings, err := v.Verify(context.Background(), pm.Package{
+		Ecosystem: ecosystem.NPM,
+		Name:      "evil-1",
+		Version:   "1.0.0",
+		Source:    "https://registry.yarnpkg.com/evil-1/-/evil-1-1.0.0.tgz",
+	})
+	if err != nil {
+		t.Fatalf("Verify() returned unexpected error for a yarnpkg source: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("findings = %+v, want the listed finding", findings)
+	}
+}

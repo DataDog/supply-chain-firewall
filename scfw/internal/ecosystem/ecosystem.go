@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/common"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/npm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 )
 
@@ -37,7 +38,7 @@ func NormalizePackageName(packageEcosystem Ecosystem, name string) string {
 func HasRegistrySource(ecosystem Ecosystem, source string) bool {
 	switch ecosystem {
 	case NPM:
-		return isNpmRegistrySource(source)
+		return npm.HasRegistrySource(source)
 	case PYPI:
 		return pypi.HasRegistrySource(source)
 	default:
@@ -50,7 +51,7 @@ func HasRegistrySource(ecosystem Ecosystem, source string) bool {
 func ResolvePublishDate(ctx context.Context, ecosystem Ecosystem, name, version, source string) (time.Time, error) {
 	switch ecosystem {
 	case NPM:
-		return resolveNpmPublishDate(ctx, name, version, source)
+		return npm.ResolvePublishDate(ctx, name, version, source)
 	case PYPI:
 		return pypi.ResolvePublishDate(ctx, name, version, source)
 	default:

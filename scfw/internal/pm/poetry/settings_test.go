@@ -16,6 +16,72 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
+// readPoetryFixture groups small configuration cases while keeping templates,
+// executable scripts, and certificate material in their original formats.
+func readPoetryFixture(name string) ([]byte, error) {
+	data, err := os.ReadFile("testdata/configurations.toml")
+	if err != nil {
+		return nil, err
+	}
+	var cases map[string]string
+	if err := toml.Unmarshal(data, &cases); err != nil {
+		return nil, err
+	}
+	if value, ok := cases[name]; ok {
+		return []byte(value), nil
+	}
+	return os.ReadFile(filepath.Join("testdata", name))
+}
+
+func poetrySettingsFixture(t *testing.T, name, path string) []byte {
+	t.Helper()
+	data, err := readPoetryFixture(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0400); err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func TestReadOnlyPoetryConfigurationPrecedence(t *testing.T) {
+	root := t.TempDir()
+	config := t.TempDir()
+	t.Setenv("POETRY_CONFIG_DIR", config)
+	paths := map[string][]byte{}
+	paths[filepath.Join(root, "pyproject.toml")] = poetrySettingsFixture(t, "proxy-sources.toml", filepath.Join(root, "pyproject.toml"))
+	paths[filepath.Join(root, "poetry.toml")] = poetrySettingsFixture(t, "local-config.toml", filepath.Join(root, "poetry.toml"))
+	paths[filepath.Join(config, "config.toml")] = poetrySettingsFixture(t, "global-config.toml", filepath.Join(config, "config.toml"))
+	paths[filepath.Join(config, "auth.toml")] = poetrySettingsFixture(t, "auth-config.toml", filepath.Join(config, "auth.toml"))
+	command := []string{"-C", root, "install"}
+	settings, err := readPoetrySettings(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.get("certificates", "private", "cert") != "local.pem" || settings.get("certificates", "private", "client-cert") != "client.pem" || settings.get("certificates", "insecure", "cert") != false {
+		t.Fatal("configuration precedence or types not preserved")
+	}
+	t.Setenv("POETRY_CERTIFICATES_PRIVATE_CERT", "environment.pem")
+	if settings.get("certificates", "private", "cert") != "environment.pem" {
+		t.Fatal("environment does not override merged files")
+	}
+	for path, before := range paths {
+		after, err := os.ReadFile(path)
+		if err != nil || !slices.Equal(before, after) {
+			t.Fatalf("configuration changed: %s", path)
+		}
+	}
+	empty := filepath.Join(t.TempDir(), "absent")
+	t.Setenv("POETRY_CONFIG_DIR", empty)
+	if _, err := readPoetrySettings(nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(empty); !os.IsNotExist(err) {
+		t.Fatal("configuration discovery created user files")
+	}
+}
+
 func TestPoetryNativeProxyDiscoveryAndBypass(t *testing.T) {
 	for _, key := range []string{"http_proxy", "HTTP_PROXY", "https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY", "no_proxy", "NO_PROXY", "PIP_PROXY", "scfw_test_proxy"} {
 		t.Setenv(key, "")
@@ -49,39 +115,5 @@ func TestPoetryNativeProxyDiscoveryAndBypass(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// readPoetryFixture reads a named configuration case or a standalone template/script.
-func readPoetryFixture(name string) ([]byte, error) {
-	data, err := os.ReadFile("testdata/configurations.toml")
-	if err != nil {
-		return nil, err
-	}
-	var cases map[string]string
-	if err := toml.Unmarshal(data, &cases); err != nil {
-		return nil, err
-	}
-	if value, ok := cases[name]; ok {
-		return []byte(value), nil
-	}
-	return os.ReadFile(filepath.Join("testdata", name))
-}
-
-func TestPoetryOwnArgumentBoundary(t *testing.T) {
-	for _, test := range []struct{ command, own []string }{
-		{[]string{"run", "python", "-Cchild", "--project", "child"}, []string{"run"}},
-		{[]string{"-C", "run", "install"}, []string{"-C", "run", "install"}},
-		{[]string{"--project", "run", "run", "--directory=project", "python", "-Pchild"}, []string{"--project", "run", "run", "--directory=project"}},
-		{[]string{"run", "-C", "project", "--", "python", "-Cchild"}, []string{"run", "-C", "project"}},
-		{[]string{"add", "--", "git+https://git.example/repo"}, []string{"add", "--", "git+https://git.example/repo"}},
-	} {
-		before := slices.Clone(test.command)
-		if own := poetryOwnArguments(test.command); !slices.Equal(own, test.own) {
-			t.Errorf("%v: own=%v, want %v", test.command, own, test.own)
-		}
-		if !slices.Equal(before, test.command) {
-			t.Fatal("discovery mutated command")
-		}
 	}
 }

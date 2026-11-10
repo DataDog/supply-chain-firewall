@@ -7,7 +7,6 @@ package pip
 
 import (
 	"context"
-	"errors"
 	"net"
 	"net/url"
 	"os"
@@ -65,27 +64,21 @@ func (pip Pip) ProxyCommand(_ context.Context, command []string, config proxy.Cl
 }
 
 func proxyEnvironmentOverrides(config proxy.ClientConfig) map[string]string {
-	return map[string]string{
-		"http_proxy": config.URL, "HTTP_PROXY": config.URL,
-		"https_proxy": config.URL, "HTTPS_PROXY": config.URL,
-		"all_proxy": config.URL, "ALL_PROXY": config.URL,
-		"no_proxy": "", "NO_PROXY": "", "PIP_PROXY": config.URL,
-		"PIP_CERT": config.CACertificatePath, "REQUESTS_CA_BUNDLE": config.CACertificatePath,
+	environment := config.EnvironmentOverrides()
+	for key, value := range map[string]string{
+		"PIP_PROXY": config.URL,
+		"PIP_CERT":  config.CACertificatePath, "REQUESTS_CA_BUNDLE": config.CACertificatePath,
 		"CURL_CA_BUNDLE": config.CACertificatePath, "GIT_SSL_CAINFO": config.CACertificatePath,
+	} {
+		environment[key] = value
 	}
+	return environment
 }
 
 func validateUpstream(config httpproxy.Config) error {
 	for _, value := range []string{config.HTTPProxy, config.HTTPSProxy} {
-		if value == "" {
-			continue
-		}
-		if !strings.Contains(value, "://") {
-			value = "http://" + value
-		}
-		parsed, err := url.Parse(value)
-		if err != nil || parsed.Hostname() == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-			return errors.New("unsupported or invalid pip upstream proxy URL")
+		if _, err := proxy.ParseUpstreamProxyURL(value); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -104,17 +97,7 @@ func pipProxyForURL(settings pipDiscoveryResult) func(*url.URL) (*url.URL, error
 			(settings.SystemProxyBypass != nil && settings.SystemProxyBypass(target)) {
 			value = fallback
 		}
-		if value == "" {
-			return nil, nil
-		}
-		if !strings.Contains(value, "://") {
-			value = "http://" + value
-		}
-		parsed, err := url.Parse(value)
-		if err != nil {
-			return nil, errors.New("invalid pip upstream proxy URL")
-		}
-		return parsed, nil
+		return proxy.ParseUpstreamProxyURL(value)
 	}
 }
 

@@ -40,8 +40,8 @@ func TestPipOpaqueDownloadsEndToEnd(t *testing.T) {
 			t.Setenv("PIP_CONFIG_FILE", os.DevNull)
 			t.Setenv("NO_PROXY", "*")
 			t.Setenv("no_proxy", "*")
-			sdist := pipSdist(t)
-			sourceTree := pipSdist(t, "pyproject.toml", "backend.py")
+			sdist := pypiSdist(t)
+			sourceTree := pypiSdist(t, "pyproject.toml", "backend.py")
 			for _, test := range []struct {
 				name                                      string
 				outcome                                   evaluation.Outcome

@@ -16,18 +16,27 @@ import (
 // TLSConfigOptions contains effective trust material resolved by an adapter.
 // The proxy does not consult package-manager configuration or environment.
 type TLSConfigOptions struct {
+	// RootCAs selects the base trust store. Nil preserves the system-trust
+	// default; an explicitly empty pool trusts no default certificates.
+	RootCAs               *x509.CertPool
 	CABundlePaths         []string
 	ClientCertificatePath string
 	// An empty key path uses ClientCertificatePath as a combined PEM file.
 	ClientKeyPath string
 }
 
-// NewTLSConfig augments system trust with PEM files or CA directories and
+// NewTLSConfig augments the supplied roots (system trust by default) with PEM files or CA directories and
 // optionally loads a client certificate. Errors omit paths which could contain credentials.
 func NewTLSConfig(options TLSConfigOptions) (*tls.Config, error) {
-	roots, err := x509.SystemCertPool()
-	if err != nil {
-		roots = x509.NewCertPool()
+	roots := options.RootCAs
+	if roots != nil {
+		roots = roots.Clone()
+	} else {
+		var err error
+		roots, err = x509.SystemCertPool()
+		if err != nil {
+			roots = x509.NewCertPool()
+		}
 	}
 	for _, path := range options.CABundlePaths {
 		if path == "" {

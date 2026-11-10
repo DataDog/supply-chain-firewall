@@ -10,6 +10,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -35,7 +38,8 @@ func TestRunCommandHelper(t *testing.T) {
 	case "exit":
 		os.Exit(17)
 	case "environment":
-		values := map[string]any{"keep": os.Getenv("SCFW_RUN_KEEP"), "replace": os.Getenv("SCFW_RUN_REPLACE"), "empty": os.Getenv("SCFW_RUN_EMPTY"), "args": os.Args[len(os.Args)-2:]}
+		_, removedPresent := os.LookupEnv("SCFW_RUN_REMOVED")
+		values := map[string]any{"removed_present": removedPresent, "keep": os.Getenv("SCFW_RUN_KEEP"), "replace": os.Getenv("SCFW_RUN_REPLACE"), "empty": os.Getenv("SCFW_RUN_EMPTY"), "args": os.Args[len(os.Args)-2:]}
 		data, err := json.Marshal(values)
 		if err != nil {
 			t.Fatal(err)
@@ -48,6 +52,7 @@ func TestRunCommandHelper(t *testing.T) {
 
 func TestRunAppliesOnlyChildEnvironmentAndPreservesArguments(t *testing.T) {
 	t.Setenv("SCFW_RUN_KEEP", "parent-keep")
+	t.Setenv("SCFW_RUN_REMOVED", "parent-removed")
 	t.Setenv("SCFW_RUN_REPLACE", "parent-replace")
 	t.Setenv("SCFW_RUN_EMPTY", "parent-empty")
 	result := filepath.Join(t.TempDir(), "result.json")
@@ -58,7 +63,7 @@ func TestRunAppliesOnlyChildEnvironmentAndPreservesArguments(t *testing.T) {
 		if _, err := os.Stat(config.CACertificatePath); err != nil {
 			t.Fatal(err)
 		}
-		return CommandSpec{Executable: os.Args[0], Args: append([]string{"-test.run=^TestRunCommandHelper$", "--"}, args...), EnvOverrides: map[string]string{"SCFW_TEST_PROXY_COMMAND": "environment", "SCFW_RUN_RESULT": result, "SCFW_RUN_REPLACE": "child", "SCFW_RUN_EMPTY": ""}}, nil
+		return CommandSpec{Executable: os.Args[0], Args: append([]string{"-test.run=^TestRunCommandHelper$", "--"}, args...), EnvRemovals: []string{"SCFW_RUN_REMOVED", "SCFW_RUN_REPLACE"}, EnvOverrides: map[string]string{"SCFW_TEST_PROXY_COMMAND": "environment", "SCFW_RUN_RESULT": result, "SCFW_RUN_REPLACE": "child", "SCFW_RUN_EMPTY": ""}}, nil
 	})
 	commandErr, setupErr := Run(context.Background(), Options{}, command, configure)
 	if commandErr != nil || setupErr != nil {
@@ -69,16 +74,17 @@ func TestRunAppliesOnlyChildEnvironmentAndPreservesArguments(t *testing.T) {
 		t.Fatal(err)
 	}
 	var values struct {
+		RemovedPresent       bool `json:"removed_present"`
 		Keep, Replace, Empty string
 		Args                 []string
 	}
 	if err := json.Unmarshal(data, &values); err != nil {
 		t.Fatal(err)
 	}
-	if values.Keep != "parent-keep" || values.Replace != "child" || values.Empty != "" || !slices.Equal(values.Args, command) {
+	if values.RemovedPresent || values.Keep != "parent-keep" || values.Replace != "child" || values.Empty != "" || !slices.Equal(values.Args, command) {
 		t.Fatalf("child values: %+v", values)
 	}
-	if os.Getenv("SCFW_RUN_REPLACE") != "parent-replace" || os.Getenv("SCFW_RUN_EMPTY") != "parent-empty" {
+	if os.Getenv("SCFW_RUN_REMOVED") != "parent-removed" || os.Getenv("SCFW_RUN_REPLACE") != "parent-replace" || os.Getenv("SCFW_RUN_EMPTY") != "parent-empty" {
 		t.Fatal("parent environment changed")
 	}
 	assertRunProxyStopped(t, seen)
@@ -90,7 +96,7 @@ func TestRunPreservesProcessExitCode(t *testing.T) {
 		seen = config
 		return CommandSpec{Executable: os.Args[0], Args: []string{"-test.run=^TestRunCommandHelper$"}, EnvOverrides: map[string]string{"SCFW_TEST_PROXY_COMMAND": "exit"}}, nil
 	})
-	commandErr, setupErr := Run(context.Background(), Options{}, nil, configure)
+	commandErr, setupErr := Run(context.Background(), Options{AdditionalClients: map[string]Options{"other": {}}}, nil, configure)
 	exit, ok := errors.AsType[*exec.ExitError](commandErr)
 	if setupErr != nil || !ok || exit.ExitCode() != 17 {
 		t.Fatalf("run: %v / %v; want exit 17", commandErr, setupErr)
@@ -125,7 +131,7 @@ func TestRunCleansUpOnPreparationFailureAndPanic(t *testing.T) {
 			})
 			panicked := func() (panicked bool) {
 				defer func() { panicked = recover() != nil }()
-				commandErr, setupErr = Run(ctx, Options{}, nil, configure)
+				commandErr, setupErr = Run(ctx, Options{AdditionalClients: map[string]Options{"other": {}}}, nil, configure)
 				return false
 			}()
 			if panicked != test.panics {
@@ -159,6 +165,9 @@ func TestApplyEnvironmentOverridesReplacesDuplicates(t *testing.T) {
 
 func assertRunProxyStopped(t *testing.T, config ClientConfig) {
 	t.Helper()
+	for _, client := range config.AdditionalClients {
+		assertRunProxyStopped(t, client)
+	}
 	if _, err := os.Stat(filepath.Dir(config.CACertificatePath)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("proxy CA directory remains: %v", err)
 	}
@@ -168,6 +177,40 @@ func assertRunProxyStopped(t *testing.T, config ClientConfig) {
 		_ = connection.Close()
 		t.Fatal("proxy still listening")
 	}
+}
+
+func TestRunAdditionalClientSharesPolicyHooks(t *testing.T) {
+	requests := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests++ }))
+	defer upstream.Close()
+	var seen ClientConfig
+	options := Options{
+		AdditionalClients: map[string]Options{"other": {}},
+		RequestHooks:      []RequestHook{func(context.Context, Request) (ResponseHook, error) { return nil, errors.New("fixture policy block") }},
+	}
+	configure := commandConfigurerFunc(func(_ context.Context, _ []string, config ClientConfig) (CommandSpec, error) {
+		seen = config
+		address, err := url.Parse(config.AdditionalClients["other"].URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		transport := &http.Transport{Proxy: http.ProxyURL(address)}
+		defer transport.CloseIdleConnections()
+		response, err := (&http.Client{Transport: transport}).Get(upstream.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusForbidden || requests != 0 {
+			t.Fatal("additional client bypassed the invocation policy")
+		}
+		return CommandSpec{Executable: "true"}, nil
+	})
+	commandErr, setupErr := Run(context.Background(), options, nil, configure)
+	if commandErr != nil || setupErr != nil {
+		t.Fatalf("run: %v/%v", commandErr, setupErr)
+	}
+	assertRunProxyStopped(t, seen)
 }
 func TestRunCancellationForwardsSignalToBuildChildren(t *testing.T) {
 	signalCommandFixture := readProxyFixture(t, "signal-command.py")

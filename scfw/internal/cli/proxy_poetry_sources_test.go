@@ -98,12 +98,12 @@ func TestPoetryConfiguredRepositoriesPreserveTLS(t *testing.T) {
 	manager := poetryForProxyTest(t)
 	wheel := pypiWheel(t)
 	for _, test := range []struct {
-		name                  string
-		environment, insecure bool
+		name                            string
+		environment, insecure, relative bool
 	}{
-		{name: "private"}, {name: "Private"}, {name: "private", environment: true}, {name: "private", insecure: true},
+		{name: "private"}, {name: "Private"}, {name: "private", environment: true}, {name: "private", insecure: true}, {name: "private", relative: true},
 	} {
-		t.Run(fmt.Sprintf("%s/environment=%t/insecure=%t", test.name, test.environment, test.insecure), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s/environment=%t/insecure=%t/relative=%t", test.name, test.environment, test.insecure, test.relative), func(t *testing.T) {
 			origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				username, password, ok := r.BasicAuth()
 				if !ok || username != "private" || password != "secret" {
@@ -131,6 +131,12 @@ func TestPoetryConfiguredRepositoriesPreserveTLS(t *testing.T) {
 			t.Setenv("POETRY_CONFIG_DIR", config)
 			for _, proxied := range []bool{false, true} {
 				root := t.TempDir()
+				if test.relative {
+					if err := os.Symlink(config, filepath.Join(root, "config")); err != nil {
+						t.Fatal(err)
+					}
+					t.Setenv("POETRY_CONFIG_DIR", "config")
+				}
 				t.Setenv("POETRY_CACHE_DIR", filepath.Join(root, "cache"))
 				poetryTestFile(t, filepath.Join(root, "pyproject.toml"), readProxyFixture(t, "poetry/git-pyproject.toml"))
 				args := []string{"--directory", root, "--no-interaction", "add", "--lock", origin.URL + "/project-1.0-py3-none-any.whl"}

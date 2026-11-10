@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -83,6 +84,88 @@ func TestReadOnlyPoetryConfigurationPrecedence(t *testing.T) {
 	}
 	if _, err := os.Stat(empty); !os.IsNotExist(err) {
 		t.Fatal("configuration discovery created user files")
+	}
+}
+
+func TestPoetryConfigurationDirectoryUsesWorkingDirectory(t *testing.T) {
+	root := t.TempDir()
+	start := filepath.Join(root, "start")
+	work := filepath.Join(root, "work")
+	project := filepath.Join(root, "project")
+	global := filepath.Join(root, "global")
+	paths := map[string][]byte{}
+	for _, directory := range []string{start, work, project, filepath.Join(global, "leaf")} {
+		if err := os.MkdirAll(directory, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, directory := range []string{filepath.Join(work, "config"), filepath.Join(work, "{cache-dir}"), filepath.Join(work, "config-home", "pypoetry"), global} {
+		if err := os.MkdirAll(directory, 0700); err != nil {
+			t.Fatal(err)
+		}
+		for name, fixture := range map[string]string{"config.toml": "global-config.toml", "auth.toml": "auth-config.toml"} {
+			path := filepath.Join(directory, name)
+			paths[path] = poetrySettingsFixture(t, fixture, path)
+		}
+	}
+	for _, directory := range []string{start, project} {
+		config := filepath.Join(directory, "config")
+		if err := os.Mkdir(config, 0700); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(config, "config.toml")
+		paths[path] = poetrySettingsFixture(t, "disabled-private-trust.toml", path)
+	}
+	path := filepath.Join(project, "pyproject.toml")
+	paths[path] = poetrySettingsFixture(t, "proxy-project.toml", path)
+	if err := os.Symlink(filepath.Join(global, "leaf"), filepath.Join(work, "link")); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(start)
+	for _, test := range []struct {
+		name, directory string
+		xdg, missing    bool
+	}{
+		{name: "relative", directory: "config"},
+		{name: "literal placeholders", directory: "{cache-dir}"},
+		{name: "symlink parent", directory: "link/.."},
+		{name: "absolute symlink parent", directory: work + "/link/.."},
+		{name: "relative XDG", directory: "config-home", xdg: true},
+		{name: "missing parent", directory: "missing/../config", missing: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if test.xdg {
+				if runtime.GOOS == "darwin" {
+					t.Skip("Poetry ignores XDG_CONFIG_HOME on macOS")
+				}
+				t.Setenv("POETRY_CONFIG_DIR", "")
+				t.Setenv("XDG_CONFIG_HOME", test.directory)
+			} else {
+				t.Setenv("POETRY_CONFIG_DIR", test.directory)
+			}
+			settings, err := readPoetrySettings([]string{"--directory", work, "--project", "../project", "install"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.missing {
+				if settings.get("certificates", "private", "cert") != nil {
+					t.Fatal("traversed a nonexistent configuration directory")
+				}
+				return
+			}
+			if settings.get("certificates", "private", "cert") != "auth.pem" || settings.get("certificates", "private", "client-cert") != "client.pem" || settings.get("http-basic", "private", "password") != "configuration-secret" {
+				t.Fatal("did not load global configuration and authentication from the working directory")
+			}
+		})
+	}
+	for path, before := range paths {
+		after, err := os.ReadFile(path)
+		if err != nil || !slices.Equal(before, after) {
+			t.Fatal("configuration or authentication changed")
+		}
+	}
+	if _, err := os.Stat(filepath.Join(work, "missing")); !os.IsNotExist(err) {
+		t.Fatal("created a missing configuration directory")
 	}
 }
 

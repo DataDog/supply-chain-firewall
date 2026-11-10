@@ -95,16 +95,19 @@ func readPoetrySettings(command []string) (poetrySettings, error) {
 			return settings, err
 		}
 		if runtime.GOOS == "darwin" {
-			configDirectory = filepath.Join(home, "Library", "Application Support", "pypoetry")
+			configDirectory = home + "/Library/Application Support/pypoetry"
 		} else {
 			base := os.Getenv("XDG_CONFIG_HOME")
 			if base == "" {
-				base = filepath.Join(home, ".config")
+				base = home + string(filepath.Separator) + ".config"
 			}
-			configDirectory = filepath.Join(base, "pypoetry")
+			configDirectory = base + string(filepath.Separator) + "pypoetry"
 		}
 	}
-	for index, path := range []string{filepath.Join(configDirectory, "config.toml"), filepath.Join(configDirectory, "auth.toml"), settings.projectDirectory + string(filepath.Separator) + "poetry.toml"} {
+	// Poetry opens global configuration after changing to --directory. Keep
+	// environment paths literal and preserve filesystem traversal through '..'.
+	configDirectory = settings.workingPath(configDirectory)
+	for index, path := range []string{configDirectory + string(filepath.Separator) + "config.toml", configDirectory + string(filepath.Separator) + "auth.toml", settings.projectDirectory + string(filepath.Separator) + "poetry.toml"} {
 		if index == 2 {
 			global := settings
 			global.values = clonePoetryConfiguration(settings.values)
@@ -267,8 +270,8 @@ func (s poetrySettings) certificatePath(value any) string {
 	return s.workingPath(path)
 }
 
-// workingPath preserves literal Requests environment paths; unlike Poetry
-// certificate settings, those paths do not expand configuration placeholders.
+// workingPath resolves literal process paths from Poetry's effective working
+// directory; unlike certificate settings, they do not expand placeholders.
 func (s poetrySettings) workingPath(path string) string {
 	if path == "" {
 		return ""

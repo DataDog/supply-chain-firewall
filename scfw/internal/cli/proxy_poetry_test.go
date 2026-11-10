@@ -444,6 +444,37 @@ func TestPoetryPublicPyPIThroughProxy(t *testing.T) {
 	assertProxyCleaned(t, runner.config)
 }
 
+func TestPoetryMixedCaseUpstreamProxy(t *testing.T) {
+	manager := poetryForProxyTest(t)
+	root := t.TempDir()
+	poetryTestFile(t, filepath.Join(root, "pyproject.toml"), readProxyFixture(t, "poetry/git-pyproject.toml"))
+	wheel := pypiWheel(t)
+	var downloads, proxyHits atomic.Int32
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		downloads.Add(1)
+		_, _ = w.Write(wheel)
+	}))
+	defer origin.Close()
+	upstream := proxyTestUpstream(t, upstreamProxyOptions{credentials: "proxy:proxy-secret", hits: &proxyHits})
+	// Empty lowercase variables would explicitly remove a mixed-case value.
+	for _, key := range []string{"http_proxy", "HTTP_PROXY", "https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"} {
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("Http_Proxy", strings.Replace(upstream.URL, "://", "://proxy:proxy-secret@", 1))
+	runner := &capturingPoetryRunner{Poetry: manager}
+	args := []string{"--directory", root, "--no-interaction", "add", "--lock", origin.URL + "/project-1.0-py3-none-any.whl"}
+	commandErr, setupErr := runThroughProxy(context.Background(), runner, args, nil)
+	if commandErr != nil || setupErr != nil {
+		t.Fatalf("mixed-case upstream failed: %v / %v", commandErr, setupErr)
+	}
+	if downloads.Load() == 0 || proxyHits.Load() == 0 {
+		t.Fatal("Poetry download did not follow the captured mixed-case proxy")
+	}
+	assertProxyCleaned(t, runner.config)
+}
+
 func TestPoetryProxyPreservesProcess(t *testing.T) {
 	manager := poetryForProxyTest(t)
 	root := t.TempDir()

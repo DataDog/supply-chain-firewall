@@ -30,6 +30,10 @@ func TestPoetryUpstreamProxy(t *testing.T) {
 	}{
 		{name: "direct"},
 		{name: "uppercase", env: map[string]string{"HTTP_PROXY": "http://user:secret@http.example:80", "HTTPS_PROXY": "https://user:secret@https.example:443", "NO_PROXY": "internal.example"}, http: "http://user:secret@http.example:80", https: "https://user:secret@https.example:443", bypass: "internal.example"},
+		{name: "mixed case", env: map[string]string{"Http_Proxy": "http://http.example", "Https_Proxy": "http://https.example"}, http: "http://http.example", https: "http://https.example"},
+		{name: "mixed case all fallback", env: map[string]string{"All_Proxy": "http://fallback.example"}, http: "http://fallback.example", https: "http://fallback.example"},
+		{name: "lowercase wins over mixed case", env: map[string]string{"Https_Proxy": "http://wrong", "https_proxy": "http://right"}, https: "http://right"},
+		{name: "empty lowercase removes mixed case", env: map[string]string{"Https_Proxy": "http://wrong", "https_proxy": ""}},
 		{name: "lowercase wins", env: map[string]string{"HTTP_PROXY": "http://wrong", "http_proxy": "http://right", "HTTPS_PROXY": "http://wrong", "https_proxy": "http://secure", "NO_PROXY": "wrong", "no_proxy": "right"}, http: "http://right", https: "http://secure", bypass: "right"},
 		{name: "empty lowercase removes uppercase", env: map[string]string{"HTTP_PROXY": "http://wrong", "http_proxy": "", "HTTPS_PROXY": "http://wrong", "https_proxy": ""}},
 		{name: "all fallback", env: map[string]string{"ALL_PROXY": "http://fallback", "https_proxy": "https://secure"}, http: "http://fallback", https: "https://secure"},
@@ -37,13 +41,14 @@ func TestPoetryUpstreamProxy(t *testing.T) {
 		{name: "empty lowercase bypass uses uppercase", env: map[string]string{"no_proxy": "", "NO_PROXY": "*"}, bypass: "*"},
 		{name: "implicit scheme", env: map[string]string{"http_proxy": "user:secret@proxy.example:8080"}, http: "user:secret@proxy.example:8080"},
 		{name: "CGI ignores uppercase HTTP", env: map[string]string{"REQUEST_METHOD": "GET", "HTTP_PROXY": "http://wrong", "HTTPS_PROXY": "http://secure"}, https: "http://secure"},
+		{name: "CGI ignores mixed case HTTP", env: map[string]string{"REQUEST_METHOD": "GET", "Http_Proxy": "http://wrong", "Https_Proxy": "http://secure"}, https: "http://secure"},
 		{name: "CGI retains lowercase HTTP", env: map[string]string{"REQUEST_METHOD": "GET", "http_proxy": "http://right"}, http: "http://right"},
 		{name: "invalid URL", env: map[string]string{"http_proxy": "http://user:secret%zz@proxy.example"}, invalid: true},
 		{name: "unsupported scheme", env: map[string]string{"https_proxy": "socks5://user:secret@proxy.example"}, invalid: true},
 		{name: "missing host", env: map[string]string{"http_proxy": "http://user:secret@"}, invalid: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			for _, key := range []string{"http_proxy", "HTTP_PROXY", "https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY", "no_proxy", "NO_PROXY", "REQUEST_METHOD"} {
+			for _, key := range []string{"http_proxy", "HTTP_PROXY", "Http_Proxy", "https_proxy", "HTTPS_PROXY", "Https_Proxy", "all_proxy", "ALL_PROXY", "All_Proxy", "no_proxy", "NO_PROXY", "REQUEST_METHOD"} {
 				t.Setenv(key, "")
 				if err := os.Unsetenv(key); err != nil {
 					t.Fatal(err)

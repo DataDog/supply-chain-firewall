@@ -32,16 +32,17 @@ func (poetry Poetry) UpstreamProxy(_ []string) (httpproxy.Config, error) {
 }
 
 func discoverPoetryProxies(readSystem func() (pythonproxy.Settings, error)) (httpproxy.Config, pythonproxy.Settings, error) {
-	all := poetryProxyEnv("all_proxy")
+	environment := pythonproxy.Environment()
+	all := environment["all"]
 	bypass := os.Getenv("no_proxy")
 	if bypass == "" {
 		bypass = os.Getenv("NO_PROXY")
 	}
 	config := httpproxy.Config{HTTPProxy: all, HTTPSProxy: all, NoProxy: bypass}
-	if value := poetryProxyEnv("http_proxy"); value != "" {
+	if value := environment["http"]; value != "" {
 		config.HTTPProxy = value
 	}
-	if value := poetryProxyEnv("https_proxy"); value != "" {
+	if value := environment["https"]; value != "" {
 		config.HTTPSProxy = value
 	}
 	var native pythonproxy.Settings
@@ -60,17 +61,6 @@ func discoverPoetryProxies(readSystem func() (pythonproxy.Settings, error)) (htt
 		}
 	}
 	return config, native, nil
-}
-
-func poetryProxyEnv(name string) string {
-	if value, present := os.LookupEnv(name); present {
-		return value
-	}
-	// urllib ignores uppercase HTTP_PROXY in CGI environments.
-	if name == "http_proxy" && os.Getenv("REQUEST_METHOD") != "" {
-		return ""
-	}
-	return os.Getenv(strings.ToUpper(name))
 }
 
 func (poetry Poetry) ProxyOptions(command []string) (proxy.Options, error) {

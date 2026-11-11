@@ -981,11 +981,13 @@ func resetConfigureCmd(t *testing.T) {
 		configureCmd.SilenceUsage, configureCmd.SilenceErrors = origSilenceUsage, origSilenceErrors
 		aliasNpm, aliasPip, aliasPoetry = false, false, false
 		aliasUV, removeAliasUV = false, false
+		aliasYarn, removeAliasYarn = false, false
 		removeAliasNpm, removeAliasPip, removeAliasPoetry = false, false, false
 		ddAPIKey, ddAppKey, ddSite, scfwHome, remove = "", "", "", "", false
 		for _, name := range []string{
 			"alias-npm", "alias-pip", "alias-poetry",
 			"alias-uv", "remove-alias-uv",
+			"alias-yarn", "remove-alias-yarn",
 			"remove-alias-npm", "remove-alias-pip", "remove-alias-poetry",
 			"dd-api-key", "dd-app-key", "dd-site", "scfw-home", "remove",
 		} {
@@ -1004,6 +1006,8 @@ func TestConfigureCmd_MutualExclusivityIsEnforced(t *testing.T) {
 		{name: "remove and alias-poetry", args: []string{"--remove", "--alias-poetry"}},
 		{name: "remove and alias-uv", args: []string{"--remove", "--alias-uv"}},
 		{name: "remove and remove-alias-uv", args: []string{"--remove", "--remove-alias-uv"}},
+		{name: "remove and alias-yarn", args: []string{"--remove", "--alias-yarn"}},
+		{name: "remove and remove-alias-yarn", args: []string{"--remove", "--remove-alias-yarn"}},
 		{name: "remove and remove-alias-npm", args: []string{"--remove", "--remove-alias-npm"}},
 		{name: "remove and remove-alias-pip", args: []string{"--remove", "--remove-alias-pip"}},
 		{name: "remove and remove-alias-poetry", args: []string{"--remove", "--remove-alias-poetry"}},
@@ -1026,7 +1030,7 @@ func TestConfigureCmd_MutualExclusivityIsEnforced(t *testing.T) {
 }
 
 func TestConfigureCmd_AliasAdditionAndRemovalAreMutuallyExclusive(t *testing.T) {
-	for _, packageManager := range []string{"npm", "pip", "poetry", "uv"} {
+	for _, packageManager := range []string{"npm", "pip", "poetry", "uv", "yarn"} {
 		t.Run(packageManager, func(t *testing.T) {
 			resetConfigureCmd(t)
 
@@ -1093,6 +1097,61 @@ func TestConfigureUVAliasLifecycle(t *testing.T) {
 		}
 	}
 	execute("--alias-uv")
+	execute("--remove")
+	for _, name := range configFiles {
+		content, err := os.ReadFile(filepath.Join(home, name))
+		if err != nil || strings.Contains(string(content), blockStart) || !strings.Contains(string(content), "export EXISTING=1") {
+			t.Fatalf("remove-all failed: %q, %v", content, err)
+		}
+	}
+}
+
+func TestConfigureYarnAliasLifecycle(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	withKeyringDelete(t, func(string, string) error { return nil })
+	for _, name := range configFiles {
+		if err := os.WriteFile(filepath.Join(home, name), []byte("export EXISTING=1\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	execute := func(args ...string) {
+		t.Helper()
+		aliasYarn, removeAliasYarn, remove = false, false, false
+		ddSite = ""
+		for _, name := range []string{"alias-yarn", "remove-alias-yarn", "remove", "dd-site"} {
+			configureCmd.Flags().Lookup(name).Changed = false
+		}
+		configureCmd.SetArgs(args)
+		if err := configureCmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resetConfigureCmd(t)
+	var first []byte
+	for index, args := range [][]string{{"--alias-yarn"}, {"--alias-yarn"}, {"--dd-site", "datadoghq.eu"}} {
+		execute(args...)
+		for _, name := range configFiles {
+			content, err := os.ReadFile(filepath.Join(home, name))
+			if err != nil || strings.Count(string(content), `alias yarn="scfw run -- yarn"`) != 1 || !strings.Contains(string(content), "export EXISTING=1") {
+				t.Fatalf("alias add/preserve failed: %q, %v", content, err)
+			}
+			if name == configFiles[0] {
+				if index == 1 && !bytes.Equal(content, first) {
+					t.Fatalf("repeating --alias-yarn changed %s: %q -> %q", name, first, content)
+				}
+				first = content
+			}
+		}
+	}
+	execute("--remove-alias-yarn")
+	for _, name := range configFiles {
+		content, err := os.ReadFile(filepath.Join(home, name))
+		if err != nil || strings.Contains(string(content), "alias yarn=") || !strings.Contains(string(content), "datadoghq.eu") {
+			t.Fatalf("alias removal failed: %q, %v", content, err)
+		}
+	}
+	execute("--alias-yarn")
 	execute("--remove")
 	for _, name := range configFiles {
 		content, err := os.ReadFile(filepath.Join(home, name))

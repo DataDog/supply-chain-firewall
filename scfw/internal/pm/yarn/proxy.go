@@ -93,10 +93,14 @@ func (yarn Yarn) ProxyCommand(_ context.Context, command []string, config proxy.
 	if err != nil {
 		return proxy.CommandSpec{}, errors.New("read proxy CA certificate")
 	}
-	if gen != classic {
-		return proxy.CommandSpec{}, errors.New("yarn berry is not supported yet")
+	if gen == classic {
+		return classicProxyCommand(yarn.executable, command, config, pem)
 	}
-	return classicProxyCommand(yarn.executable, command, config, pem)
+	// Refuse before Yarn starts when its settings would route around SCFW.
+	if _, err := yarn.berrySettings(command); err != nil {
+		return proxy.CommandSpec{}, err
+	}
+	return berryProxyCommand(yarn.executable, command, config, pem)
 }
 
 var _ pm.ProxyRunner = Yarn{}

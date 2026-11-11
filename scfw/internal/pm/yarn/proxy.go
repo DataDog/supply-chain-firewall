@@ -6,12 +6,36 @@
 package yarn
 
 import (
+	"errors"
+
 	"golang.org/x/net/http/httpproxy"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
-func (yarn Yarn) UpstreamProxy(_ []string) (httpproxy.Config, error) {
-	if _, err := yarn.generation(); err != nil {
+func (yarn Yarn) UpstreamProxy(command []string) (httpproxy.Config, error) {
+	gen, err := yarn.generation()
+	if err != nil {
 		return httpproxy.Config{}, err
 	}
-	return httpproxy.Config{}, nil
+	if gen != classic {
+		return httpproxy.Config{}, nil
+	}
+	settings, err := yarn.classicSettings(command)
+	if err != nil {
+		return httpproxy.Config{}, err
+	}
+	config := httpproxy.Config{HTTPSProxy: settings.HTTPS, HTTPProxy: settings.HTTP, NoProxy: settings.NoProxy}
+	return config, validateUpstream(config)
+}
+
+// validateUpstream rejects proxies the core cannot use, without echoing a URL
+// that may carry credentials.
+func validateUpstream(config httpproxy.Config) error {
+	for _, value := range []string{config.HTTPSProxy, config.HTTPProxy} {
+		if _, err := proxy.ParseUpstreamProxyURL(value); err != nil {
+			return errors.New("unsupported or invalid yarn upstream proxy URL")
+		}
+	}
+	return nil
 }

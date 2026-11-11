@@ -11,6 +11,8 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"syscall"
@@ -26,7 +28,7 @@ func LoadNpmrc(path string, env map[string]string) (Config, error) {
 	if path == "" {
 		return Config{}, nil
 	}
-	data, err := readNpmrcFile(path)
+	data, err := ReadConfigFile(path)
 	if os.IsNotExist(err) || os.IsPermission(err) || errors.Is(err, syscall.ENOTDIR) {
 		return Config{}, nil
 	}
@@ -38,7 +40,8 @@ func LoadNpmrc(path string, env map[string]string) (Config, error) {
 
 const maxNpmrcBytes = 8 << 20
 
-func readNpmrcFile(path string) ([]byte, error) {
+// ReadConfigFile reads a bounded, regular configuration file.
+func ReadConfigFile(path string) ([]byte, error) {
 	// Nonblocking open plus a regular-file check also handles a path swapped
 	// for a FIFO while discovery is reading it.
 	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
@@ -201,4 +204,24 @@ func LastValue(values []string) string {
 		return ""
 	}
 	return values[len(values)-1]
+}
+
+// GlobalPrefix mirrors npm's default global prefix on Unix: PREFIX, else the
+// directory above the bin directory of the node executable npm runs on.
+func GlobalPrefix(env map[string]string) string {
+	if env["PREFIX"] != "" {
+		return env["PREFIX"]
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		return ""
+	}
+	if node, err = filepath.EvalSymlinks(node); err != nil {
+		return ""
+	}
+	prefix := filepath.Dir(filepath.Dir(node))
+	if env["DESTDIR"] != "" {
+		prefix = filepath.Join(env["DESTDIR"], prefix)
+	}
+	return prefix
 }

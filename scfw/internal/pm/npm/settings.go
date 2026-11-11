@@ -7,7 +7,6 @@ package npm
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -159,7 +158,7 @@ func readNpmConfig(args []string, environ []string) ([]npmConfig, error) {
 	case len(setters) == 1:
 		globalconfig = setters[0]
 	default:
-		prefix := firstNonEmpty(path(options, "prefix"), path(environment, "prefix"), path(project, "prefix"), path(user, "prefix"), globalPrefix(env))
+		prefix := firstNonEmpty(path(options, "prefix"), path(environment, "prefix"), path(project, "prefix"), path(user, "prefix"), nodeproxy.GlobalPrefix(env))
 		if prefix != "" {
 			globalconfig = filepath.Join(prefix, "etc", "npmrc")
 		}
@@ -189,26 +188,6 @@ func localPrefix() string {
 			return cwd
 		}
 	}
-}
-
-// globalPrefix mirrors npm's default global prefix on Unix: PREFIX, else the
-// directory above the bin directory of the node executable npm runs on.
-func globalPrefix(env map[string]string) string {
-	if env["PREFIX"] != "" {
-		return env["PREFIX"]
-	}
-	node, err := exec.LookPath("node")
-	if err != nil {
-		return ""
-	}
-	if node, err = filepath.EvalSymlinks(node); err != nil {
-		return ""
-	}
-	prefix := filepath.Dir(filepath.Dir(node))
-	if env["DESTDIR"] != "" {
-		prefix = filepath.Join(env["DESTDIR"], prefix)
-	}
-	return prefix
 }
 
 // expandNpmPath resolves an npm path setting: a leading ~ is the home

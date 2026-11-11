@@ -11,13 +11,13 @@ import (
 	"maps"
 	"net/url"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
 	"golang.org/x/net/http/httpproxy"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/nodeproxy"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
@@ -157,12 +157,8 @@ func (npm Npm) ProxyCommand(_ context.Context, command []string, config proxy.Cl
 	overrides := proxyEnvironmentOverrides(os.Environ(), config, string(pem))
 	// Lifecycle scripts ignore the proxy variables unless NODE_USE_ENV_PROXY is
 	// set, so they may still connect directly and need the user's own CAs.
-	if userCAs, err := os.ReadFile(os.Getenv("NODE_EXTRA_CA_CERTS")); err == nil {
-		bundle := filepath.Join(filepath.Dir(config.CACertificatePath), "node-extra-ca.pem")
-		if err := os.WriteFile(bundle, slices.Concat(userCAs, []byte("\n"), pem), 0600); err != nil {
-			return proxy.CommandSpec{}, errors.New("write Node CA bundle")
-		}
-		overrides["NODE_EXTRA_CA_CERTS"] = bundle
+	if overrides["NODE_EXTRA_CA_CERTS"], err = nodeproxy.NodeExtraCACerts(config.CACertificatePath, pem); err != nil {
+		return proxy.CommandSpec{}, err
 	}
 	return proxy.CommandSpec{Executable: npm.Executable(), Args: args, EnvOverrides: overrides}, nil
 }

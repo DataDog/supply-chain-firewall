@@ -1,0 +1,12 @@
+# /// script
+# dependencies = ["project==1.0"]
+# [tool.uv]
+# index-url = "%s"
+# allow-insecure-host = ["%s"]
+# ///
+import project
+import pathlib
+import sys
+
+assert pathlib.Path(__file__).name == "script.py"
+assert sys.argv[1:] == ["--config-file=child.toml", "--help"]

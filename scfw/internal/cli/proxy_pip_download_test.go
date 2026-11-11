@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/pip"
@@ -209,5 +210,125 @@ func TestPipOpaqueDownloadsEndToEnd(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestPipArchiveInterpretationMatchesInstallation(t *testing.T) {
+	executable, err := exec.LookPath("pip")
+	if err != nil {
+		t.Skip("pip required")
+	}
+	versionOutput, err := exec.CommandContext(t.Context(), executable, "--version").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := strings.Fields(string(versionOutput))
+	if len(fields) < 2 {
+		t.Fatalf("unrecognized pip version: %q", versionOutput)
+	}
+	version, err := pm.ParseVersion(fields[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("using %s", strings.TrimSpace(string(versionOutput)))
+	for _, key := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "PIP_PROXY", "PIP_CERT", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "PIP_CLIENT_CERT", "PIP_TRUSTED_HOST", "PIP_EXTRA_INDEX_URL", "GIT_SSL_CAINFO", "SSL_CERT_FILE", "SSL_CERT_DIR"} {
+		t.Setenv(key, "")
+	}
+	t.Setenv("PIP_CONFIG_FILE", os.DevNull)
+	t.Setenv("PIP_DISABLE_PIP_VERSION_CHECK", "1")
+	polyglot := pypiZstandardZIP(t)
+	gzipTail := pypiGzipWithZIPTail(t)
+	gzipTAR := pypiGzipTARPolyglot(t)
+	for _, test := range []struct {
+		name, filename, disposition, encoding string
+		payload                               []byte
+		redirect                              bool
+		legacyReject                          bool
+	}{
+		{name: "zstandard ZIP", filename: "download.zip", payload: polyglot},
+		{name: "disposition overrides extension", filename: "download.tar.gz", disposition: `attachment; filename="download.zip"`, payload: polyglot},
+		{name: "redirect and disposition", filename: "redirect.tar.gz", disposition: `attachment; filename="download.zip"`, payload: polyglot, redirect: true},
+		{name: "raw archive ignores HTTP encoding", filename: "download.zip", encoding: "gzip", payload: polyglot},
+		{name: "gzip under TAR filename", filename: "download.tar", payload: pypiSdist(t)},
+		{name: "gzip and raw TAR", filename: "download.tar", payload: gzipTAR},
+		// Before 26.1, pip selects the ZIP tail, which contains only data.csv.
+		// Reject it before policy evaluation because that ZIP has no package metadata.
+		{name: "gzip with ZIP tail", filename: "download.tar.gz", payload: gzipTail, legacyReject: true},
+	} {
+		for _, block := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/block=%v", test.name, block), func(t *testing.T) {
+				t.Chdir(t.TempDir())
+				marker := filepath.Join(t.TempDir(), "backend-executed")
+				t.Setenv("SCFW_TEST_BACKEND_MARKER", marker)
+				missingMetadata := test.legacyReject && version.LessThan(pm.Version{Major: 26, Minor: 1})
+				rejected := block || missingMetadata
+				wantCalls := int32(1)
+				if missingMetadata {
+					wantCalls = 0
+				}
+				origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if test.redirect && r.URL.Path == "/redirect.tar.gz" {
+						http.Redirect(w, r, "/opaque", http.StatusFound)
+						return
+					}
+					w.Header().Set("Content-Type", "application/octet-stream")
+					if test.disposition != "" {
+						w.Header().Set("Content-Disposition", test.disposition)
+					}
+					if test.encoding != "" {
+						w.Header().Set("Content-Encoding", test.encoding)
+					}
+					http.ServeContent(w, r, test.filename, time.Time{}, bytes.NewReader(test.payload))
+				}))
+				defer origin.Close()
+				target := t.TempDir()
+				args := []string{"install", "--disable-pip-version-check", "--no-deps", "--no-build-isolation", "--no-index", "--no-cache-dir", "--retries", "0", "--timeout", "3", "--target", target, "project @ " + origin.URL + "/" + test.filename}
+				manager, err := pip.NewPip(context.Background(), "pip", executable)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var config proxy.ClientConfig
+				runner := capturingPipRunner{Pip: manager, capture: func(value proxy.ClientConfig) { config = value }}
+				var calls atomic.Int32
+				configure := func(ctx context.Context, client *http.Client) ([]proxy.RequestHook, error) {
+					options, err := manager.PyPIClassifierOptions(args)
+					if err != nil {
+						return nil, err
+					}
+					hook, err := pypi.NewProxyHook(ctx, pypi.ProxyHookOptions{
+						Client: client, ClassifierOptions: options,
+						ResolvePublishDate: func(context.Context, string, string, string) (time.Time, error) { return time.Unix(1, 0), nil },
+						EvaluatePackage: func(_ context.Context, pkg pm.Package, _ error) error {
+							calls.Add(1)
+							// The polyglots' other TAR interpretation declares "allowed".
+							// Policy must evaluate the "project" that pip actually installs.
+							if pkg.Name != "project" || pkg.Version != "1.0" {
+								t.Errorf("evaluated different package: %+v", pkg)
+								return nil
+							}
+							if block {
+								return proxy.ErrResponseRejected
+							}
+							return nil
+						},
+					})
+					return []proxy.RequestHook{hook}, err
+				}
+				commandErr, setupErr := runThroughProxy(context.Background(), runner, args, configure)
+				if setupErr != nil || (commandErr != nil) != rejected || calls.Load() != wantCalls {
+					t.Fatalf("archive policy: %v/%v calls=%d", commandErr, setupErr, calls.Load())
+				}
+				_, markerErr := os.Stat(marker)
+				if (rejected && !os.IsNotExist(markerErr)) || (!rejected && markerErr != nil) {
+					t.Fatalf("build execution did not match rejection: rejected=%v error=%v", rejected, markerErr)
+				}
+				if !rejected {
+					if _, err := os.Stat(filepath.Join(target, "project-1.0.dist-info", "METADATA")); err != nil {
+						t.Fatal("evaluated package was not installed", err)
+					}
+				}
+				assertProxyCleaned(t, config)
+			})
+		}
 	}
 }

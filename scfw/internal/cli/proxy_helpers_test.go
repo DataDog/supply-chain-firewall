@@ -17,7 +17,9 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
@@ -31,6 +33,7 @@ import (
 	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
+	"github.com/klauspost/compress/zstd"
 )
 
 type upstreamProxyOptions struct {
@@ -42,11 +45,17 @@ type upstreamProxyOptions struct {
 
 func pypiWheel(t *testing.T) []byte {
 	t.Helper()
+	return pypiWheelNamed(t, "project")
+}
+
+func pypiWheelNamed(t *testing.T, packageName string) []byte {
+	t.Helper()
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
 	for _, name := range []string{"project/__init__.py", "project-1.0.dist-info/METADATA", "project-1.0.dist-info/WHEEL", "project-1.0.dist-info/RECORD"} {
 		body := readProxyFixture(t, filepath.Join("pip", "wheel", name))
-		file, err := writer.Create(name)
+		body = strings.ReplaceAll(body, "project", packageName)
+		file, err := writer.Create(strings.ReplaceAll(name, "project", packageName))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -62,8 +71,25 @@ func pypiWheel(t *testing.T) []byte {
 
 func pypiSdist(t *testing.T, files ...string) []byte {
 	t.Helper()
+	return pypiSdistArchive(t, "gzip", files...)
+}
+
+func pypiSdistArchive(t *testing.T, format string, files ...string) []byte {
+	t.Helper()
 	var buffer bytes.Buffer
-	compressed := gzip.NewWriter(&buffer)
+	var compressed io.WriteCloser
+	switch format {
+	case "gzip":
+		compressed = gzip.NewWriter(&buffer)
+	case "zstd":
+		var err error
+		compressed, err = zstd.NewWriter(&buffer, zstd.WithEncoderConcurrency(1))
+		if err != nil {
+			t.Fatal(err)
+		}
+	default:
+		t.Fatalf("unsupported test archive format %q", format)
+	}
 	writer := tar.NewWriter(compressed)
 	// A stdlib-only PEP 517 backend avoids network access to install build tools.
 	if len(files) == 0 {
@@ -219,4 +245,115 @@ func assertProxyCleaned(t *testing.T, config proxy.ClientConfig) {
 		_ = connection.Close()
 		t.Fatal("invocation proxy is still listening")
 	}
+}
+
+// The source fixtures remain shared; construct adversarial containers in memory.
+func pypiZstandardZIP(t *testing.T) []byte {
+	t.Helper()
+	compressed, err := gzip.NewReader(bytes.NewReader(pypiSdist(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = compressed.Close() }()
+	source := tar.NewReader(compressed)
+	var inner bytes.Buffer
+	zipWriter := zip.NewWriter(&inner)
+	for {
+		header, err := source.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		file, err := zipWriter.Create(header.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.Copy(file, source); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	metadata := strings.ReplaceAll(readProxyFixture(t, "pip/sdist/PKG-INFO"), "Name: project", "Name: allowed")
+	var outer bytes.Buffer
+	tarWriter := tar.NewWriter(&outer)
+	for _, entry := range []struct {
+		name string
+		body []byte
+	}{{"allowed-1.0/PKG-INFO", []byte(metadata)}, {"allowed-1.0/payload.zip", inner.Bytes()}} {
+		if err := tarWriter.WriteHeader(&tar.Header{Name: entry.name, Mode: 0600, Size: int64(len(entry.body))}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tarWriter.Write(entry.body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tarWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if outer.Len() > 128<<10 {
+		t.Fatal("test Zstandard raw block exceeds its format limit")
+	}
+	payload := []byte{0x28, 0xb5, 0x2f, 0xfd, 0xa0}
+	payload = binary.LittleEndian.AppendUint32(payload, uint32(outer.Len()))
+	block := uint32(outer.Len())<<3 | 1
+	payload = append(payload, byte(block), byte(block>>8), byte(block>>16))
+	return append(payload, outer.Bytes()...)
+}
+
+func pypiGzipWithZIPTail(t *testing.T) []byte {
+	t.Helper()
+	var tail bytes.Buffer
+	writer := zip.NewWriter(&tail)
+	file, err := writer.Create("data.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(file, "unrelated"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return append(pypiSdist(t), tail.Bytes()...)
+}
+
+// Both interpretations are valid: gzip contains project, while raw TAR contains
+// allowed. The first TAR header doubles as gzip's optional extra header field.
+func pypiGzipTARPolyglot(t *testing.T) []byte {
+	t.Helper()
+	compressed := pypiSdist(t)
+	metadata := strings.ReplaceAll(readProxyFixture(t, "pip/sdist/PKG-INFO"), "Name: project", "Name: allowed")
+	var buffer bytes.Buffer
+	writer := tar.NewWriter(&buffer)
+	for _, entry := range []struct {
+		name string
+		body []byte
+	}{{"payload", compressed[10:]}, {"allowed-1.0/PKG-INFO", []byte(metadata)}} {
+		if err := writer.WriteHeader(&tar.Header{Name: entry.name, Mode: 0600, Size: int64(len(entry.body)), Format: tar.FormatUSTAR}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := writer.Write(entry.body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	payload := buffer.Bytes()
+	copy(payload, compressed[:10])
+	payload[3] = 4 // FEXTRA: the rest of this TAR header is gzip's extra field.
+	binary.LittleEndian.PutUint16(payload[10:12], 500)
+	for index := 148; index < 156; index++ {
+		payload[index] = ' '
+	}
+	checksum := 0
+	for _, value := range payload[:512] {
+		checksum += int(value)
+	}
+	copy(payload[148:156], fmt.Sprintf("%06o\x00 ", checksum))
+	return payload
 }

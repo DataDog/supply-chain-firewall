@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/npm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/pip"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/poetry"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/uv"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
@@ -26,6 +27,13 @@ type PackageManagerFactory struct {
 }
 
 var packageManagerFactories = []PackageManagerFactory{
+	{
+		Names:      uv.ExecutableNames,
+		ProxyHooks: []proxyHookFactory{newPyPIProxyHook},
+		New: func(ctx context.Context, name, executable string) (pm.PackageManager, error) {
+			return uv.NewUV(ctx, name, executable)
+		},
+	},
 	{
 		Names:      npm.NpmExecutableNames,
 		ProxyHooks: []proxyHookFactory{newNpmProxyHook},

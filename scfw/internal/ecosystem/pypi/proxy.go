@@ -36,6 +36,14 @@ func (e ProxyHandler) HandleRequest(requestContext context.Context, request prox
 	if e.Metadata.IsCoreMetadataURL(&request.URL) {
 		return nil, nil
 	}
+	if source, redirected := e.Classifier.archiveRedirects.Load(directPyPIURLKey(&request.URL)); redirected {
+		origin := source.(archiveSource)
+		if origin.candidate || origin.required {
+			// A redirect's new filename must not replace the original manager format
+			// or bypass inspection by looking like an already identified distribution.
+			return e.ObserveResponseHeaders, nil
+		}
+	}
 	artifact, advertised := e.Metadata.ArtifactForURL(&request.URL)
 	if !advertised {
 		kind, classified := e.Classifier.ClassifyRequest(request.Method, &request.URL)
@@ -90,7 +98,9 @@ func (e ProxyHandler) HandleRequest(requestContext context.Context, request prox
 	if err := e.EvaluateArtifact(requestContext, artifact); err != nil {
 		return nil, err
 	}
-	return e.ObserveMetadataHeaders, nil
+	return func(ctx context.Context, response proxy.Response) (*proxy.ResponseBodyHook, error) {
+		return e.observeArtifactHeaders(ctx, response, artifact.Filename)
+	}, nil
 }
 
 // ObserveMetadataHeaders records metadata endpoints and resolves an uncached

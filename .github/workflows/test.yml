@@ -30,5 +30,20 @@ jobs:
       - name: Test snapshot comment automation
         run: node --test .github/scripts/*.test.cjs
 
+      - name: Set up uv for legacy archive regression
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.9.0"
+          enable-cache: false
+
+      - name: Test uv Zstandard archives
+        run: go test -count=2 ./scfw/internal/cli -run '^TestUVZstandardDownloads$'
+
+      - name: Set up uv for integration tests
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.4"
+          enable-cache: false
+
       - name: Run tests
         run: go test -count=2 ./scfw/...

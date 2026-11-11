@@ -1,0 +1,32 @@
+# Named configuration samples. Each top-level table is written as a complete file.
+
+[user]
+https-proxy = "http://user:secret@user-proxy.example:8080"
+native-tls = true
+find-links = ["./wheels"]
+[[user.index]]
+name = "private"
+url = "https://private.example/python/"
+authenticate = "always"
+
+[project]
+http-proxy = "http://project:secret@project-proxy.example:8080"
+no-proxy = ["internal.example"]
+find-links = ["./project-wheels"]
+[project.pip]
+index-url = "https://pip.example/custom/"
+
+[workspace.project]
+name = "fixture"
+version = "1.0"
+[workspace.tool.uv]
+native-tls = true
+index-url = "https://project.example/custom/"
+package = false
+constraint-dependencies = ["project<2"]
+[workspace.tool.uv.workspace]
+members = ["members/*"]
+
+[member.project]
+name = "workspace-member"
+version = "1.0"

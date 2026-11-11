@@ -45,25 +45,33 @@ func (yarn Yarn) ProxyOptions(command []string) (proxy.Options, error) {
 		return proxy.Options{}, err
 	}
 	options := proxy.Options{Upstream: upstream}
-	if gen, _ := yarn.generation(); gen != classic {
-		return options, nil
+	var caFile string
+	var pems [][]byte
+	var strictSSL bool
+	if gen, _ := yarn.generation(); gen == classic {
+		settings, err := yarn.classicSettings(command)
+		if err != nil {
+			return proxy.Options{}, err
+		}
+		caFile, strictSSL = settings.CAFile, settings.StrictSSL
+		for _, ca := range settings.CA {
+			pems = append(pems, []byte(ca))
+		}
+	} else {
+		settings, err := yarn.berrySettings(command)
+		if err != nil {
+			return proxy.Options{}, err
+		}
+		caFile, strictSSL = settings.CAFile, settings.StrictSSL
 	}
-	settings, err := yarn.classicSettings(command)
-	if err != nil {
-		return proxy.Options{}, err
-	}
-	options.TrustURL = yarnTrustURL(settings.StrictSSL)
+	options.TrustURL = yarnTrustURL(strictSSL)
 	// Yarn and Node ignore a CA file they cannot read; Git requires
 	// GIT_SSL_CAINFO, so a missing bundle fails.
 	var paths []string
-	for _, path := range []string{settings.CAFile, os.Getenv("NODE_EXTRA_CA_CERTS")} {
+	for _, path := range []string{caFile, os.Getenv("NODE_EXTRA_CA_CERTS")} {
 		if _, err := os.Stat(path); path != "" && err == nil {
 			paths = append(paths, path)
 		}
-	}
-	var pems [][]byte
-	for _, ca := range settings.CA {
-		pems = append(pems, []byte(ca))
 	}
 	options.UpstreamTLS, err = proxy.NewTLSConfig(proxy.TLSConfigOptions{
 		CABundlePaths: append(paths, os.Getenv("GIT_SSL_CAINFO")),

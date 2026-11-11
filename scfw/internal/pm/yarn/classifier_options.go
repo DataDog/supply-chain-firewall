@@ -18,9 +18,15 @@ func (yarn Yarn) NpmClassifierOptions(command []string) (npmregistry.ClassifierO
 	if err != nil {
 		return npmregistry.ClassifierOptions{}, err
 	}
-	registries := []string{"https://registry.yarnpkg.com"}
+	var registries []string
 	if gen == classic {
 		settings, err := yarn.classicSettings(command)
+		if err != nil {
+			return npmregistry.ClassifierOptions{}, err
+		}
+		registries = settings.Registries
+	} else {
+		settings, err := yarn.berrySettings(command)
 		if err != nil {
 			return npmregistry.ClassifierOptions{}, err
 		}

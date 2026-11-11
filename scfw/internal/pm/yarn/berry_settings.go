@@ -24,6 +24,10 @@ import (
 type berrySettings struct {
 	// HTTPS and HTTP are httpsProxy and httpProxy; neither covers the other.
 	HTTPS, HTTP string
+	// CAFile is httpsCaFilePath, resolved against the rc file that sets it.
+	CAFile     string
+	StrictSSL  bool
+	Registries []string
 }
 
 // berryRC is one .yarnrc.yml file, and dir the directory relative paths in it
@@ -71,18 +75,64 @@ func (yarn Yarn) berrySettings(command []string) (berrySettings, error) {
 			}
 		}
 	}
-	get := func(key string) string {
+	lookup := func(key string) (string, string) {
 		for _, rc := range rcs {
 			if value, found := rc.data[key]; found && value != nil {
-				return fmt.Sprint(value)
+				return fmt.Sprint(value), rc.dir
 			}
 		}
-		return ""
+		return "", ""
+	}
+	get := func(key string) string {
+		value, _ := lookup(key)
+		return value
 	}
 	if get("httpsCertFilePath") != "" || get("httpsKeyFilePath") != "" {
 		return berrySettings{}, errors.New("yarn client certificates (httpsCertFilePath/httpsKeyFilePath) are not supported through SCFW")
 	}
-	return berrySettings{HTTPS: get("httpsProxy"), HTTP: get("httpProxy")}, nil
+	settings := berrySettings{HTTPS: get("httpsProxy"), HTTP: get("httpProxy"), StrictSSL: get("enableStrictSsl") != "false"}
+	if caFile, origin := lookup("httpsCaFilePath"); caFile != "" {
+		settings.CAFile = caFile
+		if !filepath.IsAbs(caFile) {
+			settings.CAFile = filepath.Join(origin, caFile)
+		}
+	}
+
+	server := get("npmRegistryServer")
+	if server == "" {
+		server = "https://registry.yarnpkg.com"
+	}
+	settings.Registries = []string{server}
+	// Scope and per-registry maps merge across rc files, nearest first.
+	scopes := map[string]string{}
+	var registries []string
+	for _, rc := range rcs {
+		configured, _ := rc.data["npmScopes"].(map[string]any)
+		for scope, value := range configured {
+			entry, _ := value.(map[string]any)
+			if _, seen := scopes[scope]; !seen && entry["npmRegistryServer"] != nil {
+				scopes[scope] = fmt.Sprint(entry["npmRegistryServer"])
+			}
+		}
+		perRegistry, _ := rc.data["npmRegistries"].(map[string]any)
+		for key := range perRegistry {
+			if strings.HasPrefix(key, "//") {
+				key = "https:" + key
+			}
+			registries = append(registries, key)
+		}
+	}
+	names := make([]string, 0, len(scopes))
+	for scope := range scopes {
+		names = append(names, scope)
+	}
+	slices.Sort(names)
+	for _, scope := range names {
+		settings.Registries = append(settings.Registries, scopes[scope])
+	}
+	slices.Sort(registries)
+	settings.Registries = append(settings.Registries, registries...)
+	return settings, nil
 }
 
 // readBerryConfig returns Yarn 4's settings, highest precedence first: YARN_*

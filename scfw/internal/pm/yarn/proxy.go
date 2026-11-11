@@ -6,6 +6,7 @@
 package yarn
 
 import (
+	"context"
 	"errors"
 	"os"
 
@@ -66,6 +67,25 @@ func (yarn Yarn) ProxyOptions(command []string) (proxy.Options, error) {
 }
 
 var _ pm.ProxyOptionsProvider = Yarn{}
+
+// ProxyCommand supplies Yarn-specific arguments and environment overrides. The
+// core proxy owns process execution, signals, streams, and invocation cleanup.
+func (yarn Yarn) ProxyCommand(_ context.Context, command []string, config proxy.ClientConfig) (proxy.CommandSpec, error) {
+	gen, err := yarn.generation()
+	if err != nil {
+		return proxy.CommandSpec{}, err
+	}
+	pem, err := os.ReadFile(config.CACertificatePath)
+	if err != nil {
+		return proxy.CommandSpec{}, errors.New("read proxy CA certificate")
+	}
+	if gen != classic {
+		return proxy.CommandSpec{}, errors.New("yarn berry is not supported yet")
+	}
+	return classicProxyCommand(yarn.executable, command, config, pem)
+}
+
+var _ pm.ProxyRunner = Yarn{}
 
 // validateUpstream rejects proxies the core cannot use, without echoing a URL
 // that may carry credentials.

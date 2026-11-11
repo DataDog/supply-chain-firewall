@@ -6,17 +6,14 @@
 package npm
 
 import (
-	"encoding/json"
-	"errors"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
-	"syscall"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/nodeproxy"
 )
 
 // npmDiscoveryResult is the configuration npm would use for one command before
@@ -38,7 +35,7 @@ type npmDiscoveryResult struct {
 
 // npmConfig maps an npm configuration key to its values within one layer; a
 // scalar setting uses its last value.
-type npmConfig map[string][]string
+type npmConfig = nodeproxy.Config
 
 func (npm Npm) settings(args []string) (npmDiscoveryResult, error) {
 	environ := os.Environ()
@@ -46,7 +43,7 @@ func (npm Npm) settings(args []string) (npmDiscoveryResult, error) {
 	if err != nil {
 		return npmDiscoveryResult{}, err
 	}
-	home := lookupEnvironment(environ)["HOME"]
+	home := nodeproxy.LookupEnvironment(environ)["HOME"]
 	// A null value is unset in npm (`npm config set proxy null` writes
 	// proxy=null), yet it still hides the same key in lower layers.
 	get := func(key string) []string {
@@ -110,11 +107,11 @@ func (npm Npm) settings(args []string) (npmDiscoveryResult, error) {
 // readNpmConfig returns npm's configuration layers, highest precedence first:
 // command options, environment, then the project, user, and global npmrc files.
 func readNpmConfig(args []string, environ []string) ([]npmConfig, error) {
-	env := lookupEnvironment(environ)
+	env := nodeproxy.LookupEnvironment(environ)
 	home := env["HOME"]
-	options := expandNpmConfig(optionConfig(parseNpmOptions(args)), env)
-	environment := expandNpmConfig(environmentConfig(environ), env)
-	path := func(layer npmConfig, key string) string { return expandNpmPath(lastValue(layer[key]), home) }
+	options := nodeproxy.ExpandConfig(optionConfig(parseNpmOptions(args)), env)
+	environment := nodeproxy.ExpandConfig(nodeproxy.EnvironmentConfig(environ), env)
+	path := func(layer npmConfig, key string) string { return expandNpmPath(nodeproxy.LastValue(layer[key]), home) }
 
 	userconfig := firstNonEmpty(path(options, "userconfig"), path(environment, "userconfig"))
 	defaultUserconfig := userconfig
@@ -122,8 +119,8 @@ func readNpmConfig(args []string, environ []string) ([]npmConfig, error) {
 		defaultUserconfig = filepath.Join(home, ".npmrc")
 	}
 	project := npmConfig{}
-	global := lastValue(options["global"]) == "true" || lastValue(options["location"]) == "global" ||
-		lastValue(environment["global"]) == "true" || lastValue(environment["location"]) == "global"
+	global := nodeproxy.LastValue(options["global"]) == "true" || nodeproxy.LastValue(options["location"]) == "global" ||
+		nodeproxy.LastValue(environment["global"]) == "true" || nodeproxy.LastValue(environment["location"]) == "global"
 	if !global {
 		prefix := path(options, "prefix")
 		if prefix == "" {
@@ -132,7 +129,7 @@ func readNpmConfig(args []string, environ []string) ([]npmConfig, error) {
 		// Like npm, never load the user config a second time as the project's.
 		if file := filepath.Join(prefix, ".npmrc"); file != defaultUserconfig {
 			var err error
-			if project, err = loadNpmrc(file, env); err != nil {
+			if project, err = nodeproxy.LoadNpmrc(file, env); err != nil {
 				return nil, err
 			}
 		}
@@ -141,7 +138,7 @@ func readNpmConfig(args []string, environ []string) ([]npmConfig, error) {
 	if userconfig == "" {
 		userconfig = firstNonEmpty(path(project, "userconfig"), defaultUserconfig)
 	}
-	user, err := loadNpmrc(userconfig, env)
+	user, err := nodeproxy.LoadNpmrc(userconfig, env)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +164,7 @@ func readNpmConfig(args []string, environ []string) ([]npmConfig, error) {
 			globalconfig = filepath.Join(prefix, "etc", "npmrc")
 		}
 	}
-	globalLayer, err := loadNpmrc(globalconfig, env)
+	globalLayer, err := nodeproxy.LoadNpmrc(globalconfig, env)
 	if err != nil {
 		return nil, err
 	}
@@ -229,189 +226,10 @@ func expandNpmPath(value, home string) string {
 	return value
 }
 
-func loadNpmrc(path string, env map[string]string) (npmConfig, error) {
-	if path == "" {
-		return npmConfig{}, nil
-	}
-	data, err := readNpmrcFile(path)
-	if os.IsNotExist(err) || os.IsPermission(err) || errors.Is(err, syscall.ENOTDIR) {
-		return npmConfig{}, nil
-	}
-	if err != nil {
-		return nil, errors.New("could not read npm configuration")
-	}
-	return readNpmrc(data, env), nil
-}
-
-const maxNpmrcBytes = 8 << 20
-
-func readNpmrcFile(path string) ([]byte, error) {
-	// Nonblocking open plus a regular-file check also handles a path swapped
-	// for a FIFO while discovery is reading it.
-	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = file.Close() }()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("npm configuration requires a regular file")
-	}
-	body, err := io.ReadAll(io.LimitReader(file, maxNpmrcBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(body) > maxNpmrcBytes {
-		return nil, errors.New("npm configuration is too large")
-	}
-	return body, nil
-}
-
-// readNpmrc parses an npmrc file as npm's ini package does. Keys inside a
-// [section] are not top-level settings, so npm ignores them.
-func readNpmrc(data []byte, env map[string]string) npmConfig {
-	config := npmConfig{}
-	inSection := false
-	text := strings.TrimPrefix(string(data), string(rune(0xFEFF)))
-	for _, line := range strings.FieldsFunc(text, func(r rune) bool { return r == '\r' || r == '\n' }) {
-		line = strings.TrimSpace(line)
-		if line == "" || line[0] == ';' || line[0] == '#' {
-			continue
-		}
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			inSection = true
-			continue
-		}
-		rawKey, rawValue, assigned := strings.Cut(line, "=")
-		key := unquoteIniValue(rawKey)
-		if inSection || key == "" {
-			continue
-		}
-		value := "true"
-		if assigned {
-			value = unquoteIniValue(rawValue)
-		}
-		if name, isArray := strings.CutSuffix(key, "[]"); isArray && name != "" {
-			config[name] = append(config[name], value)
-		} else {
-			config[key] = []string{value}
-		}
-	}
-	return expandNpmConfig(config, env)
-}
-
-// unquoteIniValue mirrors the ini package: a quoted value is JSON-decoded when
-// possible; otherwise an unescaped ; or # starts a comment.
-func unquoteIniValue(value string) string {
-	value = strings.TrimSpace(value)
-	if len(value) > 1 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
-		if value[0] == '\'' {
-			value = value[1 : len(value)-1]
-		}
-		var decoded string
-		if json.Unmarshal([]byte(value), &decoded) == nil {
-			return decoded
-		}
-		return value
-	}
-	var unescaped strings.Builder
-	escaped := false
-	for _, character := range value {
-		switch {
-		case escaped:
-			if !strings.ContainsRune(`\;#`, character) {
-				unescaped.WriteByte('\\')
-			}
-			unescaped.WriteRune(character)
-			escaped = false
-		case character == ';' || character == '#':
-			return strings.TrimSpace(unescaped.String())
-		case character == '\\':
-			escaped = true
-		default:
-			unescaped.WriteRune(character)
-		}
-	}
-	if escaped {
-		unescaped.WriteByte('\\')
-	}
-	return strings.TrimSpace(unescaped.String())
-}
-
-var npmEnvironmentReference = regexp.MustCompile(`(\\*)\$\{([^${}?]+)(\?)?\}`)
-
-// expandNpmConfig applies npm's ${VAR} substitution to keys and values. An
-// unset variable stays literal unless written ${VAR?}; an odd number of
-// preceding backslashes escapes the reference.
-func expandNpmConfig(config npmConfig, env map[string]string) npmConfig {
-	replace := func(text string) string {
-		return npmEnvironmentReference.ReplaceAllStringFunc(text, func(match string) string {
-			parts := npmEnvironmentReference.FindStringSubmatch(match)
-			escapes, name, optional := parts[1], parts[2], parts[3] != ""
-			if len(escapes)%2 == 1 {
-				return match[(len(escapes)+1)/2:]
-			}
-			value, found := env[name]
-			if !found {
-				value = "${" + name + "}"
-				if optional {
-					value = ""
-				}
-			}
-			return escapes[len(escapes)/2:] + value
-		})
-	}
-	expanded := make(npmConfig, len(config))
-	for key, values := range config {
-		replaced := make([]string, len(values))
-		for index, value := range values {
-			replaced[index] = replace(value)
-		}
-		expanded[replace(key)] = replaced
-	}
-	return expanded
-}
-
-func lookupEnvironment(environ []string) map[string]string {
-	env := make(map[string]string, len(environ))
-	for _, item := range environ {
-		key, value, _ := strings.Cut(item, "=")
-		env[key] = value
-	}
-	return env
-}
-
-func lastValue(values []string) string {
-	if len(values) == 0 {
-		return ""
-	}
-	return values[len(values)-1]
-}
-
 func optionConfig(options []npmOption) npmConfig {
 	config := npmConfig{}
 	for _, option := range options {
 		config[option.name] = append(config[option.name], option.value)
-	}
-	return config
-}
-
-// environmentConfig mirrors npm's environment layer: npm_config_ names are
-// case-insensitive, underscores after the first character become dashes,
-// empty values are ignored, and the last variant in the environment wins.
-func environmentConfig(environ []string) npmConfig {
-	config := npmConfig{}
-	for _, item := range environ {
-		key, value, _ := strings.Cut(item, "=")
-		if len(key) <= len("npm_config_") || !strings.EqualFold(key[:len("npm_config_")], "npm_config_") || value == "" {
-			continue
-		}
-		name := key[len("npm_config_"):]
-		if strings.HasPrefix(name, "//") {
-			continue
-		}
-		name = strings.ToLower(name[:1] + strings.ReplaceAll(name[1:], "_", "-"))
-		config[name] = []string{value}
 	}
 	return config
 }

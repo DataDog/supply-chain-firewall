@@ -187,45 +187,6 @@ func TestInvalidUpstreamNeverBecomesDirect(t *testing.T) {
 	}
 }
 
-func TestReadNpmrc(t *testing.T) {
-	env := map[string]string{"CORP": "http://env:1", "SCOPE": "lab"}
-	for _, test := range []struct {
-		fixture string
-		want    npmConfig
-		absent  []string
-	}{
-		// Quotes survive when an inline comment follows them, as in npm.
-		{"crlf-bom.npmrc", npmConfig{"https-proxy": {`"http://q:1"`}, "proxy": {"http://crlf:2"}}, nil},
-		{"cr-only.npmrc", npmConfig{"https-proxy": {"http://cr:1"}, "proxy": {"http://cr2:2"}}, nil},
-		{"syntax.npmrc", npmConfig{
-			"https-proxy": {"http://sp:1"}, "proxy": {"http://q:1/;x"}, "noproxy": {"http://c:1"},
-			"registry": {"http://h:1/"}, "cafile": {"/single/quoted.pem"}, "ca": {"a\nb\"c"},
-			"globalconfig": {"a;b"}, "userconfig": {`"http://u:1`}, "strict-ssl": {"true"}, "prefix": {"last"},
-		}, nil},
-		{"expansion.npmrc", npmConfig{
-			"https-proxy": {"http://env:1"}, "proxy": {"${UNSET}"}, "noproxy": {"xy"},
-			"registry": {"http://r/${CORP}"}, "@lab:registry": {"http://k:1/"},
-		}, nil},
-		{"sections.npmrc", npmConfig{"https-proxy": {"http://top:1"}}, []string{"proxy"}},
-		{"arrays.npmrc", npmConfig{"noproxy": {"a.test", "b.test"}, "ca": {"x", "y"}}, nil},
-		{"credentials.npmrc", npmConfig{}, []string{"https-proxy", "_authToken"}},
-	} {
-		t.Run(test.fixture, func(t *testing.T) {
-			got := readNpmrc([]byte(readNpmFixture(t, filepath.Join("npmrc", test.fixture))), env)
-			for key, values := range test.want {
-				if !slices.Equal(got[key], values) {
-					t.Errorf("%s = %q, want %q", key, got[key], values)
-				}
-			}
-			for _, key := range test.absent {
-				if _, found := got[key]; found {
-					t.Errorf("%s must not be set: %q", key, got[key])
-				}
-			}
-		})
-	}
-}
-
 func TestSettingsReadErrorsAreFixed(t *testing.T) {
 	for name, prepare := range map[string]func(t *testing.T, path string){
 		"fifo": func(t *testing.T, path string) {

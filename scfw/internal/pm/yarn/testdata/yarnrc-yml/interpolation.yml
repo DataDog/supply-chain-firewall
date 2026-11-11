@@ -1,0 +1,1 @@
+httpsProxy: "${CORP_PROXY:-http://fallback:1}"

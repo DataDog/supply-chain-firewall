@@ -21,14 +21,20 @@ func (yarn Yarn) UpstreamProxy(command []string) (httpproxy.Config, error) {
 	if err != nil {
 		return httpproxy.Config{}, err
 	}
-	if gen != classic {
-		return httpproxy.Config{}, nil
+	var config httpproxy.Config
+	if gen == classic {
+		settings, err := yarn.classicSettings(command)
+		if err != nil {
+			return httpproxy.Config{}, err
+		}
+		config = httpproxy.Config{HTTPSProxy: settings.HTTPS, HTTPProxy: settings.HTTP, NoProxy: settings.NoProxy}
+	} else {
+		settings, err := yarn.berrySettings(command)
+		if err != nil {
+			return httpproxy.Config{}, err
+		}
+		config = httpproxy.Config{HTTPSProxy: settings.HTTPS, HTTPProxy: settings.HTTP}
 	}
-	settings, err := yarn.classicSettings(command)
-	if err != nil {
-		return httpproxy.Config{}, err
-	}
-	config := httpproxy.Config{HTTPSProxy: settings.HTTPS, HTTPProxy: settings.HTTP, NoProxy: settings.NoProxy}
 	return config, validateUpstream(config)
 }
 

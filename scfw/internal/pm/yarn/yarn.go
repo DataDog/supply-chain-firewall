@@ -78,6 +78,9 @@ func (yarn Yarn) RunCommand(ctx context.Context, command []string) error {
 	return child.Run()
 }
 
-func (yarn Yarn) ResolveInstallTargets(_ context.Context, _ []string) (*pm.Set[pm.Package], error) {
-	return nil, errors.New("yarn package operations require proxy mode (set SCFW_PROXY_ENABLED=1)")
+func (yarn Yarn) ResolveInstallTargets(_ context.Context, command []string) (*pm.Set[pm.Package], error) {
+	if yarn.ProxyCommandSupported(command) {
+		return nil, errors.New("yarn package operations require proxy mode (set SCFW_PROXY_ENABLED=1)")
+	}
+	return pm.NewSet[pm.Package](), nil
 }

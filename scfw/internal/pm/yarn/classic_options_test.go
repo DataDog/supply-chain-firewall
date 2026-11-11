@@ -146,3 +146,47 @@ func TestClassicNpmClassifierOptions(t *testing.T) {
 		}
 	})
 }
+
+// Yarn proxies every host, including loopback ones, which Go's flattened proxy
+// configuration would connect to directly.
+func TestProxyOptionsRoutesLikeYarn(t *testing.T) {
+	for _, test := range []struct {
+		version, target, want string
+		prepare               func(t *testing.T, root string)
+	}{
+		{"1.22.22", "https://localhost:8443/x", "http://corp:1", func(t *testing.T, root string) {
+			writeYarnFixture(t, filepath.Join(root, "parent", "project", ".yarnrc"), "yarnrc/https-proxy.yarnrc.tmpl", "http://corp:1")
+		}},
+		{"1.22.22", "http://registry.test/x", "http://env:1", func(t *testing.T, _ string) { t.Setenv("HTTP_PROXY", "http://env:1") }},
+		{"1.22.22", "https://registry.test/x", "", func(t *testing.T, _ string) {
+			t.Setenv("HTTPS_PROXY", "http://env:1")
+			t.Setenv("NO_PROXY", "registry.test")
+		}},
+		{"1.22.22", "https://sub.registry.test/x", "", func(t *testing.T, _ string) {
+			t.Setenv("HTTPS_PROXY", "http://env:1")
+			t.Setenv("NO_PROXY", ".registry.test")
+		}},
+		{"4.18.1", "https://127.0.0.1:8443/x", "http://corp:1", func(t *testing.T, _ string) { t.Setenv("YARN_HTTPS_PROXY", "http://corp:1") }},
+		{"4.18.1", "http://registry.test/x", "", func(t *testing.T, _ string) { t.Setenv("YARN_HTTPS_PROXY", "http://corp:1") }},
+	} {
+		t.Run(test.version+" "+test.target, func(t *testing.T) {
+			root := isolateYarnEnvironment(t)
+			test.prepare(t, root)
+			options, err := fakeYarn(t, test.version).ProxyOptions(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			target, err := url.Parse(test.target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if options.ProxyForURL == nil {
+				t.Fatal("ProxyForURL missing")
+			}
+			got, err := options.ProxyForURL(target)
+			if err != nil || (got == nil) != (test.want == "") || (got != nil && got.String() != test.want) {
+				t.Fatalf("proxy = %v (error %v), want %q", got, err, test.want)
+			}
+		})
+	}
+}

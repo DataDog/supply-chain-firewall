@@ -8,7 +8,9 @@ package yarn
 import (
 	"context"
 	"errors"
+	"net/url"
 	"os"
+	"strings"
 
 	"golang.org/x/net/http/httpproxy"
 
@@ -44,7 +46,7 @@ func (yarn Yarn) ProxyOptions(command []string) (proxy.Options, error) {
 	if err != nil {
 		return proxy.Options{}, err
 	}
-	options := proxy.Options{Upstream: upstream}
+	options := proxy.Options{Upstream: upstream, ProxyForURL: yarnProxyForURL(upstream)}
 	var caFile string
 	var pems [][]byte
 	var strictSSL bool
@@ -81,6 +83,41 @@ func (yarn Yarn) ProxyOptions(command []string) (proxy.Options, error) {
 }
 
 var _ pm.ProxyOptionsProvider = Yarn{}
+
+// yarnProxyForURL routes like Yarn, which proxies loopback hosts too; Go's
+// flattened proxy configuration would connect to them directly. NoProxy holds
+// the standard variable's entries, matched like Yarn Classic's request client.
+func yarnProxyForURL(upstream httpproxy.Config) func(*url.URL) (*url.URL, error) {
+	return func(target *url.URL) (*url.URL, error) {
+		value := upstream.HTTPProxy
+		if target.Scheme == "https" {
+			value = upstream.HTTPSProxy
+		}
+		if value == "" || noProxyMatches(target, upstream.NoProxy) {
+			return nil, nil
+		}
+		return proxy.ParseUpstreamProxyURL(value)
+	}
+}
+
+func noProxyMatches(target *url.URL, noProxy string) bool {
+	host, port := strings.ToLower(target.Hostname()), target.Port()
+	if port == "" {
+		port = map[string]string{"http": "80", "https": "443"}[target.Scheme]
+	}
+	for entry := range strings.SplitSeq(noProxy, ",") {
+		entry = strings.ToLower(strings.TrimSpace(entry))
+		if entry == "*" {
+			return true
+		}
+		name, entryPort, hasPort := strings.Cut(entry, ":")
+		name = strings.TrimPrefix(name, ".")
+		if name != "" && (!hasPort || entryPort == port) && (host == name || strings.HasSuffix(host, "."+name)) {
+			return true
+		}
+	}
+	return false
+}
 
 // ProxyCommand supplies Yarn-specific arguments and environment overrides. The
 // core proxy owns process execution, signals, streams, and invocation cleanup.

@@ -136,6 +136,7 @@ func assertYarnFailed(t *testing.T, run yarnProxyRun) {
 
 // seedYarnLockfile installs lab-pkg once, then leaves only the manifest and
 // lockfile, with an empty cache, so the next command downloads it again.
+// Yarn 4 also mirrors archives in its global folder.
 func seedYarnLockfile(t *testing.T, executable, dir string) {
 	t.Helper()
 	assertYarnSucceeded(t, runYarnThroughProxy(t, executable, []string{"add", "lab-pkg"}, evaluation.OutcomeAllow))
@@ -143,6 +144,7 @@ func seedYarnLockfile(t *testing.T, executable, dir string) {
 		t.Fatal(err)
 	}
 	t.Setenv("YARN_CACHE_FOLDER", t.TempDir())
+	t.Setenv("YARN_GLOBAL_FOLDER", t.TempDir())
 }
 
 func TestYarnClassicProxyEndToEnd(t *testing.T) {
@@ -295,5 +297,158 @@ func TestYarnClassicWithoutUpstreamConnectsDirectly(t *testing.T) {
 	assertYarnSucceeded(t, run)
 	if tunnels.Load() != 0 || registry.TarballHits.Load() != 1 {
 		t.Fatalf("tunnels=%d tarball downloads=%d, want a direct download", tunnels.Load(), registry.TarballHits.Load())
+	}
+}
+
+func berryYarnrc(registry *npmTestRegistry, extra string) string {
+	return `npmRegistryServer: "` + registry.URL + `"` + "\n" + `httpsCaFilePath: "` + registry.CAPath + `"` + "\n" +
+		"enableTelemetry: false\nenableGlobalCache: false\n" + extra
+}
+
+// newBerryTestProject also disables the immutable installs Yarn 4 enables on CI.
+func newBerryTestProject(t *testing.T, rc string) string {
+	t.Helper()
+	dir := newYarnTestProject(t, ".yarnrc.yml", rc)
+	t.Setenv("YARN_ENABLE_IMMUTABLE_INSTALLS", "false")
+	return dir
+}
+
+func TestYarnBerryProxyEndToEnd(t *testing.T) {
+	executable := yarnTestExecutable(t, "SCFW_TEST_YARN_BERRY")
+	for _, test := range []struct {
+		name    string
+		args    []string
+		seed    bool
+		outcome evaluation.Outcome
+		// hits is the number of tarball downloads the run itself may make.
+		hits, calls int32
+		failed      bool
+	}{
+		{name: "add-allow", args: []string{"add", "lab-pkg"}, outcome: evaluation.OutcomeAllow, hits: 1, calls: 1},
+		{name: "add-block", args: []string{"add", "lab-pkg"}, outcome: evaluation.OutcomeBlock, calls: 1, failed: true},
+		{name: "warn-continues", args: []string{"add", "lab-pkg"}, outcome: evaluation.OutcomeWarn, hits: 1, calls: 1},
+		{name: "yarn-failure", args: []string{"add", "does-not-exist"}, outcome: evaluation.OutcomeAllow, failed: true},
+		{name: "immutable-block", args: []string{"install", "--immutable"}, seed: true,
+			outcome: evaluation.OutcomeBlock, calls: 1, failed: true},
+		{name: "bare-install-allow", args: []string{}, seed: true, outcome: evaluation.OutcomeAllow, hits: 1, calls: 1},
+		{name: "up-allow", args: []string{"up", "lab-pkg"}, seed: true, outcome: evaluation.OutcomeAllow, hits: 1, calls: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			registry := startNpmRegistry(t)
+			rc := berryYarnrc(registry, "nodeLinker: node-modules\n")
+			dir := newBerryTestProject(t, rc)
+			if test.seed {
+				seedYarnLockfile(t, executable, dir)
+			}
+			manifest, err := os.ReadFile(filepath.Join(dir, "package.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			lockfile, lockErr := os.ReadFile(filepath.Join(dir, "yarn.lock"))
+			before := registry.TarballHits.Load()
+			run := runYarnThroughProxy(t, executable, test.args, test.outcome)
+			if test.failed {
+				assertYarnFailed(t, run)
+			} else {
+				assertYarnSucceeded(t, run)
+			}
+			if hits := registry.TarballHits.Load() - before; hits != test.hits {
+				t.Fatalf("tarball downloads = %d, want %d", hits, test.hits)
+			}
+			if run.calls != test.calls {
+				t.Fatalf("evaluations = %d, want %d", run.calls, test.calls)
+			}
+			if test.outcome == evaluation.OutcomeWarn && (!strings.Contains(run.details, "WARN") || strings.Contains(run.details, "Proceed")) {
+				t.Fatalf("unexpected warning output: %s", run.details)
+			}
+			if test.failed {
+				after, err := os.ReadFile(filepath.Join(dir, "package.json"))
+				afterLock, afterLockErr := os.ReadFile(filepath.Join(dir, "yarn.lock"))
+				if err != nil || !bytes.Equal(after, manifest) || (afterLockErr == nil) != (lockErr == nil) || !bytes.Equal(afterLock, lockfile) {
+					t.Fatalf("a failed command changed package.json or yarn.lock")
+				}
+			} else if _, err := os.Stat(filepath.Join(dir, "node_modules", "lab-pkg", "package.json")); err != nil {
+				t.Fatalf("package not installed: %v", err)
+			}
+			if after, err := os.ReadFile(filepath.Join(dir, ".yarnrc.yml")); err != nil || string(after) != rc {
+				t.Fatalf(".yarnrc.yml changed: %q (error %v)", after, err)
+			}
+			assertProxyCleaned(t, run.config)
+		})
+	}
+}
+
+func TestYarnBerryPnPInstall(t *testing.T) {
+	executable := yarnTestExecutable(t, "SCFW_TEST_YARN_BERRY")
+	registry := startNpmRegistry(t)
+	dir := newBerryTestProject(t, berryYarnrc(registry, ""))
+	run := runYarnThroughProxy(t, executable, []string{"add", "lab-pkg"}, evaluation.OutcomeAllow)
+	assertYarnSucceeded(t, run)
+	if _, err := os.Stat(filepath.Join(dir, ".pnp.cjs")); err != nil || run.calls != 1 {
+		t.Fatalf("Plug'n'Play install missing (evaluations %d): %v", run.calls, err)
+	}
+}
+
+func TestYarnBerryRefusesNetworkSettings(t *testing.T) {
+	executable := yarnTestExecutable(t, "SCFW_TEST_YARN_BERRY")
+	registry := startNpmRegistry(t)
+	newBerryTestProject(t, berryYarnrc(registry, "networkSettings:\n  \"*\":\n    httpsProxy: \"http://127.0.0.1:9\"\n"))
+	run := runYarnThroughProxy(t, executable, []string{"add", "lab-pkg"}, evaluation.OutcomeAllow)
+	if run.setupErr == nil || !strings.Contains(run.setupErr.Error(), "networkSettings") {
+		t.Fatalf("setup error = %v, want the networkSettings refusal", run.setupErr)
+	}
+	if run.commandErr != nil || run.calls != 0 || registry.TarballHits.Load() != 0 {
+		t.Fatalf("Yarn must not start: command %v, evaluations %d, downloads %d", run.commandErr, run.calls, registry.TarballHits.Load())
+	}
+}
+
+func TestYarnBerryChainsToAuthenticatedUpstream(t *testing.T) {
+	executable := yarnTestExecutable(t, "SCFW_TEST_YARN_BERRY")
+	registry := startNpmRegistry(t)
+	var tunnels atomic.Int32
+	tunnel := proxyTestUpstream(t, upstreamProxyOptions{credentials: "proxy:secret", hits: &tunnels})
+	newBerryTestProject(t, berryYarnrc(registry, "nodeLinker: node-modules\n"))
+	t.Setenv("YARN_HTTPS_PROXY", strings.Replace(tunnel.URL, "://", "://proxy:secret@", 1))
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	run := runYarnThroughProxy(t, executable, []string{"add", "lab-pkg"}, evaluation.OutcomeAllow)
+	assertYarnSucceeded(t, run)
+	if tunnels.Load() < 1 || registry.TarballHits.Load() != 1 || run.calls != 1 {
+		t.Fatalf("tunnels=%d tarball downloads=%d evaluations=%d", tunnels.Load(), registry.TarballHits.Load(), run.calls)
+	}
+	for _, output := range []string{logs.String(), run.details} {
+		if strings.Contains(output, "secret") {
+			t.Fatalf("upstream credential leaked: %s", output)
+		}
+	}
+	assertProxyCleaned(t, run.config)
+}
+
+// A global Yarn Classic hands off to the project's checked-in Yarn 4 release.
+func TestYarnClassicHandsOffToBerryYarnPath(t *testing.T) {
+	classic := yarnTestExecutable(t, "SCFW_TEST_YARN_CLASSIC")
+	berry := yarnTestExecutable(t, "SCFW_TEST_YARN_BERRY")
+	release, err := os.ReadFile(berry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := startNpmRegistry(t)
+	dir := newBerryTestProject(t, berryYarnrc(registry, "nodeLinker: node-modules\nyarnPath: .yarn/releases/yarn-4.18.1.cjs\n"))
+	if err := os.MkdirAll(filepath.Join(dir, ".yarn", "releases"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".yarn", "releases", "yarn-4.18.1.cjs"), release, 0700); err != nil {
+		t.Fatal(err)
+	}
+	run := runYarnThroughProxy(t, classic, []string{"add", "lab-pkg"}, evaluation.OutcomeAllow)
+	assertYarnSucceeded(t, run)
+	if registry.TarballHits.Load() != 1 || run.calls != 1 {
+		t.Fatalf("tarball downloads=%d evaluations=%d", registry.TarballHits.Load(), run.calls)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "node_modules", "lab-pkg", "package.json")); err != nil {
+		t.Fatalf("package not installed: %v", err)
 	}
 }

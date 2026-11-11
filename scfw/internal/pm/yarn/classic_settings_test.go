@@ -171,9 +171,26 @@ func TestClassicUpstreamNoProxyOnlyForEnvironment(t *testing.T) {
 func TestClassicUpstreamHonorsCwdOption(t *testing.T) {
 	root := isolateYarnEnvironment(t)
 	writeYarnFixture(t, filepath.Join(root, "parent", "project", "pkg", ".yarnrc"), "yarnrc/https-proxy.yarnrc.tmpl", "http://pkg:1")
-	config, err := fakeYarn(t, "1.22.22").UpstreamProxy([]string{"--cwd", "pkg", "add", "x"})
-	if err != nil || config.HTTPSProxy != "http://pkg:1" {
-		t.Fatalf("HTTPSProxy = %q (error %v)", config.HTTPSProxy, err)
+	// Yarn Classic accepts --cwd anywhere before "--".
+	for _, command := range [][]string{{"--cwd", "pkg", "add", "x"}, {"add", "x", "--cwd", "pkg"}, {"add", "x", "--cwd=pkg"}} {
+		config, err := fakeYarn(t, "1.22.22").UpstreamProxy(command)
+		if err != nil || config.HTTPSProxy != "http://pkg:1" {
+			t.Fatalf("%q: HTTPSProxy = %q (error %v)", command, config.HTTPSProxy, err)
+		}
+	}
+}
+
+// `yarn workspace` re-runs Yarn without SCFW's proxy options, so an rc-arg
+// proxy would win over the environment there.
+func TestClassicRefusesWorkspaceWithRcArgProxy(t *testing.T) {
+	root := isolateYarnEnvironment(t)
+	writeYarnFixture(t, filepath.Join(root, "parent", ".yarnrc"), "yarnrc/rc-arg.yarnrc.tmpl", "http://rc-arg:1")
+	if _, err := fakeYarn(t, "1.22.22").UpstreamProxy([]string{"add", "x"}); err != nil {
+		t.Fatalf("direct commands still work: %v", err)
+	}
+	_, err := fakeYarn(t, "1.22.22").ProxyOptions([]string{"workspace", "a", "add", "x"})
+	if err == nil || !strings.Contains(err.Error(), "workspace") {
+		t.Fatalf("error = %v, want the workspace refusal", err)
 	}
 }
 

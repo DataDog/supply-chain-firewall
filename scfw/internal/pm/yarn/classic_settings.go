@@ -38,6 +38,9 @@ type classicSettings struct {
 // a key decides, and npm layers are read only when no Yarn layer sets it.
 type classicConfig struct {
 	options, yarn, npm []nodeproxy.Config
+	// rcArgProxy records an rc-arg proxy for any command, which a `yarn
+	// workspace` child would apply over SCFW's environment.
+	rcArgProxy bool
 }
 
 func (config classicConfig) get(key string) string {
@@ -73,6 +76,11 @@ func (yarn Yarn) classicSettings(command []string) (classicSettings, error) {
 	config, err := readClassicConfig(command, environ, env)
 	if err != nil {
 		return classicSettings{}, err
+	}
+	// `yarn workspace` re-runs Yarn without the command options SCFW adds, and
+	// .yarnrc rc-args win over the environment SCFW sets for that child.
+	if cmd, _, _ := parseYarnCommand(classic, command); cmd.name == "workspace" && config.rcArgProxy {
+		return classicSettings{}, errors.New("yarn workspace commands cannot be routed through SCFW when a .yarnrc sets --proxy or --https-proxy; run the command in the workspace directory instead")
 	}
 	var settings classicSettings
 	fromEnvironment := false
@@ -197,6 +205,7 @@ func readClassicConfig(command, environ []string, env map[string]string) (classi
 		rcFiles = append(rcFiles, env["YARN_CONFIG"])
 	}
 	rcArgs := nodeproxy.Config{}
+	rcArgProxy := false
 	for _, path := range rcFiles {
 		layer, err := readYarnrc(path)
 		if err != nil {
@@ -208,10 +217,13 @@ func readClassicConfig(command, environ []string, env map[string]string) (classi
 			if match != nil && (match[1] == "" || match[1] == name) {
 				rcArgs[match[2]] = values
 			}
+			if match != nil && (match[2] == "proxy" || match[2] == "https-proxy") {
+				rcArgProxy = true
+			}
 		}
 	}
 
-	config := classicConfig{options: []nodeproxy.Config{classicOptions(command), rcArgs}}
+	config := classicConfig{options: []nodeproxy.Config{classicOptions(command), rcArgs}, rcArgProxy: rcArgProxy}
 	config.yarn = []nodeproxy.Config{yarnEnvironmentConfig(environ)}
 	for _, path := range configLocations(dir, ".yarnrc", filepath.Join(home, ".yarnrc"), filepath.Join(prefix, "etc", "yarnrc")) {
 		layer, err := readYarnrc(path)

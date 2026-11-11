@@ -125,6 +125,15 @@ func TestBerryUpstreamHonorsCwdOption(t *testing.T) {
 	if err != nil || config.HTTPSProxy != "http://pkg:1" {
 		t.Fatalf("HTTPSProxy = %q (error %v)", config.HTTPSProxy, err)
 	}
+	// Yarn 4 also accepts `yarn add <packages> --cwd <dir>`.
+	config, err = fakeYarn(t, "4.18.1").UpstreamProxy([]string{"add", "x", "--cwd", "pkg"})
+	if err != nil || config.HTTPSProxy != "http://pkg:1" {
+		t.Fatalf("trailing --cwd: HTTPSProxy = %q (error %v)", config.HTTPSProxy, err)
+	}
+	writeYarnFixture(t, filepath.Join(root, "parent", "project", "pkg", ".yarnrc.yml"), "yarnrc-yml/network-proxy.yml")
+	if _, err := fakeYarn(t, "4.18.1").UpstreamProxy([]string{"add", "x", "--cwd", "pkg"}); err == nil || !strings.Contains(err.Error(), "networkSettings") {
+		t.Fatalf("trailing --cwd must still refuse networkSettings: %v", err)
+	}
 }
 
 func TestBerryUpstreamRejectsInvalidURLWithoutCredentials(t *testing.T) {

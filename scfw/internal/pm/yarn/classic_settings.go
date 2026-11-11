@@ -26,6 +26,11 @@ type classicSettings struct {
 	// NoProxy applies only to proxies taken from the standard variables:
 	// Yarn passes a configured proxy to its HTTP client, which then ignores it.
 	NoProxy string
+	// CAFile wins over CA, as in Yarn's request manager.
+	CAFile     string
+	CA         []string
+	StrictSSL  bool
+	Registries []string
 }
 
 // classicConfig holds Yarn Classic's configuration layers, highest first.
@@ -36,19 +41,30 @@ type classicConfig struct {
 }
 
 func (config classicConfig) get(key string) string {
+	return nodeproxy.LastValue(config.values(key))
+}
+
+func (config classicConfig) values(key string) []string {
 	for _, layer := range config.options {
-		if value := nodeproxy.LastValue(layer[key]); value != "" {
-			return value
+		if nodeproxy.LastValue(layer[key]) != "" {
+			return layer[key]
 		}
 	}
 	for _, layers := range [][]nodeproxy.Config{config.yarn, config.npm} {
-		for _, layer := range layers {
-			if values, found := layer[key]; found {
-				return nodeproxy.LastValue(values)
-			}
+		if values, found := firstLayer(layers, key); found {
+			return values
 		}
 	}
-	return ""
+	return nil
+}
+
+func firstLayer(layers []nodeproxy.Config, key string) ([]string, bool) {
+	for _, layer := range layers {
+		if values, found := layer[key]; found {
+			return values, true
+		}
+	}
+	return nil, false
 }
 
 func (yarn Yarn) classicSettings(command []string) (classicSettings, error) {
@@ -95,7 +111,52 @@ func (yarn Yarn) classicSettings(command []string) (classicSettings, error) {
 			settings.NoProxy = env["no_proxy"]
 		}
 	}
+
+	settings.CAFile = expandHome(config.get("cafile"), env["HOME"])
+	if settings.CAFile == "" {
+		settings.CA = config.values("ca")
+	}
+	// Yarn's default strict-ssl shadows npm's, so only Yarn layers count.
+	yarnOnly := classicConfig{options: config.options, yarn: config.yarn}
+	settings.StrictSSL = yarnOnly.get("strict-ssl") != "false"
+
+	// Tarballs may come from any registry Yarn knows, including npm's own
+	// registry setting, which Yarn uses for metadata.
+	settings.Registries = []string{config.get("registry")}
+	if settings.Registries[0] == "" {
+		settings.Registries[0] = "https://registry.yarnpkg.com"
+	}
+	if values, found := firstLayer(config.npm, "registry"); found {
+		settings.Registries = append(settings.Registries, nodeproxy.LastValue(values))
+	}
+	var scopes []string
+	for _, layer := range slices.Concat(config.options, config.yarn, config.npm) {
+		for key := range layer {
+			if strings.HasPrefix(key, "@") && strings.HasSuffix(key, ":registry") && !slices.Contains(scopes, key) {
+				scopes = append(scopes, key)
+			}
+		}
+	}
+	slices.Sort(scopes)
+	for _, key := range scopes {
+		settings.Registries = append(settings.Registries, config.get(key))
+	}
 	return settings, nil
+}
+
+// expandHome resolves a path setting like Yarn: a leading ~ is the home
+// directory and relative paths are relative to cwd.
+func expandHome(value, home string) string {
+	if value == "" {
+		return ""
+	}
+	if value == "~" || strings.HasPrefix(value, "~/") {
+		value = filepath.Join(home, strings.TrimPrefix(value, "~"))
+	}
+	if absolute, err := filepath.Abs(value); err == nil {
+		return absolute
+	}
+	return value
 }
 
 // readClassicConfig mirrors Yarn 1.22: command options; .yarnrc "--" lines
@@ -187,12 +248,13 @@ func configLocations(dir, name, user, global string) []string {
 	return locations
 }
 
-// classicOptions reads the proxy options Yarn accepts anywhere before "--".
+// classicOptions reads the proxy and registry options Yarn accepts anywhere
+// before "--".
 func classicOptions(command []string) nodeproxy.Config {
 	config := nodeproxy.Config{}
 	for index := 0; index < len(command) && command[index] != "--"; index++ {
 		name, value, assigned := strings.Cut(command[index], "=")
-		if name != "--proxy" && name != "--https-proxy" {
+		if name != "--proxy" && name != "--https-proxy" && name != "--registry" {
 			continue
 		}
 		if !assigned {

@@ -7,9 +7,11 @@ package yarn
 
 import (
 	"errors"
+	"os"
 
 	"golang.org/x/net/http/httpproxy"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
@@ -28,6 +30,42 @@ func (yarn Yarn) UpstreamProxy(command []string) (httpproxy.Config, error) {
 	config := httpproxy.Config{HTTPSProxy: settings.HTTPS, HTTPProxy: settings.HTTP, NoProxy: settings.NoProxy}
 	return config, validateUpstream(config)
 }
+
+// ProxyOptions transfers Yarn's effective routing and registry trust to the core.
+func (yarn Yarn) ProxyOptions(command []string) (proxy.Options, error) {
+	upstream, err := yarn.UpstreamProxy(command)
+	if err != nil {
+		return proxy.Options{}, err
+	}
+	options := proxy.Options{Upstream: upstream}
+	if gen, _ := yarn.generation(); gen != classic {
+		return options, nil
+	}
+	settings, err := yarn.classicSettings(command)
+	if err != nil {
+		return proxy.Options{}, err
+	}
+	options.TrustURL = yarnTrustURL(settings.StrictSSL)
+	// Yarn and Node ignore a CA file they cannot read; Git requires
+	// GIT_SSL_CAINFO, so a missing bundle fails.
+	var paths []string
+	for _, path := range []string{settings.CAFile, os.Getenv("NODE_EXTRA_CA_CERTS")} {
+		if _, err := os.Stat(path); path != "" && err == nil {
+			paths = append(paths, path)
+		}
+	}
+	var pems [][]byte
+	for _, ca := range settings.CA {
+		pems = append(pems, []byte(ca))
+	}
+	options.UpstreamTLS, err = proxy.NewTLSConfig(proxy.TLSConfigOptions{
+		CABundlePaths: append(paths, os.Getenv("GIT_SSL_CAINFO")),
+		CABundlePEM:   pems,
+	})
+	return options, err
+}
+
+var _ pm.ProxyOptionsProvider = Yarn{}
 
 // validateUpstream rejects proxies the core cannot use, without echoing a URL
 // that may carry credentials.

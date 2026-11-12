@@ -122,8 +122,9 @@ func readNpmConfig(args []string, environ []string) ([]npmConfig, error) {
 		defaultUserconfig = filepath.Join(home, ".npmrc")
 	}
 	project := npmConfig{}
-	global := lastValue(options["global"]) == "true" || lastValue(options["location"]) == "global" ||
-		lastValue(environment["global"]) == "true" || lastValue(environment["location"]) == "global"
+	// A command-line global value overrides the environment's, as in npm.
+	global := firstNonEmpty(lastValue(options["global"]), lastValue(environment["global"])) == "true" ||
+		lastValue(options["location"]) == "global" || lastValue(environment["location"]) == "global"
 	if !global {
 		prefix := path(options, "prefix")
 		if prefix == "" {

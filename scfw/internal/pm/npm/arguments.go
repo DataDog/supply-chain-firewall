@@ -29,14 +29,27 @@ func parseNpmOptions(args []string) []npmOption {
 		name, value, supplied := strings.Cut(strings.TrimLeft(argument, "-"), "=")
 		name = canonicalNpmOption(argument, name)
 		switch {
-		case name == "global" || name == "no-strict-ssl":
+		case name == "global" || name == "no-global":
+			// Like npm's parser: a bare flag takes a following literal true or
+			// false as its value, and any other =value still sets the flag.
+			enabled := name == "global"
+			switch {
+			case !enabled:
+			case supplied:
+				enabled = value != "false"
+			case index+1 < len(args) && (args[index+1] == "true" || args[index+1] == "false"):
+				index++
+				enabled = args[index] == "true"
+			}
+			name, value = "global", "true"
+			if !enabled {
+				value = "false"
+			}
+		case name == "no-strict-ssl":
 			if supplied {
 				continue
 			}
-			value = "true"
-			if name == "no-strict-ssl" {
-				name, value = "strict-ssl", "false"
-			}
+			name, value = "strict-ssl", "false"
 		case name == "strict-ssl":
 			if !supplied {
 				value = "true"

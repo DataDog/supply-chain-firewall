@@ -339,6 +339,12 @@ func TestSettingsSkipsProjectNpmrcForGlobal(t *testing.T) {
 	}{
 		{name: "-g", args: []string{"-g", "install"}, skip: true},
 		{name: "--global", args: []string{"install", "--global"}, skip: true},
+		{name: "--global=true", args: []string{"--global=true"}, skip: true},
+		{name: "--global true", args: []string{"--global", "true", "install"}, skip: true},
+		{name: "--global=false", args: []string{"--global=false"}},
+		{name: "--global false", args: []string{"--global", "false", "install"}},
+		{name: "-g false", args: []string{"-g", "false", "install"}},
+		{name: "--no-global overrides env", args: []string{"--no-global"}, env: [2]string{"npm_config_global", "true"}},
 		{name: "--location=global", args: []string{"--location=global"}, skip: true},
 		{name: "env global", env: [2]string{"npm_config_global", "true"}, skip: true},
 		{name: "env location", env: [2]string{"npm_config_location", "global"}, skip: true},

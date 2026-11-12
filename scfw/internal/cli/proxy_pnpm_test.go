@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -223,6 +224,140 @@ func TestPnpmProxyEndToEnd(t *testing.T) {
 				}
 				assertProxyCleaned(t, run.config)
 			})
+		}
+	})
+}
+
+func writePnpmFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Every way a user can point pnpm elsewhere must still leave the tarball
+// download evaluated and blocked.
+func TestPnpmBypassAttemptsAreStillEvaluated(t *testing.T) {
+	workspaceSetting := readProxyFixture(t, "pnpm/workspace-setting.yaml.tmpl")
+	configSetting := readProxyFixture(t, "pnpm/config-setting.yaml.tmpl")
+	forEachPnpm(t, func(t *testing.T, major int, executable string) {
+		for _, test := range []struct {
+			name   string
+			majors []int
+			npmrc  func(tunnel string) string
+			// workspace is the project's pnpm-workspace.yaml; global is config.yaml.
+			workspace, global func(tunnel string) string
+			env               func(tunnel string) [2]string
+			args              func(tunnel string) []string
+		}{
+			{name: "npmrc https-proxy", npmrc: func(tunnel string) string { return "https-proxy=" + tunnel + "\n" }},
+			{name: "npmrc noproxy", npmrc: func(string) string { return "noproxy=localhost\n" }},
+			{name: "npmrc no-proxy", npmrc: func(string) string { return "no-proxy=localhost\n" }},
+			{name: "npmrc strict-ssl false", npmrc: func(string) string { return "strict-ssl=false\n" }},
+			{name: "workspace httpsProxy", workspace: func(tunnel string) string { return fmt.Sprintf(workspaceSetting, "httpsProxy", tunnel) }},
+			{name: "workspace noProxy", workspace: func(string) string { return fmt.Sprintf(workspaceSetting, "noProxy", "localhost") }},
+			{name: "config.yaml noProxy", majors: []int{11, 12}, global: func(string) string { return fmt.Sprintf(configSetting, "noProxy", "localhost") }},
+			{name: "env npm_config_https_proxy", env: func(tunnel string) [2]string { return [2]string{"npm_config_https_proxy", tunnel} }},
+			{name: "env pnpm_config_https_proxy", env: func(tunnel string) [2]string { return [2]string{"pnpm_config_https_proxy", tunnel} }},
+			{name: "env PNPM_CONFIG_NOPROXY", env: func(string) [2]string { return [2]string{"PNPM_CONFIG_NOPROXY", "localhost"} }},
+			{name: "env NO_PROXY", env: func(string) [2]string { return [2]string{"NO_PROXY", "localhost"} }},
+			{name: "env No_Proxy", env: func(string) [2]string { return [2]string{"No_Proxy", "localhost"} }},
+			{name: "option config.https-proxy", args: func(tunnel string) []string { return []string{"--config.https-proxy=" + tunnel} }},
+			{name: "option https-proxy", args: func(tunnel string) []string { return []string{"--https-proxy", tunnel} }},
+			{name: "option config.noproxy", args: func(string) []string { return []string{"--config.noproxy=localhost"} }},
+		} {
+			if test.majors != nil && !slices.Contains(test.majors, major) {
+				continue
+			}
+			t.Run(test.name, func(t *testing.T) {
+				registry := startNpmRegistry(t)
+				var hits atomic.Int32
+				upstream := proxyTestUpstream(t, upstreamProxyOptions{credentials: "proxy:secret", hits: &hits})
+				tunnel := strings.Replace(upstream.URL, "://", "://proxy:secret@", 1)
+				extra := ""
+				if test.npmrc != nil {
+					extra = test.npmrc(tunnel)
+				}
+				dir := newPnpmTestProject(t, registry, extra)
+				args := []string{"add", "lab-pkg"}
+				if test.workspace != nil {
+					writePnpmFile(t, filepath.Join(dir, "pnpm-workspace.yaml"), test.workspace(tunnel))
+					args = []string{"add", "-w", "lab-pkg"}
+				}
+				if test.global != nil {
+					writePnpmFile(t, filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "pnpm", "config.yaml"), test.global(tunnel))
+				}
+				if test.env != nil {
+					pair := test.env(tunnel)
+					t.Setenv(pair[0], pair[1])
+				}
+				if test.args != nil {
+					args = append(args, test.args(tunnel)...)
+				}
+				run := runPnpmThroughProxy(t, executable, args, evaluation.OutcomeBlock)
+				assertPnpmFailed(t, run)
+				if run.calls != 1 || registry.TarballHits.Load() != 0 {
+					t.Fatalf("evaluations=%d tarball downloads=%d, want the tarball evaluated and blocked", run.calls, registry.TarballHits.Load())
+				}
+				assertProxyCleaned(t, run.config)
+			})
+		}
+	})
+}
+
+func TestPnpmChainsToAuthenticatedUpstream(t *testing.T) {
+	forEachPnpm(t, func(t *testing.T, _ int, executable string) {
+		registry := startNpmRegistry(t)
+		var tunnels atomic.Int32
+		tunnel := proxyTestUpstream(t, upstreamProxyOptions{credentials: "proxy:secret", hits: &tunnels})
+		newPnpmTestProject(t, registry, "")
+		t.Setenv("HTTPS_PROXY", strings.Replace(tunnel.URL, "://", "://proxy:secret@", 1))
+		var logs bytes.Buffer
+		previous := slog.Default()
+		slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+		t.Cleanup(func() { slog.SetDefault(previous) })
+
+		run := runPnpmThroughProxy(t, executable, []string{"add", "lab-pkg"}, evaluation.OutcomeAllow)
+		assertPnpmSucceeded(t, run)
+		if tunnels.Load() < 1 || registry.TarballHits.Load() != 1 || run.calls != 1 {
+			t.Fatalf("tunnels=%d tarball downloads=%d evaluations=%d", tunnels.Load(), registry.TarballHits.Load(), run.calls)
+		}
+		for _, output := range []string{logs.String(), run.details} {
+			if strings.Contains(output, "secret") {
+				t.Fatalf("upstream credential leaked: %s", output)
+			}
+		}
+		assertProxyCleaned(t, run.config)
+	})
+}
+
+func TestPnpmWithoutUpstreamConnectsDirectly(t *testing.T) {
+	forEachPnpm(t, func(t *testing.T, _ int, executable string) {
+		registry := startNpmRegistry(t)
+		var tunnels atomic.Int32
+		proxyTestUpstream(t, upstreamProxyOptions{credentials: "proxy:secret", hits: &tunnels})
+		newPnpmTestProject(t, registry, "")
+		run := runPnpmThroughProxy(t, executable, []string{"add", "lab-pkg"}, evaluation.OutcomeAllow)
+		assertPnpmSucceeded(t, run)
+		if tunnels.Load() != 0 || registry.TarballHits.Load() != 1 {
+			t.Fatalf("tunnels=%d tarball downloads=%d, want a direct download", tunnels.Load(), registry.TarballHits.Load())
+		}
+	})
+}
+
+func TestPnpmRefusedSettingNeverStarts(t *testing.T) {
+	forEachPnpm(t, func(t *testing.T, _ int, executable string) {
+		registry := startNpmRegistry(t)
+		newPnpmTestProject(t, registry, "local-address=127.0.0.1\n")
+		run := runPnpmThroughProxy(t, executable, []string{"add", "lab-pkg"}, evaluation.OutcomeAllow)
+		if run.setupErr == nil || !strings.Contains(run.setupErr.Error(), "local-address") {
+			t.Fatalf("setup error = %v, want the local-address refusal", run.setupErr)
+		}
+		if run.commandErr != nil || run.calls != 0 || registry.TarballHits.Load() != 0 {
+			t.Fatalf("pnpm must not start: command %v, evaluations %d, downloads %d", run.commandErr, run.calls, registry.TarballHits.Load())
 		}
 	})
 }

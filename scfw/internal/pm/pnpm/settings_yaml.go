@@ -91,11 +91,12 @@ func (p Pnpm) yamlSettings(major int, parsed parsedCommand, dir string) (pnpmSet
 	settings.RegistryCAs = all.registryCAs(home)
 	strictSSL, _ := all.scalar("strict-ssl")
 	settings.StrictSSL = strictSSL != "false"
-	registry, _ := all.scalar("registry")
+	registries := append(all, nodeproxy.Config{"@jsr:registry": {"https://npm.jsr.io/"}})
+	registry, _ := registries.scalar("registry")
 	if registry == "" {
 		registry = "https://registry.npmjs.org/"
 	}
-	settings.Registries = append([]string{registry}, all.scopedRegistries()...)
+	settings.Registries = append([]string{registry}, registries.scopedRegistries()...)
 	return settings, nil
 }
 

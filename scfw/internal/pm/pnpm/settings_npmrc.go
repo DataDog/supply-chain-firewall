@@ -82,6 +82,9 @@ func (p Pnpm) npmrcSettings(parsed parsedCommand, dir string) (pnpmSettings, err
 
 	files := layers{environment, project, workspaceNpmrc, user, global, rc}
 	all := append(layers{parsed.network, workspaceSettings}, files...)
+	if err := all.refused(); err != nil {
+		return pnpmSettings{}, err
+	}
 	var settings pnpmSettings
 	settings.HTTPS, settings.HTTP = proxyFallback(all, env, false)
 	settings.NoProxy, settings.NoProxyAll = noProxy(all, env)

@@ -43,6 +43,7 @@ type parsedCommand struct {
 // recorded but left in place, because pnpm must still use them.
 var strippedSettings = []string{
 	"https-proxy", "proxy", "http-proxy", "noproxy", "no-proxy", "ca", "cafile", "strict-ssl", "cert", "key", "local-address",
+	"pnpr-server",
 }
 
 var registryTLSKey = regexp.MustCompile(`^//.*:(ca|cafile|cert|certfile|key|keyfile)$`)

@@ -85,6 +85,28 @@ func (all layers) scalar(key string) (string, bool) {
 
 var registryCAKey = regexp.MustCompile(`^(//.*):(ca|cafile)$`)
 
+// refusedKey matches settings SCFW cannot route: client certificates cannot
+// pass through the intercepting proxy, and a local address or pnpr server would
+// route around it.
+var refusedKey = regexp.MustCompile(`^(cert|key|local-address|pnpr-server|//.*:(cert|certfile|key|keyfile))$`)
+
+// refused reports the first refused setting, naming the key but never its value.
+func (all layers) refused() error {
+	var keys []string
+	for _, layer := range all {
+		for key := range layer {
+			if value, found := all.scalar(key); found && value != "" && refusedKey.MatchString(key) && !slices.Contains(keys, key) {
+				keys = append(keys, key)
+			}
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	slices.Sort(keys)
+	return fmt.Errorf("pnpm %s is not supported through SCFW", keys[0])
+}
+
 // registryCAs collects per-registry CA settings; the first layer setting a key wins.
 func (all layers) registryCAs(home string) []registryCA {
 	seen := map[string]bool{}

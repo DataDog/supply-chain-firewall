@@ -77,6 +77,9 @@ func (p Pnpm) yamlSettings(major int, parsed parsedCommand, dir string) (pnpmSet
 	readableNpmrc(user, filepath.Dir(userconfig))
 
 	all := layers{parsed.network, environment, workspace, global, project, auth, user}
+	if err := all.refused(); err != nil {
+		return pnpmSettings{}, err
+	}
 	var settings pnpmSettings
 	settings.HTTPS, settings.HTTP = proxyFallback(all, env, major >= 12)
 	settings.NoProxy, settings.NoProxyAll = noProxy(all, env)

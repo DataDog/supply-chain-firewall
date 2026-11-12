@@ -37,6 +37,7 @@ func TestProxyCommandSupported(t *testing.T) {
 				{"workspace", "a", "add", "x"},
 				// dlx passes everything after the binary name to the binary.
 				{"dlx", "cowsay", "-h"}, {"dlx", "cowsay", "--version"}, {"dlx", "-p", "cowsay", "cowsay", "--help"},
+				{"create", "vite", "app"}, {"create", "foo", "-h"}, {"--cwd", "pkg", "create", "vite", "app"}, {"upgrade-interactive"},
 				{"remove", "x"}, {"dedupe"}, {"link", "../x"}, {"unlink", "x"}, {"unplug", "x"}, {"patch", "x"},
 				{"rebuild"}, {"set", "resolution", "x@npm:^1.0.0", "npm:1.0.0"}, {"constraints", "--fix"},
 			},

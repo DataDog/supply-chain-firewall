@@ -119,7 +119,7 @@ func installCommand(gen generation, cmd yarnCommand) bool {
 		return false
 	}
 	switch cmd.name {
-	case "", "install", "add", "remove", "up", "dedupe", "dlx", "link", "unlink", "unplug", "patch", "rebuild", "constraints":
+	case "", "install", "add", "remove", "up", "upgrade-interactive", "dedupe", "dlx", "create", "link", "unlink", "unplug", "patch", "rebuild", "constraints":
 		return true
 	case "workspaces":
 		return cmd.sub == "focus" || cmd.sub == "foreach"

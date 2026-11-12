@@ -227,6 +227,22 @@ func TestNewPnpmProbesOutsideProject(t *testing.T) {
 	}
 }
 
+// pnpx runs `pnpm dlx`, so `pnpx --version` fails; the version comes from the
+// pnpm entry point beside it.
+func TestNewPnpmProbesPnpmBesidePnpx(t *testing.T) {
+	isolatePnpmEnvironment(t)
+	manager, err := NewPnpm(context.Background(), "pnpx", filepath.Join(testdataDir, "bin", "pnpx"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if major, err := manager.major([]string{"cowsay"}); err != nil || major != 11 {
+		t.Fatalf("major = %d (error %v), want 11 from the sibling pnpm", major, err)
+	}
+	if manager.Executable() != filepath.Join(testdataDir, "bin", "pnpx") {
+		t.Fatalf("executable = %s, want pnpx itself to run the command", manager.Executable())
+	}
+}
+
 func TestResolveInstallTargetsRequiresProxyMode(t *testing.T) {
 	isolatePnpmEnvironment(t)
 	_, err := fakePnpm(t, "11.28.9").ResolveInstallTargets(context.Background(), []string{"add", "x"})

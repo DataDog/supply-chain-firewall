@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -66,6 +67,10 @@ func newPnpmTestProject(t *testing.T, registry *npmTestRegistry, npmrcExtra stri
 	} {
 		t.Setenv(key, value)
 	}
+	// pnpm dlx resolves its cache under the home directory.
+	if err := os.MkdirAll(filepath.Join(root, "home"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	usePnpmStore(t, filepath.Join(root, "store"))
 	dir := filepath.Join(root, "project")
 	writeNpmProject(t, dir, readProxyFixture(t, "npm/project/package.json"), "registry="+registry.URL+"/\ncafile="+registry.CAPath+"\n"+npmrcExtra)
@@ -100,7 +105,12 @@ type pnpmProxyRun struct {
 
 func runPnpmThroughProxy(t *testing.T, executable string, args []string, outcome evaluation.Outcome) pnpmProxyRun {
 	t.Helper()
-	manager, err := pnpm.NewPnpm(context.Background(), "pnpm", executable)
+	return runPnpmNamedThroughProxy(t, "pnpm", executable, args, outcome)
+}
+
+func runPnpmNamedThroughProxy(t *testing.T, name, executable string, args []string, outcome evaluation.Outcome) pnpmProxyRun {
+	t.Helper()
+	manager, err := pnpm.NewPnpm(context.Background(), name, executable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,6 +354,176 @@ func TestPnpmWithoutUpstreamConnectsDirectly(t *testing.T) {
 		assertPnpmSucceeded(t, run)
 		if tunnels.Load() != 0 || registry.TarballHits.Load() != 1 {
 			t.Fatalf("tunnels=%d tarball downloads=%d, want a direct download", tunnels.Load(), registry.TarballHits.Load())
+		}
+	})
+}
+
+// writePnpmWorkspace turns dir into a workspace with members a and b.
+func writePnpmWorkspace(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	for path, content := range files {
+		writePnpmFile(t, filepath.Join(dir, path), content)
+	}
+}
+
+func TestPnpmWorkspaceEndToEnd(t *testing.T) {
+	files := map[string]string{}
+	for _, path := range []string{"pnpm-workspace.yaml", "packages/a/package.json", "packages/b/package.json"} {
+		files[path] = readProxyFixture(t, filepath.Join("pnpm", "workspace", path))
+	}
+	forEachPnpm(t, func(t *testing.T, _ int, executable string) {
+		for _, test := range []struct {
+			name    string
+			args    []string
+			seed    bool
+			outcome evaluation.Outcome
+			failed  bool
+		}{
+			{name: "filter-allow", args: []string{"--filter", "a", "add", "lab-pkg"}, outcome: evaluation.OutcomeAllow},
+			{name: "filter-block", args: []string{"--filter", "a", "add", "lab-pkg"}, outcome: evaluation.OutcomeBlock, failed: true},
+			{name: "dir-allow", args: []string{"-C", "packages/a", "add", "lab-pkg"}, outcome: evaluation.OutcomeAllow},
+			{name: "dir-block", args: []string{"-C", "packages/a", "add", "lab-pkg"}, outcome: evaluation.OutcomeBlock, failed: true},
+			{name: "recursive-install-block", args: []string{"-r", "install"}, seed: true, outcome: evaluation.OutcomeBlock, failed: true},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				registry := startNpmRegistry(t)
+				dir := newPnpmTestProject(t, registry, "")
+				writePnpmWorkspace(t, dir, files)
+				if test.seed {
+					assertPnpmSucceeded(t, runPnpmThroughProxy(t, executable, []string{"--filter", "a", "add", "lab-pkg"}, evaluation.OutcomeAllow))
+					for _, modules := range []string{"node_modules", "packages/a/node_modules"} {
+						if err := os.RemoveAll(filepath.Join(dir, modules)); err != nil {
+							t.Fatal(err)
+						}
+					}
+					usePnpmStore(t, t.TempDir())
+					t.Setenv("XDG_CACHE_HOME", t.TempDir())
+				}
+				before := registry.TarballHits.Load()
+				run := runPnpmThroughProxy(t, executable, test.args, test.outcome)
+				if test.failed {
+					assertPnpmFailed(t, run)
+					if hits := registry.TarballHits.Load() - before; hits != 0 || run.calls != 1 {
+						t.Fatalf("tarball downloads=%d evaluations=%d, want the tarball evaluated and blocked", hits, run.calls)
+					}
+				} else {
+					assertPnpmSucceeded(t, run)
+					if run.calls != 1 {
+						t.Fatalf("evaluations = %d, want 1", run.calls)
+					}
+					if _, err := os.Stat(filepath.Join(dir, "packages", "a", "node_modules", "lab-pkg", "package.json")); err != nil {
+						t.Fatalf("package not installed in the member: %v", err)
+					}
+				}
+				if after, err := os.ReadFile(filepath.Join(dir, "pnpm-workspace.yaml")); err != nil || string(after) != files["pnpm-workspace.yaml"] {
+					t.Fatalf("pnpm-workspace.yaml changed: %q (error %v)", after, err)
+				}
+				assertProxyCleaned(t, run.config)
+			})
+		}
+	})
+}
+
+// lab-pkg has no binary, so dlx fails after its download, which is what SCFW
+// must evaluate.
+func TestPnpmDlxEndToEnd(t *testing.T) {
+	forEachPnpm(t, func(t *testing.T, _ int, executable string) {
+		pnpx := filepath.Join(filepath.Dir(executable), "pnpx"+filepath.Ext(executable))
+		for _, test := range []struct {
+			name, executable, invoked string
+			args                      []string
+		}{
+			{"dlx", executable, "pnpm", []string{"dlx", "lab-pkg"}},
+			{"pnpx", pnpx, "pnpx", []string{"lab-pkg"}},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				if _, err := os.Stat(test.executable); err != nil {
+					t.Skip("this release has no " + test.invoked + " entry point")
+				}
+				registry := startNpmRegistry(t)
+				newPnpmTestProject(t, registry, "")
+				run := runPnpmNamedThroughProxy(t, test.invoked, test.executable, test.args, evaluation.OutcomeBlock)
+				assertPnpmFailed(t, run)
+				if run.calls != 1 || registry.TarballHits.Load() != 0 {
+					t.Fatalf("evaluations=%d tarball downloads=%d, want the dlx download evaluated and blocked", run.calls, registry.TarballHits.Load())
+				}
+				assertProxyCleaned(t, run.config)
+			})
+		}
+	})
+}
+
+// Packages already in pnpm's store are linked without a download, so SCFW
+// never sees them; this documents that limitation.
+func TestPnpmWarmStoreIsNotEvaluated(t *testing.T) {
+	forEachPnpm(t, func(t *testing.T, _ int, executable string) {
+		// Fixtures are read relative to the package directory.
+		packageDir, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		registry := startNpmRegistry(t)
+		newPnpmTestProject(t, registry, "")
+		assertPnpmSucceeded(t, runPnpmThroughProxy(t, executable, []string{"add", "lab-pkg"}, evaluation.OutcomeAllow))
+		store := os.Getenv("pnpm_config_store_dir")
+		t.Chdir(packageDir)
+		dir := newPnpmTestProject(t, registry, "")
+		usePnpmStore(t, store)
+		before := registry.TarballHits.Load()
+		run := runPnpmThroughProxy(t, executable, []string{"add", "lab-pkg"}, evaluation.OutcomeBlock)
+		assertPnpmSucceeded(t, run)
+		if hits := registry.TarballHits.Load() - before; hits != 0 || run.calls != 0 {
+			t.Fatalf("tarball downloads=%d evaluations=%d, want neither for a stored package", hits, run.calls)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "node_modules", "lab-pkg", "package.json")); err != nil {
+			t.Fatalf("package not linked from the store: %v", err)
+		}
+	})
+}
+
+// A project pinned to another pnpm makes pnpm download that release on start,
+// which SCFW must evaluate like any other package.
+func TestPnpmPinHandOff(t *testing.T) {
+	installed, pinned := os.Getenv("SCFW_TEST_PNPM_11"), os.Getenv("SCFW_TEST_PNPM_12")
+	if installed == "" || pinned == "" {
+		t.Skip("SCFW_TEST_PNPM_11 and SCFW_TEST_PNPM_12 required for the version pin test")
+	}
+	output, err := exec.Command(pinned, "--version").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := startNpmRegistry(t)
+	dir := newPnpmTestProject(t, registry, "")
+	writePnpmFile(t, filepath.Join(dir, "package.json"), `{"name":"pinned","private":true,"packageManager":"pnpm@`+strings.TrimSpace(string(output))+`"}`)
+	run := runPnpmThroughProxy(t, installed, []string{"add", "lab-pkg"}, evaluation.OutcomeBlock)
+	assertPnpmFailed(t, run)
+	if run.calls < 1 || registry.TarballHits.Load() != 0 {
+		t.Fatalf("evaluations=%d tarball downloads=%d, want the pinned pnpm download evaluated and blocked", run.calls, registry.TarballHits.Load())
+	}
+	assertProxyCleaned(t, run.config)
+}
+
+// Scripts run directly, without the proxy or its environment.
+func TestPnpmDirectCommands(t *testing.T) {
+	scripts := readProxyFixture(t, "pnpm/scripts/package.json")
+	forEachPnpm(t, func(t *testing.T, _ int, executable string) {
+		registry := startNpmRegistry(t)
+		dir := newPnpmTestProject(t, registry, "")
+		writePnpmFile(t, filepath.Join(dir, "package.json"), scripts)
+		manager, err := pnpm.NewPnpm(context.Background(), "pnpm", executable)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, command := range [][]string{{"run", "hello"}, {"hello"}, {"--help"}} {
+			if manager.ProxyCommandSupported(command) {
+				t.Fatalf("%q must run directly", command)
+			}
+		}
+		if err := manager.RunCommand(context.Background(), []string{"run", "hello"}); err != nil {
+			t.Fatal(err)
+		}
+		if output, err := os.ReadFile(filepath.Join(dir, "hello.txt")); err != nil || string(output) != "direct" {
+			t.Fatalf("script saw HTTPS_PROXY %q (error %v), want no proxy", output, err)
 		}
 	})
 }

@@ -54,8 +54,25 @@ func NewPnpm(ctx context.Context, name, executable string) (Pnpm, error) {
 	}
 	base := filepath.Base(name)
 	manager := Pnpm{executable: executable, dlx: base == "pnpx" || base == "pnx"}
-	manager.installed, manager.versionErr = probeVersion(ctx, executable)
+	manager.installed, manager.versionErr = probeVersion(ctx, versionExecutable(executable))
 	return manager, nil
+}
+
+// versionExecutable returns the pnpm entry point beside a pnpx or pnx one:
+// those run `pnpm dlx`, which rejects --version.
+func versionExecutable(executable string) string {
+	dir, base := filepath.Split(executable)
+	for dlx, pnpm := range map[string]string{"pnpx": "pnpm", "pnx": "pn"} {
+		if suffix, found := strings.CutPrefix(base, dlx); found {
+			if sibling := filepath.Join(dir, pnpm+suffix); regularFile(sibling) {
+				return sibling
+			}
+			if found, err := exec.LookPath("pnpm"); err == nil {
+				return found
+			}
+		}
+	}
+	return executable
 }
 
 func probeVersion(ctx context.Context, executable string) (pm.Version, error) {

@@ -78,7 +78,7 @@ func npmProxyForURL(result npmDiscoveryResult) func(*url.URL) (*url.URL, error) 
 		if target.Scheme == "https" {
 			value = result.HTTPS
 		}
-		if value == "" || npmBypasses(target, result.NoProxy) {
+		if value == "" || nodeproxy.Bypasses(target, result.NoProxy) {
 			return nil, nil
 		}
 		parsed, err := url.Parse(value)
@@ -87,30 +87,6 @@ func npmProxyForURL(result npmDiscoveryResult) func(*url.URL) (*url.URL, error) 
 		}
 		return parsed, nil
 	}
-}
-
-// npmBypasses mirrors @npmcli/agent: an entry matches when its non-empty dot
-// segments equal the host's, compared from the right. There is no wildcard,
-// matching is case-sensitive, and an entry with a port never matches.
-func npmBypasses(target *url.URL, noProxy string) bool {
-	host := strings.Split(target.Hostname(), ".")
-	slices.Reverse(host)
-	for entry := range strings.SplitSeq(noProxy, ",") {
-		var segments []string
-		for segment := range strings.SplitSeq(strings.TrimSpace(entry), ".") {
-			if segment != "" {
-				segments = append(segments, segment)
-			}
-		}
-		if len(segments) == 0 || len(segments) > len(host) {
-			continue
-		}
-		slices.Reverse(segments)
-		if slices.Equal(host[:len(segments)], segments) {
-			return true
-		}
-	}
-	return false
 }
 
 // validateUpstream checks the proxies npm selects; npm never parses the

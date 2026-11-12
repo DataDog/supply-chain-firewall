@@ -59,24 +59,5 @@ func classicProxyCommand(executable string, command []string, config proxy.Clien
 		"npm_config_cafile": config.CACertificatePath, "npm_config_noproxy": "scfw.invalid",
 		"GIT_SSL_CAINFO": config.CACertificatePath, "NODE_EXTRA_CA_CERTS": extraCAs,
 	})
-	return proxy.CommandSpec{Executable: executable, Args: args, EnvOverrides: overrideVariants(os.Environ(), canonical)}, nil
-}
-
-// overrideVariants gives every variant of a canonical key already present in
-// environ the canonical value. Yarn and npm read their variables
-// case-insensitively and accept dashes for underscores, while the core
-// replaces exact keys only.
-func overrideVariants(environ []string, canonical map[string]string) map[string]string {
-	normalized := make(map[string]string, len(canonical))
-	for key, value := range canonical {
-		normalized[strings.ToLower(key)] = value
-	}
-	overrides := maps.Clone(canonical)
-	for _, item := range environ {
-		key, _, _ := strings.Cut(item, "=")
-		if value, found := normalized[strings.ReplaceAll(strings.ToLower(key), "-", "_")]; found {
-			overrides[key] = value
-		}
-	}
-	return overrides
+	return proxy.CommandSpec{Executable: executable, Args: args, EnvOverrides: nodeproxy.OverrideVariants(os.Environ(), canonical)}, nil
 }

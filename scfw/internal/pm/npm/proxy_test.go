@@ -168,29 +168,6 @@ func TestProxyCommandIgnoresUnreadableNodeExtraCACerts(t *testing.T) {
 	}
 }
 
-func TestNpmBypasses(t *testing.T) {
-	for _, test := range []struct {
-		host, noProxy string
-		bypass        bool
-	}{
-		{"registry.lab.test", "lab.test", true},
-		{"registry.lab.test", ".lab.test", true},
-		{"notlab.test", "lab.test", false},
-		{"registry.lab.test", "*", false},
-		{"registry.lab.test", "registry.lab.test:443", false},
-		{"registry.lab.test", "REGISTRY.LAB.TEST", false},
-		{"127.0.0.1", "127.0.0.1", true},
-		{"a.test", " a.test , b.test ", true},
-		{"b.test", " a.test , b.test ", true},
-		{"registry.lab.test", "", false},
-	} {
-		target := &url.URL{Scheme: "https", Host: test.host + ":443"}
-		if got := npmBypasses(target, test.noProxy); got != test.bypass {
-			t.Errorf("npmBypasses(%q, %q) = %v, want %v", test.host, test.noProxy, got, test.bypass)
-		}
-	}
-}
-
 func TestProxyOptionsRoutesLikeNpm(t *testing.T) {
 	for _, test := range []struct {
 		name   string

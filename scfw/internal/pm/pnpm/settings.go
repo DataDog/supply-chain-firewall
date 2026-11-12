@@ -56,6 +56,9 @@ func (p Pnpm) settings(command []string) (pnpmSettings, error) {
 			dir = filepath.Join(dir, parsed.dir)
 		}
 	}
+	if major >= 11 {
+		return p.yamlSettings(major, parsed, dir)
+	}
 	return p.npmrcSettings(parsed, dir)
 }
 
@@ -128,17 +131,22 @@ func (all layers) scopedRegistries() []string {
 	return registries
 }
 
-// proxyFallback mirrors pnpm 10/11's resolution of the standard proxy variables:
-// a configured proxy wins, the lowercase variable is read before the uppercase
-// one even when empty, proxy=false disables the fallback, and HTTP falls back
-// to the HTTPS proxy.
-func proxyFallback(all layers, env map[string]string) (https, http string) {
+// proxyFallback mirrors pnpm's resolution of the standard proxy variables: a
+// configured proxy wins, proxy=false disables the fallback, and HTTP falls back
+// to the HTTPS proxy. pnpm 10 and 11 read the lowercase variable before the
+// uppercase one, even when it is empty; pnpm 12 reads uppercase first.
+func proxyFallback(all layers, env map[string]string, upperFirst bool) (https, http string) {
 	lookup := func(name string) (string, bool) {
-		if value, found := env[name]; found {
-			return value, true
+		names := []string{name, strings.ToUpper(name)}
+		if upperFirst {
+			slices.Reverse(names)
 		}
-		value, found := env[strings.ToUpper(name)]
-		return value, found
+		for _, name := range names {
+			if value, found := env[name]; found {
+				return value, true
+			}
+		}
+		return "", false
 	}
 	first := func(candidates ...func() (string, bool)) (string, bool) {
 		for _, candidate := range candidates {
@@ -204,6 +212,16 @@ func readWorkspaceSettings(path string) (nodeproxy.Config, error) {
 	}
 	config := nodeproxy.Config{}
 	for key, value := range document {
+		if registries, isMap := value.(map[string]any); isMap && key == "registries" {
+			for scope, registry := range registries {
+				if scope == "default" {
+					config["registry"] = []string{fmt.Sprint(registry)}
+				} else if strings.HasPrefix(scope, "@") {
+					config[scope+":registry"] = []string{fmt.Sprint(registry)}
+				}
+			}
+			continue
+		}
 		switch typed := value.(type) {
 		case nil, map[string]any:
 		case []any:

@@ -8,6 +8,7 @@ package pnpm
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/nodeproxy"
 )
@@ -32,8 +33,11 @@ func (p Pnpm) npmrcSettings(parsed parsedCommand, dir string) (pnpmSettings, err
 		}
 		// pnpm 10 computes registries before applying these settings, ignores
 		// cafile there, and drops proxies that reference the environment.
-		delete(workspaceSettings, "registry")
-		delete(workspaceSettings, "cafile")
+		for key := range workspaceSettings {
+			if key == "registry" || key == "cafile" || strings.HasSuffix(key, ":registry") {
+				delete(workspaceSettings, key)
+			}
+		}
 		dropPlaceholders(workspaceSettings, func(key string) bool {
 			return key == "registry" || key == "https-proxy" || key == "http-proxy" || key == "proxy" || key == "no-proxy" || key == "noproxy"
 		})
@@ -79,7 +83,7 @@ func (p Pnpm) npmrcSettings(parsed parsedCommand, dir string) (pnpmSettings, err
 	files := layers{environment, project, workspaceNpmrc, user, global, rc}
 	all := append(layers{parsed.network, workspaceSettings}, files...)
 	var settings pnpmSettings
-	settings.HTTPS, settings.HTTP = proxyFallback(all, env)
+	settings.HTTPS, settings.HTTP = proxyFallback(all, env, false)
 	settings.NoProxy, settings.NoProxyAll = noProxy(all, env)
 	if cafile, _ := all.scalar("cafile"); cafile != "" {
 		settings.CAFile = expandPath(cafile, home)

@@ -19,6 +19,17 @@ import (
 // they cannot reach the arguments of `yarn run`; the user's own proxy options
 // are removed because Yarn applies the last occurrence.
 func classicProxyCommand(executable string, command []string, config proxy.ClientConfig, pem []byte) (proxy.CommandSpec, error) {
+	// `yarn workspace <name> <command>` only starts another Yarn in the
+	// workspace, without these options. Running that command there directly
+	// is equivalent and puts the options on the process that downloads.
+	cmd, _, cwd := parseYarnCommand(classic, command)
+	start, err := startDirectory(cwd)
+	if err != nil {
+		return proxy.CommandSpec{}, err
+	}
+	if workspace, rest, found := classicWorkspace(start, cmd, command); found {
+		command = append([]string{"--cwd", workspace}, rest...)
+	}
 	args := []string{"--https-proxy=" + config.URL, "--proxy=" + config.URL}
 	for index := 0; index < len(command); index++ {
 		argument := command[index]

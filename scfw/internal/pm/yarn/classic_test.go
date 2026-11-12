@@ -88,3 +88,39 @@ func TestClassicProxyCommandRejectsUnreadableCA(t *testing.T) {
 		t.Fatal("no CA may be created")
 	}
 }
+
+// `yarn workspace <name> <command>` starts a second Yarn in the workspace that
+// would not receive SCFW's options, so the command runs there directly.
+func TestClassicProxyCommandRunsWorkspaceCommandsInTheWorkspace(t *testing.T) {
+	root := isolateYarnEnvironment(t)
+	project := filepath.Join(root, "parent", "project")
+	writeYarnFixture(t, filepath.Join(project, "package.json"), "workspaces/root-array.json")
+	writeYarnFixture(t, filepath.Join(project, "a", "package.json"), "workspaces/member.json.tmpl", "a")
+	directory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := testClientConfig(t)
+	flags := []string{"--https-proxy=" + config.URL, "--proxy=" + config.URL}
+	for _, test := range []struct {
+		name    string
+		command []string
+		want    []string
+	}{
+		{"named workspace", []string{"workspace", "a", "add", "x", "--dev"},
+			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a"), "add", "x", "--dev")},
+		{"options before the command stay with the outer Yarn", []string{"--registry", "http://r:1", "--cwd", ".", "workspace", "a", "add", "x"},
+			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a"), "add", "x")},
+		{"arguments after the separator are kept", []string{"workspace", "a", "add", "x", "--", "--proxy", "y"},
+			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a"), "add", "x", "--", "--proxy", "y")},
+		{"unknown workspace is left for Yarn to report", []string{"workspace", "missing", "add", "x"},
+			append(slices.Clone(flags), "workspace", "missing", "add", "x")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			spec, err := fakeYarn(t, "1.22.22").ProxyCommand(context.Background(), test.command, config)
+			if err != nil || !slices.Equal(spec.Args, test.want) {
+				t.Fatalf("args = %q (error %v), want %q", spec.Args, err, test.want)
+			}
+		})
+	}
+}

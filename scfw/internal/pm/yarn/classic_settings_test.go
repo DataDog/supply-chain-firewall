@@ -180,17 +180,50 @@ func TestClassicUpstreamHonorsCwdOption(t *testing.T) {
 	}
 }
 
-// `yarn workspace` re-runs Yarn without SCFW's proxy options, so an rc-arg
-// proxy would win over the environment there.
-func TestClassicRefusesWorkspaceWithRcArgProxy(t *testing.T) {
-	root := isolateYarnEnvironment(t)
-	writeYarnFixture(t, filepath.Join(root, "parent", ".yarnrc"), "yarnrc/rc-arg.yarnrc.tmpl", "http://rc-arg:1")
-	if _, err := fakeYarn(t, "1.22.22").UpstreamProxy([]string{"add", "x"}); err != nil {
-		t.Fatalf("direct commands still work: %v", err)
-	}
-	_, err := fakeYarn(t, "1.22.22").ProxyOptions([]string{"workspace", "a", "add", "x"})
-	if err == nil || !strings.Contains(err.Error(), "workspace") {
-		t.Fatalf("error = %v, want the workspace refusal", err)
+// `yarn workspace <name> <command>` runs <command> inside the workspace, so
+// that directory's .yarnrc decides which proxy and trust Yarn would have used.
+func TestClassicWorkspaceDiscoversFromTheWorkspace(t *testing.T) {
+	for _, test := range []struct {
+		name, root string
+		// members maps a directory below the project to its package name.
+		members map[string]string
+		rcDir   string
+		rc      string
+		command []string
+		want    string
+	}{
+		{"named workspace", "root-array.json", map[string]string{"a": "a", "packages/b": "b"}, "a",
+			"yarnrc/https-proxy.yarnrc.tmpl", []string{"workspace", "a", "add", "x"}, "http://rc:1"},
+		{"rc-arg proxy in the workspace", "root-array.json", map[string]string{"a": "a", "packages/b": "b"}, "a",
+			"yarnrc/rc-arg.yarnrc.tmpl", []string{"workspace", "a", "add", "x"}, "http://rc:1"},
+		{"another workspace is not affected", "root-array.json", map[string]string{"a": "a", "packages/b": "b"}, "a",
+			"yarnrc/https-proxy.yarnrc.tmpl", []string{"workspace", "b", "add", "x"}, ""},
+		{"unknown name keeps the starting directory", "root-array.json", map[string]string{"a": "a"}, "a",
+			"yarnrc/https-proxy.yarnrc.tmpl", []string{"workspace", "missing", "add", "x"}, ""},
+		{"glob with a wildcard", "root-array.json", map[string]string{"packages/b": "b"}, "packages/b",
+			"yarnrc/https-proxy.yarnrc.tmpl", []string{"workspace", "b", "add", "x"}, "http://rc:1"},
+		{"recursive glob in the packages form", "root-packages.json", map[string]string{"packages/x/y": "y"}, "packages/x/y",
+			"yarnrc/https-proxy.yarnrc.tmpl", []string{"workspace", "y", "add", "x"}, "http://rc:1"},
+		{"rc-arg scoped to the inner command", "root-array.json", map[string]string{"a": "a"}, "a",
+			"yarnrc/rc-arg-add.yarnrc.tmpl", []string{"workspace", "a", "add", "x"}, "http://rc:1"},
+		{"rc-arg scoped to another command", "root-array.json", map[string]string{"a": "a"}, "a",
+			"yarnrc/rc-arg-add.yarnrc.tmpl", []string{"workspace", "a", "remove", "x"}, ""},
+		{"options before the command", "root-array.json", map[string]string{"a": "a"}, "a",
+			"yarnrc/https-proxy.yarnrc.tmpl", []string{"--non-interactive", "workspace", "a", "add", "x"}, "http://rc:1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := isolateYarnEnvironment(t)
+			project := filepath.Join(root, "parent", "project")
+			writeYarnFixture(t, filepath.Join(project, "package.json"), "workspaces/"+test.root)
+			for dir, name := range test.members {
+				writeYarnFixture(t, filepath.Join(project, dir, "package.json"), "workspaces/member.json.tmpl", name)
+			}
+			writeYarnFixture(t, filepath.Join(project, test.rcDir, ".yarnrc"), test.rc, "http://rc:1")
+			config, err := fakeYarn(t, "1.22.22").UpstreamProxy(test.command)
+			if err != nil || config.HTTPSProxy != test.want {
+				t.Fatalf("HTTPSProxy = %q (error %v), want %q", config.HTTPSProxy, err, test.want)
+			}
+		})
 	}
 }
 

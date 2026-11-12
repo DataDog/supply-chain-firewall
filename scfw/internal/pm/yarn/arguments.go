@@ -23,6 +23,8 @@ var classicOptionalValueOptions = []string{"--emoji", "--prod", "--production", 
 
 type yarnCommand struct {
 	name, sub string
+	// index is the position of the command name in the arguments.
+	index int
 	// args follow the command name, before any "--".
 	args []string
 }
@@ -42,7 +44,7 @@ func parseYarnCommand(gen generation, command []string) (cmd yarnCommand, help b
 	for index := 0; index < len(command); index++ {
 		argument := command[index]
 		if !strings.HasPrefix(argument, "-") {
-			cmd.name, cmd.args = argument, command[index+1:]
+			cmd.name, cmd.index, cmd.args = argument, index, command[index+1:]
 			break
 		}
 		if slices.Contains([]string{"-h", "--help", "-v", "--version"}, argument) {

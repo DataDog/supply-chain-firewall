@@ -38,9 +38,6 @@ type classicSettings struct {
 // a key decides, and npm layers are read only when no Yarn layer sets it.
 type classicConfig struct {
 	options, yarn, npm []nodeproxy.Config
-	// rcArgProxy records an rc-arg proxy for any command, which a `yarn
-	// workspace` child would apply over SCFW's environment.
-	rcArgProxy bool
 }
 
 func (config classicConfig) get(key string) string {
@@ -76,11 +73,6 @@ func (yarn Yarn) classicSettings(command []string) (classicSettings, error) {
 	config, err := readClassicConfig(command, environ, env)
 	if err != nil {
 		return classicSettings{}, err
-	}
-	// `yarn workspace` re-runs Yarn without the command options SCFW adds, and
-	// .yarnrc rc-args win over the environment SCFW sets for that child.
-	if cmd, _, _ := parseYarnCommand(classic, command); cmd.name == "workspace" && config.rcArgProxy {
-		return classicSettings{}, errors.New("yarn workspace commands cannot be routed through SCFW when a .yarnrc sets --proxy or --https-proxy; run the command in the workspace directory instead")
 	}
 	var settings classicSettings
 	fromEnvironment := false
@@ -167,20 +159,33 @@ func expandHome(value, home string) string {
 	return value
 }
 
+// startDirectory is where Yarn starts reading configuration: the process
+// directory, or the one given by --cwd.
+func startDirectory(cwd string) (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", errors.New("could not resolve yarn directory")
+	}
+	if filepath.IsAbs(cwd) {
+		return filepath.Clean(cwd), nil
+	}
+	return filepath.Join(dir, cwd), nil
+}
+
 // readClassicConfig mirrors Yarn 1.22: command options; .yarnrc "--" lines
 // (rc-args); yarn_* variables; .yarnrc in the cwd, home, and global prefix,
 // then parent directories; npm_config_* variables; and .npmrc in the same order.
 func readClassicConfig(command, environ []string, env map[string]string) (classicConfig, error) {
 	cmd, _, cwd := parseYarnCommand(classic, command)
-	dir, err := os.Getwd()
+	dir, err := startDirectory(cwd)
 	if err != nil {
-		return classicConfig{}, errors.New("could not resolve yarn directory")
+		return classicConfig{}, err
 	}
-	if cwd != "" {
-		dir = filepath.Join(dir, cwd)
-		if filepath.IsAbs(cwd) {
-			dir = filepath.Clean(cwd)
-		}
+	// `yarn workspace` runs its command in the workspace, which is where the
+	// configuration that applies is read from.
+	if workspace, rest, found := classicWorkspace(dir, cmd, command); found {
+		dir = workspace
+		cmd, _, _ = parseYarnCommand(classic, rest)
 	}
 	home, prefix := env["HOME"], nodeproxy.GlobalPrefix(env)
 	name := cmd.name
@@ -188,42 +193,21 @@ func readClassicConfig(command, environ []string, env map[string]string) (classi
 		name = "install"
 	}
 
-	var rcFiles []string
-	for current := dir; ; current = filepath.Dir(current) {
-		rcFiles = append(rcFiles, filepath.Join(current, ".yarnrc"))
-		if filepath.Dir(current) == current {
-			break
-		}
-	}
-	slices.Reverse(rcFiles)
-	rcFiles = append(rcFiles, "/etc/yarn/config", "/etc/yarnrc")
-	if home != "" {
-		rcFiles = append(rcFiles, filepath.Join(home, ".config", "yarn", "config"), filepath.Join(home, ".config", "yarn"),
-			filepath.Join(home, ".yarn", "config"), filepath.Join(home, ".yarnrc"))
-	}
-	if env["YARN_CONFIG"] != "" {
-		rcFiles = append(rcFiles, env["YARN_CONFIG"])
-	}
 	rcArgs := nodeproxy.Config{}
-	rcArgProxy := false
-	for _, path := range rcFiles {
+	for _, path := range classicRCFiles(dir, home, env) {
 		layer, err := readYarnrc(path)
 		if err != nil {
 			return classicConfig{}, err
 		}
 		// Later files win; "--<command>.<flag>" applies to that command only.
 		for key, values := range layer {
-			match := rcArgPattern.FindStringSubmatch(key)
-			if match != nil && (match[1] == "" || match[1] == name) {
+			if match := rcArgPattern.FindStringSubmatch(key); match != nil && (match[1] == "" || match[1] == name) {
 				rcArgs[match[2]] = values
-			}
-			if match != nil && (match[2] == "proxy" || match[2] == "https-proxy") {
-				rcArgProxy = true
 			}
 		}
 	}
 
-	config := classicConfig{options: []nodeproxy.Config{classicOptions(command), rcArgs}, rcArgProxy: rcArgProxy}
+	config := classicConfig{options: []nodeproxy.Config{classicOptions(command), rcArgs}}
 	config.yarn = []nodeproxy.Config{yarnEnvironmentConfig(environ)}
 	for _, path := range configLocations(dir, ".yarnrc", filepath.Join(home, ".yarnrc"), filepath.Join(prefix, "etc", "yarnrc")) {
 		layer, err := readYarnrc(path)
@@ -246,6 +230,28 @@ func readClassicConfig(command, environ []string, env map[string]string) (classi
 		config.npm = append(config.npm, layer)
 	}
 	return config, nil
+}
+
+// classicRCFiles lists the .yarnrc files Yarn merges for a process running in
+// dir, in merge order: later files win.
+func classicRCFiles(dir, home string, env map[string]string) []string {
+	var files []string
+	for current := dir; ; current = filepath.Dir(current) {
+		files = append(files, filepath.Join(current, ".yarnrc"))
+		if filepath.Dir(current) == current {
+			break
+		}
+	}
+	slices.Reverse(files)
+	files = append(files, "/etc/yarn/config", "/etc/yarnrc")
+	if home != "" {
+		files = append(files, filepath.Join(home, ".config", "yarn", "config"), filepath.Join(home, ".config", "yarn"),
+			filepath.Join(home, ".yarn", "config"), filepath.Join(home, ".yarnrc"))
+	}
+	if env["YARN_CONFIG"] != "" {
+		files = append(files, env["YARN_CONFIG"])
+	}
+	return files
 }
 
 var rcArgPattern = regexp.MustCompile(`^--(?:([^.]+)\.)?(.*)$`)

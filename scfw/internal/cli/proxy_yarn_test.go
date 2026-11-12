@@ -300,6 +300,60 @@ func TestYarnClassicWithoutUpstreamConnectsDirectly(t *testing.T) {
 	}
 }
 
+// A workspace's own .yarnrc can set a proxy rc-arg. `yarn workspace` runs its
+// command in a second Yarn that would obey it over SCFW, so SCFW must run the
+// command in the workspace itself, evaluate the download, and chain to that proxy.
+func TestYarnClassicWorkspaceWithRcArgProxyIsStillEvaluated(t *testing.T) {
+	executable := yarnTestExecutable(t, "SCFW_TEST_YARN_CLASSIC")
+	for _, test := range []struct {
+		name    string
+		outcome evaluation.Outcome
+		hits    int32
+		failed  bool
+	}{
+		{"allow", evaluation.OutcomeAllow, 1, false},
+		{"block", evaluation.OutcomeBlock, 0, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			registry := startNpmRegistry(t)
+			var tunnels atomic.Int32
+			tunnel := proxyTestUpstream(t, upstreamProxyOptions{credentials: "proxy:secret", hits: &tunnels})
+			dir := newYarnTestProject(t, ".yarnrc", classicYarnrc(registry, ""))
+			for path, content := range map[string]string{
+				"package.json":   `{"name":"root","private":true,"workspaces":["a"]}`,
+				"a/package.json": `{"name":"a","version":"1.0.0"}`,
+				"a/.yarnrc":      `--https-proxy "` + strings.Replace(tunnel.URL, "://", "://proxy:secret@", 1) + `"` + "\n",
+			} {
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, path)), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, path), []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			run := runYarnThroughProxy(t, executable, []string{"workspace", "a", "add", "lab-pkg"}, test.outcome)
+			if test.failed {
+				assertYarnFailed(t, run)
+			} else {
+				assertYarnSucceeded(t, run)
+				if tunnels.Load() < 1 {
+					t.Fatal("the workspace's proxy was not used as the upstream")
+				}
+				if _, err := os.Stat(filepath.Join(dir, "node_modules", "lab-pkg", "package.json")); err != nil {
+					t.Fatalf("package not installed: %v", err)
+				}
+			}
+			if registry.TarballHits.Load() != test.hits || run.calls != 1 {
+				t.Fatalf("tarball downloads=%d evaluations=%d, want %d and 1", registry.TarballHits.Load(), run.calls, test.hits)
+			}
+			if strings.Contains(run.details, "secret") {
+				t.Fatalf("upstream credential leaked: %s", run.details)
+			}
+			assertProxyCleaned(t, run.config)
+		})
+	}
+}
+
 func berryYarnrc(registry *npmTestRegistry, extra string) string {
 	return `npmRegistryServer: "` + registry.URL + `"` + "\n" + `httpsCaFilePath: "` + registry.CAPath + `"` + "\n" +
 		"enableTelemetry: false\nenableGlobalCache: false\n" + extra

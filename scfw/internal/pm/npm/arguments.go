@@ -29,19 +29,20 @@ func parseNpmOptions(args []string) []npmOption {
 		name, value, supplied := strings.Cut(strings.TrimLeft(argument, "-"), "=")
 		name = canonicalNpmOption(argument, name)
 		switch {
-		case name == "global" || name == "no-global":
+		case name == "global" || name == "no-global" || name == "workspaces" || name == "no-workspaces":
 			// Like npm's parser: a bare flag takes a following literal true or
 			// false as its value, and any other =value still sets the flag.
-			enabled := name == "global"
+			flag, negated := strings.CutPrefix(name, "no-")
+			enabled := !negated
 			switch {
-			case !enabled:
+			case negated:
 			case supplied:
 				enabled = value != "false"
 			case index+1 < len(args) && (args[index+1] == "true" || args[index+1] == "false"):
 				index++
 				enabled = args[index] == "true"
 			}
-			name, value = "global", "true"
+			name, value = flag, "true"
 			if !enabled {
 				value = "false"
 			}

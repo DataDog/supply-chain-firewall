@@ -373,6 +373,98 @@ func TestSettingsSkipsProjectNpmrcForGlobal(t *testing.T) {
 	})
 }
 
+// writeNpmWorkspace lays out a root with the given package.json beside members
+// that each carry their own .npmrc, so the proxy read back names the directory
+// whose configuration was used.
+func writeNpmWorkspace(t *testing.T, rootManifest string) string {
+	t.Helper()
+	root, _ := os.Getwd()
+	writeNpmFixture(t, filepath.Join(root, "package.json"), rootManifest)
+	writeNpmFixture(t, filepath.Join(root, ".npmrc"), "https-proxy=http://root:1\n")
+	for _, member := range []string{"packages/app", "packages/lib", "packages/group", "packages/group/app", "packages/.hidden", "apps/web", "other"} {
+		writeNpmFixture(t, filepath.Join(root, member, "package.json"), "{}")
+		writeNpmFixture(t, filepath.Join(root, member, ".npmrc"), "https-proxy=http://"+member+":1\n")
+	}
+	writeNpmFixture(t, filepath.Join(root, "packages", "app", "src", ".keep"), "")
+	// A directory with only node_modules is a project, but never a workspace.
+	writeNpmFixture(t, filepath.Join(root, "packages", "nm", "node_modules", ".keep"), "")
+	writeNpmFixture(t, filepath.Join(root, "packages", "nm", ".npmrc"), "https-proxy=http://packages/nm:1\n")
+	return root
+}
+
+// The expectations below were measured with npm 11's `npm prefix`.
+func TestSettingsProjectLocationInWorkspaces(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		workspaces string
+		cwd        string
+		args       []string
+		env        [2]string
+		want       string // directory whose .npmrc applies; "root" is the workspace root
+	}{
+		{name: "member", workspaces: `["packages/*"]`, cwd: "packages/app", want: "root"},
+		{name: "folder inside a member", workspaces: `["packages/*"]`, cwd: "packages/app/src", want: "root"},
+		{name: "--workspaces=false", workspaces: `["packages/*"]`, cwd: "packages/app", args: []string{"--workspaces=false"}, want: "packages/app"},
+		{name: "--no-workspaces", workspaces: `["packages/*"]`, cwd: "packages/app", args: []string{"--no-workspaces"}, want: "packages/app"},
+		{name: "--workspaces false", workspaces: `["packages/*"]`, cwd: "packages/app", args: []string{"--workspaces", "false", "install"}, want: "packages/app"},
+		{name: "--workspaces true", workspaces: `["packages/*"]`, cwd: "packages/app", args: []string{"--workspaces", "true"}, want: "root"},
+		{name: "environment cannot disable workspaces", workspaces: `["packages/*"]`, cwd: "packages/app", env: [2]string{"npm_config_workspaces", "false"}, want: "root"},
+		{name: "--prefix wins", workspaces: `["packages/*"]`, cwd: "packages/lib", args: []string{"--prefix=../app"}, want: "packages/app"},
+		{name: "packages object form", workspaces: `{"packages":["packages/*"]}`, cwd: "packages/app", want: "root"},
+		{name: "leading ./", workspaces: `["./packages/*"]`, cwd: "packages/app", want: "root"},
+		{name: "trailing slash", workspaces: `["packages/*/"]`, cwd: "packages/app", want: "root"},
+		{name: "* does not reach a nested member", workspaces: `["packages/*"]`, cwd: "packages/group/app", want: "packages/group/app"},
+		{name: "** reaches a nested member", workspaces: `["packages/**"]`, cwd: "packages/group/app", want: "root"},
+		{name: "exact path", workspaces: `["packages/app"]`, cwd: "packages/app", want: "root"},
+		{name: "not listed", workspaces: `["packages/app"]`, cwd: "packages/lib", want: "packages/lib"},
+		{name: "outside every pattern", workspaces: `["packages/*"]`, cwd: "other", want: "other"},
+		{name: "negation excludes", workspaces: `["packages/*","!packages/app"]`, cwd: "packages/app", want: "packages/app"},
+		{name: "negation keeps others", workspaces: `["packages/*","!packages/app"]`, cwd: "packages/lib", want: "root"},
+		{name: "braces", workspaces: `["packages/{app,lib}"]`, cwd: "packages/app", want: "root"},
+		{name: "character class", workspaces: `["packages/[a]*"]`, cwd: "packages/app", want: "root"},
+		{name: "question mark", workspaces: `["packages/ap?"]`, cwd: "packages/app", want: "root"},
+		{name: "leading **", workspaces: `["**/web"]`, cwd: "apps/web", want: "root"},
+		{name: "* skips dot directories", workspaces: `["packages/*"]`, cwd: "packages/.hidden", want: "packages/.hidden"},
+		{name: "explicit dot directory", workspaces: `["packages/.hidden"]`, cwd: "packages/.hidden", want: "root"},
+		{name: "node_modules alone is not a member", workspaces: `["packages/*"]`, cwd: "packages/nm", want: "packages/nm"},
+		{name: "the root itself", workspaces: `["packages/*"]`, cwd: ".", want: "root"},
+		{name: "empty list", workspaces: `[]`, cwd: "packages/app", want: "packages/app"},
+		{name: "unreadable manifest is ignored", workspaces: `{ not json`, cwd: "packages/app", want: "packages/app"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manager := isolatedNpm(t)
+			if test.env[0] != "" {
+				t.Setenv(test.env[0], test.env[1])
+			}
+			root := writeNpmWorkspace(t, `{"workspaces":`+test.workspaces+`}`)
+			if test.name == "unreadable manifest is ignored" {
+				writeNpmFixture(t, filepath.Join(root, "package.json"), test.workspaces)
+			}
+			t.Chdir(filepath.Join(root, test.cwd))
+			want := "http://" + test.want + ":1"
+			if got := projectProxy(t, manager, test.args...); got != want {
+				t.Fatalf("project proxy = %q, want %q", got, want)
+			}
+		})
+	}
+	t.Run("an intermediate package.json without workspaces does not stop the search", func(t *testing.T) {
+		manager := isolatedNpm(t)
+		root := writeNpmWorkspace(t, `{"workspaces":["packages/**"]}`)
+		t.Chdir(filepath.Join(root, "packages", "group", "app"))
+		if got := projectProxy(t, manager); got != "http://root:1" {
+			t.Fatalf("got %q", got)
+		}
+	})
+	t.Run("global installs ignore workspaces", func(t *testing.T) {
+		manager := isolatedNpm(t)
+		root := writeNpmWorkspace(t, `{"workspaces":["packages/*"]}`)
+		t.Chdir(filepath.Join(root, "packages", "app"))
+		if got := projectProxy(t, manager, "-g"); got != "" {
+			t.Fatalf("got %q; a global command loads no project .npmrc", got)
+		}
+	})
+}
+
 func TestSettingsUserConfigLocation(t *testing.T) {
 	manager := isolatedNpm(t)
 	cwd, _ := os.Getwd()

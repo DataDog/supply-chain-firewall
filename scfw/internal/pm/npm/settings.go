@@ -128,7 +128,8 @@ func readNpmConfig(args []string, environ []string) ([]npmConfig, error) {
 	if !global {
 		prefix := path(options, "prefix")
 		if prefix == "" {
-			prefix = localPrefix()
+			// Only the command line can disable workspaces, as in npm.
+			prefix = localPrefix(lastValue(options["workspaces"]) != "false")
 		}
 		// Like npm, never load the user config a second time as the project's.
 		if file := filepath.Join(prefix, ".npmrc"); file != defaultUserconfig {
@@ -176,23 +177,152 @@ func readNpmConfig(args []string, environ []string) ([]npmConfig, error) {
 }
 
 // localPrefix mirrors npm's project directory: the nearest directory at or
-// above cwd containing package.json or node_modules, else cwd.
-func localPrefix() string {
+// above cwd containing package.json or node_modules, else cwd. Unless
+// workspaces are disabled, a package.json above that directory whose
+// "workspaces" include it makes that workspace root the project instead, and the
+// workspace's own .npmrc is ignored.
+func localPrefix(workspaces bool) string {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return ""
 	}
+	nearest := ""
 	for dir := cwd; ; dir = filepath.Dir(dir) {
-		if info, err := os.Stat(filepath.Join(dir, "package.json")); err == nil && info.Mode().IsRegular() {
-			return dir
-		}
-		if info, err := os.Stat(filepath.Join(dir, "node_modules")); err == nil && info.IsDir() {
+		hasManifest := isRegularFile(filepath.Join(dir, "package.json"))
+		switch {
+		case nearest == "" && (hasManifest || isDirectory(filepath.Join(dir, "node_modules"))):
+			if !workspaces {
+				return dir
+			}
+			nearest = dir
+		case nearest != "" && hasManifest && inWorkspaces(dir, nearest):
 			return dir
 		}
 		if filepath.Dir(dir) == dir {
+			if nearest != "" {
+				return nearest
+			}
 			return cwd
 		}
 	}
+}
+
+func isRegularFile(name string) bool {
+	info, err := os.Stat(name)
+	return err == nil && info.Mode().IsRegular()
+}
+
+func isDirectory(name string) bool {
+	info, err := os.Stat(name)
+	return err == nil && info.IsDir()
+}
+
+// inWorkspaces reports whether member is a workspace declared by the
+// package.json in root, as npm's map-workspaces decides: "workspaces" is a list
+// of globs relative to root, or an object holding it as "packages"; "!" globs
+// exclude; and a workspace needs a package.json of its own. An unreadable
+// manifest declares none.
+func inWorkspaces(root, member string) bool {
+	data, err := os.ReadFile(filepath.Join(root, "package.json"))
+	if err != nil || !isRegularFile(filepath.Join(member, "package.json")) {
+		return false
+	}
+	var manifest struct {
+		Workspaces json.RawMessage `json:"workspaces"`
+	}
+	if json.Unmarshal(data, &manifest) != nil {
+		return false
+	}
+	var patterns []string
+	var object struct {
+		Packages []string `json:"packages"`
+	}
+	if json.Unmarshal(manifest.Workspaces, &patterns) != nil {
+		if json.Unmarshal(manifest.Workspaces, &object) != nil {
+			return false
+		}
+		patterns = object.Packages
+	}
+	relative, err := filepath.Rel(root, member)
+	if err != nil {
+		return false
+	}
+	segments := strings.Split(filepath.ToSlash(relative), "/")
+	included := false
+	for _, pattern := range patterns {
+		pattern, excluded := strings.CutPrefix(pattern, "!")
+		for _, expanded := range expandBraces(pattern) {
+			expanded = strings.Trim(strings.TrimPrefix(expanded, "./"), "/")
+			if matchSegments(strings.Split(expanded, "/"), segments) {
+				if excluded {
+					return false
+				}
+				included = true
+			}
+		}
+	}
+	return included
+}
+
+// expandBraces expands the first {a,b} group of a glob, recursively; a group
+// without a comma, or an unbalanced one, stays literal.
+func expandBraces(pattern string) []string {
+	open := strings.Index(pattern, "{")
+	if open < 0 {
+		return []string{pattern}
+	}
+	depth, start := 0, open+1
+	var options []string
+	for index := open; index < len(pattern); index++ {
+		switch pattern[index] {
+		case '{':
+			depth++
+		case ',':
+			if depth == 1 {
+				options = append(options, pattern[start:index])
+				start = index + 1
+			}
+		case '}':
+			depth--
+			if depth > 0 {
+				continue
+			}
+			options = append(options, pattern[start:index])
+			if len(options) < 2 {
+				return []string{pattern}
+			}
+			var expanded []string
+			for _, option := range options {
+				expanded = append(expanded, expandBraces(pattern[:open]+option+pattern[index+1:])...)
+			}
+			return expanded
+		}
+	}
+	return []string{pattern}
+}
+
+// matchSegments matches glob segments against path segments: "**" spans any
+// number of segments, and, as in glob, other wildcards skip dot directories
+// unless the pattern segment starts with a dot.
+func matchSegments(pattern, path []string) bool {
+	for len(pattern) > 0 {
+		if pattern[0] == "**" {
+			for skipped := 0; skipped <= len(path); skipped++ {
+				if matchSegments(pattern[1:], path[skipped:]) {
+					return true
+				}
+			}
+			return false
+		}
+		if len(path) == 0 || strings.HasPrefix(path[0], ".") && !strings.HasPrefix(pattern[0], ".") {
+			return false
+		}
+		if matched, err := filepath.Match(pattern[0], path[0]); err != nil || !matched {
+			return false
+		}
+		pattern, path = pattern[1:], path[1:]
+	}
+	return len(path) == 0
 }
 
 // globalPrefix mirrors npm's default global prefix on Unix: PREFIX, else the

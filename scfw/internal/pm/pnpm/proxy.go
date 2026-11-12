@@ -6,7 +6,9 @@
 package pnpm
 
 import (
+	"context"
 	"errors"
+	"maps"
 	"net/url"
 	"os"
 	"strings"
@@ -75,6 +77,67 @@ func (p Pnpm) ProxyOptions(command []string) (proxy.Options, error) {
 }
 
 var _ pm.ProxyOptionsProvider = Pnpm{}
+
+// noProxySentinel replaces pnpm's noproxy settings with a host that matches
+// nothing; pnpm ignores empty values, which would let a lower layer's entry
+// send registry traffic around SCFW.
+const noProxySentinel = "scfw.invalid"
+
+// ProxyCommand supplies pnpm-specific arguments and environment overrides. The
+// core proxy owns process execution, signals, streams, and invocation cleanup.
+func (p Pnpm) ProxyCommand(_ context.Context, command []string, config proxy.ClientConfig) (proxy.CommandSpec, error) {
+	// Refuse before pnpm starts when its settings would route around SCFW.
+	settings, err := p.settings(command)
+	if err != nil {
+		return proxy.CommandSpec{}, err
+	}
+	if err := validateUpstream(settings); err != nil {
+		return proxy.CommandSpec{}, err
+	}
+	major, err := p.major(command)
+	if err != nil {
+		return proxy.CommandSpec{}, err
+	}
+	pem, err := os.ReadFile(config.CACertificatePath)
+	if err != nil {
+		return proxy.CommandSpec{}, errors.New("read proxy CA certificate")
+	}
+	ca := config.CACertificatePath
+	// Command-line settings beat every configuration layer. They go before the
+	// command, where they cannot reach the arguments of dlx, exec, or a script;
+	// the user's own proxy and trust options are removed because pnpm applies
+	// the last one, or accumulates noproxy values.
+	args := []string{
+		"--config.https-proxy=" + config.URL, "--config.proxy=" + config.URL, "--config.http-proxy=" + config.URL,
+		"--config.noproxy=" + noProxySentinel, "--config.no-proxy=" + noProxySentinel,
+		"--config.cafile=" + ca, "--config.ca=" + string(pem),
+	}
+	// pnpm 11 trusts a per-registry CA over the global one, even through a proxy.
+	for _, registryCA := range settings.RegistryCAs {
+		args = append(args, "--config."+registryCA.Key+":cafile="+ca)
+	}
+	args = append(args, parseCommand(major, p.dlx, command).args...)
+
+	extraCAs, err := nodeproxy.NodeExtraCACerts(ca, pem)
+	if err != nil {
+		return proxy.CommandSpec{}, err
+	}
+	// The variables route nested pnpm and npm processes, which do not inherit
+	// the command line; pnpm 10 reads npm_config_* and pnpm 11 and 12 read
+	// pnpm_config_*, and a pinned version may be either.
+	canonical := config.EnvironmentOverrides()
+	maps.Copy(canonical, map[string]string{
+		"npm_config_proxy": config.URL, "npm_config_https_proxy": config.URL,
+		"npm_config_noproxy": noProxySentinel, "npm_config_no_proxy": noProxySentinel, "npm_config_cafile": ca,
+		"pnpm_config_proxy": config.URL, "pnpm_config_http_proxy": config.URL, "pnpm_config_https_proxy": config.URL,
+		"pnpm_config_noproxy": noProxySentinel, "pnpm_config_no_proxy": noProxySentinel,
+		"pnpm_config_cafile": ca, "pnpm_config_ca": string(pem),
+		"NODE_EXTRA_CA_CERTS": extraCAs, "GIT_SSL_CAINFO": ca,
+	})
+	return proxy.CommandSpec{Executable: p.executable, Args: args, EnvOverrides: nodeproxy.OverrideVariants(os.Environ(), canonical)}, nil
+}
+
+var _ pm.ProxyRunner = Pnpm{}
 
 // pnpmProxyForURL applies pnpm's proxy selection and noproxy matching, which
 // differ from a flattened httpproxy configuration.

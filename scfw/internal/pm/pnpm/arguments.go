@@ -127,12 +127,20 @@ func parseNopt(major int, table noptOptions, tokens []string, dlx bool) parsedCo
 	if parsed.dir == "" {
 		parsed.dir = prefix
 	}
+	parsed.args = keptArguments(tokens, stripped, boundary, dlx)
+	return parsed
+}
+
+// keptArguments drops the stripped options before boundary, and the dlx that
+// pnpx and pnx imply.
+func keptArguments(tokens []string, stripped []bool, boundary int, dlx bool) []string {
+	var args []string
 	for index, token := range tokens {
-		if (index >= boundary || !stripped[index]) && !(dlx && index == 0) {
-			parsed.args = append(parsed.args, token)
+		if (index >= boundary || !stripped[index]) && (!dlx || index != 0) {
+			args = append(args, token)
 		}
 	}
-	return parsed
+	return args
 }
 
 type noptOption struct {
@@ -446,11 +454,7 @@ func parseStrict(tokens []string, dlx bool) parsedCommand {
 		}
 	}
 	parsed.name, parsed.sub = resolveCommand(12, strictAliases, positionals)
-	for index, token := range tokens {
-		if (index >= boundary || !stripped[index]) && !(dlx && index == 0) {
-			parsed.args = append(parsed.args, token)
-		}
-	}
+	parsed.args = keptArguments(tokens, stripped, boundary, dlx)
 	return parsed
 }
 

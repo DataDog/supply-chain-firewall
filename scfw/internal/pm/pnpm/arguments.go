@@ -1,0 +1,337 @@
+// Unless explicitly stated otherwise all files in this repository are licensed
+// under the Apache License 2.0.
+// This product includes software developed at Datadog (https://www.datadoghq.com/).
+// Copyright 2024-present Datadog, Inc.
+
+package pnpm
+
+import (
+	"maps"
+	"regexp"
+	"slices"
+	"strings"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/nodeproxy"
+)
+
+// noptOptions describes pnpm 10/11's command-selecting nopt parse.
+type noptOptions struct {
+	// values always consume the next argument; strings consume it unless it
+	// looks like an option; flags and unknown options consume only true or
+	// false; enums are flags that also consume one of their literals.
+	values, strings, flags []string
+	enums                  map[string][]string
+	shorthands, aliases    map[string]string
+}
+
+type parsedCommand struct {
+	name, sub string
+	// help is set by help or version flags, which stop pnpm from running the
+	// command.
+	help   bool
+	dir    string
+	global bool
+	// network holds the user's proxy, trust, and registry settings from the
+	// command line, keyed by setting name.
+	network nodeproxy.Config
+	// args is the command without the user's proxy and trust options, which
+	// SCFW replaces. Arguments pnpm passes to another program are kept.
+	args []string
+}
+
+// strippedSettings are the command-line settings SCFW overrides. Registries are
+// recorded but left in place, because pnpm must still use them.
+var strippedSettings = []string{
+	"https-proxy", "proxy", "http-proxy", "noproxy", "no-proxy", "ca", "cafile", "strict-ssl", "cert", "key", "local-address",
+}
+
+var registryTLSKey = regexp.MustCompile(`^//.*:(ca|cafile|cert|certfile|key|keyfile)$`)
+
+func networkSetting(key string) (recorded, stripped bool) {
+	switch {
+	case slices.Contains(strippedSettings, key), registryTLSKey.MatchString(key):
+		return true, true
+	case key == "registry", strings.HasPrefix(key, "@") && strings.HasSuffix(key, ":registry"):
+		return true, false
+	}
+	return false, false
+}
+
+// parseCommand finds the command pnpm will run. pnpx and pnx run `pnpm dlx`.
+func parseCommand(major int, dlx bool, command []string) parsedCommand {
+	tokens := command
+	if dlx {
+		tokens = append([]string{"dlx"}, command...)
+	}
+	table := nopt10
+	if major >= 11 {
+		table = nopt11
+	}
+	return parseNopt(major, table, tokens, dlx)
+}
+
+func parseNopt(major int, table noptOptions, tokens []string, dlx bool) parsedCommand {
+	parsed := parsedCommand{network: nodeproxy.Config{}}
+	var positionals []string
+	stripped := make([]bool, len(tokens))
+	dir, prefix := "", ""
+	boundary := len(tokens)
+	for index := 0; index < len(tokens); index++ {
+		token := tokens[index]
+		if token == "--" {
+			positionals = append(positionals, tokens[index+1:]...)
+			boundary = index
+			break
+		}
+		if !strings.HasPrefix(token, "-") || token == "-" {
+			positionals = append(positionals, token)
+			if escapes(major, table, positionals) {
+				boundary = index + 1
+				break
+			}
+			continue
+		}
+		next := ""
+		if index+1 < len(tokens) {
+			next = tokens[index+1]
+		}
+		option := table.option(token, next)
+		if option.consumed {
+			index++
+		}
+		switch option.name {
+		case "dir":
+			dir = option.value
+		case "prefix":
+			prefix = option.value
+		case "global":
+			parsed.global = option.value != "false"
+		case "help", "version":
+			parsed.help = parsed.help || option.value != "false"
+		}
+		if recorded, strip := networkSetting(option.name); recorded {
+			parsed.network[option.name] = append(parsed.network[option.name], option.value)
+			if strip {
+				stripped[index] = true
+				if option.consumed {
+					stripped[index-1] = true
+				}
+			}
+		}
+	}
+	parsed.name, parsed.sub = resolveCommand(major, table, positionals)
+	parsed.dir = dir
+	if parsed.dir == "" {
+		parsed.dir = prefix
+	}
+	for index, token := range tokens {
+		if (index >= boundary || !stripped[index]) && !(dlx && index == 0) {
+			parsed.args = append(parsed.args, token)
+		}
+	}
+	return parsed
+}
+
+type noptOption struct {
+	name, value string
+	consumed    bool
+}
+
+var optionLike = regexp.MustCompile(`^-{1,2}[^-]`)
+
+// option resolves one option like nopt: any number of dashes, shorthands and
+// single-letter clusters, unambiguous abbreviations, and no- negation.
+// pnpm-specific --config.<key>, --@scope:registry and --//host/:key options
+// take their value only with "=".
+func (table noptOptions) option(token, next string) noptOption {
+	body, value, assigned := strings.Cut(strings.TrimLeft(token, "-"), "=")
+	if key, found := strings.CutPrefix(body, "config."); found && assigned {
+		return noptOption{name: key, value: value}
+	}
+	if (strings.HasPrefix(body, "@") || strings.HasPrefix(body, "//")) && assigned {
+		return noptOption{name: body, value: value}
+	}
+	names := table.expand(body)
+	name := names[len(names)-1]
+	result := noptOption{name: name}
+	// Earlier letters of a cluster are flags without values.
+	for _, earlier := range names[:len(names)-1] {
+		if earlier == "help" || earlier == "version" {
+			return noptOption{name: earlier, value: "true"}
+		}
+	}
+	if expanded, shorthandValue, found := strings.Cut(name, "="); found {
+		return noptOption{name: expanded, value: shorthandValue}
+	}
+	negated := false
+	for strings.HasPrefix(name, "no-") {
+		negated, name = !negated, table.long(strings.TrimPrefix(name, "no-"))
+	}
+	result.name = name
+	switch {
+	case assigned:
+		result.value = value
+	case negated:
+		result.value = "false"
+		result.consumed = next == "true" || next == "false"
+	case slices.Contains(table.values, name):
+		result.consumed = next != "" && next != "--"
+	case slices.Contains(table.strings, name):
+		result.consumed = next != "" && next != "--" && !optionLike.MatchString(next)
+	case next == "true" || next == "false" || slices.Contains(table.enums[name], next):
+		result.consumed = true
+	default:
+		result.value = "true"
+	}
+	if result.consumed && !negated {
+		result.value = next
+	}
+	return result
+}
+
+// expand resolves a dash-less option body to long option names, in order.
+func (table noptOptions) expand(body string) []string {
+	if table.known(body) {
+		return []string{body}
+	}
+	if expansion, found := table.shorthands[body]; found {
+		return []string{table.long(strings.TrimLeft(expansion, "-"))}
+	}
+	if len(body) > 1 {
+		var names []string
+		for _, letter := range body {
+			expansion, found := table.shorthands[string(letter)]
+			if !found {
+				names = nil
+				break
+			}
+			names = append(names, table.long(strings.TrimLeft(expansion, "-")))
+		}
+		if names != nil {
+			return names
+		}
+	}
+	return []string{table.long(body)}
+}
+
+// long expands an unambiguous abbreviation; anything else is returned as is.
+func (table noptOptions) long(name string) string {
+	if base, _, found := strings.Cut(name, "="); found && table.known(base) {
+		return name
+	}
+	if table.known(name) || strings.HasPrefix(name, "no-") {
+		return name
+	}
+	match := ""
+	for _, candidate := range slices.Concat(table.values, table.strings, table.flags, slices.Collect(maps.Keys(table.enums))) {
+		if strings.HasPrefix(candidate, name) {
+			if match != "" {
+				return name
+			}
+			match = candidate
+		}
+	}
+	if match == "" {
+		return name
+	}
+	return match
+}
+
+func (table noptOptions) known(name string) bool {
+	_, enum := table.enums[name]
+	return enum || slices.Contains(table.values, name) || slices.Contains(table.strings, name) || slices.Contains(table.flags, name)
+}
+
+// commandStart returns the index of the command among positionals, skipping
+// the recursive prefixes, and `pm` and `with current` from pnpm 11.
+func commandStart(major int, table noptOptions, positionals []string) int {
+	index := 0
+	if major >= 11 && len(positionals) > 0 && positionals[0] == "pm" {
+		index++
+	}
+	for index < len(positionals) {
+		name := canonical(table, positionals[index])
+		switch {
+		case name == "recursive":
+			index++
+		case name == "with" && index+1 < len(positionals) && positionals[index+1] == "current" && major >= 11:
+			index += 2
+		default:
+			return index
+		}
+	}
+	return index
+}
+
+func canonical(table noptOptions, name string) string {
+	if alias, found := table.aliases[name]; found {
+		return alias
+	}
+	return name
+}
+
+func resolveCommand(major int, table noptOptions, positionals []string) (name, sub string) {
+	index := commandStart(major, table, positionals)
+	if index >= len(positionals) {
+		return "", ""
+	}
+	name = canonical(table, positionals[index])
+	if index+1 < len(positionals) {
+		sub = positionals[index+1]
+	}
+	return name, sub
+}
+
+// escapes reports whether the remaining arguments belong to another program:
+// after create, exec, or a script, and after the package or script of dlx and
+// run. Commands SCFW does not proxy run unchanged, so their arguments are not
+// inspected either.
+func escapes(major int, table noptOptions, positionals []string) bool {
+	index := commandStart(major, table, positionals)
+	if index >= len(positionals) {
+		return false
+	}
+	switch name := canonical(table, positionals[index]); name {
+	case "create":
+		return true
+	case "dlx", "run", "with":
+		return len(positionals) > index+1
+	case "store", "env", "runtime":
+		return false
+	default:
+		return !slices.Contains(proxiedCommands, name)
+	}
+}
+
+// proxiedCommands resolve, fetch, or install packages in every supported version.
+var proxiedCommands = []string{
+	"install", "add", "update", "remove", "link", "unlink", "import", "fetch", "dedupe", "rebuild", "prune",
+	"install-test", "patch", "patch-commit", "patch-remove", "deploy", "dlx", "create", "self-update", "env",
+	"approve-builds", "ci",
+}
+
+func proxyCommand(major int, parsed parsedCommand) bool {
+	if parsed.help {
+		return false
+	}
+	switch parsed.name {
+	case "store":
+		return parsed.sub == "add"
+	case "with", "runtime":
+		return major >= 11
+	case "pipeline":
+		return major >= 12
+	}
+	return slices.Contains(proxiedCommands, parsed.name)
+}
+
+// ProxyCommandSupported selects commands that resolve, fetch, or install
+// packages. Scripts and other commands run directly. An unknown version is
+// proxied so that the proxy path reports the version error.
+func (p Pnpm) ProxyCommandSupported(command []string) bool {
+	major, err := p.major(command)
+	if err != nil {
+		return true
+	}
+	return proxyCommand(major, parseCommand(major, p.dlx, command))
+}

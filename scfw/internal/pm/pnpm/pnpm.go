@@ -76,23 +76,39 @@ func probeVersion(ctx context.Context, executable string) (pm.Version, error) {
 
 // major returns the pnpm major version that will run command. pnpm 10 and
 // later switch to the version the project pins unless switching is disabled.
-func (p Pnpm) major(_ []string) (int, error) {
+// The project directory comes from command, parsed the way the installed pnpm
+// reads it and again by the pinned version when that differs.
+func (p Pnpm) major(command []string) (int, error) {
 	if p.versionErr != nil {
 		return 0, fmt.Errorf("%w: could not determine pnpm version: %v", pm.ErrUnsupportedVersion, p.versionErr)
 	}
-	version := p.installed
-	dir, err := os.Getwd()
+	cwd, err := os.Getwd()
 	if err != nil {
 		return 0, errors.New("could not resolve pnpm directory")
 	}
-	root := configRoot(dir)
-	if pinned, found := pinnedVersion(root); found && version.Major >= 10 && !switchingDisabled(root) {
-		version = pinned
+	version := p.effectiveVersion(cwd, p.installed.Major, command)
+	if version.Major != p.installed.Major {
+		version = p.effectiveVersion(cwd, version.Major, command)
 	}
 	if version.Major < 10 || version.Major > 12 {
 		return 0, fmt.Errorf("%w: pnpm %s is not supported (supported: 10.x, 11.x and 12.x)", pm.ErrUnsupportedVersion, version)
 	}
 	return version.Major, nil
+}
+
+func (p Pnpm) effectiveVersion(cwd string, parser int, command []string) pm.Version {
+	dir := cwd
+	if parsed := parseCommand(parser, p.dlx, command); parsed.dir != "" {
+		dir = parsed.dir
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(cwd, dir)
+		}
+	}
+	root := configRoot(dir)
+	if pinned, found := pinnedVersion(root); found && p.installed.Major >= 10 && !switchingDisabled(root) {
+		return pinned
+	}
+	return p.installed
 }
 
 // configRoot mirrors pnpm's project root: the nearest directory at or above dir
@@ -196,9 +212,4 @@ func (p Pnpm) ResolveInstallTargets(_ context.Context, command []string) (*pm.Se
 		return nil, errors.New("pnpm package operations require proxy mode (set SCFW_PROXY_ENABLED=1)")
 	}
 	return pm.NewSet[pm.Package](), nil
-}
-
-// ProxyCommandSupported is replaced by command selection in the next change.
-func (p Pnpm) ProxyCommandSupported(_ []string) bool {
-	return true
 }

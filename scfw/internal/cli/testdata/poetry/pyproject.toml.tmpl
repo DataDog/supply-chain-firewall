@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "proxy-test"
+version = "1.0"
+description = "SCFW integration fixture"
+authors = ["SCFW <scfw@example.invalid>"]
+
+[tool.poetry.dependencies]
+python = ">=3.9"
+%s
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "explicit"
+
+%s
+[[tool.poetry.source]]
+name = "private"
+url = "%s/python-packages/"
+priority = "%s"

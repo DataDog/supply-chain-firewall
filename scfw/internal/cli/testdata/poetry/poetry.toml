@@ -1,0 +1,5 @@
+[virtualenvs]
+in-project = true
+
+[solver]
+lazy-wheel = false

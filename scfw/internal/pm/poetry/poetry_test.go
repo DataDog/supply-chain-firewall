@@ -70,9 +70,8 @@ func fixturePoetry(t *testing.T) Poetry {
 		t.Fatalf("filepath.Abs(testdata) failed: %v", err)
 	}
 	t.Setenv(fakePoetryFixtureDirEnv, fixtureDir)
-	return Poetry{
-		executable: os.Args[0],
-		version:    pm.Version{Major: 2, Minor: 1, Patch: 3},
+	return Poetry{executable: os.Args[0],
+		version: pm.Version{Major: 2, Minor: 1, Patch: 3},
 		resolvePublishDate: func(_ context.Context, _ ecosystem.Ecosystem, name, version, _ string) (time.Time, error) {
 			published, ok := poetryFixturePublishDates[name+"@"+version]
 			if !ok {
@@ -85,7 +84,7 @@ func fixturePoetry(t *testing.T) Poetry {
 
 func copyPoetryFixture(t *testing.T, name, destination string) {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("testdata", name))
+	data, err := readPoetryFixture(name)
 	if err != nil {
 		t.Fatalf("failed to read fixture %s: %v", name, err)
 	}
@@ -104,6 +103,7 @@ func fixturePoetryProject(t *testing.T, lockFixture string) string {
 	return dir
 }
 
+// Poetry 1.x appears only as rejected input; all supported cases use 2.x.
 func TestPoetryCheckVersion(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -111,7 +111,11 @@ func TestPoetryCheckVersion(t *testing.T) {
 		want   bool
 	}{
 		{name: "supported", poetry: Poetry{version: minPoetryVersion}},
-		{name: "too old", poetry: Poetry{version: pm.Version{Major: 1, Minor: 6}}, want: true},
+		{name: "1.7 rejected", poetry: Poetry{version: pm.Version{Major: 1, Minor: 7}}, want: true},
+		{name: "last 1.x rejected", poetry: Poetry{version: pm.Version{Major: 1, Minor: 8, Patch: 5}}, want: true},
+		{name: "early 2.x", poetry: Poetry{version: pm.Version{Major: 2, Minor: 1}}},
+		{name: "pre-2.5", poetry: Poetry{version: pm.Version{Major: 2, Minor: 4}}},
+		{name: "2.5", poetry: Poetry{version: pm.Version{Major: 2, Minor: 5}}},
 		{name: "unresolved", poetry: Poetry{versionErr: errors.New("boom")}, want: true},
 	}
 	for _, tc := range tests {

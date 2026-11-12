@@ -61,6 +61,7 @@ type Poetry struct {
 	version            pm.Version
 	versionErr         error
 	resolvePublishDate func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error)
+	proxyState         *poetryProxyState
 }
 
 func (poetry Poetry) packagePublishDate(ctx context.Context, pkg pm.Package) (time.Time, error) {
@@ -85,7 +86,7 @@ func NewPoetry(ctx context.Context, name, executable string) (Poetry, error) {
 	// actually need the version, not every use of this poetry executable.
 	version, versionErr := resolvePoetryVersion(ctx, executable)
 
-	return Poetry{executable: executable, version: version, versionErr: versionErr}, nil
+	return Poetry{executable: executable, version: version, versionErr: versionErr, proxyState: &poetryProxyState{}}, nil
 }
 
 func (poetry Poetry) checkVersion() error {

@@ -1,8 +1,79 @@
 # Named configuration cases for Poetry proxy tests.
 # Values are copied byte for byte into temporary project and Git files.
 
+"auth-config.toml" = '''
+[certificates.private]
+cert = "auth.pem"
+
+[http-basic.private]
+username = "private"
+password = "configuration-secret"
+'''
+
+"canonical-pypi-certificates.toml" = '''
+[certificates.PyPI]
+verify = false
+'''
+
+"canonical-pypi.toml" = '''
+[tool.poetry]
+name = "proxy-project"
+version = "1.0"
+
+[[tool.poetry.source]]
+name = "pypi"
+priority = "primary"
+'''
+
+"certificate-references.toml" = '''
+[certificates.shared]
+cert = "{cache-dir}/ca.pem"
+[certificates.private]
+cert = "{certificates.shared.cert}"
+'''
+
+"colliding-sources.toml" = '''
+[tool.poetry]
+name = "proxy-project"
+version = "1.0"
+
+[[tool.poetry.source]]
+name = "foo-bar"
+url = "https://strict.example/simple/"
+priority = "primary"
+
+[[tool.poetry.source]]
+name = "foo_bar"
+url = "https://other.example/simple/"
+priority = "primary"
+'''
+
+"global-config.toml" = '''
+[certificates.private]
+cert = "global.pem"
+client-cert = "client.pem"
+
+[certificates.insecure]
+cert = false
+'''
+
 "invalid.lock" = '''
 [broken
+'''
+
+"local-config.toml" = '''
+[certificates.private]
+cert = "local.pem"
+'''
+
+"local-repository-trust.toml" = '''
+[certificates.private]
+verify = true
+'''
+
+"disabled-private-trust.toml" = '''
+[certificates.private]
+cert = false
 '''
 
 "proxy-project.toml" = '''
@@ -34,4 +105,81 @@ priority = "supplemental"
 name = "explicit"
 url = "https://index.example/explicit/"
 priority = "explicit"
+'''
+
+"redirect-certificates.toml" = '''
+[certificates.private]
+verify = false
+'''
+
+"repositories-dotted.toml" = '''
+repositories.Zulu.url = "https://global.example/zulu/"
+repositories.Alpha.url = "https://global.example/alpha/"
+'''
+
+"repositories-inline.toml" = '''
+repositories = { Zulu = {url = "https://global.example/zulu/"}, Alpha = {url = "https://global.example/alpha/"} }
+'''
+
+"repositories-overridden.toml" = '''
+[repositories.private]
+url = "https://superseded.example/"
+
+[repositories.pypi]
+url = "https://custom-pypi.example/"
+
+[certificates.private]
+verify = false
+
+[certificates.pypi]
+verify = false
+'''
+
+"repositories.toml" = '''
+[repositories.Zulu]
+url = "https://global.example/zulu/"
+[repositories.Alpha]
+url = "https://global.example/alpha/"
+[certificates.Zulu]
+cert = false
+'''
+
+"source-certificates.toml" = '''
+[certificates.short]
+cert = false
+'''
+
+"source-matching.toml" = '''
+[[tool.poetry.source]]
+name = "short"
+url = "https://index.example/foo/a"
+priority = "explicit"
+
+[[tool.poetry.source]]
+name = "long"
+url = "https://index.example/foo/alpha"
+priority = "explicit"
+'''
+
+"git-proxy-settings.conf" = '''
+[http "https://git.example/"]
+proxy = http://file-proxy.example:8080
+sslVerify = false
+'''
+
+"unused-repositories.toml" = '''
+[repositories.empty]
+url = ""
+[repositories.relative]
+url = "upload/packages"
+[repositories.hostless]
+url = "https:///upload"
+[repositories.unparseable]
+url = "https://user:secret@unused.example/%zz"
+[repositories.PRIVATE]
+url = ""
+[certificates.relative]
+cert = "/missing/unused-secret.pem"
+[certificates.PRIVATE]
+verify = false
 '''

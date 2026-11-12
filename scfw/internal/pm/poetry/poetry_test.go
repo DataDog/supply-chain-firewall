@@ -70,8 +70,9 @@ func fixturePoetry(t *testing.T) Poetry {
 		t.Fatalf("filepath.Abs(testdata) failed: %v", err)
 	}
 	t.Setenv(fakePoetryFixtureDirEnv, fixtureDir)
-	return Poetry{executable: os.Args[0],
-		version: pm.Version{Major: 2, Minor: 1, Patch: 3},
+	return Poetry{
+		executable: os.Args[0],
+		version:    pm.Version{Major: 2, Minor: 1, Patch: 3},
 		resolvePublishDate: func(_ context.Context, _ ecosystem.Ecosystem, name, version, _ string) (time.Time, error) {
 			published, ok := poetryFixturePublishDates[name+"@"+version]
 			if !ok {

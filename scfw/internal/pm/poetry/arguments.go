@@ -76,6 +76,61 @@ func poetryParentDirectory(directory string) string {
 	return parent
 }
 
+// ProxyCommandSupported runs informational commands and arbitrary `poetry run`
+// children directly, without proxy setup or changes to their routing and trust.
+func (Poetry) ProxyCommandSupported(command []string) bool {
+	name := ""
+	for i := 0; i < len(command); i++ {
+		argument := command[i]
+		switch argument {
+		case "--":
+			if name == "" && i+1 < len(command) && command[i+1] == "run" {
+				return false
+			}
+			return true
+		case "--directory", "-C", "--project", "-P":
+			i++
+			continue
+		case "--help", "-h", "--version", "-V":
+			return false
+		}
+		if strings.HasPrefix(argument, "-") {
+			// Poetry's global argparse parser accepts unambiguous long prefixes.
+			if strings.HasPrefix(argument, "--") {
+				if strings.HasPrefix("--directory", argument) || strings.HasPrefix("--project", argument) {
+					i++
+				}
+				continue
+			}
+			// Combined short options may end with a directory/project value.
+			// Do not mistake a value named "run" for the top-level command.
+			short := strings.TrimPrefix(argument, "-")
+			for index, option := range short {
+				switch option {
+				case 'h', 'V':
+					return false
+				case 'C', 'P':
+					if index == len(short)-1 {
+						i++
+					}
+				case 'v', 'q', 'n':
+					continue
+				}
+				break
+			}
+			continue
+		}
+		if name == "" {
+			name = argument
+			switch name {
+			case "run", "help", "list", "about":
+				return false
+			}
+		}
+	}
+	return name != "" // With no command Poetry displays its command list.
+}
+
 // poetryOwnArguments excludes the executable and arguments of `poetry run`.
 // Only Poetry's global directory/project options take values before the command
 // or before run's executable. Returned arguments are for discovery only; the

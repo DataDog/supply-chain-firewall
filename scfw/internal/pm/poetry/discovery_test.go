@@ -155,7 +155,7 @@ func TestPoetryOwnArgumentBoundary(t *testing.T) {
 	}
 }
 
-func TestPoetryInformationalCommandSelection(t *testing.T) {
+func TestPoetryProxyCommandSelection(t *testing.T) {
 	for _, test := range []struct {
 		args  []string
 		proxy bool
@@ -176,16 +176,33 @@ func TestPoetryInformationalCommandSelection(t *testing.T) {
 		{[]string{"--project", "project", "--version"}, false},
 		{[]string{"install"}, true},
 		{[]string{"add", "help"}, true},
+		{[]string{"add", "run"}, true},
+		{[]string{"--directory", "run", "install"}, true},
+		{[]string{"--project=run", "lock"}, true},
+		{[]string{"-Crun", "update"}, true},
+		{[]string{"-vC", "run", "install"}, true},
+		{[]string{"-nP", "run", "add", "project"}, true},
+		{[]string{"--dir", "run", "install"}, true},
+		{[]string{"--p", "run", "lock"}, true},
 		{[]string{"--directory", "help", "install"}, true},
 		{[]string{"--project", "--help", "install"}, true},
 		{[]string{"-C--help", "install"}, true},
 		{[]string{"add", "--", "--help"}, true},
 		{[]string{"--", "install", "--help"}, true},
 		{[]string{"run", "--help"}, false},
-		{[]string{"run", "app", "--help"}, true},
-		{[]string{"run", "app", "--version"}, true},
-		{[]string{"run", "--", "app", "--help"}, true},
-		{[]string{"--project", "run", "run", "app", "--help"}, true},
+		{[]string{"run"}, false},
+		{[]string{"run", "app", "--help"}, false},
+		{[]string{"run", "app", "--version"}, false},
+		{[]string{"run", "--", "app", "--help"}, false},
+		{[]string{"--project", "run", "run", "app", "--help"}, false},
+		{[]string{"--directory", "project with spaces", "run", "python", "app.py"}, false},
+		{[]string{"-Cproject", "run", "python", "app.py"}, false},
+		{[]string{"-vC", "project", "run", "python", "app.py"}, false},
+		{[]string{"--dir", "project", "run", "python", "app.py"}, false},
+		{[]string{"--proj", "run", "run", "app"}, false},
+		{[]string{"run", "--directory", "project", "python", "app.py"}, false},
+		{[]string{"--", "run", "python", "app.py"}, false},
+		{[]string{"--directory", "project", "--", "run", "python", "app.py"}, false},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			if got := (Poetry{}).ProxyCommandSupported(test.args); got != test.proxy {

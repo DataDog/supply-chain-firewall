@@ -391,13 +391,18 @@ func TestPoetryProxyEndToEnd(t *testing.T) {
 	}
 }
 
-func TestPoetryProxyPreservesProcess(t *testing.T) {
+func TestPoetryRunPreservesProcess(t *testing.T) {
 	manager := poetryForProxyTest(t)
 	root := t.TempDir()
 	poetryTestFile(t, filepath.Join(root, "pyproject.toml"), readProxyFixture(t, "poetry/git-pyproject.toml"))
 	poetryTestFile(t, filepath.Join(root, "process.py"), readProxyFixture(t, "poetry/process.py"))
 	t.Setenv("SCFW_TEST_INHERITED", "unchanged")
-	t.Setenv("GIT_SSL_NO_VERIFY", "")
+	t.Setenv("GIT_SSL_NO_VERIFY", "1")
+	t.Setenv("REQUESTS_CA_BUNDLE", "/original/requests.pem")
+	t.Setenv("GIT_SSL_CAINFO", "/original/git.pem")
+	t.Setenv("SSL_CERT_FILE", "/original/ssl.pem")
+	t.Setenv("HTTP_PROXY", "http://original.example:8080")
+	t.Setenv("NO_PROXY", "original.example")
 	t.Setenv("GIT_CONFIG_COUNT", "1")
 	t.Setenv("GIT_CONFIG_KEY_0", "test.inherited")
 	t.Setenv("GIT_CONFIG_VALUE_0", "inherited git value")
@@ -426,12 +431,11 @@ func TestPoetryProxyPreservesProcess(t *testing.T) {
 	os.Stdin, os.Stdout, os.Stderr = stdin, stdout, stderr
 	t.Cleanup(func() { os.Stdin, os.Stdout, os.Stderr = originalIn, originalOut, originalErr })
 	before := os.Environ()
-	runner := &capturingPoetryRunner{Poetry: manager}
 	args := []string{"--directory", root, "run", "python", filepath.Join(root, "process.py"), "a value with spaces", "--opaque"}
-	commandErr, setupErr := runThroughProxy(context.Background(), runner, args, nil)
+	commandErr := manager.RunCommand(context.Background(), args)
 	var exit *exec.ExitError
-	if setupErr != nil || !errors.As(commandErr, &exit) || exit.ExitCode() != 17 {
-		t.Fatalf("process status: %v / %v", commandErr, setupErr)
+	if !errors.As(commandErr, &exit) || exit.ExitCode() != 17 {
+		t.Fatalf("process status: %v", commandErr)
 	}
 	for path, expected := range map[string]string{stdout.Name(): "inherited stdout\n", stderr.Name(): "inherited stderr\n"} {
 		data, err := os.ReadFile(path)
@@ -442,12 +446,10 @@ func TestPoetryProxyPreservesProcess(t *testing.T) {
 	if strings.Join(before, "\n") != strings.Join(os.Environ(), "\n") {
 		t.Fatal("parent environment changed")
 	}
-	assertProxyCleaned(t, runner.config)
-	commandErr, setupErr = runThroughProxy(context.Background(), runner, []string{"--directory", root, "not-a-poetry-command"}, nil)
-	if setupErr != nil || !errors.As(commandErr, &exit) || exit.ExitCode() != 1 {
-		t.Fatalf("manager failure: %v / %v", commandErr, setupErr)
+	commandErr = manager.RunCommand(context.Background(), []string{"--directory", root, "not-a-poetry-command"})
+	if !errors.As(commandErr, &exit) || exit.ExitCode() != 1 {
+		t.Fatalf("manager failure: %v", commandErr)
 	}
-	assertProxyCleaned(t, runner.config)
 }
 
 func TestPoetryPreservesAuthenticatedUpstream(t *testing.T) {

@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -161,8 +162,12 @@ func TestPoetryConfiguredRepositoriesPreserveTLS(t *testing.T) {
 	}
 }
 
-func TestPoetryRunPreservesChildOptions(t *testing.T) {
+func TestPoetryRunBypassesProxySetup(t *testing.T) {
 	manager := poetryForProxyTest(t)
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 required")
+	}
 	root := t.TempDir()
 	poetryTestFile(t, filepath.Join(root, "pyproject.toml"), readProxyFixture(t, "poetry/git-pyproject.toml"))
 	poetryTestFile(t, filepath.Join(root, "child-options.py"), readProxyFixture(t, "poetry/child-options.py"))
@@ -171,9 +176,35 @@ func TestPoetryRunPreservesChildOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	poetryTestFile(t, filepath.Join(child, "pyproject.toml"), readProxyFixture(t, "poetry/invalid.lock"))
+	var calls atomic.Int32
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		_, _ = io.WriteString(w, "Poetry run HTTPS response")
+	}))
+	defer origin.Close()
+	ca := filepath.Join(root, "origin.pem")
+	poetryTestFile(t, ca, string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: origin.Certificate().Raw})))
+	t.Setenv(proxyEnabledVar, "1")
+	t.Setenv(evaluationModeVar, string(evaluationModeDatadog))
+	t.Setenv("https_proxy", "http://invalid:port")
+	t.Setenv("no_proxy", "127.0.0.1")
+	t.Setenv("NO_PROXY", "127.0.0.1")
+	t.Setenv("REQUESTS_CA_BUNDLE", ca)
+	t.Setenv("GIT_SSL_CAINFO", "/missing/original-git-ca.pem")
+	t.Setenv("GIT_SSL_NO_VERIFY", "1")
+	t.Setenv("SCFW_TEST_CHILD_URL", origin.URL)
+	t.Setenv("SCFW_TEST_CHILD_CA", ca)
+	t.Setenv("SCFW_TEST_CHILD_ENV_KEYS", "http_proxy,https_proxy,HTTP_PROXY,HTTPS_PROXY,all_proxy,ALL_PROXY,no_proxy,NO_PROXY,REQUESTS_CA_BUNDLE,CURL_CA_BUNDLE,SSL_CERT_FILE,SSL_CERT_DIR,GIT_SSL_CAINFO,GIT_SSL_NO_VERIFY")
+	originalExecutable := executable
+	t.Cleanup(func() {
+		executable = originalExecutable
+		runCmd.Flags().Lookup("executable").Changed = false
+	})
+	cmd := RootCmd()
+	defer cmd.RemoveCommand(configureCmd, doctorCmd, runCmd)
 	t.Chdir(root)
-	for _, prefix := range [][]string{{"run"}, {"--directory", root, "run"}, {"run", "--directory", root}} {
-		args := append(append([]string{}, prefix...), "python", filepath.Join(root, "child-options.py"), "-P", "child", "--project=child", "-Cchild", "--directory", "child")
+	for _, prefix := range [][]string{{"run"}, {"--directory", root, "run"}, {"run", "--directory", root}, {"--", "run"}} {
+		args := append(append([]string{}, prefix...), python, filepath.Join(root, "child-options.py"), "-P", "child", "--project=child", "-Cchild", "--directory", "child")
 		output := filepath.Join(root, "child-output.json")
 		t.Setenv("SCFW_TEST_CHILD_OUTPUT", output)
 		if err := manager.RunCommand(context.Background(), args); err != nil {
@@ -186,16 +217,18 @@ func TestPoetryRunPreservesChildOptions(t *testing.T) {
 		if err := os.Remove(output); err != nil {
 			t.Fatal(err)
 		}
-		runner := &capturingPoetryRunner{Poetry: manager}
-		commandErr, setupErr := runThroughProxy(context.Background(), runner, args, nil)
-		if commandErr != nil || setupErr != nil {
-			t.Fatalf("proxied child options: %v / %v", commandErr, setupErr)
+		command := []string{"run", "--executable", manager.Executable(), "--", "poetry"}
+		cmd.SetArgs(append(command, args...))
+		if err := cmd.ExecuteContext(context.Background()); err != nil {
+			t.Fatalf("Poetry run attempted proxy or policy setup: %v", err)
 		}
 		actual, err := os.ReadFile(output)
 		if err != nil || string(actual) != string(expected) {
-			t.Fatalf("child arguments or working directory changed: %s / %s / %v", actual, expected, err)
+			t.Fatalf("child arguments, working directory, or environment changed: %s / %s / %v", actual, expected, err)
 		}
-		assertProxyCleaned(t, runner.config)
+	}
+	if calls.Load() != 8 {
+		t.Fatalf("Requests calls did not reach the HTTPS origin: %d", calls.Load())
 	}
 }
 

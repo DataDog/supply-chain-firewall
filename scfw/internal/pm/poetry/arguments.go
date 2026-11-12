@@ -76,16 +76,17 @@ func poetryParentDirectory(directory string) string {
 	return parent
 }
 
-// ProxyCommandSupported keeps global informational commands independent of
-// project configuration. Only Poetry-owned options can suppress interception;
-// flags passed to a run child or after '--' do not change this decision.
+// ProxyCommandSupported runs informational commands and arbitrary `poetry run`
+// children directly, without proxy setup or changes to their routing and trust.
 func (Poetry) ProxyCommandSupported(command []string) bool {
-	own := poetryOwnArguments(command)
 	name := ""
-	for i := 0; i < len(own); i++ {
-		argument := own[i]
+	for i := 0; i < len(command); i++ {
+		argument := command[i]
 		switch argument {
 		case "--":
+			if name == "" && i+1 < len(command) && command[i+1] == "run" {
+				return false
+			}
 			return true
 		case "--directory", "-C", "--project", "-P":
 			i++
@@ -94,27 +95,40 @@ func (Poetry) ProxyCommandSupported(command []string) bool {
 			return false
 		}
 		if strings.HasPrefix(argument, "-") {
-			// Cleo also accepts combined boolean short options, e.g. -vvh.
+			// Poetry's global argparse parser accepts unambiguous long prefixes.
+			if strings.HasPrefix(argument, "--") {
+				if strings.HasPrefix("--directory", argument) || strings.HasPrefix("--project", argument) {
+					i++
+				}
+				continue
+			}
+			// Combined short options may end with a directory/project value.
+			// Do not mistake a value named "run" for the top-level command.
 			short := strings.TrimPrefix(argument, "-")
-			if strings.Trim(short, "vqnVh") == "" && strings.ContainsAny(short, "Vh") {
-				return false
+			for index, option := range short {
+				switch option {
+				case 'h', 'V':
+					return false
+				case 'C', 'P':
+					if index == len(short)-1 {
+						i++
+					}
+				case 'v', 'q', 'n':
+					continue
+				}
+				break
 			}
 			continue
 		}
 		if name == "" {
 			name = argument
+			switch name {
+			case "run", "help", "list", "about":
+				return false
+			}
 		}
 	}
-	switch name {
-	case "help", "list", "about":
-		return false
-	case "":
-		// With no command Poetry displays its command list. A truncated
-		// argument list may instead hide a command after '--'; keep that proxied.
-		return len(own) != len(command)
-	default:
-		return true
-	}
+	return name != "" // With no command Poetry displays its command list.
 }
 
 // poetryOwnArguments excludes the executable and arguments of `poetry run`.

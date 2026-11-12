@@ -982,12 +982,14 @@ func resetConfigureCmd(t *testing.T) {
 		aliasNpm, aliasPip, aliasPoetry = false, false, false
 		aliasUV, removeAliasUV = false, false
 		aliasYarn, removeAliasYarn = false, false
+		aliasPnpm, removeAliasPnpm = false, false
 		removeAliasNpm, removeAliasPip, removeAliasPoetry = false, false, false
 		ddAPIKey, ddAppKey, ddSite, scfwHome, remove = "", "", "", "", false
 		for _, name := range []string{
 			"alias-npm", "alias-pip", "alias-poetry",
 			"alias-uv", "remove-alias-uv",
 			"alias-yarn", "remove-alias-yarn",
+			"alias-pnpm", "remove-alias-pnpm",
 			"remove-alias-npm", "remove-alias-pip", "remove-alias-poetry",
 			"dd-api-key", "dd-app-key", "dd-site", "scfw-home", "remove",
 		} {
@@ -1008,6 +1010,8 @@ func TestConfigureCmd_MutualExclusivityIsEnforced(t *testing.T) {
 		{name: "remove and remove-alias-uv", args: []string{"--remove", "--remove-alias-uv"}},
 		{name: "remove and alias-yarn", args: []string{"--remove", "--alias-yarn"}},
 		{name: "remove and remove-alias-yarn", args: []string{"--remove", "--remove-alias-yarn"}},
+		{name: "remove and alias-pnpm", args: []string{"--remove", "--alias-pnpm"}},
+		{name: "remove and remove-alias-pnpm", args: []string{"--remove", "--remove-alias-pnpm"}},
 		{name: "remove and remove-alias-npm", args: []string{"--remove", "--remove-alias-npm"}},
 		{name: "remove and remove-alias-pip", args: []string{"--remove", "--remove-alias-pip"}},
 		{name: "remove and remove-alias-poetry", args: []string{"--remove", "--remove-alias-poetry"}},
@@ -1030,7 +1034,7 @@ func TestConfigureCmd_MutualExclusivityIsEnforced(t *testing.T) {
 }
 
 func TestConfigureCmd_AliasAdditionAndRemovalAreMutuallyExclusive(t *testing.T) {
-	for _, packageManager := range []string{"npm", "pip", "poetry", "uv", "yarn"} {
+	for _, packageManager := range []string{"npm", "pip", "poetry", "uv", "yarn", "pnpm"} {
 		t.Run(packageManager, func(t *testing.T) {
 			resetConfigureCmd(t)
 
@@ -1152,6 +1156,66 @@ func TestConfigureYarnAliasLifecycle(t *testing.T) {
 		}
 	}
 	execute("--alias-yarn")
+	execute("--remove")
+	for _, name := range configFiles {
+		content, err := os.ReadFile(filepath.Join(home, name))
+		if err != nil || strings.Contains(string(content), blockStart) || !strings.Contains(string(content), "export EXISTING=1") {
+			t.Fatalf("remove-all failed: %q, %v", content, err)
+		}
+	}
+}
+
+func TestConfigurePnpmAliasLifecycle(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	withKeyringDelete(t, func(string, string) error { return nil })
+	for _, name := range configFiles {
+		if err := os.WriteFile(filepath.Join(home, name), []byte("export EXISTING=1\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	execute := func(args ...string) {
+		t.Helper()
+		aliasPnpm, removeAliasPnpm, remove = false, false, false
+		ddSite = ""
+		for _, name := range []string{"alias-pnpm", "remove-alias-pnpm", "remove", "dd-site"} {
+			configureCmd.Flags().Lookup(name).Changed = false
+		}
+		configureCmd.SetArgs(args)
+		if err := configureCmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resetConfigureCmd(t)
+	var first []byte
+	for index, args := range [][]string{{"--alias-pnpm"}, {"--alias-pnpm"}, {"--dd-site", "datadoghq.eu"}} {
+		execute(args...)
+		for _, name := range configFiles {
+			content, err := os.ReadFile(filepath.Join(home, name))
+			if err != nil || !strings.Contains(string(content), "export EXISTING=1") {
+				t.Fatalf("alias add/preserve failed: %q, %v", content, err)
+			}
+			for _, alias := range []string{"pnpm", "pnpx", "pn", "pnx"} {
+				if strings.Count(string(content), `alias `+alias+`="scfw run -- `+alias+`"`) != 1 {
+					t.Fatalf("alias %s missing or repeated: %q", alias, content)
+				}
+			}
+			if name == configFiles[0] {
+				if index == 1 && !bytes.Equal(content, first) {
+					t.Fatalf("repeating --alias-pnpm changed %s: %q -> %q", name, first, content)
+				}
+				first = content
+			}
+		}
+	}
+	execute("--remove-alias-pnpm")
+	for _, name := range configFiles {
+		content, err := os.ReadFile(filepath.Join(home, name))
+		if err != nil || strings.Contains(string(content), "alias pn") || !strings.Contains(string(content), "datadoghq.eu") {
+			t.Fatalf("alias removal failed: %q, %v", content, err)
+		}
+	}
+	execute("--alias-pnpm")
 	execute("--remove")
 	for _, name := range configFiles {
 		content, err := os.ReadFile(filepath.Join(home, name))

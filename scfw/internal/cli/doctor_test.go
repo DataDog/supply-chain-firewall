@@ -88,7 +88,11 @@ func TestReportAliases(t *testing.T) {
 	if err := os.WriteFile(bashrc, []byte(blockStart+"\n"+
 		`alias npm="scfw run -- npm"`+"\n"+
 		`alias pip="scfw run -- pip"`+"\n"+
-		`alias pip3="scfw run -- pip3"`+"\n"+blockEnd+"\n"), 0o644); err != nil {
+		`alias pip3="scfw run -- pip3"`+"\n"+
+		`alias pn="scfw run -- pn"`+"\n"+
+		`alias pnpm="scfw run -- pnpm"`+"\n"+
+		`alias pnpx="scfw run -- pnpx"`+"\n"+
+		`alias pnx="scfw run -- pnx"`+"\n"+blockEnd+"\n"), 0o644); err != nil {
 		t.Fatalf("failed to seed %q: %v", bashrc, err)
 	}
 	if err := os.WriteFile(zshrc, []byte(blockStart+"\n"+
@@ -111,11 +115,15 @@ func TestReportAliases(t *testing.T) {
 		"✅ Alias npm is set in " + bashrc + ", " + zshrc,
 		"✅ Alias pip is set in " + bashrc,
 		"✅ Alias pip3 is set in " + bashrc,
+		"✅ Alias pn is set in " + bashrc,
+		"✅ Alias pnpm is set in " + bashrc,
+		"✅ Alias pnpx is set in " + bashrc,
+		"✅ Alias pnx is set in " + bashrc,
 		"✅ Alias poetry is set in " + zshrc,
 		"✅ Alias uv is set in " + zshrc,
 		"✅ Alias uvx is set in " + zshrc,
 		"✅ Alias yarn is set in " + zshrc,
-		"ℹ️ Run `alias npm pip pip3 poetry uv uvx yarn` to check which aliases are active in the current terminal. If an alias configured above is not found, reload your terminal.",
+		"ℹ️ Run `alias npm pip pip3 pn pnpm pnpx pnx poetry uv uvx yarn` to check which aliases are active in the current terminal. If an alias configured above is not found, reload your terminal.",
 	}
 	for _, want := range wantLines {
 		if !strings.Contains(output.String(), want+"\n") {
@@ -154,7 +162,11 @@ func TestReportAliases_ReturnsErrorForMissingAlias(t *testing.T) {
 	if err := os.WriteFile(bashrc, []byte(blockStart+"\n"+
 		`alias npm="scfw run -- npm"`+"\n"+
 		`alias pip="scfw run -- pip"`+"\n"+
-		`alias pip3="scfw run -- pip3"`+"\n"+blockEnd+"\n"), 0o644); err != nil {
+		`alias pip3="scfw run -- pip3"`+"\n"+
+		`alias pn="scfw run -- pn"`+"\n"+
+		`alias pnpm="scfw run -- pnpm"`+"\n"+
+		`alias pnpx="scfw run -- pnpx"`+"\n"+
+		`alias pnx="scfw run -- pnx"`+"\n"+blockEnd+"\n"), 0o644); err != nil {
 		t.Fatalf("failed to seed %q: %v", bashrc, err)
 	}
 

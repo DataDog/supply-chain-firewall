@@ -141,6 +141,8 @@ Available `configure` options:
 | `--remove-alias-uv` | Remove the uv and uvx shell aliases managed by `scfw`. |
 | `--alias-yarn` | Add a shell alias to run yarn commands through `scfw`. Requires proxy mode for package operations. |
 | `--remove-alias-yarn` | Remove the yarn shell alias managed by `scfw`. |
+| `--alias-pnpm` | Add shell aliases to run pnpm, pnpx, pn, and pnx commands through `scfw`. Requires proxy mode for package operations. |
+| `--remove-alias-pnpm` | Remove the pnpm, pnpx, pn, and pnx shell aliases managed by `scfw`. |
 | `--alias-poetry` | Add a shell alias to run all poetry commands through `scfw`. |
 | `--remove-alias-poetry` | Remove the poetry shell alias managed by `scfw`. |
 | `--scfw-home` | Directory Supply Chain Firewall can use as a local cache. |

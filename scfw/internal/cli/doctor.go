@@ -80,7 +80,7 @@ func reportCredential(out io.Writer, name, value string, source ddapi.Credential
 	return writeErr
 }
 
-var availableAliases = []string{"npm", "pip", "pip3", "poetry", "uv", "uvx", "yarn"}
+var availableAliases = []string{"npm", "pip", "pip3", "pn", "pnpm", "pnpx", "pnx", "poetry", "uv", "uvx", "yarn"}
 
 type invalidAlias struct {
 	path   string

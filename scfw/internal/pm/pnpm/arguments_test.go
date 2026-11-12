@@ -7,6 +7,7 @@ package pnpm
 
 import (
 	"maps"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -99,5 +100,74 @@ func TestParseCommandNetworkOptions10And11(t *testing.T) {
 		if located.dir != "sub" || !located.global {
 			t.Errorf("pnpm %d: dir=%q global=%v", major, located.dir, located.global)
 		}
+	}
+}
+
+func TestProxyCommandSupported12(t *testing.T) {
+	proxied := []string{
+		"install", "i", "add x", "update", "up", "remove x", "rm x", "link ../x", "unlink", "dislink", "import", "fetch",
+		"dedupe", "rebuild", "rb", "prune", "install-test", "it", "patch x", "patch-commit d", "patch-remove x",
+		"deploy out", "dlx cowsay", "create vite", "store add x", "self-update", "env use 22", "approve-builds",
+		"pipeline", "-Csub add x", "-rC sub install", "-C=sub add x", "-C sub add x", "--filter a add x", "-w add x",
+		"ci", "with 11.28.9 add x", "with current add x", "--workspace-concurrency 2 install", "--store-dir /s install",
+		"--lockfile-dir d install", "--frozen-lockfile true install", "--config.registry=http://r/ install",
+		"--node-linker hoisted install", "dlx cowsay --help", "create vite --help", "pm install",
+	}
+	direct := []string{
+		"", "-- install", "run build", "exec tsc", "test", "start", "build", "outdated", "view x", "store path",
+		"config get x", "add x --help", "--help add", "-h", "--version", "-v", "add x -v",
+		// --config.* and --color take a value only with "=", so these run a script.
+		"--config.registry http://r/ install", "--color never install",
+	}
+	isolatePnpmEnvironment(t)
+	manager := fakePnpm(t, "12.18.0")
+	for _, command := range proxied {
+		if !manager.ProxyCommandSupported(strings.Fields(command)) {
+			t.Errorf("pnpm 12: %q must be proxied", command)
+		}
+	}
+	for _, command := range direct {
+		if manager.ProxyCommandSupported(strings.Fields(command)) {
+			t.Errorf("pnpm 12: %q must run directly", command)
+		}
+	}
+	if !fakePnpmNamed(t, "pnpx", "12.18.0").ProxyCommandSupported([]string{"cowsay", "--version"}) {
+		t.Error("pnpm 12: pnpx cowsay --version must be proxied")
+	}
+}
+
+func TestParseCommandNetworkOptions12(t *testing.T) {
+	parsed := parseCommand(12, false, strings.Fields("--no-proxy=reg.test add x --https-proxy http://e:1 --registry https://r.test/ --strict-ssl false"))
+	want := nodeproxy.Config{"no-proxy": {"reg.test"}, "https-proxy": {"http://e:1"}, "registry": {"https://r.test/"}, "strict-ssl": {"false"}}
+	if !maps.EqualFunc(parsed.network, want, slices.Equal) {
+		t.Errorf("network = %v, want %v", parsed.network, want)
+	}
+	if wantArgs := []string{"add", "x", "--registry", "https://r.test/"}; !slices.Equal(parsed.args, wantArgs) {
+		t.Errorf("args = %q, want %q", parsed.args, wantArgs)
+	}
+	for command, dir := range map[string]string{"-Csub add x": "sub", "-C=sub add x": "sub", "-rC sub install": "sub", "--prefix p add x": "p"} {
+		if got := parseCommand(12, false, strings.Fields(command)).dir; got != dir {
+			t.Errorf("%q: dir = %q, want %q", command, got, dir)
+		}
+	}
+}
+
+// The pinned version parses the command: pnpm 11 rejects -Csub, pnpm 12 reads
+// it as the project directory, whose own pin then decides.
+func TestMajorUsesPinnedParser(t *testing.T) {
+	root := isolatePnpmEnvironment(t)
+	project := filepath.Join(root, "parent", "project")
+	writePnpmFixture(t, filepath.Join(project, "package.json"), "manifest/pnpm-12-hash.json")
+	writePnpmFixture(t, filepath.Join(project, "sub", "package.json"), "manifest/pnpm-10.json")
+	manager := fakePnpm(t, "11.28.9")
+	command := []string{"-Csub", "add", "x"}
+	if !manager.ProxyCommandSupported(command) {
+		t.Fatal("-Csub add x must be proxied")
+	}
+	if major, err := manager.major(command); err != nil || major != 10 {
+		t.Fatalf("major = %d (error %v), want 10 from sub's pin", major, err)
+	}
+	if major, err := manager.major([]string{"add", "x"}); err != nil || major != 12 {
+		t.Fatalf("major = %d (error %v), want 12 from the project pin", major, err)
 	}
 }

@@ -63,11 +63,13 @@ func parseCommand(major int, dlx bool, command []string) parsedCommand {
 	if dlx {
 		tokens = append([]string{"dlx"}, command...)
 	}
-	table := nopt10
-	if major >= 11 {
-		table = nopt11
+	switch major {
+	case 10:
+		return parseNopt(major, nopt10, tokens, dlx)
+	case 11:
+		return parseNopt(major, nopt11, tokens, dlx)
 	}
-	return parseNopt(major, table, tokens, dlx)
+	return parseStrict(tokens, dlx)
 }
 
 func parseNopt(major int, table noptOptions, tokens []string, dlx bool) parsedCommand {
@@ -85,7 +87,7 @@ func parseNopt(major int, table noptOptions, tokens []string, dlx bool) parsedCo
 		}
 		if !strings.HasPrefix(token, "-") || token == "-" {
 			positionals = append(positionals, token)
-			if escapes(major, table, positionals) {
+			if escapes(major, table.aliases, positionals) {
 				boundary = index + 1
 				break
 			}
@@ -119,7 +121,7 @@ func parseNopt(major int, table noptOptions, tokens []string, dlx bool) parsedCo
 			}
 		}
 	}
-	parsed.name, parsed.sub = resolveCommand(major, table, positionals)
+	parsed.name, parsed.sub = resolveCommand(major, table.aliases, positionals)
 	parsed.dir = dir
 	if parsed.dir == "" {
 		parsed.dir = prefix
@@ -244,13 +246,13 @@ func (table noptOptions) known(name string) bool {
 
 // commandStart returns the index of the command among positionals, skipping
 // the recursive prefixes, and `pm` and `with current` from pnpm 11.
-func commandStart(major int, table noptOptions, positionals []string) int {
+func commandStart(major int, aliases map[string]string, positionals []string) int {
 	index := 0
 	if major >= 11 && len(positionals) > 0 && positionals[0] == "pm" {
 		index++
 	}
 	for index < len(positionals) {
-		name := canonical(table, positionals[index])
+		name := canonical(aliases, positionals[index])
 		switch {
 		case name == "recursive":
 			index++
@@ -263,19 +265,19 @@ func commandStart(major int, table noptOptions, positionals []string) int {
 	return index
 }
 
-func canonical(table noptOptions, name string) string {
-	if alias, found := table.aliases[name]; found {
+func canonical(aliases map[string]string, name string) string {
+	if alias, found := aliases[name]; found {
 		return alias
 	}
 	return name
 }
 
-func resolveCommand(major int, table noptOptions, positionals []string) (name, sub string) {
-	index := commandStart(major, table, positionals)
+func resolveCommand(major int, aliases map[string]string, positionals []string) (name, sub string) {
+	index := commandStart(major, aliases, positionals)
 	if index >= len(positionals) {
 		return "", ""
 	}
-	name = canonical(table, positionals[index])
+	name = canonical(aliases, positionals[index])
 	if index+1 < len(positionals) {
 		sub = positionals[index+1]
 	}
@@ -286,12 +288,12 @@ func resolveCommand(major int, table noptOptions, positionals []string) (name, s
 // after create, exec, or a script, and after the package or script of dlx and
 // run. Commands SCFW does not proxy run unchanged, so their arguments are not
 // inspected either.
-func escapes(major int, table noptOptions, positionals []string) bool {
-	index := commandStart(major, table, positionals)
+func escapes(major int, aliases map[string]string, positionals []string) bool {
+	index := commandStart(major, aliases, positionals)
 	if index >= len(positionals) {
 		return false
 	}
-	switch name := canonical(table, positionals[index]); name {
+	switch name := canonical(aliases, positionals[index]); name {
 	case "create":
 		return true
 	case "dlx", "run", "with":
@@ -334,4 +336,168 @@ func (p Pnpm) ProxyCommandSupported(command []string) bool {
 		return true
 	}
 	return proxyCommand(major, parseCommand(major, p.dlx, command))
+}
+
+// pnpm 12 parses its command line with clap: long options are exact, and an
+// option written before the subcommand takes a value when any subcommand's
+// version of it does.
+var (
+	strictValueOptions = []string{
+		"access", "allow-build", "audit-level", "base", "branch", "bump", "changed-files-ignore-pattern", "cidr", "cpu",
+		"depth", "dir", "edit-dir", "entry", "env-file", "fetch-min-speed-ki-bps", "fetch-timeout", "fetch-warn-timeout-ms",
+		"filter", "filter-prod", "find-by", "format", "http-proxy", "https-proxy", "ignore", "init-type", "interval", "libc",
+		"location", "lockfile-dir", "loglevel", "merge-git-branch-lockfiles-branch-pattern", "message", "network-concurrency",
+		"no-proxy", "node-linker", "npmrc-auth-file", "os", "otp", "out", "output-dir", "output-name", "pack-destination",
+		"pack-gzip-level", "package", "patches-dir", "pnpr-server", "preid", "prefix", "publication-name", "publish-branch",
+		"publish-wait-timeout", "registry", "release-notes", "repo", "report-to", "reporter", "runtime", "save-catalog-name",
+		"save-prefix", "sbom-authors", "sbom-format", "sbom-spec-version", "sbom-supplier", "sbom-type", "scope",
+		"search-limit", "sort-by", "state-dir", "store-dir", "summary", "tag", "tag-version-prefix", "target", "test-pattern",
+		"upload-variant", "user-agent", "userconfig", "variant", "variant-integrity", "workspace-concurrency",
+		"workspace-packages",
+	}
+	// Bare setting flags outside clap's table consume a value that does not
+	// look like an option, a value that parses, or a boolean.
+	strictTextSettings = []string{
+		"cache-dir", "global-dir", "hoist-pattern", "lockfile-dir", "local-address", "modules-dir", "public-hoist-pattern",
+		"trust-policy-exclude", "virtual-store-dir",
+	}
+	strictParsedSettings = map[string][]string{
+		"node-linker":           {"hoisted", "isolated", "pnp"},
+		"package-import-method": {"auto", "hardlink", "copy", "clone", "clone-or-copy"},
+		"pm-on-fail":            {"download", "error", "warn", "ignore"},
+		"runtime-on-fail":       {"download", "error", "warn", "ignore"},
+		"trust-policy":          {"no-downgrade", "off"},
+	}
+	strictNumberSettings = []string{"child-concurrency", "trust-policy-ignore-after"}
+	strictShorts         = map[rune]string{'C': "dir", 'F': "filter", 'm': "message", 't': "tag", 'g': "global", 'h': "help", 'v': "version"}
+	strictAliases        = func() map[string]string {
+		aliases := maps.Clone(nopt11.aliases)
+		maps.Copy(aliases, map[string]string{"licences": "licenses", "t": "test", "tst": "test"})
+		return aliases
+	}()
+)
+
+var number = regexp.MustCompile(`^[0-9]+$`)
+
+func parseStrict(tokens []string, dlx bool) parsedCommand {
+	parsed := parsedCommand{network: nodeproxy.Config{}}
+	var positionals []string
+	stripped := make([]bool, len(tokens))
+	boundary := len(tokens)
+	record := func(name, value string, indexes ...int) {
+		recorded, strip := networkSetting(name)
+		if !recorded {
+			return
+		}
+		parsed.network[name] = append(parsed.network[name], value)
+		for _, index := range indexes {
+			stripped[index] = strip
+		}
+	}
+	for index := 0; index < len(tokens) && boundary == len(tokens); index++ {
+		token := tokens[index]
+		next := ""
+		if index+1 < len(tokens) {
+			next = tokens[index+1]
+		}
+		switch {
+		case token == "--":
+			// A leading "--" makes the next argument a script name.
+			if len(positionals) == 0 {
+				return parsedCommand{network: parsed.network, args: tokens}
+			}
+			positionals = append(positionals, tokens[index+1:]...)
+			boundary = index
+		case !strings.HasPrefix(token, "-") || token == "-":
+			positionals = append(positionals, token)
+			if escapes(12, strictAliases, positionals) {
+				boundary = index + 1
+			}
+		case !strings.HasPrefix(token, "--"):
+			name, value, consumed := strictShort(token[1:], next)
+			parsed.apply(name, value)
+			if consumed {
+				index++
+			}
+		default:
+			name, value, assigned := strings.Cut(token[2:], "=")
+			key, configured := strings.CutPrefix(name, "config.")
+			if configured || strings.HasPrefix(name, "@") || strings.HasPrefix(name, "//") {
+				if !configured {
+					key = name
+				}
+				if assigned {
+					record(key, value, index)
+				}
+				continue
+			}
+			consumed := false
+			if !assigned {
+				value, consumed = strictValue(name, next)
+			}
+			parsed.apply(name, value)
+			if consumed {
+				record(name, value, index, index+1)
+				index++
+			} else {
+				record(name, value, index)
+			}
+		}
+	}
+	parsed.name, parsed.sub = resolveCommand(12, strictAliases, positionals)
+	for index, token := range tokens {
+		if (index >= boundary || !stripped[index]) && !(dlx && index == 0) {
+			parsed.args = append(parsed.args, token)
+		}
+	}
+	return parsed
+}
+
+// strictValue reports the value an unassigned long option takes.
+func strictValue(name, next string) (string, bool) {
+	var takes bool
+	switch {
+	case slices.Contains(strictValueOptions, name), slices.Contains(strictTextSettings, name):
+		takes = next != "" && !strings.HasPrefix(next, "-")
+	case slices.Contains(strictNumberSettings, name):
+		takes = number.MatchString(next)
+	case strictParsedSettings[name] != nil:
+		takes = slices.Contains(strictParsedSettings[name], next)
+	case slices.Contains([]string{"true", "false", "1", "0"}, next):
+		return next, true
+	default:
+		return "true", false
+	}
+	if !takes {
+		return "", false
+	}
+	return next, true
+}
+
+// strictShort resolves a short-option cluster: a value-taking letter takes the
+// rest of the cluster, or the next argument when it is last.
+func strictShort(cluster, next string) (name, value string, consumed bool) {
+	for offset, letter := range cluster {
+		switch long := strictShorts[letter]; long {
+		case "dir", "filter", "message", "tag":
+			if rest := strings.TrimPrefix(cluster[offset+1:], "="); rest != "" {
+				return long, rest, false
+			}
+			return long, next, next != ""
+		case "help", "version", "global":
+			name, value = long, "true"
+		}
+	}
+	return name, value, false
+}
+
+func (parsed *parsedCommand) apply(name, value string) {
+	switch name {
+	case "dir", "prefix":
+		parsed.dir = value
+	case "global":
+		parsed.global = value != "false"
+	case "help", "version":
+		parsed.help = true
+	}
 }

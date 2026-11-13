@@ -28,8 +28,10 @@ const pypiProjectBaseURL = "https://pypi.org/project"
 // and the argument's value; ok is false if the flag is not present or has no
 // argument.
 func findPoetryDirectoryFlag(command []string) (start, end int, value string, ok bool) {
-	for i, token := range command {
+	for i, token := range poetryOwnArguments(command) {
 		switch {
+		case token == "--":
+			return 0, 0, "", false
 		case token == "--directory" || token == "-C":
 			if i+1 >= len(command) {
 				return 0, 0, "", false

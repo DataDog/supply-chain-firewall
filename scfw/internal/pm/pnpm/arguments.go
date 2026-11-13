@@ -50,6 +50,11 @@ var strippedSettings = []string{
 	"pnpr-server",
 }
 
+// configLocationOptions choose the user .npmrc. pnpm 10 and 11 read their
+// value only in the command's own parse, so the command-selecting tables do
+// not list them; SCFW still takes their value to read the same file.
+var configLocationOptions = []string{"userconfig", "npmrc-auth-file"}
+
 var registryTLSKey = regexp.MustCompile(`^//.*:(ca|cafile|cert|certfile|key|keyfile)$`)
 
 func networkSetting(key string) (recorded, stripped bool) {
@@ -57,7 +62,7 @@ func networkSetting(key string) (recorded, stripped bool) {
 	case slices.Contains(strippedSettings, key), registryTLSKey.MatchString(key):
 		return true, true
 	case key == "registry", strings.HasPrefix(key, "@") && strings.HasSuffix(key, ":registry"),
-		key == "pm-on-fail", key == "manage-package-manager-versions":
+		key == "pm-on-fail", key == "manage-package-manager-versions", slices.Contains(configLocationOptions, key):
 		return true, false
 	}
 	return false, false
@@ -192,7 +197,7 @@ func (table noptOptions) option(token, next string) noptOption {
 	case negated:
 		result.value = "false"
 		result.consumed = next == "true" || next == "false"
-	case slices.Contains(table.values, name):
+	case slices.Contains(table.values, name), slices.Contains(configLocationOptions, name):
 		result.consumed = next != "" && next != "--"
 	case slices.Contains(table.strings, name):
 		result.consumed = next != "" && next != "--" && !optionLike.MatchString(next)

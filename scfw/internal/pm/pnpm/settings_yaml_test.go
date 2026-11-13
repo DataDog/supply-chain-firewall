@@ -115,6 +115,46 @@ func TestYAMLSettingsFromWorkspaceRoot(t *testing.T) {
 	}
 }
 
+// The user .npmrc can be chosen on the command line; SCFW must read the same
+// file pnpm reads, or it loses that file's proxy and CA.
+func TestCommandLineUserconfig(t *testing.T) {
+	for _, test := range []struct {
+		major   int
+		command func(company, other string) []string
+		env     func(company string) [2]string
+	}{
+		{major: 10, command: func(c, _ string) []string { return []string{"--userconfig=" + c, "add", "x"} }},
+		{major: 10, command: func(c, _ string) []string { return []string{"add", "x", "--userconfig", c} }},
+		{major: 10, command: func(c, _ string) []string { return []string{"--config.userconfig=" + c, "add", "x"} }},
+		{major: 11, command: func(c, _ string) []string { return []string{"--userconfig=" + c, "add", "x"} }},
+		{major: 11, command: func(c, _ string) []string { return []string{"add", "x", "--npmrc-auth-file", c} }},
+		{major: 11, command: func(c, o string) []string { return []string{"--npmrc-auth-file=" + c, "--userconfig=" + o, "add", "x"} }},
+		{major: 11, env: func(c string) [2]string { return [2]string{"pnpm_config_npmrc_auth_file", c} }},
+		{major: 12, command: func(c, _ string) []string { return []string{"--userconfig", c, "add", "x"} }},
+		{major: 12, command: func(c, _ string) []string { return []string{"--npmrc-auth-file", c, "add", "x"} }},
+		{major: 12, env: func(c string) [2]string { return [2]string{"PNPM_CONFIG_NPMRC_AUTH_FILE", c} }},
+	} {
+		layout := newPnpmWorkspace(t)
+		company := filepath.Join(layout.root, "company.npmrc")
+		other := filepath.Join(layout.root, "other.npmrc")
+		writePnpmFixture(t, company, "npmrc/https-proxy.npmrc.tmpl", "http://corporate:1")
+		writePnpmFixture(t, other, "npmrc/https-proxy.npmrc.tmpl", "http://other:1")
+		writePnpmFixture(t, filepath.Join(layout.home(), ".npmrc"), "npmrc/https-proxy.npmrc.tmpl", "http://default:1")
+		command := []string{"add", "x"}
+		if test.command != nil {
+			command = test.command(company, other)
+		}
+		if test.env != nil {
+			pair := test.env(company)
+			t.Setenv(pair[0], pair[1])
+		}
+		config, err := fakePnpm(t, pnpmVersions[test.major]).UpstreamProxy(command)
+		if err != nil || config.HTTPSProxy != "http://corporate:1" {
+			t.Errorf("pnpm %d %q: HTTPSProxy = %q (error %v), want the selected file's proxy", test.major, command, config.HTTPSProxy, err)
+		}
+	}
+}
+
 func TestYAMLUpstreamRejectsInvalidURLWithoutCredentials(t *testing.T) {
 	for _, major := range []int{11, 12} {
 		for _, value := range []string{"socks5://user:secret@h:1", "http://user:secret@[bad"} {

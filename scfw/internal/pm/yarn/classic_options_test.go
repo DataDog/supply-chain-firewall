@@ -166,6 +166,17 @@ func TestProxyOptionsRoutesLikeYarn(t *testing.T) {
 			t.Setenv("HTTPS_PROXY", "http://env:1")
 			t.Setenv("NO_PROXY", ".registry.test")
 		}},
+		// NO_PROXY applies only to a scheme whose proxy came from the environment.
+		{"1.22.22", "https://registry.test/x", "http://corp:1", func(t *testing.T, root string) {
+			writeYarnFixture(t, filepath.Join(root, "parent", "project", ".yarnrc"), "yarnrc/https-proxy.yarnrc.tmpl", "http://corp:1")
+			t.Setenv("HTTP_PROXY", "http://env:1")
+			t.Setenv("NO_PROXY", "registry.test")
+		}},
+		{"1.22.22", "http://registry.test/x", "", func(t *testing.T, root string) {
+			writeYarnFixture(t, filepath.Join(root, "parent", "project", ".yarnrc"), "yarnrc/https-proxy.yarnrc.tmpl", "http://corp:1")
+			t.Setenv("HTTP_PROXY", "http://env:1")
+			t.Setenv("NO_PROXY", "registry.test")
+		}},
 		{"4.18.1", "https://127.0.0.1:8443/x", "http://corp:1", func(t *testing.T, _ string) { t.Setenv("YARN_HTTPS_PROXY", "http://corp:1") }},
 		{"4.18.1", "http://registry.test/x", "", func(t *testing.T, _ string) { t.Setenv("YARN_HTTPS_PROXY", "http://corp:1") }},
 	} {

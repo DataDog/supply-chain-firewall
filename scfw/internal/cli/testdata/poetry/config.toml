@@ -1,0 +1,5 @@
+[keyring]
+enabled = false
+
+[installer]
+max-workers = 1

@@ -67,6 +67,7 @@ func Run(ctx context.Context, options Options, command []string, configurer Comm
 	if len(options.AdditionalClients) > 0 {
 		config.AdditionalClients = make(map[string]ClientConfig, len(options.AdditionalClients))
 		for name, clientOptions := range options.AdditionalClients {
+			clientOptions.ClientIdentity = "client:" + name
 			clientOptions.RequestHooks = append(slices.Clone(options.RequestHooks), clientOptions.RequestHooks...)
 			client, err := Start(ctx, clientOptions)
 			if err != nil {

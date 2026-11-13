@@ -23,9 +23,11 @@ import (
 type classicSettings struct {
 	// HTTPS and HTTP are the upstream proxies Yarn would use for each scheme.
 	HTTPS, HTTP string
-	// NoProxy applies only to proxies taken from the standard variables:
-	// Yarn passes a configured proxy to its HTTP client, which then ignores it.
-	NoProxy string
+	// NoProxy is the standard variables' bypass list. It applies only to a
+	// scheme whose proxy came from those variables: Yarn passes a configured
+	// proxy to its HTTP client, which then ignores NO_PROXY for it.
+	NoProxy                   string
+	NoProxyHTTP, NoProxyHTTPS bool
 	// CAFile wins over CA, as in Yarn's request manager.
 	CAFile     string
 	CA         []string
@@ -75,11 +77,9 @@ func (yarn Yarn) classicSettings(command []string) (classicSettings, error) {
 		return classicSettings{}, err
 	}
 	var settings classicSettings
-	fromEnvironment := false
 	environmentProxy := func(names ...string) string {
 		for _, name := range names {
 			if value := env[name]; value != "" {
-				fromEnvironment = true
 				return value
 			}
 		}
@@ -92,6 +92,7 @@ func (yarn Yarn) classicSettings(command []string) (classicSettings, error) {
 	case "false":
 	case "":
 		settings.HTTP = environmentProxy("HTTP_PROXY", "http_proxy")
+		settings.NoProxyHTTP = settings.HTTP != ""
 	default:
 		settings.HTTP = httpProxy
 	}
@@ -102,10 +103,11 @@ func (yarn Yarn) classicSettings(command []string) (classicSettings, error) {
 	case "false":
 	case "":
 		settings.HTTPS = environmentProxy("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy")
+		settings.NoProxyHTTPS = settings.HTTPS != ""
 	default:
 		settings.HTTPS = httpsProxy
 	}
-	if fromEnvironment {
+	if settings.NoProxyHTTP || settings.NoProxyHTTPS {
 		settings.NoProxy = env["NO_PROXY"]
 		if settings.NoProxy == "" {
 			settings.NoProxy = env["no_proxy"]

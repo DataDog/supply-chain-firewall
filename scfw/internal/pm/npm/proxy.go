@@ -142,7 +142,8 @@ func (npm Npm) ProxyCommand(_ context.Context, command []string, config proxy.Cl
 // withoutNoproxyOptions removes the user's --noproxy options before "--".
 // npm accumulates repeated --noproxy values instead of keeping the last one,
 // so SCFW's sentinel cannot replace them, and a listed host would bypass the
-// proxy. npm also expands unambiguous abbreviations, from "--nop" onwards.
+// proxy. npm also accepts any number of leading dashes ("-noproxy",
+// "---noproxy") and expands unambiguous abbreviations, from "nop" onwards.
 // The user's entries still apply to SCFW's own upstream connections.
 func withoutNoproxyOptions(command []string) []string {
 	args := make([]string, 0, len(command))
@@ -151,8 +152,8 @@ func withoutNoproxyOptions(command []string) []string {
 		if argument == "--" {
 			return append(args, command[index:]...)
 		}
-		name, _, assigned := strings.Cut(strings.TrimPrefix(argument, "--"), "=")
-		if !strings.HasPrefix(argument, "--") || len(name) < len("nop") || !strings.HasPrefix("noproxy", name) {
+		name, _, assigned := strings.Cut(strings.TrimLeft(argument, "-"), "=")
+		if !strings.HasPrefix(argument, "-") || len(name) < len("nop") || !strings.HasPrefix("noproxy", name) {
 			args = append(args, argument)
 			continue
 		}

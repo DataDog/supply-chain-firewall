@@ -46,7 +46,7 @@ func (yarn Yarn) ProxyOptions(command []string) (proxy.Options, error) {
 	if err != nil {
 		return proxy.Options{}, err
 	}
-	options := proxy.Options{Upstream: upstream, ProxyForURL: yarnProxyForURL(upstream)}
+	options := proxy.Options{Upstream: upstream, ProxyForURL: yarnProxyForURL(upstream, false, false)}
 	var caFile string
 	var pems [][]byte
 	var strictSSL bool
@@ -56,6 +56,7 @@ func (yarn Yarn) ProxyOptions(command []string) (proxy.Options, error) {
 			return proxy.Options{}, err
 		}
 		caFile, strictSSL = settings.CAFile, settings.StrictSSL
+		options.ProxyForURL = yarnProxyForURL(upstream, settings.NoProxyHTTP, settings.NoProxyHTTPS)
 		for _, ca := range settings.CA {
 			pems = append(pems, []byte(ca))
 		}
@@ -86,14 +87,15 @@ var _ pm.ProxyOptionsProvider = Yarn{}
 
 // yarnProxyForURL routes like Yarn, which proxies loopback hosts too; Go's
 // flattened proxy configuration would connect to them directly. NoProxy holds
-// the standard variable's entries, matched like Yarn Classic's request client.
-func yarnProxyForURL(upstream httpproxy.Config) func(*url.URL) (*url.URL, error) {
+// the standard variable's entries, matched like Yarn Classic's request client,
+// and bypasses a scheme only when its proxy came from the environment.
+func yarnProxyForURL(upstream httpproxy.Config, bypassHTTP, bypassHTTPS bool) func(*url.URL) (*url.URL, error) {
 	return func(target *url.URL) (*url.URL, error) {
-		value := upstream.HTTPProxy
+		value, bypass := upstream.HTTPProxy, bypassHTTP
 		if target.Scheme == "https" {
-			value = upstream.HTTPSProxy
+			value, bypass = upstream.HTTPSProxy, bypassHTTPS
 		}
-		if value == "" || noProxyMatches(target, upstream.NoProxy) {
+		if value == "" || bypass && noProxyMatches(target, upstream.NoProxy) {
 			return nil, nil
 		}
 		return proxy.ParseUpstreamProxyURL(value)

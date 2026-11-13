@@ -117,6 +117,29 @@ func TestProxyCommandWithNestsOverrides(t *testing.T) {
 	}
 }
 
+// Each nested `with` starts another pnpm that sees only what follows its
+// version, so every level needs the overrides.
+func TestProxyCommandNestedWith(t *testing.T) {
+	newPnpmWorkspace(t)
+	config, pem := testClientConfig(t)
+	manager := fakePnpm(t, "11.28.9")
+	overrides := proxyOverrides(config, pem)
+	for command, want := range map[string][]string{
+		"with 11.28.9 with 12.18.0 add x --config.no-proxy=registry.npmjs.org": slices.Concat(
+			overrides, []string{"with", "11.28.9"}, overrides, []string{"with", "12.18.0"}, overrides, []string{"add", "x"}),
+		"with 12 with 11.28.9 with 12 add x --config.noproxy=registry.npmjs.org": slices.Concat(
+			overrides, []string{"with", "12"}, overrides, []string{"with", "11.28.9"}, overrides, []string{"with", "12"}, overrides, []string{"add", "x"}),
+	} {
+		spec, err := manager.ProxyCommand(context.Background(), strings.Fields(command), config)
+		if err != nil || !slices.Equal(spec.Args, want) {
+			t.Errorf("%q: args = %q (error %v), want %q", command, spec.Args, err, want)
+		}
+	}
+	if _, err := manager.ProxyCommand(context.Background(), strings.Fields("with 12.18.0 with latest add x"), config); err == nil || !strings.Contains(err.Error(), "with") {
+		t.Errorf("a nested non-exact version must be refused, error = %v", err)
+	}
+}
+
 func TestProxyCommandDlxPlacement(t *testing.T) {
 	for major, version := range pnpmVersions {
 		newPnpmWorkspace(t)

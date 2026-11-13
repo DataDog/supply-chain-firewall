@@ -6,8 +6,6 @@
 package pypi
 
 import (
-	"compress/gzip"
-	"compress/zlib"
 	"context"
 	"errors"
 	"io"
@@ -18,9 +16,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/internal/archive"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
-	"github.com/andybalholm/brotli"
-	"github.com/klauspost/compress/zstd"
 )
 
 // ObserveResponseHeaders selects bounded file inspection for opaque downloads
@@ -126,7 +123,7 @@ func (e ProxyHandler) inspectFullDownload(ctx context.Context, original proxy.Re
 	if err != nil {
 		return true, err
 	}
-	request.Header = refreshRequestHeaders(original.Request.Header)
+	request.Header = archive.FullDownloadHeaders(original.Request.Header)
 	client := metadataRefreshClient(e.Client, &original.Request.URL)
 	response, err := client.Do(request)
 	if err != nil {
@@ -168,7 +165,7 @@ func (e ProxyHandler) evaluateDownloadedArchive(ctx context.Context, response pr
 	if e.Classifier.retainArchiveContentEncoding {
 		encoding = ""
 	}
-	err := inspectDecodedArchive(ctx, body, encoding, func(body *io.SectionReader) error {
+	err := archive.InspectDecoded(ctx, body, encoding, func(body *io.SectionReader) error {
 		artifact, found, err := e.inspectDownloadArchive(ctx, response, body, required, selection)
 		if err != nil {
 			return err
@@ -208,48 +205,6 @@ func (e ProxyHandler) evaluateDownloadedArchive(ctx context.Context, response pr
 		return err
 	}
 	return hook.Handle(ctx, response)
-}
-
-func inspectDecodedArchive(ctx context.Context, body *io.SectionReader, encoding string, inspect func(*io.SectionReader) error) error {
-	if encoding == "" || strings.EqualFold(strings.TrimSpace(encoding), "identity") {
-		return inspect(body)
-	}
-	var reader io.Reader = body
-	encodings := strings.Split(strings.ToLower(encoding), ",")
-	if len(encodings) > 4 {
-		return errors.New("too many Python download content encodings")
-	}
-	for index := len(encodings) - 1; index >= 0; index-- {
-		switch strings.TrimSpace(encodings[index]) {
-		case "identity":
-		case "gzip", "x-gzip":
-			decoder, err := gzip.NewReader(reader)
-			if err != nil {
-				return err
-			}
-			defer func() { _ = decoder.Close() }()
-			reader = decoder
-		case "deflate":
-			decoder, err := zlib.NewReader(reader)
-			if err != nil {
-				return err
-			}
-			defer func() { _ = decoder.Close() }()
-			reader = decoder
-		case "br":
-			reader = brotli.NewReader(reader)
-		case "zstd":
-			decoder, err := zstd.NewReader(reader, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(64<<20))
-			if err != nil {
-				return err
-			}
-			defer decoder.Close()
-			reader = decoder
-		default:
-			return errors.New("unsupported Python download content encoding")
-		}
-	}
-	return proxy.InspectReader(ctx, reader, MaxArtifactBytes, inspect)
 }
 
 // A redirect must retain the name used by the manager before following it.

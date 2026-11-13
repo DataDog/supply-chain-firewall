@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/internal/archive"
 	"github.com/ulikunitz/xz/lzma"
 )
 
@@ -66,8 +67,8 @@ func probeArchive(ctx context.Context, body *io.SectionReader) (ArchiveSignature
 	var signature [512]byte
 	n, _ := body.ReadAt(signature[:], 0)
 	var result ArchiveSignatures
-	if archive, err := zip.NewReader(body, body.Size()); err == nil {
-		if len(archive.File) > maxArchiveEntries {
+	if zipArchive, err := zip.NewReader(body, body.Size()); err == nil {
+		if len(zipArchive.File) > archive.MaxEntries {
 			return result, errors.New("too many Python archive entries")
 		}
 		result.ZIP = true
@@ -90,7 +91,7 @@ func probeArchive(ctx context.Context, body *io.SectionReader) (ArchiveSignature
 	}
 	if n == len(signature) {
 		// PAX and GNU extension headers may require more than the first block.
-		raw := tar.NewReader(archiveContextReader{ctx, io.NewSectionReader(body, 0, body.Size())})
+		raw := tar.NewReader(archive.ContextReader{Ctx: ctx, Reader: io.NewSectionReader(body, 0, body.Size())})
 		if _, err := raw.Next(); err == nil {
 			result.RawTAR = true
 			if result.TAR == ArchiveUnknown {

@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/internal/archive"
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
 )
@@ -563,7 +564,7 @@ func (cache *MetadataCache) registerProjectEndpoint(requestURL url.URL, project 
 		endpoint.tentative = endpoint.tentative && tentative
 	}
 	endpoint.url, endpoint.project = requestURL, project
-	if captured := refreshRequestHeaders(requestHeader); len(captured) > 0 {
+	if captured := archive.FullDownloadHeaders(requestHeader); len(captured) > 0 {
 		endpoint.header = captured
 	}
 	cache.endpoints[key] = endpoint
@@ -676,21 +677,6 @@ func (cache *MetadataCache) ResolvePublishDate(ctx context.Context, client *http
 		}
 	}
 	return time.Time{}, errors.Join(refreshErrors...)
-}
-
-// refreshRequestHeaders keeps representation selection and origin credentials
-// while removing conditional, range, and proxy connection state for a full GET.
-func refreshRequestHeaders(header http.Header) http.Header {
-	captured := make(http.Header)
-	for name, values := range header {
-		switch http.CanonicalHeaderKey(name) {
-		case "Connection", "If-Match", "If-Modified-Since", "If-None-Match", "If-Range", "If-Unmodified-Since",
-			"Keep-Alive", "Proxy-Authorization", "Proxy-Connection", "Range", "Te", "Trailer", "Transfer-Encoding", "Upgrade":
-			continue
-		}
-		captured[name] = append([]string(nil), values...)
-	}
-	return captured
 }
 
 func metadataRefreshClient(client *http.Client, origin *url.URL) *http.Client {

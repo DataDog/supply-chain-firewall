@@ -1,0 +1,3 @@
+networkSettings:
+  "*.yarnpkg.com":
+    httpsProxy: "http://other:3128"

@@ -93,6 +93,53 @@ func TestNpmRegistrationsBindClassifierOptionsToHook(t *testing.T) {
 	}
 }
 
+func TestYarnRegistrationsBindClassifierOptionsToHook(t *testing.T) {
+	factory, found := findPackageManagerFactory("yarn")
+	if !found || len(factory.ProxyHooks) != 1 {
+		t.Fatal("yarn registration must provide its ecosystem hook")
+	}
+	var packuments atomic.Int32
+	registry := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/npm/repo/lab-pkg" {
+			http.NotFound(w, r)
+			return
+		}
+		packuments.Add(1)
+		_, _ = io.WriteString(w, readProxyJSONFixture(t, "npm/packument"))
+	}))
+	defer registry.Close()
+	base := registry.URL + "/api/npm/repo/"
+	manager := &npmClassifierOptionsManager{options: npmregistry.ClassifierOptions{RegistryURLs: []string{base}}}
+	command := []string{"add", "lab-pkg"}
+	tarball := base + "lab-pkg/-/lab-pkg-1.0.0.tgz"
+	refusal := errors.New("blocked by policy")
+	calls := 0
+	hook, err := factory.ProxyHooks[0](context.Background(), manager, command, registry.Client(), func(_ context.Context, pkg pm.Package, publicationErr error) error {
+		calls++
+		if publicationErr != nil || pkg.Source != tarball || pkg.Name != "lab-pkg" || pkg.Version != "1.0.0" || pkg.PublishDate != time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC) {
+			t.Errorf("unexpected resolved package/error: %#v/%v", pkg, publicationErr)
+		}
+		return refusal
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(manager.command, command) {
+		t.Fatalf("classifier command=%v, want %v", manager.command, command)
+	}
+	if _, err := hook(context.Background(), proxy.Request{Method: http.MethodGet, URL: mustParseURL(t, tarball)}); !errors.Is(err, refusal) {
+		t.Fatalf("hook error=%v, want the evaluation refusal", err)
+	}
+	if calls != 1 || packuments.Load() != 1 {
+		t.Fatalf("evaluations=%d packuments=%d, want 1 each", calls, packuments.Load())
+	}
+	failure := errors.New("invalid yarn settings")
+	manager.err = failure
+	if _, err := factory.ProxyHooks[0](context.Background(), manager, command, nil, func(context.Context, pm.Package, error) error { return nil }); !errors.Is(err, failure) {
+		t.Fatalf("setup error=%v, want settings error", err)
+	}
+}
+
 func TestPyPIRegistrationsBindClassifierOptionsToHook(t *testing.T) {
 	for _, name := range []string{"pip", "pip3", "poetry"} {
 		t.Run(name, func(t *testing.T) {

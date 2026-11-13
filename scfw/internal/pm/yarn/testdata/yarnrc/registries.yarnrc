@@ -1,0 +1,3 @@
+registry "https://art.test/api/npm/yarn/"
+"@corp:registry" "https://art.test/api/npm/corp/"
+"@bad:registry" "not a url"

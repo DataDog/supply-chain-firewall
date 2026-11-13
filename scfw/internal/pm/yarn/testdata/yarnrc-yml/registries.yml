@@ -1,0 +1,11 @@
+npmRegistryServer: "https://art.test/api/npm/main/"
+npmScopes:
+  corp:
+    npmRegistryServer: "https://art.test/api/npm/corp/"
+  dup:
+    npmRegistryServer: "https://art.test/api/npm/main/"
+npmRegistries:
+  "//npm.corp.example/repo/":
+    npmAlwaysAuth: true
+  "not a url":
+    npmAlwaysAuth: true

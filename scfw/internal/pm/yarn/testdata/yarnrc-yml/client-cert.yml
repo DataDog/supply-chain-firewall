@@ -1,0 +1,2 @@
+httpsCertFilePath: ./certs/client.pem
+httpsKeyFilePath: ./certs/client.key

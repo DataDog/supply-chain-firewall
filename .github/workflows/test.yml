@@ -45,6 +45,13 @@ jobs:
           version: "0.13.4"
           enable-cache: false
 
+      - name: Set up Yarn for integration tests
+        run: |
+          npm install --ignore-scripts --prefix "$RUNNER_TEMP/yarn-classic" yarn@1.22.22
+          npm install --ignore-scripts --prefix "$RUNNER_TEMP/yarn-berry" @yarnpkg/cli-dist@4.18.1
+          echo "SCFW_TEST_YARN_CLASSIC=$RUNNER_TEMP/yarn-classic/node_modules/yarn/bin/yarn.js" >> "$GITHUB_ENV"
+          echo "SCFW_TEST_YARN_BERRY=$RUNNER_TEMP/yarn-berry/node_modules/@yarnpkg/cli-dist/bin/yarn.js" >> "$GITHUB_ENV"
+
       - name: Run tests
         run: go test -count=2 ./scfw/...
 

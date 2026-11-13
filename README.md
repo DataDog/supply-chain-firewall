@@ -139,6 +139,8 @@ Available `configure` options:
 | `--remove-alias-pip` | Remove the pip/pip3 shell aliases managed by `scfw`. |
 | `--alias-uv` | Add shell aliases to run uv and uvx commands through `scfw`. Requires proxy mode for package operations. |
 | `--remove-alias-uv` | Remove the uv and uvx shell aliases managed by `scfw`. |
+| `--alias-yarn` | Add a shell alias to run yarn commands through `scfw`. Requires proxy mode for package operations. |
+| `--remove-alias-yarn` | Remove the yarn shell alias managed by `scfw`. |
 | `--alias-poetry` | Add a shell alias to run all poetry commands through `scfw`. |
 | `--remove-alias-poetry` | Remove the poetry shell alias managed by `scfw`. |
 | `--scfw-home` | Directory Supply Chain Firewall can use as a local cache. |
@@ -157,10 +159,13 @@ When inspecting package manager commands, Datadog credentials and the Datadog si
 | pip               | >= 22.2               | `install`                          |
 | poetry            | >= 2.0                | `add`, `install`, `sync`, `update` |
 | uv (proxy mode)   | 0.13.4 tested         | `pip install`, `pip sync`, `pip compile`, `add`, `remove`, `sync`, `lock`, `export`, `tree`, `build`, `tool install`, `tool upgrade`, `tool run`/`uvx`, version updates, `venv --seed` |
+| yarn (proxy mode) | 1.22+, 4.x            | bare `yarn`, `install`, `add`, `upgrade`/`up`, `upgrade-interactive`, `create`, `global add`, `dlx`, `workspaces focus` |
 
 Enable uv interception with `SCFW_PROXY_ENABLED=1`, then use `scfw run -- uv pip install requests` or configure `--alias-uv`. Unrelated uv commands pass through unchanged. Proxy mode evaluates distributions requested over HTTP(S); packages already available in uv's cache, local paths, and Git source contents are not evaluated. Git HTTPS traffic still traverses the proxy and trusts its invocation CA.
 
 `uv run` always executes directly without SCFW proxy setup, including scripts and `--with` dependencies. Its arguments, environment, and standard input pass through unchanged; SCFW does not evaluate its package downloads or intercept its application traffic.
+
+Enable Yarn interception with `SCFW_PROXY_ENABLED=1`, then use `scfw run -- yarn add react` or configure `--alias-yarn`. Yarn Classic 1.22+ and Yarn 4 are supported, including a global Yarn that hands off to a project's `yarnPath` release; Yarn 2 and 3 are rejected. Other Yarn commands, such as `yarn run` and package scripts, execute directly without SCFW proxy setup. SCFW preserves existing upstream proxies, registries, credentials, and CA settings and never writes `.yarnrc`, `.yarnrc.yml`, or `.npmrc` files. Yarn 4 `networkSettings` entries that set a per-host proxy, CA, or client certificate, and Yarn 4 client certificates, are rejected before Yarn starts, because they would bypass or break process-only routing; configure a top-level `httpsProxy`/`httpsCaFilePath` or `YARN_HTTPS_PROXY` instead. Packages already in Yarn's cache, Git dependencies, and corepack's own Yarn download are not evaluated.
 
 Opaque archive inspection follows each manager's format selection: uv uses the original or registry-advertised source extension; pip uses its installed version's filename, MIME, and signature rules. Pip inspection retains raw download bytes, while uv inspection decodes HTTP content encodings. Uncertain or unsupported package archive interpretations, including conflicting redirect names, are rejected.
 

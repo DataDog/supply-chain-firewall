@@ -45,11 +45,9 @@ func inspectTarball(ctx context.Context, body *io.SectionReader) (Artifact, bool
 		defer decoder.Close()
 		decoded = decoder
 	default:
-		var header [512]byte
-		if read, _ := body.ReadAt(header[:], 0); read < len(header) {
-			return Artifact{}, false, nil
-		}
-		if _, err := tar.NewReader(bytes.NewReader(header[:])).Next(); err != nil {
+		// The first header may be a PAX or GNU extension that only parses
+		// together with the entry following it.
+		if _, err := tar.NewReader(io.NewSectionReader(body, 0, body.Size())).Next(); err != nil {
 			return Artifact{}, false, nil
 		}
 		decoded = body
@@ -97,14 +95,15 @@ func validEntryName(name string) error {
 	return nil
 }
 
-// isManifestEntry matches "<any top directory>/package.json", like npm,
-// which strips the first path component whatever it is named.
+// isManifestEntry matches the entry npm unpacks to the package root's
+// package.json: node-tar's strip:1 drops the first raw path segment, whatever
+// it is (including "."), then resolves the rest against the package root.
 func isManifestEntry(name string) bool {
 	if validEntryName(name) != nil {
 		return false
 	}
-	parts := strings.Split(path.Clean(name), "/")
-	return len(parts) == 2 && parts[1] == "package.json"
+	_, stripped, found := strings.Cut(name, "/")
+	return found && path.Clean("/"+stripped) == "/package.json"
 }
 
 func parseManifest(manifest []byte) (Artifact, bool, error) {

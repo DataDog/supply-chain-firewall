@@ -81,7 +81,9 @@ func TestInspectTarballReadsRootManifest(t *testing.T) {
 		{"raw tar", "tar", "package/package.json", widget, "@acme/widget"},
 		{"zstd", "zstd", "package/package.json", widget, "@acme/widget"},
 		{"byte order mark", "gzip", "package/package.json", "\ufeff" + widget, "@acme/widget"},
-		{"v-prefixed version", "gzip", "./package/package.json", readNpmFixture(t, "manifest/v-prefixed.json"), "widget"},
+		{"v-prefixed version", "gzip", "package/package.json", readNpmFixture(t, "manifest/v-prefixed.json"), "widget"},
+		{"dot top directory", "gzip", "./package.json", widget, "@acme/widget"},
+		{"dot segment after top directory", "gzip", "package/./package.json", widget, "@acme/widget"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data := npmTarball(t, tc.format, tarEntry{name: "package/index.js", body: "x"}, tarEntry{name: tc.entry, body: tc.manifest},
@@ -94,12 +96,30 @@ func TestInspectTarballReadsRootManifest(t *testing.T) {
 	}
 }
 
+func TestInspectTarballReadsRawPAXTar(t *testing.T) {
+	widget := readNpmFixture(t, "manifest/widget.json")
+	var raw bytes.Buffer
+	writer := tar.NewWriter(&raw)
+	header := &tar.Header{Name: "package/package.json", Mode: 0o644, Size: int64(len(widget)), Format: tar.FormatPAX, PAXRecords: map[string]string{"comment": "pax first"}}
+	if err := writer.WriteHeader(header); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = writer.Write([]byte(widget))
+	_ = writer.Close()
+	artifact, found, err := inspect(t, raw.Bytes())
+	if err != nil || !found || artifact.Name != "@acme/widget" {
+		t.Fatalf("inspectTarball() = %+v, %v, %v; want @acme/widget from a PAX-first raw tar", artifact, found, err)
+	}
+}
+
 func TestInspectTarballAllowsNonPackageDownloads(t *testing.T) {
 	for name, data := range map[string][]byte{
 		"no manifest":     npmTarball(t, "gzip", tarEntry{name: "node-v20.0.0/include/node/node.h", body: "#pragma once"}),
 		"no version":      npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: readNpmFixture(t, "manifest/no-version.json")}),
 		"non-archive":     []byte("<html>not a tarball</html>"),
 		"nested manifest": npmTarball(t, "gzip", tarEntry{name: "package/sub/package.json", body: readNpmFixture(t, "manifest/widget.json")}),
+		// node-tar strips "." as the top directory, leaving package/package.json nested.
+		"dot-prefixed nested manifest": npmTarball(t, "gzip", tarEntry{name: "./package/package.json", body: readNpmFixture(t, "manifest/widget.json")}),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, found, err := inspect(t, data); found || err != nil {

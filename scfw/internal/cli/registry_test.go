@@ -140,12 +140,12 @@ func TestYarnRegistrationsBindClassifierOptionsToHook(t *testing.T) {
 	}
 }
 
-func TestPipRegistrationsBindClassifierOptionsToHook(t *testing.T) {
-	for _, name := range []string{"pip", "pip3"} {
+func TestPyPIRegistrationsBindClassifierOptionsToHook(t *testing.T) {
+	for _, name := range []string{"pip", "pip3", "poetry"} {
 		t.Run(name, func(t *testing.T) {
 			factory, found := findPackageManagerFactory(name)
 			if !found || len(factory.ProxyHooks) != 1 {
-				t.Fatal("pip registration must provide its ecosystem hook")
+				t.Fatal("PyPI registration must provide its ecosystem hook")
 			}
 			manager := &classifierOptionsManager{options: pypi.RequestClassifierOptions{SimpleIndexURLs: []string{"https://index.example/python-packages/"}}}
 			command := []string{"install", "project"}

@@ -33,14 +33,13 @@ var poetryLockRegenSubcommands = []string{"add", "update"}
 
 var poetryDryRunSkipOptions = []string{"-V", "--version", "-h", "--help", "--dry-run"}
 
-// minPoetryVersion is the oldest Poetry version whose CLI output and behavior
-// this package relies on for resolving install targets.
-var minPoetryVersion = pm.Version{Major: 1, Minor: 7}
+// minPoetryVersion applies to dependency resolution and proxied execution.
+var minPoetryVersion = pm.Version{Major: 2}
 
 var poetryVersionPattern = regexp.MustCompile(`Poetry \(version (.*)\)`)
 
 // resolvePoetryVersion runs `<executable> --version` and parses its output,
-// which is expected to look like "Poetry (version 1.8.3)".
+// which is expected to look like "Poetry (version 2.0.0)".
 func resolvePoetryVersion(ctx context.Context, executable string) (pm.Version, error) {
 	output, err := exec.CommandContext(ctx, executable, "--version").Output()
 	if err != nil {
@@ -62,6 +61,7 @@ type Poetry struct {
 	version            pm.Version
 	versionErr         error
 	resolvePublishDate func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error)
+	proxyState         *poetryProxyState
 }
 
 func (poetry Poetry) packagePublishDate(ctx context.Context, pkg pm.Package) (time.Time, error) {
@@ -86,7 +86,7 @@ func NewPoetry(ctx context.Context, name, executable string) (Poetry, error) {
 	// actually need the version, not every use of this poetry executable.
 	version, versionErr := resolvePoetryVersion(ctx, executable)
 
-	return Poetry{executable: executable, version: version, versionErr: versionErr}, nil
+	return Poetry{executable: executable, version: version, versionErr: versionErr, proxyState: &poetryProxyState{}}, nil
 }
 
 func (poetry Poetry) checkVersion() error {

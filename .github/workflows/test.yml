@@ -54,3 +54,31 @@ jobs:
 
       - name: Run tests
         run: go test -count=2 ./scfw/...
+
+  poetry-proxy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        poetry: ["poetry==2.0.0", "poetry>=2,<3"]
+    steps:
+      - name: Check out code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+
+      - name: Install Poetry
+        env:
+          POETRY_REQUIREMENT: ${{ matrix.poetry }}
+        run: python -m pip install "$POETRY_REQUIREMENT"
+
+      - name: Test Poetry proxy integration
+        run: go test -count=1 ./scfw/internal/cli ./scfw/internal/pm/poetry -run 'TestPoetry|TestPyPIRegistrations'

@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/common"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
@@ -17,6 +18,12 @@ import (
 
 // ProxyHookOptions supplies invocation-specific registry access and policy wiring.
 type ProxyHookOptions struct {
+	ValidateArtifactRequest   func(proxy.Request) error
+	MapArtifactURL            func(string) (string, error)
+	NonRegistrySources        []NonRegistrySource
+	ResolveNonRegistryRequest func(proxy.Request) (NonRegistrySource, bool)
+	RegistryRequestName       func(proxy.Request) (string, bool)
+	ExpectedArtifacts         []ExpectedArtifact
 	// Client fetches packuments. The caller owns it and must preserve the
 	// package manager's proxy/TLS settings.
 	Client            *http.Client
@@ -24,7 +31,10 @@ type ProxyHookOptions struct {
 	// EvaluatePackage receives a resolved tarball and any publication error.
 	// Its context belongs to the request; registry resolution uses the run context.
 	// The callback may run concurrently. Returning an error rejects the download.
-	EvaluatePackage func(context.Context, pm.Package, error) error
+	EvaluatePackage  func(context.Context, pm.Package, error) error
+	EvaluateResult   func(context.Context, pm.ArtifactResult) error
+	Authorization    func(*url.URL) string
+	RegistryArtifact func(string, string, string) (Artifact, error)
 }
 
 // NewProxyHook creates independent npm classification and publication state for one run.
@@ -32,6 +42,9 @@ func NewProxyHook(runContext context.Context, options ProxyHookOptions) (proxy.R
 	handler, err := newProxyHook(runContext, options)
 	if err != nil {
 		return nil, err
+	}
+	if options.EvaluateResult != nil {
+		return newArtifactProxyHook(runContext, handler, options), nil
 	}
 	return handler.HandleRequest, nil
 }

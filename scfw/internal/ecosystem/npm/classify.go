@@ -36,6 +36,8 @@ type Artifact struct {
 	// authorization is the tarball request's Authorization header, reused only
 	// toward the tarball's origin when fetching the packument.
 	authorization string
+	downloadURL   string
+	lockIntegrity string
 }
 
 // ClassifierOptions describes npm registries known by the package manager

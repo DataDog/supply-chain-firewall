@@ -6,7 +6,9 @@
 package npm
 
 import (
+	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,7 +54,9 @@ type transientError struct{ error }
 func (e transientError) Unwrap() error { return e.error }
 
 type packument struct {
-	Time map[string]string `json:"time"`
+	Name     string                     `json:"name"`
+	Time     map[string]string          `json:"time"`
+	Versions map[string]json.RawMessage `json:"versions"`
 }
 
 // Resolve returns the publish time of artifact's version. The tarball
@@ -74,7 +78,7 @@ func (cache *PublicationCache) Resolve(ctx context.Context, client *http.Client,
 }
 
 func (cache *PublicationCache) packument(ctx context.Context, client *http.Client, packumentURL url.URL, authorization string) (packument, error) {
-	key := packumentURL.String()
+	key := fmt.Sprintf("%s:%x", packumentURL.String(), sha256.Sum256([]byte(authorization)))
 	for {
 		cache.mutex.Lock()
 		if cache.entries == nil {
@@ -146,7 +150,20 @@ func fetchPackument(ctx context.Context, client *http.Client, packumentURL url.U
 		}
 		return packument{}, statusErr
 	}
-	body, err := io.ReadAll(io.LimitReader(response.Body, maxPackumentBytes+1))
+	var reader io.Reader = response.Body
+	switch strings.ToLower(response.Header.Get("Content-Encoding")) {
+	case "", "identity":
+	case "gzip":
+		decoded, e := gzip.NewReader(response.Body)
+		if e != nil {
+			return packument{}, errors.New("invalid npm metadata encoding")
+		}
+		defer decoded.Close() //nolint:errcheck
+		reader = decoded
+	default:
+		return packument{}, errors.New("unsupported npm metadata encoding")
+	}
+	body, err := io.ReadAll(io.LimitReader(reader, maxPackumentBytes+1))
 	if err != nil {
 		if fetchErr := fetchContextErr(ctx, fetchContext); fetchErr != nil {
 			return packument{}, fetchErr
@@ -156,10 +173,39 @@ func fetchPackument(ctx context.Context, client *http.Client, packumentURL url.U
 	if int64(len(body)) > maxPackumentBytes {
 		return packument{}, fmt.Errorf("npm packument exceeds %d bytes", maxPackumentBytes)
 	}
-	var decoded packument
-	if err := json.Unmarshal(body, &decoded); err != nil {
-		return packument{}, fmt.Errorf("decode npm packument: %w", err)
+	object, err := parseObject(body, maxPackumentBytes)
+	if err != nil {
+		return packument{}, errors.New("invalid npm packument JSON")
 	}
+	decoded := packument{Time: map[string]string{}, Versions: map[string]json.RawMessage{}}
+	decoded.Name, _ = object["name"].(string)
+	if value, exists := object["time"]; exists {
+		times, ok := value.(map[string]any)
+		if !ok {
+			return packument{}, errors.New("invalid npm publication times")
+		}
+		for version, value := range times {
+			date, ok := value.(string)
+			if !ok {
+				return packument{}, errors.New("invalid npm publication date")
+			}
+			decoded.Time[version] = date
+		}
+	}
+	if value, exists := object["versions"]; exists {
+		versions, ok := value.(map[string]any)
+		if !ok {
+			return packument{}, errors.New("invalid npm versions")
+		}
+		for version, value := range versions {
+			manifest, ok := value.(map[string]any)
+			if !ok {
+				return packument{}, errors.New("invalid npm version manifest")
+			}
+			decoded.Versions[version] = encodeManifest(manifest)
+		}
+	}
+
 	return decoded, nil
 }
 

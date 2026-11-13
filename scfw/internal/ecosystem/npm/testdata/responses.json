@@ -1123,5 +1123,132 @@
       },
       "compared": false
     }
+  },
+  "metadata-comparison": {
+    "ignored metadata only": {
+      "full": {
+        "name": "fixture"
+      },
+      "observed": {
+        "name": "fixture",
+        "os": [
+          "darwin"
+        ],
+        "cpu": [
+          "arm64"
+        ],
+        "description": "text",
+        "keywords": [
+          "x"
+        ],
+        "author": "author",
+        "license": "MIT",
+        "custom": {
+          "install": "text"
+        }
+      },
+      "agrees": true
+    },
+    "observed-only dependencies": {
+      "full": {
+        "name": "fixture"
+      },
+      "observed": {
+        "name": "fixture",
+        "dependencies": {
+          "extra": "1"
+        }
+      },
+      "agrees": false
+    },
+    "abbreviated dependencies omitted": {
+      "full": {
+        "name": "fixture",
+        "dependencies": {
+          "extra": "1"
+        }
+      },
+      "observed": {
+        "name": "fixture"
+      },
+      "agrees": true
+    },
+    "distribution changed": {
+      "full": {
+        "dist": {
+          "tarball": "https://example.com/first.tgz"
+        }
+      },
+      "observed": {
+        "dist": {
+          "tarball": "https://example.com/second.tgz"
+        }
+      },
+      "agrees": false
+    },
+    "identity changed": {
+      "full": {
+        "_id": "fixture@1.0.0"
+      },
+      "observed": {
+        "_id": "other@1.0.0"
+      },
+      "agrees": false
+    },
+    "digest changed": {
+      "full": {
+        "_shasum": "first"
+      },
+      "observed": {
+        "_shasum": "second"
+      },
+      "agrees": false
+    },
+    "indicator changed": {
+      "full": {
+        "hasInstallScript": false
+      },
+      "observed": {
+        "hasInstallScript": true
+      },
+      "agrees": false
+    },
+    "shrinkwrap changed": {
+      "full": {
+        "_hasShrinkwrap": false
+      },
+      "observed": {
+        "_hasShrinkwrap": true
+      },
+      "agrees": false
+    },
+    "directory metadata changed": {
+      "full": {
+        "directories": {
+          "bin": "bin",
+          "doc": "first"
+        }
+      },
+      "observed": {
+        "directories": {
+          "bin": "bin",
+          "doc": "second"
+        }
+      },
+      "agrees": true
+    },
+    "directory executable changed": {
+      "full": {
+        "directories": {
+          "bin": "first"
+        }
+      },
+      "observed": {
+        "directories": {
+          "bin": "second"
+        }
+      },
+      "agrees": false
+    }
   }
 }

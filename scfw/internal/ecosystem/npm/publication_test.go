@@ -138,10 +138,7 @@ func TestResolveForwardsAuthorizationOnlySameOrigin(t *testing.T) {
 
 func TestResolveDecodesGzip(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
-			servePackument(leftPadPackument(t), nil)(w, r)
-			return
-		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Content-Encoding", "gzip")
 		writer := gzip.NewWriter(w)
@@ -151,7 +148,7 @@ func TestResolveDecodesGzip(t *testing.T) {
 	defer server.Close()
 
 	artifact := registryArtifact(t, server.URL+"/", "/left-pad/-/left-pad-1.3.0.tgz")
-	date, err := (&PublicationCache{}).Resolve(context.Background(), http.DefaultClient, artifact)
+	date, err := (&PublicationCache{}).Resolve(context.Background(), &http.Client{Transport: &http.Transport{DisableCompression: true}}, artifact)
 	if err != nil || !date.Equal(leftPad130Date) {
 		t.Fatalf("Resolve() = %v, %v; want %v from a gzip-encoded packument", date, err, leftPad130Date)
 	}

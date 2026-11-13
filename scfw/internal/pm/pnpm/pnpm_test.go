@@ -194,6 +194,45 @@ func TestPnpmMajorFollowsPin(t *testing.T) {
 	}
 }
 
+// Each pnpm major honours different settings that stop the switch to a pinned
+// version, so SCFW must not apply one major's settings to another.
+func TestPnpmMajorSwitchingSettingsPerVersion(t *testing.T) {
+	for _, test := range []struct {
+		name, installed string
+		command         []string
+		env             map[string]string
+		want            int
+	}{
+		{"pnpm 10 ignores pm_on_fail", "10.34.9", nil, map[string]string{"pnpm_config_pm_on_fail": "ignore"}, 12},
+		{"pnpm 10 stops for corepack", "10.34.9", nil, map[string]string{"COREPACK_ROOT": "/corepack"}, 10},
+		{"pnpm 11 ignores manage-package-manager-versions", "11.28.9", nil, map[string]string{"npm_config_manage_package_manager_versions": "false"}, 12},
+		{"pnpm 11 command-line pm-on-fail", "11.28.9", []string{"--pm-on-fail=ignore", "add", "x"}, nil, 11},
+		{"pnpm 11 with current runs the installed pnpm", "11.28.9", []string{"with", "current", "add", "x"}, nil, 11},
+		{"pnpm 12 uppercase pm_on_fail", "12.18.0", nil, map[string]string{"PNPM_CONFIG_PM_ON_FAIL": "ignore"}, 12},
+		{"pnpm 12 manage-package-manager-versions", "12.18.0", nil, map[string]string{"pnpm_config_manage_package_manager_versions": "false"}, 12},
+		{"pnpm 12 config pm-on-fail", "12.18.0", []string{"--config.pm-on-fail=ignore", "add", "x"}, nil, 12},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := isolatePnpmEnvironment(t)
+			pin := "manifest/pnpm-12.json"
+			if test.installed == "12.18.0" {
+				pin = "manifest/pnpm-10.json"
+			}
+			writePnpmFixture(t, filepath.Join(root, "parent", "project", "package.json"), pin)
+			for key, value := range test.env {
+				t.Setenv(key, value)
+			}
+			command := test.command
+			if command == nil {
+				command = []string{"add", "x"}
+			}
+			if got, err := fakePnpm(t, test.installed).major(command); err != nil || got != test.want {
+				t.Fatalf("major = %d (error %v), want %d", got, err, test.want)
+			}
+		})
+	}
+}
+
 // Running `pnpm --version` in a pinned project would download the pinned pnpm
 // outside the proxy.
 func TestNewPnpmProbesOutsideProject(t *testing.T) {

@@ -11,6 +11,8 @@ import (
 	"maps"
 	"net/url"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 
 	"golang.org/x/net/http/httpproxy"
@@ -107,16 +109,28 @@ func (p Pnpm) ProxyCommand(_ context.Context, command []string, config proxy.Cli
 	// command, where they cannot reach the arguments of dlx, exec, or a script;
 	// the user's own proxy and trust options are removed because pnpm applies
 	// the last one, or accumulates noproxy values.
-	args := []string{
+	overrides := []string{
 		"--config.https-proxy=" + config.URL, "--config.proxy=" + config.URL, "--config.http-proxy=" + config.URL,
 		"--config.noproxy=" + noProxySentinel, "--config.no-proxy=" + noProxySentinel,
 		"--config.cafile=" + ca, "--config.ca=" + string(pem),
 	}
 	// pnpm 11 trusts a per-registry CA over the global one, even through a proxy.
 	for _, registryCA := range settings.RegistryCAs {
-		args = append(args, "--config."+registryCA.Key+":cafile="+ca)
+		overrides = append(overrides, "--config."+registryCA.Key+":cafile="+ca)
 	}
-	args = append(args, parseCommand(major, p.dlx, command).args...)
+	parsed := parseCommand(major, p.dlx, command)
+	tail := parsed.args
+	// `pnpm with <version>` runs that release with only the arguments after the
+	// version, so the child gets its own overrides, and its command line is
+	// parsed as that release reads it.
+	if parsed.name == "with" && parsed.sub != "current" {
+		child, err := withMajor(parsed.sub)
+		if err != nil {
+			return proxy.CommandSpec{}, err
+		}
+		tail = slices.Concat(parsed.args[:parsed.passthrough], overrides, parseCommand(child, false, parsed.args[parsed.passthrough:]).args)
+	}
+	args := slices.Concat(overrides, tail)
 
 	extraCAs, err := nodeproxy.NodeExtraCACerts(ca, pem)
 	if err != nil {
@@ -138,6 +152,18 @@ func (p Pnpm) ProxyCommand(_ context.Context, command []string, config proxy.Cli
 }
 
 var _ pm.ProxyRunner = Pnpm{}
+
+// withMajor returns the supported major an exact `pnpm with` version selects.
+func withMajor(version string) (int, error) {
+	major, err := strconv.Atoi(version)
+	if parsed, parseErr := pm.ParseVersion(version); err != nil && parseErr == nil {
+		major, err = parsed.Major, nil
+	}
+	if err != nil || major < 10 || major > 12 {
+		return 0, errors.New("pnpm with is supported through SCFW only for an exact pnpm 10, 11, or 12 version")
+	}
+	return major, nil
+}
 
 // pnpmProxyForURL applies pnpm's proxy selection and noproxy matching, which
 // differ from a flattened httpproxy configuration.

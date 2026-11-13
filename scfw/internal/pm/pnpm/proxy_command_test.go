@@ -67,10 +67,14 @@ func TestProxyCommandStripsUserNetworkFlags(t *testing.T) {
 	for _, test := range []struct {
 		major   int
 		command string
+		kept    []string
 	}{
-		{10, "add x --https-pro=http://evil:1 --config.noproxy=registry.npmjs.org"},
-		{11, "add x --https-pro=http://evil:1 --config.noproxy=registry.npmjs.org"},
-		{12, "add x --https-proxy http://evil:1 --no-proxy=reg"},
+		{10, "add x --https-pro=http://evil:1 --config.noproxy=registry.npmjs.org", []string{"add", "x"}},
+		{11, "add x --https-pro=http://evil:1 --config.noproxy=registry.npmjs.org", []string{"add", "x"}},
+		{12, "add x --https-proxy http://evil:1 --no-proxy=reg", []string{"add", "x"}},
+		// pnpm 12 applies configuration options anywhere after create and pipeline.
+		{12, "create vite --config.https-proxy=http://evil:1 --config.noproxy=registry.npmjs.org --template react", []string{"create", "vite", "--template", "react"}},
+		{12, "pipeline --config.https-proxy=http://evil:1 --no-proxy=reg", []string{"pipeline"}},
 	} {
 		newPnpmWorkspace(t)
 		config, pem := testClientConfig(t)
@@ -79,11 +83,36 @@ func TestProxyCommandStripsUserNetworkFlags(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if want := append(proxyOverrides(config, pem), "add", "x"); !slices.Equal(spec.Args, want) {
+		if want := append(proxyOverrides(config, pem), test.kept...); !slices.Equal(spec.Args, want) {
 			t.Errorf("pnpm %d: args = %q, want %q", test.major, spec.Args, want)
 		}
 		if upstream, err := manager.UpstreamProxy(strings.Fields(test.command)); err != nil || upstream.HTTPSProxy != "http://evil:1" {
 			t.Errorf("pnpm %d: stripped options must still select the upstream, got %q (error %v)", test.major, upstream.HTTPSProxy, err)
+		}
+	}
+}
+
+// `pnpm with <version>` runs that release as a child with only the arguments
+// after the version, so the overrides must reach the child too.
+func TestProxyCommandWithNestsOverrides(t *testing.T) {
+	for _, installed := range []string{"11.28.9", "12.18.0"} {
+		newPnpmWorkspace(t)
+		config, pem := testClientConfig(t)
+		manager := fakePnpm(t, installed)
+		spec, err := manager.ProxyCommand(context.Background(), strings.Fields("with 10.34.9 add x --config.noproxy=registry.npmjs.org"), config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := slices.Concat(proxyOverrides(config, pem), []string{"with", "10.34.9"}, proxyOverrides(config, pem), []string{"add", "x"})
+		if !slices.Equal(spec.Args, want) {
+			t.Errorf("pnpm %s: args = %q, want %q", installed, spec.Args, want)
+		}
+		if _, err := manager.ProxyCommand(context.Background(), strings.Fields("with latest add x"), config); err == nil || !strings.Contains(err.Error(), "with") {
+			t.Errorf("pnpm %s: with latest error = %v, want a refusal", installed, err)
+		}
+		spec, err = manager.ProxyCommand(context.Background(), strings.Fields("with current add x"), config)
+		if want := append(proxyOverrides(config, pem), "with", "current", "add", "x"); err != nil || !slices.Equal(spec.Args, want) {
+			t.Errorf("pnpm %s: with current args = %q (error %v), want %q", installed, spec.Args, err, want)
 		}
 	}
 }

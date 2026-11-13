@@ -114,15 +114,16 @@ func (p Pnpm) major(command []string) (int, error) {
 }
 
 func (p Pnpm) effectiveVersion(cwd string, parser int, command []string) pm.Version {
+	parsed := parseCommand(parser, p.dlx, command)
 	dir := cwd
-	if parsed := parseCommand(parser, p.dlx, command); parsed.dir != "" {
+	if parsed.dir != "" {
 		dir = parsed.dir
 		if !filepath.IsAbs(dir) {
 			dir = filepath.Join(cwd, dir)
 		}
 	}
 	root := configRoot(dir)
-	if pinned, found := pinnedVersion(root); found && p.installed.Major >= 10 && !switchingDisabled(root) {
+	if pinned, found := pinnedVersion(root); found && p.installed.Major >= 10 && !p.switchingDisabled(root, parsed) {
 		return pinned
 	}
 	return p.installed
@@ -186,28 +187,44 @@ func pinnedVersion(root string) (pm.Version, bool) {
 }
 
 // switchingDisabled reports settings that keep the installed pnpm running a
-// pinned project: manage-package-manager-versions for pnpm 10 and pmOnFail for
-// pnpm 11 and later.
-func switchingDisabled(root string) bool {
-	env := nodeproxy.LookupEnvironment(os.Environ())
-	if strings.EqualFold(nodeproxy.LastValue(nodeproxy.EnvironmentConfig(os.Environ())["manage-package-manager-versions"]), "false") ||
-		env["pnpm_config_manage_package_manager_versions"] == "false" ||
-		env["pnpm_config_pm_on_fail"] != "" && env["pnpm_config_pm_on_fail"] != "download" {
-		return true
+// pinned project. Each major honours its own: pnpm 10 only
+// manage-package-manager-versions from npm_config_* and Corepack; pnpm 11
+// only pm-on-fail; pnpm 12 both, from pnpm_config_* or npm_config_*. From
+// pnpm 11, `with current` runs the installed pnpm.
+func (p Pnpm) switchingDisabled(root string, parsed parsedCommand) bool {
+	environ := os.Environ()
+	npmEnvironment := nodeproxy.EnvironmentConfig(environ)
+	pnpmEnvironment := pnpmEnvironmentConfig(environ, p.installed.Major)
+	unmanaged := func(values []string) bool {
+		value := nodeproxy.LastValue(values)
+		return strings.EqualFold(value, "false") || value == "0"
+	}
+	noDownload := func(values []string) bool {
+		value := nodeproxy.LastValue(values)
+		return value != "" && value != "download"
+	}
+	switch p.installed.Major {
+	case 10:
+		return unmanaged(npmEnvironment["manage-package-manager-versions"]) || os.Getenv("COREPACK_ROOT") != ""
+	case 11:
+		if parsed.withCurrent || noDownload(parsed.network["pm-on-fail"]) || noDownload(pnpmEnvironment["pm-on-fail"]) {
+			return true
+		}
+	default:
+		if parsed.withCurrent || noDownload(parsed.network["pm-on-fail"]) || noDownload(pnpmEnvironment["pm-on-fail"]) ||
+			unmanaged(parsed.network["manage-package-manager-versions"]) || unmanaged(pnpmEnvironment["manage-package-manager-versions"]) ||
+			unmanaged(npmEnvironment["manage-package-manager-versions"]) {
+			return true
+		}
 	}
 	data, err := nodeproxy.ReadConfigFile(filepath.Join(root, "pnpm-workspace.yaml"))
 	if err != nil {
 		return false
 	}
 	var settings struct {
-		ManagePackageManagerVersions *bool  `yaml:"managePackageManagerVersions"`
-		PmOnFail                     string `yaml:"pmOnFail"`
+		PmOnFail string `yaml:"pmOnFail"`
 	}
-	if yaml.Unmarshal(data, &settings) != nil {
-		return false
-	}
-	return settings.ManagePackageManagerVersions != nil && !*settings.ManagePackageManagerVersions ||
-		settings.PmOnFail != "" && settings.PmOnFail != "download"
+	return yaml.Unmarshal(data, &settings) == nil && settings.PmOnFail != "" && settings.PmOnFail != "download"
 }
 
 func (p Pnpm) Executable() string {

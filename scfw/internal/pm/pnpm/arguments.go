@@ -37,6 +37,10 @@ type parsedCommand struct {
 	// args is the command without the user's proxy and trust options, which
 	// SCFW replaces. Arguments pnpm passes to another program are kept.
 	args []string
+	// passthrough counts the leading args pnpm itself parses.
+	passthrough int
+	// withCurrent is `pnpm with current`, which runs the installed pnpm.
+	withCurrent bool
 }
 
 // strippedSettings are the command-line settings SCFW overrides. Registries are
@@ -52,7 +56,8 @@ func networkSetting(key string) (recorded, stripped bool) {
 	switch {
 	case slices.Contains(strippedSettings, key), registryTLSKey.MatchString(key):
 		return true, true
-	case key == "registry", strings.HasPrefix(key, "@") && strings.HasSuffix(key, ":registry"):
+	case key == "registry", strings.HasPrefix(key, "@") && strings.HasSuffix(key, ":registry"),
+		key == "pm-on-fail", key == "manage-package-manager-versions":
 		return true, false
 	}
 	return false, false
@@ -122,25 +127,27 @@ func parseNopt(major int, table noptOptions, tokens []string, dlx bool) parsedCo
 			}
 		}
 	}
-	parsed.name, parsed.sub = resolveCommand(major, table.aliases, positionals)
+	parsed.name, parsed.sub, parsed.withCurrent = resolveCommand(major, table.aliases, positionals)
 	parsed.dir = dir
 	if parsed.dir == "" {
 		parsed.dir = prefix
 	}
-	parsed.args = keptArguments(tokens, stripped, boundary, dlx)
+	parsed.args, parsed.passthrough = keptArguments(tokens, stripped, boundary, dlx)
 	return parsed
 }
 
 // keptArguments drops the stripped options before boundary, and the dlx that
 // pnpx and pnx imply.
-func keptArguments(tokens []string, stripped []bool, boundary int, dlx bool) []string {
-	var args []string
+func keptArguments(tokens []string, stripped []bool, boundary int, dlx bool) (args []string, passthrough int) {
 	for index, token := range tokens {
 		if (index >= boundary || !stripped[index]) && (!dlx || index != 0) {
 			args = append(args, token)
+			if index < boundary {
+				passthrough++
+			}
 		}
 	}
-	return args
+	return args, passthrough
 }
 
 type noptOption struct {
@@ -281,16 +288,18 @@ func canonical(aliases map[string]string, name string) string {
 	return name
 }
 
-func resolveCommand(major int, aliases map[string]string, positionals []string) (name, sub string) {
+func resolveCommand(major int, aliases map[string]string, positionals []string) (name, sub string, withCurrent bool) {
 	index := commandStart(major, aliases, positionals)
+	withCurrent = major >= 11 && index >= 2 && index <= len(positionals) &&
+		canonical(aliases, positionals[index-2]) == "with" && positionals[index-1] == "current"
 	if index >= len(positionals) {
-		return "", ""
+		return "", "", withCurrent
 	}
 	name = canonical(aliases, positionals[index])
 	if index+1 < len(positionals) {
 		sub = positionals[index+1]
 	}
-	return name, sub
+	return name, sub, withCurrent
 }
 
 // escapes reports whether the remaining arguments belong to another program:
@@ -307,7 +316,7 @@ func escapes(major int, aliases map[string]string, positionals []string) bool {
 		return true
 	case "dlx", "run", "with":
 		return len(positionals) > index+1
-	case "store", "env", "runtime":
+	case "store", "env", "runtime", "pipeline":
 		return false
 	default:
 		return !slices.Contains(proxiedCommands, name)
@@ -378,8 +387,11 @@ var (
 		"trust-policy":          {"no-downgrade", "off"},
 	}
 	strictNumberSettings = []string{"child-concurrency", "trust-policy-ignore-after"}
-	strictShorts         = map[rune]string{'C': "dir", 'F': "filter", 'm': "message", 't': "tag", 'g': "global", 'h': "help", 'v': "version"}
-	strictAliases        = func() map[string]string {
+	// strictSettingFlags are the network settings pnpm 12 extracts as bare
+	// setting flags wherever they appear.
+	strictSettingFlags = []string{"local-address", "strict-ssl"}
+	strictShorts       = map[rune]string{'C': "dir", 'F': "filter", 'm': "message", 't': "tag", 'g': "global", 'h': "help", 'v': "version"}
+	strictAliases      = func() map[string]string {
 		aliases := maps.Clone(nopt11.aliases)
 		maps.Copy(aliases, map[string]string{"licences": "licenses", "t": "test", "tst": "test"})
 		return aliases
@@ -403,11 +415,35 @@ func parseStrict(tokens []string, dlx bool) parsedCommand {
 			stripped[index] = strip
 		}
 	}
+	// pnpm 12 extracts configuration options anywhere after create, whose other
+	// arguments belong to the create-* package.
+	createTail := false
 	for index := 0; index < len(tokens) && boundary == len(tokens); index++ {
 		token := tokens[index]
 		next := ""
 		if index+1 < len(tokens) {
 			next = tokens[index+1]
+		}
+		if createTail {
+			name, value, assigned := strings.Cut(strings.TrimPrefix(token, "--"), "=")
+			key, configured := strings.CutPrefix(name, "config.")
+			switch {
+			case !strings.HasPrefix(token, "--"):
+			case configured && assigned:
+				record(key, value, index)
+			case (strings.HasPrefix(name, "@") || strings.HasPrefix(name, "//")) && assigned:
+				record(name, value, index)
+			case slices.Contains(strictSettingFlags, name) && assigned:
+				record(name, value, index)
+			case slices.Contains(strictSettingFlags, name):
+				if value, consumed := strictValue(name, next); consumed {
+					record(name, value, index, index+1)
+					index++
+				} else {
+					record(name, value, index)
+				}
+			}
+			continue
 		}
 		switch {
 		case token == "--":
@@ -419,7 +455,9 @@ func parseStrict(tokens []string, dlx bool) parsedCommand {
 			boundary = index
 		case !strings.HasPrefix(token, "-") || token == "-":
 			positionals = append(positionals, token)
-			if escapes(12, strictAliases, positionals) {
+			if name, _, _ := resolveCommand(12, strictAliases, positionals); name == "create" {
+				createTail = true
+			} else if escapes(12, strictAliases, positionals) {
 				boundary = index + 1
 			}
 		case !strings.HasPrefix(token, "--"):
@@ -453,8 +491,8 @@ func parseStrict(tokens []string, dlx bool) parsedCommand {
 			}
 		}
 	}
-	parsed.name, parsed.sub = resolveCommand(12, strictAliases, positionals)
-	parsed.args = keptArguments(tokens, stripped, boundary, dlx)
+	parsed.name, parsed.sub, parsed.withCurrent = resolveCommand(12, strictAliases, positionals)
+	parsed.args, parsed.passthrough = keptArguments(tokens, stripped, boundary, dlx)
 	return parsed
 }
 

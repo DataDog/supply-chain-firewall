@@ -288,6 +288,8 @@ func TestBunRunAutoInstall(t *testing.T) {
 					t.Fatal(err)
 				}
 				writeBunFile(t, filepath.Join(dir, "import.js"), script)
+				// Bun 1.2 and 1.3 do not read .npmrc for auto-install.
+				t.Setenv("NPM_CONFIG_REGISTRY", registry.URL+"/")
 				run := runBunThroughProxy(t, "bun", executable, test.args, test.outcome)
 				if test.failed {
 					assertBunFailed(t, run)

@@ -83,22 +83,17 @@ func (b Bun) ProxyCommand(_ context.Context, command []string, config proxy.Clie
 	if err := validateUpstream(settings); err != nil {
 		return proxy.CommandSpec{}, err
 	}
-	pem, err := os.ReadFile(config.CACertificatePath)
-	if err != nil {
-		return proxy.CommandSpec{}, errors.New("read proxy CA certificate")
-	}
 	ca := config.CACertificatePath
 	args := command
 	if parsed.insert >= 0 {
 		args = slices.Concat(parsed.args[:parsed.insert], []string{"--cafile=" + ca}, parsed.args[parsed.insert:])
 	}
-	extraCAs, err := nodeproxy.NodeExtraCACerts(ca, pem)
-	if err != nil {
-		return proxy.CommandSpec{}, err
-	}
 	canonical := config.EnvironmentOverrides()
 	canonical["NO_PROXY"], canonical["no_proxy"] = noProxySentinel, noProxySentinel
-	canonical["NODE_EXTRA_CA_CERTS"], canonical["GIT_SSL_CAINFO"] = extraCAs, ca
+	// All Bun traffic goes through SCFW, which applies the user's CAs upstream,
+	// so Bun only needs SCFW's CA. Bun 1.2 reads only the first certificate of
+	// NODE_EXTRA_CA_CERTS, so the user's bundle is not prepended.
+	canonical["NODE_EXTRA_CA_CERTS"], canonical["GIT_SSL_CAINFO"] = ca, ca
 	return proxy.CommandSpec{Executable: b.executable, Args: args, EnvOverrides: nodeproxy.OverrideVariants(os.Environ(), canonical)}, nil
 }
 

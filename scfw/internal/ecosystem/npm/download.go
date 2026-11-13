@@ -16,11 +16,13 @@ import (
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
-// urlKey identifies a URL without its credentials.
+// urlKey identifies a URL as clients request it: without credentials or a
+// fragment, which a redirect Location may carry but a request never does.
 func urlKey(value *url.URL) string {
-	withoutCredentials := *value
-	withoutCredentials.User = nil
-	return withoutCredentials.String()
+	key := *value
+	key.User = nil
+	key.Fragment, key.RawFragment = "", ""
+	return key.String()
 }
 
 func (h ProxyHandler) observeOpaqueTarball(ctx context.Context, response proxy.Response) (*proxy.ResponseBodyHook, error) {

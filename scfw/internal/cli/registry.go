@@ -13,6 +13,7 @@ import (
 	npmregistry "github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/npm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/bun"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/npm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/pip"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/pnpm"
@@ -62,6 +63,13 @@ var packageManagerFactories = []PackageManagerFactory{
 		ProxyHooks: []proxyHookFactory{newNpmProxyHook},
 		New: func(ctx context.Context, name, executable string) (pm.PackageManager, error) {
 			return pnpm.NewPnpm(ctx, name, executable)
+		},
+	},
+	{
+		Names:      bun.ExecutableNames,
+		ProxyHooks: []proxyHookFactory{newNpmProxyHook},
+		New: func(ctx context.Context, name, executable string) (pm.PackageManager, error) {
+			return bun.NewBun(ctx, name, executable)
 		},
 	},
 	{

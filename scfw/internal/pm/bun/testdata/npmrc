@@ -1,0 +1,4 @@
+registry=https://npmrc.example/
+@scope:registry=https://scoped.example/
+cafile=npmrc-ca.pem
+//npmrc.example/:_authToken=secret

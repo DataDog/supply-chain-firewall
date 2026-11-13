@@ -63,6 +63,10 @@ func npmTarball(t *testing.T) []byte {
 	return buffer.Bytes()
 }
 
+// npmDirectTarballPath serves lab-pkg outside the registry layout, as a direct
+// tarball dependency does.
+const npmDirectTarballPath = "/downloads/lab-pkg.tgz"
+
 func startNpmRegistry(t *testing.T) *npmTestRegistry {
 	t.Helper()
 	tarball := npmTarball(t)
@@ -75,7 +79,7 @@ func startNpmRegistry(t *testing.T) *npmTestRegistry {
 		case "/lab-pkg":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprintf(w, packument, registry.URL+"/lab-pkg/-/lab-pkg-1.0.0.tgz", integrity)
-		case "/lab-pkg/-/lab-pkg-1.0.0.tgz":
+		case "/lab-pkg/-/lab-pkg-1.0.0.tgz", npmDirectTarballPath:
 			registry.TarballHits.Add(1)
 			w.Header().Set("Content-Type", "application/octet-stream")
 			_, _ = w.Write(tarball)
@@ -219,7 +223,14 @@ func TestNpmProxyEndToEnd(t *testing.T) {
 		// hits is the number of tarball downloads the run itself may make.
 		hits, calls int32
 		failed      bool
+		// direct expects the package evaluated with the direct tarball URL as its source.
+		direct bool
 	}{
+		// npm fetches a direct tarball once to read its manifest and again to unpack it.
+		{name: "url-allow", args: directTarballArgs, outcome: evaluation.OutcomeAllow, hits: 2, calls: 1, direct: true},
+		{name: "url-block", args: directTarballArgs, outcome: evaluation.OutcomeBlock, hits: 1, calls: 1, failed: true, direct: true},
+		{name: "url-ci-block", args: func(*npmTestRegistry, string) []string { return []string{"ci"} },
+			prepare: seedNpmDirectLockfile, outcome: evaluation.OutcomeBlock, hits: 1, calls: 1, failed: true, direct: true},
 		{name: "install-allow", outcome: evaluation.OutcomeAllow, hits: 1, calls: 1},
 		{name: "install-block", outcome: evaluation.OutcomeBlock, calls: 1, failed: true},
 		{name: "warn-continues", outcome: evaluation.OutcomeWarn, hits: 1, calls: 1},
@@ -274,6 +285,14 @@ func TestNpmProxyEndToEnd(t *testing.T) {
 			if run.calls != test.calls {
 				t.Fatalf("evaluations = %d, want %d", run.calls, test.calls)
 			}
+			if test.direct && !slices.Equal(run.sources, []string{registry.URL + npmDirectTarballPath}) {
+				t.Fatalf("evaluated sources = %v, want the direct tarball URL", run.sources)
+			}
+			if test.failed {
+				if _, err := os.Stat(filepath.Join(dir, "node_modules", "lab-pkg")); err == nil {
+					t.Fatal("blocked package was installed")
+				}
+			}
 			if test.outcome == evaluation.OutcomeWarn && (!strings.Contains(run.details, "WARN") || strings.Contains(run.details, "Proceed")) {
 				t.Fatalf("unexpected warning output: %s", run.details)
 			}
@@ -291,6 +310,23 @@ func TestNpmProxyEndToEnd(t *testing.T) {
 			assertProxyCleaned(t, run.config)
 		})
 	}
+}
+
+func directTarballArgs(registry *npmTestRegistry, _ string) []string {
+	return []string{"install", registry.URL + npmDirectTarballPath}
+}
+
+// seedNpmDirectLockfile leaves a lockfile resolving lab-pkg to the direct
+// tarball URL, with an empty cache.
+func seedNpmDirectLockfile(t *testing.T, registry *npmTestRegistry, dir string) {
+	t.Helper()
+	if run := runNpmThroughProxy(t, directTarballArgs(registry, dir), evaluation.OutcomeAllow); run.commandErr != nil {
+		t.Fatalf("seed install failed: %v", run.commandErr)
+	}
+	if err := os.RemoveAll(filepath.Join(dir, "node_modules")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("npm_config_cache", t.TempDir())
 }
 
 // seedNpmLockfile installs lab-pkg once, then leaves only the manifest and

@@ -136,6 +136,32 @@ func TestNewProxyHookEvaluatesWhenPublicationLookupFails(t *testing.T) {
 	}
 }
 
+func TestNewProxyHookEvaluatesOpaqueTarballWithoutPackument(t *testing.T) {
+	registry := &fakePackumentClient{body: leftPadPackument(t)}
+	var got []pm.Package
+	handler, err := newProxyHook(context.Background(), ProxyHookOptions{
+		Client: registry.client(),
+		EvaluatePackage: func(_ context.Context, pkg pm.Package, publishErr error) error {
+			if publishErr != nil {
+				t.Errorf("publication error = %v, want nil", publishErr)
+			}
+			got = append(got, pkg)
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := "https://codeload.github.com/acme/left-pad/tar.gz/0123abc"
+	if err := handler.EvaluateArtifact(context.Background(), Artifact{Name: "left-pad", Version: "1.3.0", Source: source}); err != nil {
+		t.Fatal(err)
+	}
+	want := pm.Package{Ecosystem: common.NPM, Name: "left-pad", Version: "1.3.0", Source: source}
+	if len(got) != 1 || got[0] != want || len(registry.requests) != 0 {
+		t.Fatalf("packages = %#v, packument requests = %d; want %#v without a lookup", got, len(registry.requests), want)
+	}
+}
+
 func TestNewProxyHookPassesRunCancellationToPolicy(t *testing.T) {
 	registry := &fakePackumentClient{body: leftPadPackument(t)}
 	runContext, cancelRun := context.WithCancel(context.Background())

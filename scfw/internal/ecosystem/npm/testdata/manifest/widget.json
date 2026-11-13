@@ -1,0 +1,5 @@
+{
+  "name": "@acme/widget",
+  "version": "1.2.3",
+  "scripts": {"postinstall": "node install.js"}
+}

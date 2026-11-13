@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // RequestKind describes the role of an HTTP request in the npm registry
@@ -22,6 +23,10 @@ const (
 	RequestUnrelated RequestKind = iota
 	RequestRegistryAPI
 	RequestTarball
+	// RequestOpaqueTarball is a tarball-shaped download outside the registry
+	// layout, such as a direct URL or a GitHub codeload archive. Its identity
+	// comes from the package.json inside the archive.
+	RequestOpaqueTarball
 )
 
 // Artifact identifies the package version a tarball request downloads.
@@ -47,6 +52,9 @@ type ClassifierOptions struct {
 // Classifier classifies npm registry requests within one package-manager run.
 type Classifier struct {
 	registries []url.URL
+	// opaqueRedirects holds redirect targets of opaque tarball requests, keyed
+	// by URL without credentials, so suffix-less targets are still inspected.
+	opaqueRedirects sync.Map
 }
 
 // semverPattern is the regular expression recommended by https://semver.org.
@@ -90,6 +98,9 @@ func (classifier *Classifier) Classify(requestURL *url.URL) (RequestKind, Artifa
 
 	if artifact, ok := parseTarball(requestURL, escapedPath); ok {
 		return RequestTarball, artifact
+	}
+	if isOpaqueTarball(requestURL.Host, escapedPath) {
+		return RequestOpaqueTarball, Artifact{Source: redactURL(requestURL)}
 	}
 	segments := strings.Split(strings.TrimPrefix(relativePath, "/"), "/")
 	if segments[0] == "-" {
@@ -188,6 +199,29 @@ func parseTarball(requestURL *url.URL, escapedPath string) (Artifact, bool) {
 		Source:       redactURL(requestURL),
 		PackumentURL: url.URL{Scheme: requestURL.Scheme, Host: requestURL.Host, Path: packumentPath, RawPath: rawPackumentPath},
 	}, true
+}
+
+// isOpaqueTarball recognizes downloads npm-compatible clients unpack as
+// packages: tarball filenames, GitHub codeload archives (which npm fetches for
+// github:, git+https://github.com and git+ssh://git@github.com dependencies),
+// and GitHub Packages downloads, whose URLs carry no suffix.
+func isOpaqueTarball(host, escapedPath string) bool {
+	lower := strings.ToLower(escapedPath)
+	if strings.HasSuffix(lower, ".tgz") || strings.HasSuffix(lower, ".tar.gz") {
+		return true
+	}
+	hostname := strings.ToLower(host)
+	if name, _, found := strings.Cut(hostname, ":"); found {
+		hostname = name
+	}
+	switch hostname {
+	case "codeload.github.com":
+		segments := strings.Split(strings.TrimPrefix(escapedPath, "/"), "/")
+		return len(segments) >= 4 && segments[0] != "" && segments[1] != "" && segments[2] == "tar.gz" && segments[3] != ""
+	case "npm.pkg.github.com":
+		return strings.HasPrefix(escapedPath, "/download/")
+	}
+	return false
 }
 
 func isScopeSegment(escapedSegment string) bool {

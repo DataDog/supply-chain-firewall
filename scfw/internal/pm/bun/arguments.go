@@ -37,6 +37,8 @@ type parsedCommand struct {
 func parseCommand(minor int, bunx bool, args []string) parsedCommand {
 	parsed := parsedCommand{insert: -1, args: args}
 	token := -1
+	// Before the subcommand, only "=" forms are options.
+	var prefix []string
 	for index, arg := range args {
 		if arg == "--" {
 			break
@@ -45,6 +47,15 @@ func parseCommand(minor int, bunx bool, args []string) parsedCommand {
 			token = index
 			break
 		}
+		if value, found := strings.CutPrefix(arg, "--cafile="); found {
+			parsed.cafiles = append(parsed.cafiles, value)
+			continue
+		}
+		if value, found := strings.CutPrefix(arg, "--ca="); found {
+			parsed.cas = append(parsed.cas, value)
+			continue
+		}
+		prefix = append(prefix, arg)
 		if value, found := strings.CutPrefix(arg, "--cwd="); found {
 			parsed.cwd = value
 		}
@@ -69,7 +80,7 @@ func parseCommand(minor int, bunx bool, args []string) parsedCommand {
 		}
 		insert++
 	}
-	kept := slices.Clone(args[:insert])
+	kept := slices.Concat(prefix, args[token:insert])
 	for index := insert; index < len(args); index++ {
 		arg := args[index]
 		if arg == "--" {
@@ -103,6 +114,6 @@ func parseCommand(minor int, bunx bool, args []string) parsedCommand {
 			}
 		}
 	}
-	parsed.insert, parsed.args = insert, kept
+	parsed.insert, parsed.args = len(prefix)+insert-token, kept
 	return parsed
 }

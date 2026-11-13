@@ -65,12 +65,21 @@ func newBunTestProject(t *testing.T, registry *npmTestRegistry, npmrcExtra strin
 	for key, value := range map[string]string{
 		"HOME": filepath.Join(root, "home"), "XDG_CONFIG_HOME": filepath.Join(root, "config"),
 		"XDG_CACHE_HOME": filepath.Join(root, "cache"), "BUN_INSTALL_CACHE_DIR": filepath.Join(root, "bun-cache"),
-		"BUN_INSTALL": filepath.Join(root, "bun-install"), "NODE_EXTRA_CA_CERTS": registry.CAPath, "DO_NOT_TRACK": "1",
+		"BUN_INSTALL": filepath.Join(root, "bun-install"), "TMPDIR": filepath.Join(root, "tmp"), "BUN_TMPDIR": filepath.Join(root, "tmp"), "NODE_EXTRA_CA_CERTS": registry.CAPath, "DO_NOT_TRACK": "1",
 	} {
 		t.Setenv(key, value)
 	}
-	if err := os.MkdirAll(filepath.Join(root, "home"), 0700); err != nil {
+	// bunx caches packages under BUN_TMPDIR, else TMPDIR; Bun 1.2 and 1.3 use
+	// /tmp regardless, so the test package's entry is removed there.
+	bunxCache := fmt.Sprintf("/tmp/bunx-%d-lab-pkg@latest", os.Getuid())
+	if err := os.RemoveAll(bunxCache); err != nil {
 		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(bunxCache) })
+	for _, sub := range []string{"home", "tmp"} {
+		if err := os.MkdirAll(filepath.Join(root, sub), 0700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	dir := filepath.Join(root, "project")
 	writeNpmProject(t, dir, readProxyFixture(t, "npm/project/package.json"), "registry="+registry.URL+"/\n"+npmrcExtra)
@@ -261,6 +270,60 @@ func TestBunxEndToEnd(t *testing.T) {
 				}
 				assertProxyCleaned(t, run.config)
 			})
+		}
+	})
+}
+
+// An allowed package's bin runs through bunx and bun x.
+func TestBunxRunsAllowedPackage(t *testing.T) {
+	forEachBun(t, func(t *testing.T, _ int, executable string) {
+		bunx := filepath.Join(t.TempDir(), "bunx")
+		if err := os.Symlink(executable, bunx); err != nil {
+			t.Fatal(err)
+		}
+		for _, test := range []struct {
+			name, invoked, executable string
+			args                      []string
+		}{
+			{"bun x", "bun", executable, []string{"x", "--bun", "lab-pkg"}},
+			{"bunx", "bunx", bunx, []string{"--bun", "lab-pkg"}},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				registry := startNpmRegistryWith(t, "bun/package", "bun/packument.json.tmpl")
+				newBunTestProject(t, registry, "")
+				t.Setenv("NPM_CONFIG_REGISTRY", registry.URL+"/")
+				output := filepath.Join(t.TempDir(), "stdout")
+				file, err := os.Create(output)
+				if err != nil {
+					t.Fatal(err)
+				}
+				stdout := os.Stdout
+				os.Stdout = file
+				run := runBunThroughProxy(t, test.invoked, test.executable, test.args, evaluation.OutcomeAllow)
+				os.Stdout = stdout
+				_ = file.Close()
+				assertBunSucceeded(t, run)
+				printed, _ := os.ReadFile(output)
+				if run.calls != 1 || registry.TarballHits.Load() != 1 || !strings.Contains(string(printed), "lab-pkg ran") {
+					t.Fatalf("evaluations=%d tarball downloads=%d output=%q", run.calls, registry.TarballHits.Load(), printed)
+				}
+				assertProxyCleaned(t, run.config)
+			})
+		}
+	})
+}
+
+// A user CA given before the subcommand joins SCFW's upstream trust instead of
+// reaching Bun beside SCFW's own --cafile.
+func TestBunPrefixCafileTrustsRegistry(t *testing.T) {
+	forEachBun(t, func(t *testing.T, _ int, executable string) {
+		registry := startNpmRegistry(t)
+		newBunTestProject(t, registry, "")
+		t.Setenv("NODE_EXTRA_CA_CERTS", "")
+		run := runBunThroughProxy(t, "bun", executable, []string{"--cafile=" + registry.CAPath, "add", "lab-pkg"}, evaluation.OutcomeAllow)
+		assertBunSucceeded(t, run)
+		if run.calls != 1 || registry.TarballHits.Load() != 1 {
+			t.Fatalf("evaluations=%d tarball downloads=%d", run.calls, registry.TarballHits.Load())
 		}
 	})
 }

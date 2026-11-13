@@ -44,9 +44,10 @@ func (b Bun) settings(command []string) (bunSettings, parsedCommand, error) {
 		cwd = absolute(cwd, parsed.cwd)
 	}
 	settings := bunSettings{
-		HTTPS:   firstEnv("HTTPS_PROXY", "https_proxy"),
-		HTTP:    firstEnv("HTTP_PROXY", "http_proxy"),
-		NoProxy: firstEnv("NO_PROXY", "no_proxy"),
+		// Bun prefers the lowercase variables.
+		HTTPS:   firstEnv("https_proxy", "HTTPS_PROXY"),
+		HTTP:    firstEnv("http_proxy", "HTTP_PROXY"),
+		NoProxy: firstEnv("no_proxy", "NO_PROXY"),
 		CA:      parsed.cas,
 	}
 	for _, file := range parsed.cafiles {

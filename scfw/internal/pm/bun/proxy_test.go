@@ -46,6 +46,60 @@ func TestProxyOptionsRouting(t *testing.T) {
 	}
 }
 
+func TestProxyOptionsPrefersLowercaseVariables(t *testing.T) {
+	isolateBun(t)
+	t.Chdir(t.TempDir())
+	t.Setenv("HTTPS_PROXY", "http://upper.example:1")
+	t.Setenv("https_proxy", "http://lower.example:1")
+	t.Setenv("HTTP_PROXY", "http://upper.example:2")
+	t.Setenv("http_proxy", "http://lower.example:2")
+	t.Setenv("NO_PROXY", "lower-bypassed.example")
+	t.Setenv("no_proxy", "upper-bypassed.example")
+	options, err := (Bun{installed: version14}).ProxyOptions([]string{"install"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for target, want := range map[string]string{
+		"https://registry.example/": "http://lower.example:1", "http://registry.example/": "http://lower.example:2",
+		"https://upper-bypassed.example/": "", "https://lower-bypassed.example/": "http://lower.example:1",
+	} {
+		parsed, _ := url.Parse(target)
+		got, _ := options.ProxyForURL(parsed)
+		if (got == nil) != (want == "") || (got != nil && got.String() != want) {
+			t.Errorf("%s -> %v, want %q", target, got, want)
+		}
+	}
+}
+
+// Bun 1.4 bypasses a port-qualified NO_PROXY entry for that port only; Bun 1.2
+// and 1.3 never match it.
+func TestProxyOptionsPortQualifiedNoProxy(t *testing.T) {
+	isolateBun(t)
+	t.Chdir(t.TempDir())
+	t.Setenv("https_proxy", "http://proxy.example:1")
+	t.Setenv("no_proxy", "127.0.0.1:8443,registry.example:443")
+	for _, test := range []struct {
+		minor  int
+		target string
+		direct bool
+	}{
+		{4, "https://127.0.0.1:8443/", true},
+		{4, "https://127.0.0.1:9443/", false},
+		{4, "https://registry.example/", true},
+		{3, "https://127.0.0.1:8443/", false},
+		{2, "https://registry.example/", false},
+	} {
+		options, err := (Bun{installed: pm.Version{Major: 1, Minor: test.minor}}).ProxyOptions([]string{"install"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		parsed, _ := url.Parse(test.target)
+		if got, _ := options.ProxyForURL(parsed); (got == nil) != test.direct {
+			t.Errorf("1.%d %s -> %v, want direct=%v", test.minor, test.target, got, test.direct)
+		}
+	}
+}
+
 func TestProxyOptionsDirectAndInvalid(t *testing.T) {
 	isolateBun(t)
 	t.Chdir(t.TempDir())

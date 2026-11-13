@@ -8,6 +8,7 @@ package bun
 import (
 	"context"
 	"errors"
+	"net"
 	"net/url"
 	"os"
 	"slices"
@@ -39,7 +40,7 @@ func (b Bun) ProxyOptions(command []string) (proxy.Options, error) {
 	}
 	options := proxy.Options{
 		Upstream:    httpproxy.Config{HTTPSProxy: settings.HTTPS, HTTPProxy: settings.HTTP, NoProxy: settings.NoProxy},
-		ProxyForURL: bunProxyForURL(settings),
+		ProxyForURL: bunProxyForURL(settings, b.installed.Minor >= 4),
 	}
 	pems := make([][]byte, 0, len(settings.CA))
 	for _, ca := range settings.CA {
@@ -100,14 +101,16 @@ func (b Bun) ProxyCommand(_ context.Context, command []string, config proxy.Clie
 var _ pm.ProxyRunner = Bun{}
 
 // bunProxyForURL selects the upstream proxy by scheme with npm-style NO_PROXY
-// matching, where "*" bypasses every host.
-func bunProxyForURL(settings bunSettings) func(*url.URL) (*url.URL, error) {
+// matching, where "*" bypasses every host. From Bun 1.4, an entry with a port
+// bypasses that host and port; earlier releases never match it.
+func bunProxyForURL(settings bunSettings, ports bool) func(*url.URL) (*url.URL, error) {
 	return func(target *url.URL) (*url.URL, error) {
 		value := settings.HTTP
 		if target.Scheme == "https" {
 			value = settings.HTTPS
 		}
-		if value == "" || strings.TrimSpace(settings.NoProxy) == "*" || nodeproxy.Bypasses(target, settings.NoProxy) {
+		if value == "" || strings.TrimSpace(settings.NoProxy) == "*" || nodeproxy.Bypasses(target, settings.NoProxy) ||
+			(ports && bypassesPort(target, settings.NoProxy)) {
 			return nil, nil
 		}
 		return proxy.ParseUpstreamProxyURL(value)
@@ -128,4 +131,18 @@ func validateUpstream(settings bunSettings) error {
 		}
 	}
 	return nil
+}
+
+func bypassesPort(target *url.URL, noProxy string) bool {
+	port := target.Port()
+	if port == "" {
+		port = map[string]string{"http": "80", "https": "443"}[target.Scheme]
+	}
+	for entry := range strings.SplitSeq(noProxy, ",") {
+		host, entryPort, err := net.SplitHostPort(strings.TrimSpace(entry))
+		if err == nil && entryPort == port && nodeproxy.Bypasses(&url.URL{Host: target.Hostname()}, host) {
+			return true
+		}
+	}
+	return false
 }

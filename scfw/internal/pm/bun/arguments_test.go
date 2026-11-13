@@ -26,6 +26,9 @@ func TestParseCommandInsertsCafileAfterSubcommand(t *testing.T) {
 		{name: "ci on 1.3", minor: 3, args: []string{"ci"}, insert: 1},
 		{name: "user cafile and ca removed", minor: 4, args: []string{"add", "--cafile", "a.pem", "x", "--ca=PEM", "--", "--cafile", "b"},
 			insert: 1, kept: []string{"add", "x", "--", "--cafile", "b"}},
+		{name: "prefix cafile and ca removed", minor: 4, args: []string{"--cafile=a.pem", "--silent", "--ca=PEM", "add", "x"},
+			insert: 2, kept: []string{"--silent", "add", "x"}},
+		{name: "prefix cafile kept for env-only command", minor: 4, args: []string{"--cafile=a.pem", "x", "pkg"}, insert: -1},
 		{name: "registry kept", minor: 4, args: []string{"add", "--registry", "https://r.example/", "x"}, insert: 1},
 		{name: "ci script on 1.2", minor: 2, args: []string{"ci"}, insert: -1},
 		{name: "space-form global runs a script", minor: 4, args: []string{"--cwd", "sub", "add"}, insert: -1},
@@ -49,8 +52,8 @@ func TestParseCommandInsertsCafileAfterSubcommand(t *testing.T) {
 			}
 		})
 	}
-	parsed := parseCommand(4, false, []string{"--cwd=sub", "-c=b.toml", "add", "--cafile=a.pem", "--ca", "PEM", "--registry=https://r.example/"})
-	if parsed.cwd != "sub" || parsed.config != "b.toml" || !slices.Equal(parsed.cafiles, []string{"a.pem"}) ||
+	parsed := parseCommand(4, false, []string{"--cafile=p.pem", "--cwd=sub", "-c=b.toml", "add", "--cafile=a.pem", "--ca", "PEM", "--registry=https://r.example/"})
+	if parsed.cwd != "sub" || parsed.config != "b.toml" || !slices.Equal(parsed.cafiles, []string{"p.pem", "a.pem"}) ||
 		!slices.Equal(parsed.cas, []string{"PEM"}) || !slices.Equal(parsed.registries, []string{"https://r.example/"}) {
 		t.Fatalf("parsed = %+v", parsed)
 	}

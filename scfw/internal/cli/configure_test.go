@@ -983,6 +983,7 @@ func resetConfigureCmd(t *testing.T) {
 		aliasUV, removeAliasUV = false, false
 		aliasYarn, removeAliasYarn = false, false
 		aliasPnpm, removeAliasPnpm = false, false
+		aliasBun, removeAliasBun = false, false
 		removeAliasNpm, removeAliasPip, removeAliasPoetry = false, false, false
 		ddAPIKey, ddAppKey, ddSite, scfwHome, remove = "", "", "", "", false
 		for _, name := range []string{
@@ -990,6 +991,7 @@ func resetConfigureCmd(t *testing.T) {
 			"alias-uv", "remove-alias-uv",
 			"alias-yarn", "remove-alias-yarn",
 			"alias-pnpm", "remove-alias-pnpm",
+			"alias-bun", "remove-alias-bun",
 			"remove-alias-npm", "remove-alias-pip", "remove-alias-poetry",
 			"dd-api-key", "dd-app-key", "dd-site", "scfw-home", "remove",
 		} {
@@ -1012,6 +1014,8 @@ func TestConfigureCmd_MutualExclusivityIsEnforced(t *testing.T) {
 		{name: "remove and remove-alias-yarn", args: []string{"--remove", "--remove-alias-yarn"}},
 		{name: "remove and alias-pnpm", args: []string{"--remove", "--alias-pnpm"}},
 		{name: "remove and remove-alias-pnpm", args: []string{"--remove", "--remove-alias-pnpm"}},
+		{name: "remove and alias-bun", args: []string{"--remove", "--alias-bun"}},
+		{name: "remove and remove-alias-bun", args: []string{"--remove", "--remove-alias-bun"}},
 		{name: "remove and remove-alias-npm", args: []string{"--remove", "--remove-alias-npm"}},
 		{name: "remove and remove-alias-pip", args: []string{"--remove", "--remove-alias-pip"}},
 		{name: "remove and remove-alias-poetry", args: []string{"--remove", "--remove-alias-poetry"}},
@@ -1034,7 +1038,7 @@ func TestConfigureCmd_MutualExclusivityIsEnforced(t *testing.T) {
 }
 
 func TestConfigureCmd_AliasAdditionAndRemovalAreMutuallyExclusive(t *testing.T) {
-	for _, packageManager := range []string{"npm", "pip", "poetry", "uv", "yarn", "pnpm"} {
+	for _, packageManager := range []string{"npm", "pip", "poetry", "uv", "yarn", "pnpm", "bun"} {
 		t.Run(packageManager, func(t *testing.T) {
 			resetConfigureCmd(t)
 

@@ -1,0 +1,4 @@
+packages:
+  - packages/*
+registries:
+  "@lab": https://lab.test/

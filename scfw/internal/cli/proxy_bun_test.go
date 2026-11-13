@@ -69,13 +69,7 @@ func newBunTestProject(t *testing.T, registry *npmTestRegistry, npmrcExtra strin
 	} {
 		t.Setenv(key, value)
 	}
-	// bunx caches packages under BUN_TMPDIR, else TMPDIR; Bun 1.2 and 1.3 use
-	// /tmp regardless, so the test package's entry is removed there.
-	bunxCache := fmt.Sprintf("/tmp/bunx-%d-lab-pkg@latest", os.Getuid())
-	if err := os.RemoveAll(bunxCache); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(bunxCache) })
+	// bunx caches packages under BUN_TMPDIR, else TMPDIR.
 	for _, sub := range []string{"home", "tmp"} {
 		if err := os.MkdirAll(filepath.Join(root, sub), 0700); err != nil {
 			t.Fatal(err)
@@ -85,6 +79,18 @@ func newBunTestProject(t *testing.T, registry *npmTestRegistry, npmrcExtra strin
 	writeNpmProject(t, dir, readProxyFixture(t, "npm/project/package.json"), "registry="+registry.URL+"/\n"+npmrcExtra)
 	t.Chdir(dir)
 	return dir
+}
+
+// ownBunxCache makes the test own bunx's lab-pkg entry, which Bun 1.2 and 1.3
+// keep in /tmp regardless of TMPDIR. A pre-existing entry is left alone and
+// the test is skipped, since a cached package would not be downloaded.
+func ownBunxCache(t *testing.T) {
+	t.Helper()
+	cache := fmt.Sprintf("/tmp/bunx-%d-lab-pkg@latest", os.Getuid())
+	if _, err := os.Lstat(cache); err == nil {
+		t.Skip(cache + " exists; remove it to run the bunx tests")
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(cache) })
 }
 
 type capturingBunRunner struct {
@@ -261,6 +267,7 @@ func TestBunxEndToEnd(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				registry := startNpmRegistry(t)
 				newBunTestProject(t, registry, "")
+				ownBunxCache(t)
 				// bunx does not read the project's .npmrc.
 				t.Setenv("NPM_CONFIG_REGISTRY", registry.URL+"/")
 				run := runBunThroughProxy(t, test.invoked, test.executable, test.args, evaluation.OutcomeBlock)
@@ -291,6 +298,7 @@ func TestBunxRunsAllowedPackage(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				registry := startNpmRegistryWith(t, "bun/package", "bun/packument.json.tmpl")
 				newBunTestProject(t, registry, "")
+				ownBunxCache(t)
 				t.Setenv("NPM_CONFIG_REGISTRY", registry.URL+"/")
 				output := filepath.Join(t.TempDir(), "stdout")
 				file, err := os.Create(output)

@@ -100,17 +100,15 @@ func (b Bun) ProxyCommand(_ context.Context, command []string, config proxy.Clie
 
 var _ pm.ProxyRunner = Bun{}
 
-// bunProxyForURL selects the upstream proxy by scheme with npm-style NO_PROXY
-// matching, where "*" bypasses every host. From Bun 1.4, an entry with a port
-// bypasses that host and port; earlier releases never match it.
-func bunProxyForURL(settings bunSettings, ports bool) func(*url.URL) (*url.URL, error) {
+// bunProxyForURL selects the upstream proxy by scheme with Bun's NO_PROXY
+// matching, where "*" bypasses every host.
+func bunProxyForURL(settings bunSettings, bun14 bool) func(*url.URL) (*url.URL, error) {
 	return func(target *url.URL) (*url.URL, error) {
 		value := settings.HTTP
 		if target.Scheme == "https" {
 			value = settings.HTTPS
 		}
-		if value == "" || strings.TrimSpace(settings.NoProxy) == "*" || nodeproxy.Bypasses(target, settings.NoProxy) ||
-			(ports && bypassesPort(target, settings.NoProxy)) {
+		if value == "" || strings.TrimSpace(settings.NoProxy) == "*" || bunBypasses(target, settings.NoProxy, bun14) {
 			return nil, nil
 		}
 		return proxy.ParseUpstreamProxyURL(value)
@@ -133,14 +131,31 @@ func validateUpstream(settings bunSettings) error {
 	return nil
 }
 
-func bypassesPort(target *url.URL, noProxy string) bool {
+// bunBypasses applies npm-style suffix matching to host names. Bun 1.4 also
+// matches an entry with a port for that port only, and an IPv6 address with or
+// without brackets; Bun 1.2 and 1.3 never match an entry with a port, and
+// match an IPv6 address only in brackets.
+func bunBypasses(target *url.URL, noProxy string, bun14 bool) bool {
 	port := target.Port()
 	if port == "" {
 		port = map[string]string{"http": "80", "https": "443"}[target.Scheme]
 	}
 	for entry := range strings.SplitSeq(noProxy, ",") {
-		host, entryPort, err := net.SplitHostPort(strings.TrimSpace(entry))
-		if err == nil && entryPort == port && nodeproxy.Bypasses(&url.URL{Host: target.Hostname()}, host) {
+		entry = strings.TrimSpace(entry)
+		host, entryPort, err := net.SplitHostPort(entry)
+		if err != nil {
+			host, entryPort = strings.TrimSuffix(strings.TrimPrefix(entry, "["), "]"), ""
+		}
+		if entryPort != "" && (!bun14 || entryPort != port) {
+			continue
+		}
+		if strings.Contains(host, ":") {
+			if (bun14 || strings.HasPrefix(entry, "[")) && host == target.Hostname() {
+				return true
+			}
+			continue
+		}
+		if host != "" && nodeproxy.Bypasses(&url.URL{Host: target.Hostname()}, host) {
 			return true
 		}
 	}

@@ -100,6 +100,36 @@ func TestProxyOptionsPortQualifiedNoProxy(t *testing.T) {
 	}
 }
 
+// Bun 1.4 matches IPv6 entries with or without brackets and with a port;
+// Bun 1.2 and 1.3 match them only bracketed and without a port.
+func TestProxyOptionsIPv6NoProxy(t *testing.T) {
+	isolateBun(t)
+	t.Chdir(t.TempDir())
+	t.Setenv("http_proxy", "http://proxy.example:1")
+	for _, test := range []struct {
+		minor   int
+		noProxy string
+		direct  bool
+	}{
+		{4, "[::1]:8080", true},
+		{4, "[::1]:9090", false},
+		{4, "::1", true},
+		{4, "[::1]", true},
+		{3, "[::1]:8080", false},
+		{3, "::1", false},
+		{2, "[::1]", true},
+	} {
+		t.Setenv("no_proxy", test.noProxy)
+		options, err := (Bun{installed: pm.Version{Major: 1, Minor: test.minor}}).ProxyOptions([]string{"install"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := options.ProxyForURL(&url.URL{Scheme: "http", Host: "[::1]:8080"}); (got == nil) != test.direct {
+			t.Errorf("1.%d no_proxy=%s -> %v, want direct=%v", test.minor, test.noProxy, got, test.direct)
+		}
+	}
+}
+
 func TestProxyOptionsDirectAndInvalid(t *testing.T) {
 	isolateBun(t)
 	t.Chdir(t.TempDir())

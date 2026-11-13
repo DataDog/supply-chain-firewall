@@ -53,7 +53,11 @@ func (p Pnpm) npmrcSettings(parsed parsedCommand, dir string) (pnpmSettings, err
 		}
 	}
 	// User and global files come from trusted layers only.
-	userconfig := expandPath(nodeproxy.LastValue(environment["userconfig"]), home)
+	userconfig := nodeproxy.LastValue(parsed.network["userconfig"])
+	if userconfig == "" {
+		userconfig = nodeproxy.LastValue(environment["userconfig"])
+	}
+	userconfig = expandPath(userconfig, home)
 	if userconfig == "" {
 		userconfig = filepath.Join(home, ".npmrc")
 	}

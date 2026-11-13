@@ -60,9 +60,18 @@ func (p Pnpm) yamlSettings(major int, parsed parsedCommand, dir string) (pnpmSet
 	if err != nil {
 		return pnpmSettings{}, err
 	}
-	userconfig := env["pnpm_config_userconfig"]
-	if userconfig == "" {
-		userconfig = nodeproxy.LastValue(nodeproxy.EnvironmentConfig(environ)["userconfig"])
+	// The user file is the first of the command line's npmrc-auth-file and
+	// userconfig, the same pair from the environment, config.yaml's
+	// npmrcAuthFile, and npm_config_userconfig.
+	userconfig := ""
+	for _, values := range [][]string{
+		parsed.network["npmrc-auth-file"], parsed.network["userconfig"],
+		environment["npmrc-auth-file"], environment["userconfig"],
+		global["npmrc-auth-file"], nodeproxy.EnvironmentConfig(environ)["userconfig"],
+	} {
+		if userconfig = nodeproxy.LastValue(values); userconfig != "" {
+			break
+		}
 	}
 	userconfig = expandPath(userconfig, home)
 	if userconfig == "" {

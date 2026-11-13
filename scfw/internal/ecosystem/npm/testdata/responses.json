@@ -1,14 +1,1127 @@
 {
-  "legacy/empty-timestamp": {"time": {"1.3.0": ""}},
-  "legacy/malformed-timestamp": {"time": {"1.3.0": "not a timestamp"}},
-  "legacy/published": {"time": {"1.3.0": "2016-04-25T18:56:20.452Z"}},
-  "packument/babel-helper-string-parser": {"time": {"7.25.9": "2024-10-15T12:00:00Z"}, "versions": {}},
+  "legacy/empty-timestamp": {
+    "time": {
+      "1.3.0": ""
+    }
+  },
+  "legacy/malformed-timestamp": {
+    "time": {
+      "1.3.0": "not a timestamp"
+    }
+  },
+  "legacy/published": {
+    "time": {
+      "1.3.0": "2016-04-25T18:56:20.452Z"
+    }
+  },
+  "packument/babel-helper-string-parser": {
+    "time": {
+      "7.25.9": "2024-10-15T12:00:00Z"
+    },
+    "versions": {}
+  },
   "packument/left-pad": {
     "name": "left-pad",
-    "time": {"1.2.0": "2017-11-17T05:48:38.934Z", "1.3.0": "2018-04-09T01:10:45.796Z"},
+    "time": {
+      "1.2.0": "2017-11-17T05:48:38.934Z",
+      "1.3.0": "2018-04-09T01:10:45.796Z"
+    },
     "versions": {
-      "1.2.0": {"dist": {"tarball": "https://registry.npmjs.org/left-pad/-/left-pad-1.2.0.tgz"}},
-      "1.3.0": {"dist": {"tarball": "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz"}}
+      "1.2.0": {
+        "dist": {
+          "tarball": "https://registry.npmjs.org/left-pad/-/left-pad-1.2.0.tgz"
+        }
+      },
+      "1.3.0": {
+        "dist": {
+          "tarball": "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz"
+        }
+      }
+    }
+  },
+  "manifest-comparison": {
+    "format": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "exports": {
+          "./b": "./b.js",
+          "./a": [
+            "./a.js",
+            "./fallback.js"
+          ]
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "exports": {
+          "./a": [
+            "./a.js",
+            "./fallback.js"
+          ],
+          "./b": "./b.js"
+        }
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "dependencies registry only": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "dependencies": {
+          "dep": "1"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "dependencies artifact only": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "dependencies": {
+          "dep": "1"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "scripts registry only": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "install": "harmless script text"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "scripts artifact only": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "install": "harmless script text"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "custom registry only": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "custom": {
+          "dist": "authored"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "custom artifact only": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "custom": {
+          "dist": "authored"
+        }
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "unknown underscore": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "_custom": "a"
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "_custom": "b"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "null vs missing": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": null
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "empty vs missing": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {}
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "case sensitive": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "Install": "command"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "install": "command"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "array order": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "exports": [
+          "./a.js",
+          "./b.js"
+        ]
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "exports": [
+          "./b.js",
+          "./a.js"
+        ]
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "identity": {
+      "registry": {
+        "name": "wrong",
+        "version": "1.0.0"
+      },
+      "artifact": {
+        "name": "wrong",
+        "version": "1.0.0"
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "metadata dist": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "dist": {
+          "example": "metadata"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "nested metadata dist": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "dist": "changed"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "dist": "original"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "metadata _id": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "_id": "fixture@1.0.0"
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "nested metadata _id": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "_id": "changed"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "_id": "original"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "metadata _nodeVersion": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "_nodeVersion": {
+          "example": "metadata"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "nested metadata _nodeVersion": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "_nodeVersion": "changed"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "_nodeVersion": "original"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "metadata _npmVersion": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "_npmVersion": {
+          "example": "metadata"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "nested metadata _npmVersion": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "_npmVersion": "changed"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "_npmVersion": "original"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "metadata _npmUser": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "_npmUser": {
+          "example": "metadata"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "nested metadata _npmUser": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "_npmUser": "changed"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "_npmUser": "original"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "metadata _shasum": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "_shasum": {
+          "example": "metadata"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "nested metadata _shasum": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "_shasum": "changed"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "_shasum": "original"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "metadata gitHead": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "gitHead": {
+          "example": "metadata"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "nested metadata gitHead": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "gitHead": "changed"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "gitHead": "original"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "metadata maintainers": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "maintainers": {
+          "example": "metadata"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "nested metadata maintainers": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "maintainers": "changed"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "maintainers": "original"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "metadata deprecated": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "deprecated": {
+          "example": "metadata"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "nested metadata deprecated": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "deprecated": "changed"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "deprecated": "original"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "metadata readme": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "readme": {
+          "example": "metadata"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "nested metadata readme": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "readme": "changed"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "readme": "original"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "metadata readmeFilename": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "readmeFilename": {
+          "example": "metadata"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "nested metadata readmeFilename": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "readmeFilename": "changed"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "readmeFilename": "original"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "bin": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "bin": {
+          "fixture": "cli.js"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "bin": "./cli.js"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "bin change": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "bin": {
+          "fixture": "other.js"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "bin": "./cli.js"
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "repo": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "repository": {
+          "type": "git",
+          "url": "git+https://github.com/org/repo.git"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "repository": "org/repo"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "repo change": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "repository": "org/other"
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "repository": "org/repo"
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "bundled": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "bundleDependencies": [
+          "b",
+          "a"
+        ]
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "bundledDependencies": [
+          "a",
+          "b"
+        ]
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "bundled change": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "bundleDependencies": [
+          "a"
+        ]
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "bundledDependencies": [
+          "a",
+          "b"
+        ]
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "optional dedupe": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "optionalDependencies": {
+          "a": "1"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "dependencies": {
+          "a": "1"
+        },
+        "optionalDependencies": {
+          "a": "1"
+        }
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "optional distinction": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "dependencies": {
+          "a": "1"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "optionalDependencies": {
+          "a": "1"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "native default": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "install": "node-gyp rebuild"
+        },
+        "gypfile": true
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": true,
+      "facts": {
+        "BindingGyp": true
+      }
+    },
+    "native changed": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "scripts": {
+          "install": "different command"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": false,
+      "facts": {
+        "BindingGyp": true
+      }
+    },
+    "derived install flag": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "hasInstallScript": true
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "derived shrinkwrap flag": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "_hasShrinkwrap": true
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0"
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "workspace published": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "dependencies": {
+          "@scope/ws": "1.2.3"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "dependencies": {
+          "@scope/ws": "1.2.3"
+        }
+      },
+      "matched": true,
+      "facts": {}
+    },
+    "workspace not published": {
+      "registry": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "dependencies": {
+          "@scope/ws": "1.2.3"
+        }
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "1.0.0",
+        "dependencies": {
+          "@scope/ws": "workspace:*"
+        }
+      },
+      "matched": false,
+      "facts": {}
+    },
+    "version identity": {
+      "registry": {
+        "name": "fixture",
+        "version": "2.0.0"
+      },
+      "artifact": {
+        "name": "fixture",
+        "version": "2.0.0"
+      },
+      "matched": false,
+      "facts": {}
+    }
+  },
+  "archive/root-manifest": {
+    "name": "fixture",
+    "version": "1.0.0"
+  },
+  "manifest-field-selection": {
+    "scripts": {
+      "field": "scripts",
+      "first": {
+        "install": "first command"
+      },
+      "second": {
+        "install": "second command"
+      },
+      "compared": true
+    },
+    "dependencies": {
+      "field": "dependencies",
+      "first": {
+        "dep": "1.0.0"
+      },
+      "second": {
+        "dep": "2.0.0"
+      },
+      "compared": true
+    },
+    "devDependencies": {
+      "field": "devDependencies",
+      "first": {
+        "dep": "1.0.0"
+      },
+      "second": {
+        "dep": "2.0.0"
+      },
+      "compared": true
+    },
+    "optionalDependencies": {
+      "field": "optionalDependencies",
+      "first": {
+        "dep": "1.0.0"
+      },
+      "second": {
+        "dep": "2.0.0"
+      },
+      "compared": true
+    },
+    "peerDependencies": {
+      "field": "peerDependencies",
+      "first": {
+        "dep": "1.0.0"
+      },
+      "second": {
+        "dep": "2.0.0"
+      },
+      "compared": true
+    },
+    "peerDependenciesMeta": {
+      "field": "peerDependenciesMeta",
+      "first": {
+        "dep": {
+          "optional": true
+        }
+      },
+      "second": {
+        "dep": {
+          "optional": false
+        }
+      },
+      "compared": true
+    },
+    "bundleDependencies": {
+      "field": "bundleDependencies",
+      "first": [
+        "first"
+      ],
+      "second": [
+        "second"
+      ],
+      "compared": true
+    },
+    "bundledDependencies": {
+      "field": "bundledDependencies",
+      "first": [
+        "first"
+      ],
+      "second": [
+        "second"
+      ],
+      "compared": true
+    },
+    "bin": {
+      "field": "bin",
+      "first": {
+        "fixture": "first.js"
+      },
+      "second": {
+        "fixture": "second.js"
+      },
+      "compared": true
+    },
+    "directories.bin": {
+      "field": "directories",
+      "first": {
+        "bin": "first"
+      },
+      "second": {
+        "bin": "second"
+      },
+      "compared": true
+    },
+    "main": {
+      "field": "main",
+      "first": "./first.js",
+      "second": "./second.js",
+      "compared": true
+    },
+    "exports": {
+      "field": "exports",
+      "first": {
+        ".": "./first.js"
+      },
+      "second": {
+        ".": "./second.js"
+      },
+      "compared": true
+    },
+    "imports": {
+      "field": "imports",
+      "first": {
+        "#dep": "./first.js"
+      },
+      "second": {
+        "#dep": "./second.js"
+      },
+      "compared": true
+    },
+    "type": {
+      "field": "type",
+      "first": "module",
+      "second": "commonjs",
+      "compared": true
+    },
+    "engines": {
+      "field": "engines",
+      "first": {
+        "node": ">=18"
+      },
+      "second": {
+        "node": ">=20"
+      },
+      "compared": true
+    },
+    "libc": {
+      "field": "libc",
+      "first": [
+        "glibc"
+      ],
+      "second": [
+        "musl"
+      ],
+      "compared": true
+    },
+    "files": {
+      "field": "files",
+      "first": [
+        "first.js"
+      ],
+      "second": [
+        "second.js"
+      ],
+      "compared": true
+    },
+    "gypfile": {
+      "field": "gypfile",
+      "first": false,
+      "second": true,
+      "compared": true
+    },
+    "os": {
+      "field": "os",
+      "first": [
+        "linux"
+      ],
+      "second": [
+        "darwin"
+      ],
+      "compared": false
+    },
+    "cpu": {
+      "field": "cpu",
+      "first": [
+        "x64"
+      ],
+      "second": [
+        "arm64"
+      ],
+      "compared": false
+    },
+    "description": {
+      "field": "description",
+      "first": "first description",
+      "second": "second description",
+      "compared": false
+    },
+    "keywords": {
+      "field": "keywords",
+      "first": [
+        "first"
+      ],
+      "second": [
+        "second"
+      ],
+      "compared": false
+    },
+    "author": {
+      "field": "author",
+      "first": {
+        "name": "First"
+      },
+      "second": {
+        "name": "Second"
+      },
+      "compared": false
+    },
+    "license": {
+      "field": "license",
+      "first": "MIT",
+      "second": "ISC",
+      "compared": false
+    },
+    "repository": {
+      "field": "repository",
+      "first": "org/first",
+      "second": "org/second",
+      "compared": false
+    },
+    "custom": {
+      "field": "custom",
+      "first": {
+        "scripts": {
+          "install": "first"
+        }
+      },
+      "second": {
+        "scripts": {
+          "install": "second"
+        }
+      },
+      "compared": false
+    },
+    "_custom": {
+      "field": "_custom",
+      "first": "first",
+      "second": "second",
+      "compared": false
+    },
+    "directories metadata": {
+      "field": "directories",
+      "first": {
+        "doc": "first"
+      },
+      "second": {
+        "doc": "second"
+      },
+      "compared": false
     }
   }
 }

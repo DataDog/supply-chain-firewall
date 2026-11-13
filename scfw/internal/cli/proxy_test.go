@@ -347,3 +347,36 @@ func TestRunFirewallConstructsAllRegisteredHooksForEachInvocation(t *testing.T) 
 		t.Fatalf("factories=%v requests=%v upstream=%d; expected fresh, ordered hooks for each run", factories, observed, upstreamHits)
 	}
 }
+
+type fakePreflightArtifactManager struct {
+	fakePackageManager
+	artifactCalls int
+}
+
+func (manager *fakePreflightArtifactManager) ResolveVerifiedInstallTargets(context.Context, []string) (*pm.Set[pm.Package], []pm.ArtifactResult, error) {
+	manager.artifactCalls++
+	return pm.NewSet[pm.Package](), nil, nil
+}
+
+func TestNpmProxyFlagKeepsPreflightFallback(t *testing.T) {
+	for _, enabled := range []string{"", "1"} {
+		t.Run("proxy="+enabled, func(t *testing.T) {
+			t.Setenv(proxyEnabledVar, enabled)
+			t.Setenv(evaluationModeVar, string(evaluationModeLocal))
+			t.Setenv("SCFW_HOME", t.TempDir())
+			t.Setenv(onWarningVar, "")
+			manager := &fakePreflightArtifactManager{fakePackageManager: fakePackageManager{projectDirectory: t.TempDir()}}
+			registerFakePackageManager(t, manager)
+			packageManagerFactories[0].Names = []string{"npm"}
+			cmd := RootCmd()
+			defer cmd.RemoveCommand(configureCmd, doctorCmd, runCmd)
+			cmd.SetArgs([]string{"run", "--", "npm", "install"})
+			if err := cmd.ExecuteContext(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if manager.artifactCalls != 1 || manager.resolveCalls != 0 || manager.runCalls != 1 {
+				t.Fatalf("artifact preflights=%d resolutions=%d direct runs=%d; want 1, 0, 1", manager.artifactCalls, manager.resolveCalls, manager.runCalls)
+			}
+		})
+	}
+}

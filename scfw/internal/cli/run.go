@@ -172,7 +172,13 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 	}
 
 	slog.Debug("resolving package installation targets", "package_manager", packageManagerName)
-	installTargets, err := packageManager.ResolveInstallTargets(cmd.Context(), cmdArgs[1:])
+	var artifactResults []pm.ArtifactResult
+	var installTargets *pm.Set[pm.Package]
+	if resolver, ok := packageManager.(pm.ArtifactResolver); ok {
+		installTargets, artifactResults, err = resolver.ResolveVerifiedInstallTargets(cmd.Context(), cmdArgs[1:])
+	} else {
+		installTargets, err = packageManager.ResolveInstallTargets(cmd.Context(), cmdArgs[1:])
+	}
 	if err != nil {
 		return fmt.Errorf("scfw run: %w", err)
 	}
@@ -187,14 +193,26 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 	} else {
 		slog.Debug("evaluating package installation targets", "count", installTargets.Len())
 		evaluator, err := newEvaluator(cmd.Context(), mode)
-		if err != nil {
-			return fmt.Errorf("scfw run: %w", err)
+		if err == nil {
+			evaluationReport, err = evaluator.EvaluateInstallTargets(cmd.Context(), isInteractive, installTargets)
 		}
-		evaluationReport, err = evaluator.EvaluateInstallTargets(cmd.Context(), isInteractive, installTargets)
 		if err != nil {
-			return fmt.Errorf("scfw run: %w", err)
+			if isContextError(err) {
+				return err
+			}
+			gate := evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeAllow}
+			mergeArtifactResults(&gate, artifactResults)
+			if gate.Outcome != evaluation.OutcomeBlock {
+				return fmt.Errorf("scfw run: %w", err)
+			}
+			evaluationReport = evaluation.ScfwPolicyEvaluationReport{Outcome: evaluation.OutcomeError}
+			for pkg := range installTargets.Items() {
+				addPackageFailure(&evaluationReport, pkg, evaluation.Failure{Verifier: "evaluation", Error: err.Error()})
+			}
 		}
+
 	}
+	mergeArtifactResults(&evaluationReport, artifactResults)
 	slog.Debug("resolved firewall policy outcome", "outcome", evaluationReport.Outcome)
 
 	// Explain the outcome before anything else, so the user sees why a command was

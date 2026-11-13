@@ -119,16 +119,9 @@ func (p Pnpm) ProxyCommand(_ context.Context, command []string, config proxy.Cli
 		overrides = append(overrides, "--config."+registryCA.Key+":cafile="+ca)
 	}
 	parsed := parseCommand(major, p.dlx, command)
-	tail := parsed.args
-	// `pnpm with <version>` runs that release with only the arguments after the
-	// version, so the child gets its own overrides, and its command line is
-	// parsed as that release reads it.
-	if parsed.name == "with" && parsed.sub != "current" {
-		child, err := withMajor(parsed.sub)
-		if err != nil {
-			return proxy.CommandSpec{}, err
-		}
-		tail = slices.Concat(parsed.args[:parsed.passthrough], overrides, parseCommand(child, false, parsed.args[parsed.passthrough:]).args)
+	tail, err := withOverrides(major, parsed, overrides)
+	if err != nil {
+		return proxy.CommandSpec{}, err
 	}
 	args := slices.Concat(overrides, tail)
 
@@ -152,6 +145,25 @@ func (p Pnpm) ProxyCommand(_ context.Context, command []string, config proxy.Cli
 }
 
 var _ pm.ProxyRunner = Pnpm{}
+
+// withOverrides returns parsed's arguments for a pnpm of major. `pnpm with
+// <version>` (pnpm 11 and later) runs that release with only the arguments
+// after the version, so every nested level gets its own overrides, and its
+// command line is parsed as that release reads it.
+func withOverrides(major int, parsed parsedCommand, overrides []string) ([]string, error) {
+	if major < 11 || parsed.name != "with" || parsed.sub == "current" {
+		return parsed.args, nil
+	}
+	child, err := withMajor(parsed.sub)
+	if err != nil {
+		return nil, err
+	}
+	tail, err := withOverrides(child, parseCommand(child, false, parsed.args[parsed.passthrough:]), overrides)
+	if err != nil {
+		return nil, err
+	}
+	return slices.Concat(parsed.args[:parsed.passthrough], overrides, tail), nil
+}
 
 // withMajor returns the supported major an exact `pnpm with` version selects.
 func withMajor(version string) (int, error) {

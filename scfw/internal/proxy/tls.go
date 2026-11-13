@@ -20,12 +20,13 @@ type TLSConfigOptions struct {
 	// default; an explicitly empty pool trusts no default certificates.
 	RootCAs               *x509.CertPool
 	CABundlePaths         []string
+	CABundlePEM           [][]byte
 	ClientCertificatePath string
 	// An empty key path uses ClientCertificatePath as a combined PEM file.
 	ClientKeyPath string
 }
 
-// NewTLSConfig augments the supplied roots (system trust by default) with PEM files or CA directories and
+// NewTLSConfig augments the supplied roots (system trust by default) with PEM files, CA directories, or inline PEM and
 // optionally loads a client certificate. Errors omit paths which could contain credentials.
 func NewTLSConfig(options TLSConfigOptions) (*tls.Config, error) {
 	roots := options.RootCAs
@@ -43,6 +44,14 @@ func NewTLSConfig(options TLSConfigOptions) (*tls.Config, error) {
 			continue
 		}
 		if !appendCAPath(roots, path) {
+			return nil, errors.New("could not load proxy CA bundle")
+		}
+	}
+	for _, pem := range options.CABundlePEM {
+		if len(pem) == 0 {
+			continue
+		}
+		if !roots.AppendCertsFromPEM(pem) {
 			return nil, errors.New("could not load proxy CA bundle")
 		}
 	}

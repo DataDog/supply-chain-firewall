@@ -79,6 +79,65 @@ func TestTLSConfigLoadsTrustAndClientCertificates(t *testing.T) {
 	}
 }
 
+func TestTLSConfigTrustsInlinePEM(t *testing.T) {
+	registry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "trusted")
+	}))
+	defer registry.Close()
+	cert := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: registry.Certificate().Raw})
+	for _, test := range []struct {
+		name    string
+		options TLSConfigOptions
+		trusted bool
+	}{
+		{"inline", TLSConfigOptions{CABundlePEM: [][]byte{nil, cert}}, true},
+		{"none", TLSConfigOptions{}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			config, err := NewTLSConfig(test.options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			transport := &http.Transport{TLSClientConfig: config}
+			defer transport.CloseIdleConnections()
+			response, err := (&http.Client{Transport: transport}).Get(registry.URL)
+			if err == nil {
+				_ = response.Body.Close()
+			}
+			if trusted := err == nil; trusted != test.trusted {
+				t.Fatalf("trusted=%v want %v (error=%v)", trusted, test.trusted, err)
+			}
+		})
+	}
+}
+
+func TestTLSConfigAddsInlinePEMToExplicitRoots(t *testing.T) {
+	inline, unrelated := newTestCertificateAuthority(t), newTestCertificateAuthority(t)
+	config, err := NewTLSConfig(TLSConfigOptions{RootCAs: x509.NewCertPool(), CABundlePEM: [][]byte{inline.pem}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name string
+		ca   *certificateAuthority
+		want bool
+	}{{"inline certificate", inline, true}, {"unrelated certificate", unrelated, false}} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := test.ca.certificate.Verify(x509.VerifyOptions{Roots: config.RootCAs})
+			if verified := err == nil; verified != test.want {
+				t.Fatalf("verified=%v want %v (error=%v)", verified, test.want, err)
+			}
+		})
+	}
+}
+
+func TestTLSConfigRejectsInlinePEMWithoutCertificates(t *testing.T) {
+	config, err := NewTLSConfig(TLSConfigOptions{CABundlePEM: [][]byte{[]byte("not a pem")}})
+	if err == nil || config != nil || err.Error() != "could not load proxy CA bundle" {
+		t.Fatalf("config=%v error=%v", config, err)
+	}
+}
+
 func TestTLSConfigAcceptsEmptyCADirectory(t *testing.T) {
 	if _, err := NewTLSConfig(TLSConfigOptions{CABundlePaths: []string{t.TempDir()}}); err != nil {
 		t.Fatalf("an empty CA directory must not fail configuration: %v", err)

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"slices"
 
+	npmregistry "github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/npm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/pypi"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/npm"
@@ -34,7 +35,8 @@ var packageManagerFactories = []PackageManagerFactory{
 		},
 	},
 	{
-		Names: npm.NpmExecutableNames,
+		Names:      npm.NpmExecutableNames,
+		ProxyHooks: []proxyHookFactory{newNpmProxyHook},
 		New: func(ctx context.Context, name, executable string) (pm.PackageManager, error) {
 			return npm.NewNpm(ctx, name, executable)
 		},
@@ -69,6 +71,27 @@ type proxyHookFactory func(
 	context.Context, pm.PackageManager, []string, *http.Client,
 	func(context.Context, pm.Package, error) error,
 ) (proxy.RequestHook, error)
+
+func newNpmProxyHook(
+	ctx context.Context, manager pm.PackageManager, command []string, client *http.Client,
+	evaluate func(context.Context, pm.Package, error) error,
+) (proxy.RequestHook, error) {
+	var options npmregistry.ClassifierOptions
+	if provider, ok := manager.(interface {
+		NpmClassifierOptions([]string) (npmregistry.ClassifierOptions, error)
+	}); ok {
+		var err error
+		options, err = provider.NpmClassifierOptions(command)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return npmregistry.NewProxyHook(ctx, npmregistry.ProxyHookOptions{
+		Client:            client,
+		ClassifierOptions: options,
+		EvaluatePackage:   evaluate,
+	})
+}
 
 func newPyPIProxyHook(
 	ctx context.Context, manager pm.PackageManager, command []string, client *http.Client,

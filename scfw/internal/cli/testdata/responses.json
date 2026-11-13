@@ -1,4 +1,5 @@
 {
+  "npm/packument": {"name":"lab-pkg","dist-tags":{"latest":"1.0.0"},"versions":{"1.0.0":{"name":"lab-pkg","version":"1.0.0"}},"time":{"1.0.0":"2025-01-02T03:04:05.000Z"}},
   "uv/simple-zstd": {"meta":{"api-version":"1.4"},"name":"project","files":[{"filename":"project-1.0.tar.zst","url":"../../download.tar.zst","hashes":{},"upload-time":"2025-05-06T07:08:09Z"}]},
   "uv/simple": {"meta":{"api-version":"1.4"},"name":"project","files":[{"filename":"project-1.0-py3-none-any.whl","url":"../../packages/project-1.0-py3-none-any.whl","hashes":{},"upload-time":"2025-05-06T07:08:09Z"}]},
   "pypi/artifactory": {"files":[{"filename":"project-2.0-py3-none-any.whl","url":"objects/artifact?id=wheel&token=artifact-secret","upload-time":"2025-07-08T09:10:11Z"}]},

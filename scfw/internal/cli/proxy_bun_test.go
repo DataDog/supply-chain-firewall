@@ -252,6 +252,8 @@ func TestBunxEndToEnd(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				registry := startNpmRegistry(t)
 				newBunTestProject(t, registry, "")
+				// bunx does not read the project's .npmrc.
+				t.Setenv("NPM_CONFIG_REGISTRY", registry.URL+"/")
 				run := runBunThroughProxy(t, test.invoked, test.executable, test.args, evaluation.OutcomeBlock)
 				assertBunFailed(t, run)
 				if run.calls != 1 || registry.TarballHits.Load() != 0 {

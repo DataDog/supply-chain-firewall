@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ddapi"
+	"github.com/spf13/cobra"
 )
 
 // withKeyringSet temporarily replaces ddapi.KeyringSet for the duration of a test.
@@ -1221,6 +1222,79 @@ func TestConfigurePnpmAliasLifecycle(t *testing.T) {
 		content, err := os.ReadFile(filepath.Join(home, name))
 		if err != nil || strings.Contains(string(content), blockStart) || !strings.Contains(string(content), "export EXISTING=1") {
 			t.Fatalf("remove-all failed: %q, %v", content, err)
+		}
+	}
+}
+
+func TestPoetryAliasLifecycle(t *testing.T) {
+	resetConfigureCmd(t)
+	withKeyringDelete(t, func(string, string) error { return nil })
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	seed := "export KEEP=unchanged\n"
+	for _, name := range configFiles {
+		if err := os.WriteFile(filepath.Join(home, name), []byte(seed), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := &cobra.Command{}
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	// Retain all the other aliases so doctor can validate the full set.
+	aliasNpm, aliasPip, aliasPoetry, aliasUV, aliasYarn, aliasPnpm = true, true, true, true, true, true
+	for iteration := 0; iteration < 2; iteration++ {
+		if err := runConfigure(cmd, nil); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range configFiles {
+			data, err := os.ReadFile(filepath.Join(home, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Count(string(data), `alias poetry="scfw run -- poetry"`) != 1 || !strings.HasPrefix(string(data), seed) {
+				t.Fatalf("non-idempotent alias in %s: %s", name, data)
+			}
+		}
+		if err := reportAliases(cmd, home); err != nil {
+			t.Fatal(err)
+		}
+	}
+	aliasNpm, aliasPip, aliasPoetry, aliasUV, aliasYarn, aliasPnpm = false, false, false, false, false, false
+	removeAliasPoetry = true
+	for iteration := 0; iteration < 2; iteration++ {
+		if err := runConfigure(cmd, nil); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range configFiles {
+			data, err := os.ReadFile(filepath.Join(home, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(data), "alias poetry=") || !strings.Contains(string(data), `alias pip="scfw run -- pip"`) {
+				t.Fatalf("incorrect targeted removal in %s: %s", name, data)
+			}
+		}
+		if err := reportAliases(cmd, home); err == nil || !strings.Contains(err.Error(), "alias poetry is not set") {
+			t.Fatalf("doctor missing Poetry: %v", err)
+		}
+	}
+	removeAliasPoetry, aliasPoetry = false, true
+	if err := runConfigure(cmd, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := reportAliases(cmd, home); err != nil {
+		t.Fatal(err)
+	}
+	aliasPoetry, remove = false, true
+	for iteration := 0; iteration < 2; iteration++ {
+		if err := runConfigure(cmd, nil); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range configFiles {
+			data, err := os.ReadFile(filepath.Join(home, name))
+			if err != nil || string(data) != seed {
+				t.Fatalf("full removal in %s: %s / %v", name, data, err)
+			}
 		}
 	}
 }

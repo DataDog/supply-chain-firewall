@@ -159,7 +159,7 @@ When inspecting package manager commands, Datadog credentials and the Datadog si
 | :---------------: | :-------------------: | :--------------------------------: |
 | npm               | >= 7.0                | `install` (including aliases)      |
 | pip               | >= 22.2               | `install`                          |
-| poetry            | >= 1.7                | `add`, `install`, `sync`, `update` |
+| poetry            | >= 2.0                | `add`, `install`, `sync`, `update` |
 | uv (proxy mode)   | 0.13.4 tested         | `pip install`, `pip sync`, `pip compile`, `add`, `remove`, `sync`, `lock`, `export`, `tree`, `build`, `tool install`, `tool upgrade`, `tool run`/`uvx`, version updates, `venv --seed` |
 | yarn (proxy mode) | 1.22+, 4.x            | bare `yarn`, `install`, `add`, `upgrade`/`up`, `upgrade-interactive`, `create`, `global add`, `dlx`, `workspaces focus` |
 | pnpm (proxy mode) | 10.x, 11.x, 12.x      | `install`, `add`, `update`, `remove`, `dedupe`, `fetch`, `import`, `deploy`, `dlx`/`pnpx`, `create`, `-r`/`--filter` workspace installs |
@@ -210,6 +210,8 @@ The command was blocked. No changes have been made.
 ```
 
 Note that, once shell aliases have been configured via `scfw configure --alias-npm`/`--alias-pip`/`--alias-poetry`, the explicit `scfw run --` prefix is no longer needed: commands for these package managers run through `scfw` automatically.
+
+Set `SCFW_PROXY_ENABLED=1` to evaluate pip and Poetry packages as they are downloaded through an invocation-scoped proxy. For example, `SCFW_PROXY_ENABLED=1 scfw run -- poetry install` inspects downloads made by Poetry, including during `add`, `update`, and `lock`. Existing HTTP/HTTPS proxy URLs, native macOS proxy settings, and configured TLS trust are preserved for outbound connections.
 
 `scfw run` supports the following options:
 

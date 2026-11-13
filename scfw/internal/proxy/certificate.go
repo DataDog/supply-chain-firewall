@@ -37,8 +37,9 @@ type certificateAuthority struct {
 	privateKey  *ecdsa.PrivateKey
 	pem         []byte
 
-	mutex  sync.Mutex
-	leaves map[string]*tls.Certificate
+	mutex      sync.Mutex
+	leaves     map[string]*tls.Certificate
+	identities map[string]string
 }
 
 // newCertificateAuthority creates a CA with a fresh ECDSA P-256 key and a

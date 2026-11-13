@@ -111,6 +111,35 @@ func TestProxyCommandDropsAbbreviatedNoproxyOptions(t *testing.T) {
 	}
 }
 
+// npm strips any number of leading dashes, so these all add to its noproxy list
+// and would let a listed host bypass the proxy.
+func TestProxyCommandDropsNoproxyOptionsWithAnyDashCount(t *testing.T) {
+	config, pem := testClientConfig(t)
+	for _, test := range []struct {
+		name    string
+		options []string
+	}{
+		{"single dash with equals", []string{"-noproxy=a.test"}},
+		{"single dash with value", []string{"-noproxy", "a.test"}},
+		{"single dash abbreviation", []string{"-nop=a.test"}},
+		{"single dash longer abbreviation", []string{"-nopro", "a.test"}},
+		{"three dashes", []string{"---noproxy=a.test"}},
+		{"four dashes with value", []string{"----nop", "a.test"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command := slices.Concat([]string{"install"}, test.options, []string{"-n", "-no", "--no-proxy", "x", "--", "-noproxy=kept.test"})
+			spec, err := Npm{executable: "/bin/npm"}.ProxyCommand(context.Background(), command, config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := slices.Concat([]string{"install", "-n", "-no", "--no-proxy", "x"}, scfwFlags(config, pem), []string{"--", "-noproxy=kept.test"})
+			if !slices.Equal(spec.Args, want) {
+				t.Fatalf("args = %q, want %q", spec.Args, want)
+			}
+		})
+	}
+}
+
 func TestProxyCommandDropsTrailingNoproxyWithoutValue(t *testing.T) {
 	config, pem := testClientConfig(t)
 	spec, err := Npm{executable: "/bin/npm"}.ProxyCommand(context.Background(), []string{"install", "--noproxy"}, config)

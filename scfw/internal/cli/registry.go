@@ -65,7 +65,8 @@ var packageManagerFactories = []PackageManagerFactory{
 		},
 	},
 	{
-		Names: poetry.PoetryExecutableNames,
+		Names:      poetry.PoetryExecutableNames,
+		ProxyHooks: []proxyHookFactory{newPyPIProxyHook},
 		New: func(ctx context.Context, name, executable string) (pm.PackageManager, error) {
 			return poetry.NewPoetry(ctx, name, executable)
 		},

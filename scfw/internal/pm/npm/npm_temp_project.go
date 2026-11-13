@@ -45,6 +45,9 @@ type npmTempProject struct {
 	projectRoot        string // empty if the current directory is not part of an npm project
 	dir                string
 	resolvePublishDate func(context.Context, pm.Package) (time.Time, error)
+	artifacts          map[pm.Package][]npmArtifact
+	cacheDir           string
+	mapArtifactURL     func(string) (string, error)
 }
 
 // newNpmTempProject resolves the current npm project root (if any) and
@@ -68,7 +71,7 @@ func newNpmTempProject(ctx context.Context, executable string) (*npmTempProject,
 		dir = resolved
 	}
 
-	proj := &npmTempProject{executable: executable, projectRoot: projectRoot, dir: dir}
+	proj := &npmTempProject{executable: executable, projectRoot: projectRoot, dir: dir, cacheDir: filepath.Join(dir, ".scfw-cache")}
 
 	if projectRoot != "" {
 		if err := proj.copyProjectFiles(); err != nil {
@@ -374,19 +377,14 @@ func (p *npmTempProject) resolveInstallCommandTargets(ctx context.Context, comma
 	localCommand := slices.DeleteFunc(slices.Clone(command), func(tok string) bool {
 		return tok == "-g" || tok == "--global"
 	})
-
-	dryRunArgs := append(slices.Clone(localCommand), "--dry-run", "--loglevel", "silly")
+	dryRunArgs := insertNpmControls(slices.Clone(localCommand), "--dry-run", "--loglevel", "silly", "--ignore-scripts", "--global=false", "--location=project", "--audit=false", "--fund=false", "--cache="+p.cacheDir)
 	dryRunCmd := exec.CommandContext(ctx, p.executable, dryRunArgs...)
 	dryRunCmd.Dir = p.dir
+	dryRunCmd.Env = append(os.Environ(), "npm_config_cache="+p.cacheDir, "NPM_CONFIG_CACHE="+p.cacheDir)
 	var stderr bytes.Buffer
 	dryRunCmd.Stderr = &stderr
 
 	if err := dryRunCmd.Run(); err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			// The given npm install command results in error: nothing will be installed.
-			return pm.NewSet[pm.Package](), nil
-		}
 		return nil, fmt.Errorf("failed to run npm dry-run install: %w", err)
 	}
 
@@ -401,13 +399,14 @@ func (p *npmTempProject) resolveInstallCommandTargets(ctx context.Context, comma
 	}
 
 	// Safely run the install command to write or update the lockfile only.
-	lockOnlyArgs := append(slices.Clone(localCommand), "--package-lock-only", "--ignore-scripts")
+	lockOnlyCommand := slices.Clone(localCommand)
+	lockOnlyArgs := insertNpmControls(lockOnlyCommand, "--package-lock-only", "--ignore-scripts", "--global=false", "--location=project", "--audit=false", "--fund=false", "--cache="+p.cacheDir)
 	lockOnlyCmd := exec.CommandContext(ctx, p.executable, lockOnlyArgs...)
 	lockOnlyCmd.Dir = p.dir
-	if output, err := lockOnlyCmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("failed to run npm --package-lock-only install: %w: %s", err, output)
+	lockOnlyCmd.Env = append(os.Environ(), "npm_config_cache="+p.cacheDir, "NPM_CONFIG_CACHE="+p.cacheDir)
+	if _, err := lockOnlyCmd.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("failed to run npm --package-lock-only install: %w", err)
 	}
-
 	lockfilePath := filepath.Join(p.dir, "package-lock.json")
 	lockfile, err := readNpmJSONFile(lockfilePath)
 	if err != nil {
@@ -428,13 +427,53 @@ func (p *npmTempProject) resolveInstallCommandTargets(ctx context.Context, comma
 			return nil, err
 		}
 
-		publishDate, err := p.resolvePublishDate(ctx, pkg)
+		publishDate := time.Time{}
+		var publishErr error
+		if npmHTTPSource(pkg.Source) {
+			publishDate, publishErr = p.resolvePublishDate(ctx, pkg)
+		}
+		err = publishErr
 		if err != nil {
 			slog.Warn("failed to resolve package publish date", "ecosystem", pkg.Ecosystem, "name", pkg.Name, "version", pkg.Version, "error", err)
 		} else {
 			pkg.PublishDate = publishDate
 		}
 
+		if p.artifacts != nil {
+			entry, _ := dependencies[handle].(map[string]any)
+			source, _ := entry["resolved"].(string)
+			integrity, _ := entry["integrity"].(string)
+			if link, _ := entry["link"].(bool); link {
+				source = ""
+			}
+			failure := ""
+			if value, present := entry["integrity"]; present {
+				if _, valid := value.(string); !valid {
+					failure = "invalid locked artifact integrity"
+				}
+			}
+			if p.mapArtifactURL != nil && (npmHTTPSource(source)) {
+				mapped, e := p.mapArtifactURL(source)
+				if e != nil {
+					failure = "npm artifact URL mapping unavailable"
+				} else {
+					source = mapped
+					pkg.Source = mapped
+				}
+			}
+			pkg.Source = publicNpmSource(pkg.Source)
+			evidence := npmArtifact{source: source, integrity: integrity, notApplicable: (!npmHTTPSource(pkg.Source) && pkg.Source != "") || entry["inBundle"] == true || entry["bundled"] == true, failure: failure}
+			duplicate := false
+			for _, old := range p.artifacts[pkg] {
+				if old == evidence {
+					duplicate = true
+					break
+				}
+			}
+			if !duplicate {
+				p.artifacts[pkg] = append(p.artifacts[pkg], evidence)
+			}
+		}
 		installTargets.Add(pkg)
 	}
 	return installTargets, nil
@@ -546,7 +585,12 @@ func resolveNpmInstallTarget(
 		if local := resolveNpmLocalSource(tempDir, resolvedHandle); local != "" {
 			source = &local
 		}
-		return resolveNpmInstallTarget(dependencies, tempDir, resolvedHandle, targetName, source)
+		if resolvedHandle == targetHandle {
+			return pm.Package{}, errors.New("cyclic npm link")
+		}
+		copied := maps.Clone(dependencies)
+		delete(copied, targetHandle)
+		return resolveNpmInstallTarget(copied, tempDir, resolvedHandle, targetName, source)
 	}
 
 	source := ""
@@ -554,7 +598,7 @@ func resolveNpmInstallTarget(
 		source = *targetSourceOverride
 	} else if resolved, ok := entry["resolved"].(string); ok {
 		switch {
-		case strings.HasPrefix(resolved, "http"), strings.HasPrefix(resolved, "git"):
+		case npmHTTPSource(resolved), strings.HasPrefix(resolved, "git"):
 			source = resolved
 		case strings.HasPrefix(resolved, npmFileURIPrefix):
 			source = resolveNpmLocalSource(tempDir, strings.TrimPrefix(resolved, npmFileURIPrefix))
@@ -573,4 +617,12 @@ func resolveNpmLocalSource(tempDir, rel string) string {
 		return ""
 	}
 	return abs
+}
+
+func insertNpmControls(args []string, controls ...string) []string {
+	index := slices.Index(args, "--")
+	if index < 0 {
+		index = len(args)
+	}
+	return slices.Insert(args, index, controls...)
 }

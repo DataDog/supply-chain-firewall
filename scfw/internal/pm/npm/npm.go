@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"slices"
 	"strings"
 	"time"
 
@@ -23,8 +22,6 @@ import (
 var npmInstallCommandAliases = []string{
 	"install", "add", "i", "in", "ins", "inst", "insta", "instal", "isnt", "isnta", "isntal", "isntall",
 }
-
-var npmDryRunSkipOptions = []string{"-h", "--help", "--dry-run", "--version"}
 
 // minNpmVersion is the oldest npm version whose `--dry-run --loglevel silly`
 // output this package relies on for resolving install targets.
@@ -44,6 +41,9 @@ func resolveNpmVersion(ctx context.Context, executable string) (pm.Version, erro
 var NpmExecutableNames = []string{"npm"}
 
 type Npm struct {
+	artifacts      map[pm.Package][]npmArtifact
+	mapArtifactURL func(string) (string, error)
+
 	executable         string
 	version            pm.Version
 	versionErr         error
@@ -102,28 +102,23 @@ func (npm Npm) RunCommand(ctx context.Context, command []string) error {
 }
 
 func (npm Npm) ResolveInstallTargets(ctx context.Context, command []string) (*pm.Set[pm.Package], error) {
-	// Only the install subcommand (or one of its aliases) is supported for now.
-	if !slices.ContainsFunc(command, func(tok string) bool { return slices.Contains(npmInstallCommandAliases, tok) }) {
+	if e := npmCommandError(command); e != nil {
+		return nil, e
+	}
+	if !npmInstallCommandSupported(command) {
 		return pm.NewSet[pm.Package](), nil
 	}
-
 	if err := npm.checkVersion(); err != nil {
 		return nil, err
 	}
-
-	// The presence of these options prevents the command from actually running.
-	for _, opt := range npmDryRunSkipOptions {
-		if slices.Contains(command, opt) {
-			return pm.NewSet[pm.Package](), nil
-		}
-	}
-
 	proj, err := newNpmTempProject(ctx, npm.Executable())
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve npm installation targets: %w", err)
 	}
 	defer proj.cleanup()
 	proj.resolvePublishDate = npm.packagePublishDate
+	proj.artifacts = npm.artifacts
+	proj.mapArtifactURL = npm.mapArtifactURL
 
 	return proj.resolveInstallCommandTargets(ctx, command)
 }

@@ -1,0 +1,19 @@
+{
+  "project/registry-root": {
+    "name": "root",
+    "version": "1.0.0",
+    "dependencies": {
+      "fixture": "1.0.0"
+    }
+  },
+  "project/workspaces": {
+    "name": "root",
+    "version": "1.0.0",
+    "workspaces": [
+      "packages/*"
+    ]
+  },
+  "project/workspace": {
+    "name": "workspace"
+  }
+}

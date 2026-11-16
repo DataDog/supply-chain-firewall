@@ -139,13 +139,16 @@ func rawTar(entries ...[]byte) []byte {
 func TestInspectTarballExtendedHeaders(t *testing.T) {
 	widget := readNpmFixture(t, "manifest/widget.json")
 	for name, data := range map[string][]byte{
-		"single PAX path":      rawTar(rawTarEntry("x", tar.TypeXHeader, paxRecord("path", "package/package.json")), rawTarEntry("short", tar.TypeReg, widget)),
+		"single PAX path": rawTar(rawTarEntry("x", tar.TypeXHeader, paxRecord("path", "package/package.json")), rawTarEntry("short", tar.TypeReg, widget)),
+		// git archive (GitHub codeload, GitLab) writes a global comment header,
+		// and a local PAX header for this fixture's long file name.
+		"git archive":          []byte(readNpmFixture(t, "git-archive.tar.gz")),
 		"single GNU long name": rawTar(rawTarEntry("././@LongLink", tar.TypeGNULongName, "package/package.json\x00"), rawTarEntry("short", tar.TypeReg, widget)),
 	} {
 		t.Run(name, func(t *testing.T) {
 			artifact, found, err := inspect(t, data)
-			if err != nil || !found || artifact.Name != "@acme/widget" {
-				t.Fatalf("inspectTarball() = %+v, %v, %v; want @acme/widget", artifact, found, err)
+			if err != nil || !found || (artifact.Name != "@acme/widget" && artifact.Name != "git-archived") {
+				t.Fatalf("inspectTarball() = %+v, %v, %v; want the archived manifest", artifact, found, err)
 			}
 		})
 	}
@@ -157,6 +160,8 @@ func TestInspectTarballExtendedHeaders(t *testing.T) {
 			rawTarEntry("x", tar.TypeXHeader, paxRecord("path", "package/package.json")), rawTarEntry("package/ignored", tar.TypeReg, widget)),
 		// node-tar ignores a PAX path containing a newline.
 		"PAX path with newline": rawTar(rawTarEntry("x", tar.TypeXHeader, paxRecord("path", "package/ignored\nmore")), rawTarEntry("package/package.json", tar.TypeReg, widget)),
+		"global PAX linkpath":   rawTar(rawTarEntry("g", tar.TypeXGlobalHeader, paxRecord("linkpath", "package/package.json")), rawTarEntry("package/package.json", tar.TypeReg, widget)),
+		"global PAX size":       rawTar(rawTarEntry("g", tar.TypeXGlobalHeader, paxRecord("size", "1")), rawTarEntry("package/package.json", tar.TypeReg, widget)),
 		"global PAX header":     rawTar(rawTarEntry("g", tar.TypeXGlobalHeader, paxRecord("path", "package/package.json")), rawTarEntry("package/ignored", tar.TypeReg, widget)),
 		// node-tar skips an invalid first block and reads the header after it.
 		"invalid block before header": append(bytes.Repeat([]byte{0x78}, 512), rawTar(rawTarEntry("package/package.json", tar.TypeReg, widget))...),

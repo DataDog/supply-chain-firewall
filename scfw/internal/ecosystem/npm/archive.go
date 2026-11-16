@@ -158,11 +158,13 @@ func (r *headerRecorder) Read(buffer []byte) (int, error) {
 
 // check validates the header blocks read since the previous entry's data.
 func (r *headerRecorder) check(header *tar.Header) error {
+	if header.Typeflag == tar.TypeXGlobalHeader {
+		// Go returns it after reading only its records, mid-block; keep
+		// recording so its blocks are checked with the next entry.
+		return nil
+	}
 	recorded := r.recorded
 	r.recorded, r.mark = nil, r.offset+(header.Size+tarBlock-1)/tarBlock*tarBlock
-	if header.Typeflag == tar.TypeXGlobalHeader {
-		return errors.New("npm tar archive has a global PAX header")
-	}
 	extensions, pax, gnu := 0, false, false
 	for len(recorded) > tarBlock {
 		block := recorded[:tarBlock]
@@ -171,17 +173,38 @@ func (r *headerRecorder) check(header *tar.Header) error {
 		if block[124]&0x80 != 0 || err != nil || size < 0 || size > int64(len(recorded)) {
 			return errors.New("invalid npm tar extended header")
 		}
+		next := min(tarBlock+(size+tarBlock-1)/tarBlock*tarBlock, int64(len(recorded)))
 		switch block[156] {
+		case tar.TypeXGlobalHeader:
+			// git archive writes one with only a commit comment. node-tar applies
+			// other global records to later entries and Go applies none.
+			err := walkPAXRecords(recorded[tarBlock:tarBlock+size], func(key, _ string) error {
+				if key != "comment" {
+					return errors.New("npm tar archive has a global PAX header")
+				}
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			recorded = recorded[next:]
+			continue
 		case tar.TypeXHeader:
 			pax = true
-			if err := checkPAXPaths(recorded[tarBlock : tarBlock+size]); err != nil {
+			err := walkPAXRecords(recorded[tarBlock:tarBlock+size], func(key, value string) error {
+				if (key == "path" || key == "linkpath") && strings.ContainsAny(value, "\n\x00") {
+					return errors.New("npm tar PAX path contains a newline or NUL")
+				}
+				return nil
+			})
+			if err != nil {
 				return err
 			}
 		case tar.TypeGNULongName, tar.TypeGNULongLink:
 			gnu = true
 		}
 		extensions++
-		recorded = recorded[min(tarBlock+(size+tarBlock-1)/tarBlock*tarBlock, int64(len(recorded))):]
+		recorded = recorded[next:]
 	}
 	if extensions > 1 || (pax && gnu) {
 		return errors.New("ambiguous npm tar extended headers")
@@ -189,7 +212,7 @@ func (r *headerRecorder) check(header *tar.Header) error {
 	return nil
 }
 
-func checkPAXPaths(records []byte) error {
+func walkPAXRecords(records []byte, visit func(key, value string) error) error {
 	for len(records) > 0 {
 		lengthField, _, found := bytes.Cut(records, []byte(" "))
 		length, err := strconv.Atoi(string(lengthField))
@@ -197,8 +220,8 @@ func checkPAXPaths(records []byte) error {
 			return errors.New("invalid npm tar PAX record")
 		}
 		key, value, _ := strings.Cut(string(records[len(lengthField)+1:length-1]), "=")
-		if (key == "path" || key == "linkpath") && strings.ContainsAny(value, "\n\x00") {
-			return errors.New("npm tar PAX path contains a newline or NUL")
+		if err := visit(key, value); err != nil {
+			return err
 		}
 		records = records[length:]
 	}

@@ -67,9 +67,34 @@ func npmTarball(t *testing.T) []byte {
 // tarball dependency does.
 const npmDirectTarballPath = "/downloads/lab-pkg.tgz"
 
+// npmGitArchivePath serves lab-pkg as GitHub codeload and GitLab do: a
+// git archive with a global PAX comment header.
+const npmGitArchivePath = "/downloads/lab-pkg-git.tar.gz"
+
+func npmGitArchive(t *testing.T) []byte {
+	t.Helper()
+	dir := t.TempDir()
+	for _, name := range []string{"package.json", "index.js"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(readProxyFixture(t, filepath.Join("npm", "package", name))), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}, {"-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-qm", "lab"}} {
+		if output, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, output)
+		}
+	}
+	archive, err := exec.Command("git", "-C", dir, "archive", "--format=tar.gz", "--prefix=lab-pkg-0123abc/", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return archive
+}
+
 func startNpmRegistry(t *testing.T) *npmTestRegistry {
 	t.Helper()
 	tarball := npmTarball(t)
+	gitArchive := npmGitArchive(t)
 	digest := sha512.Sum512(tarball)
 	integrity := "sha512-" + base64.StdEncoding.EncodeToString(digest[:])
 	packument := readProxyFixture(t, "npm/packument.json.tmpl")
@@ -79,6 +104,10 @@ func startNpmRegistry(t *testing.T) *npmTestRegistry {
 		case "/lab-pkg":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprintf(w, packument, registry.URL+"/lab-pkg/-/lab-pkg-1.0.0.tgz", integrity)
+		case npmGitArchivePath:
+			registry.TarballHits.Add(1)
+			w.Header().Set("Content-Type", "application/x-gzip")
+			_, _ = w.Write(gitArchive)
 		case "/lab-pkg/-/lab-pkg-1.0.0.tgz", npmDirectTarballPath:
 			registry.TarballHits.Add(1)
 			w.Header().Set("Content-Type", "application/octet-stream")
@@ -228,6 +257,9 @@ func TestNpmProxyEndToEnd(t *testing.T) {
 	}{
 		// npm fetches a direct tarball once to read its manifest and again to unpack it.
 		{name: "url-allow", args: directTarballArgs, outcome: evaluation.OutcomeAllow, hits: 2, calls: 1, direct: true},
+		{name: "git-archive-allow", args: func(registry *npmTestRegistry, _ string) []string {
+			return []string{"install", registry.URL + npmGitArchivePath}
+		}, outcome: evaluation.OutcomeAllow, hits: 2, calls: 1},
 		{name: "url-block", args: directTarballArgs, outcome: evaluation.OutcomeBlock, hits: 1, calls: 1, failed: true, direct: true},
 		{name: "url-ci-block", args: func(*npmTestRegistry, string) []string { return []string{"ci"} },
 			prepare: seedNpmDirectLockfile, outcome: evaluation.OutcomeBlock, hits: 1, calls: 1, failed: true, direct: true},

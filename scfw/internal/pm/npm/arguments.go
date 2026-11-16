@@ -13,7 +13,8 @@ type npmOption struct {
 
 // Inspect only settings consumed by proxy routing, trust, registries, and
 // configuration discovery. Options accept --name value or --name=value; -C and
-// -g are the prefix and global shorthands. Abbreviations are not expanded: npm
+// -g are the prefix and global shorthands, and -g may sit in a group of npm's
+// single-letter shorthands such as -gD. Abbreviations are not expanded: npm
 // deprecates them, and a missed one leaves SCFW without the user's upstream,
 // which fails rather than bypassing SCFW.
 func parseNpmOptions(args []string) []npmOption {
@@ -26,6 +27,12 @@ func parseNpmOptions(args []string) []npmOption {
 		if !strings.HasPrefix(argument, "-") {
 			continue
 		}
+		if isNpmShorthandGroup(argument) {
+			if strings.Contains(argument, "g") {
+				options = append(options, npmOption{name: "global", value: "true"})
+			}
+			continue
+		}
 		name, value, supplied := strings.Cut(strings.TrimLeft(argument, "-"), "=")
 		name = canonicalNpmOption(argument, name)
 		switch {
@@ -35,12 +42,11 @@ func parseNpmOptions(args []string) []npmOption {
 			flag, negated := strings.CutPrefix(name, "no-")
 			enabled := !negated
 			switch {
-			case negated:
 			case supplied:
-				enabled = value != "false"
+				enabled = (value != "false") != negated
 			case index+1 < len(args) && (args[index+1] == "true" || args[index+1] == "false"):
 				index++
-				enabled = args[index] == "true"
+				enabled = args[index] == "true" && !negated
 			}
 			name, value = flag, "true"
 			if !enabled {
@@ -76,16 +82,25 @@ func parseNpmOptions(args []string) []npmOption {
 }
 
 func canonicalNpmOption(argument, name string) string {
-	switch argument {
-	case "-C":
+	if strings.HasPrefix(argument, "--") {
+		return name
+	}
+	switch name {
+	case "C":
 		return "prefix"
-	case "-g":
+	case "g":
 		return "global"
 	}
-	if !strings.HasPrefix(argument, "--") {
-		return ""
-	}
-	return name
+	return ""
+}
+
+// npmShorthandLetters are npm's single-letter shorthands, which npm combines
+// in one argument only when every letter is one of them.
+const npmShorthandLetters = "?BCDEHLOPSacdfghlmnpqsvwy"
+
+func isNpmShorthandGroup(argument string) bool {
+	letters, found := strings.CutPrefix(argument, "-")
+	return found && len(letters) > 1 && strings.Trim(letters, npmShorthandLetters) == ""
 }
 
 func isNpmValueOption(name string) bool {

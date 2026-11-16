@@ -337,6 +337,34 @@ func TestSettingsSkipsProjectNpmrcForGlobal(t *testing.T) {
 	})
 }
 
+func TestMatchSegment(t *testing.T) {
+	for _, test := range []struct {
+		pattern, name string
+		want          bool
+	}{
+		{"a[", "a[", true},
+		{"[", "[", true},
+		{"[!a]b", "cb", true},
+		{"[!a]b", "ab", false},
+		{"[a!]", "!", true},
+		{"[a!]", "b", false},
+		{"@(a", "a", false},
+		{"@(a|b)c", "bc", true},
+		{"@(a|@(b|c))", "c", true},
+		{"+(ab)", "abab", true},
+		{"?(ab)", "", true},
+		{"!(a)", "b", false},
+		{`a\*`, "a*", true},
+		{`a\*`, "ab", false},
+	} {
+		t.Run(test.pattern+" on "+test.name, func(t *testing.T) {
+			if got := matchSegment(test.pattern, test.name); got != test.want {
+				t.Fatalf("matchSegment(%q, %q) = %v, want %v", test.pattern, test.name, got, test.want)
+			}
+		})
+	}
+}
+
 // writeNpmWorkspace lays out a root with the given package.json beside members
 // that each carry their own .npmrc, so the proxy read back names the directory
 // whose configuration was used.
@@ -399,7 +427,14 @@ func TestSettingsProjectLocationInWorkspaces(t *testing.T) {
 		{name: "zero-padded range", workspaces: `["packages/v{01..03}"]`, cwd: "packages/v2", want: "packages/v2"},
 		{name: "multi-digit range", workspaces: `["packages/v{9..11}"]`, cwd: "packages/v10", want: "root"},
 		{name: "oversized range stays literal", workspaces: `["packages/v{1..99999}"]`, cwd: "packages/v2", want: "packages/v2"},
-		{name: "letter range",workspaces: `["packages/{a..b}pp"]`, cwd: "packages/app", want: "root"},
+		{name: "@() extglob", workspaces: `["packages/@(app|lib)"]`, cwd: "packages/app", want: "root"},
+		{name: "@() extglob not listed", workspaces: `["packages/@(lib|web)"]`, cwd: "packages/app", want: "packages/app"},
+		{name: "+() extglob", workspaces: `["packages/+(a|p)"]`, cwd: "packages/app", want: "root"},
+		{name: "?() extglob", workspaces: `["packages/ap?(p)"]`, cwd: "packages/app", want: "root"},
+		{name: "*() extglob", workspaces: `["packages/a*(p)"]`, cwd: "packages/app", want: "root"},
+		// npm matches everything but lib; SCFW does not support !() and treats it as no match.
+		{name: "!() extglob is not supported", workspaces: `["packages/!(lib)"]`, cwd: "packages/app", want: "packages/app"},
+		{name: "letter range", workspaces: `["packages/{a..b}pp"]`, cwd: "packages/app", want: "root"},
 		// npm refuses to run with these, so they only need to declare no workspaces.
 		{name: "bare string workspaces", workspaces: `"packages/*"`, cwd: "packages/app", want: "packages/app"},
 		{name: "workspaces true", workspaces: `true`, cwd: "packages/app", want: "packages/app"},

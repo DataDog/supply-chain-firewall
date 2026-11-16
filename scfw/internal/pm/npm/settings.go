@@ -370,12 +370,105 @@ func matchSegments(pattern, path []string) bool {
 		if len(path) == 0 || strings.HasPrefix(path[0], ".") && !strings.HasPrefix(pattern[0], ".") {
 			return false
 		}
-		if matched, err := filepath.Match(pattern[0], path[0]); err != nil || !matched {
+		if !matchSegment(pattern[0], path[0]) {
 			return false
 		}
 		pattern, path = pattern[1:], path[1:]
 	}
 	return len(path) == 0
+}
+
+// matchSegment matches one path segment against a glob segment: *, ?, [...]
+// and the extglobs @(a|b), ?(a|b), +(a|b) and *(a|b). The !(a|b) extglob is
+// not supported and never matches.
+func matchSegment(pattern, name string) bool {
+	expression, ok := globRegexp(pattern)
+	if !ok {
+		return false
+	}
+	matched, err := regexp.MatchString("^(?:"+expression+")$", name)
+	return err == nil && matched
+}
+
+// globRegexp translates a glob segment to a regular expression, and reports
+// false for a form it does not support.
+func globRegexp(pattern string) (string, bool) {
+	var expression strings.Builder
+	for index := 0; index < len(pattern); index++ {
+		char := pattern[index]
+		if index+1 < len(pattern) && pattern[index+1] == '(' && strings.IndexByte("@?+*!", char) >= 0 {
+			alternatives, end := extglobAlternatives(pattern, index+1)
+			if char == '!' || end < 0 {
+				return "", false
+			}
+			for position, alternative := range alternatives {
+				translated, ok := globRegexp(alternative)
+				if !ok {
+					return "", false
+				}
+				alternatives[position] = translated
+			}
+			fmt.Fprintf(&expression, "(?:%s)%s", strings.Join(alternatives, "|"), strings.TrimPrefix(string(char), "@"))
+			index = end
+			continue
+		}
+		switch char {
+		case '*':
+			expression.WriteString("[^/]*")
+		case '?':
+			expression.WriteString("[^/]")
+		case '[':
+			// A ] right after the opening [ belongs to the class.
+			end := -1
+			if index+2 <= len(pattern) {
+				end = strings.IndexByte(pattern[index+2:], ']')
+			}
+			if end < 0 {
+				expression.WriteString(`\[`)
+				continue
+			}
+			class := strings.NewReplacer(`\`, `\\`, "[", `\[`).Replace(pattern[index+1 : index+2+end])
+			if rest, negated := strings.CutPrefix(class, "!"); negated {
+				class = "^" + rest
+			}
+			fmt.Fprintf(&expression, "[%s]", class)
+			index += end + 2
+		case '\\':
+			if index+1 < len(pattern) {
+				index++
+			}
+			expression.WriteString(regexp.QuoteMeta(pattern[index : index+1]))
+		default:
+			expression.WriteString(regexp.QuoteMeta(pattern[index : index+1]))
+		}
+	}
+	return expression.String(), true
+}
+
+// extglobAlternatives splits the parenthesized group opening at open into its
+// top-level | alternatives and returns the index of its closing parenthesis,
+// or -1 when it is unterminated.
+func extglobAlternatives(pattern string, open int) ([]string, int) {
+	var alternatives []string
+	depth, start := 0, open+1
+	for index := open; index < len(pattern); index++ {
+		switch pattern[index] {
+		case '\\':
+			index++
+		case '(':
+			depth++
+		case '|':
+			if depth == 1 {
+				alternatives = append(alternatives, pattern[start:index])
+				start = index + 1
+			}
+		case ')':
+			if depth--; depth == 0 {
+				return append(alternatives, pattern[start:index]), index
+			}
+		}
+	}
+	return nil, -1
 }
 
 // expandNpmPath resolves an npm path setting: a leading ~ is the home

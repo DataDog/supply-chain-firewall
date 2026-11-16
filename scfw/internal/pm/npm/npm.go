@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -41,10 +42,13 @@ func resolveNpmVersion(ctx context.Context, executable string) (pm.Version, erro
 	return pm.ParseVersion(strings.TrimSpace(string(output)))
 }
 
-var NpmExecutableNames = []string{"npm"}
+var NpmExecutableNames = []string{"npm", "npx"}
 
 type Npm struct {
-	executable         string
+	executable string
+	// npx runs `npm exec`, whose command line ends where the command it runs
+	// begins; see npxOptionsEnd.
+	npx                bool
 	version            pm.Version
 	versionErr         error
 	resolvePublishDate func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error)
@@ -72,7 +76,7 @@ func NewNpm(ctx context.Context, name, executable string) (Npm, error) {
 	// actually need the version, not every use of this npm executable.
 	version, versionErr := resolveNpmVersion(ctx, executable)
 
-	return Npm{executable: executable, version: version, versionErr: versionErr}, nil
+	return Npm{executable: executable, npx: filepath.Base(name) == "npx", version: version, versionErr: versionErr}, nil
 }
 
 func (npm Npm) checkVersion() error {
@@ -102,6 +106,11 @@ func (npm Npm) RunCommand(ctx context.Context, command []string) error {
 }
 
 func (npm Npm) ResolveInstallTargets(ctx context.Context, command []string) (*pm.Set[pm.Package], error) {
+	// npx is only inspected through the proxy: its arguments are not npm's.
+	if npm.npx {
+		return pm.NewSet[pm.Package](), nil
+	}
+
 	// Only the install subcommand (or one of its aliases) is supported for now.
 	if !slices.ContainsFunc(command, func(tok string) bool { return slices.Contains(npmInstallCommandAliases, tok) }) {
 		return pm.NewSet[pm.Package](), nil

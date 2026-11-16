@@ -155,6 +155,36 @@ func TestNewNpm_LocalExecutableFixture(t *testing.T) {
 	}
 }
 
+func TestNewNpmDetectsNpx(t *testing.T) {
+	fixtureNpm(t)
+	for name, want := range map[string]bool{"npx": true, "/usr/local/bin/npx": true, "npm": false} {
+		manager, err := NewNpm(context.Background(), name, os.Args[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if manager.npx != want {
+			t.Fatalf("NewNpm(%q).npx = %v, want %v", name, manager.npx, want)
+		}
+	}
+	if !slices.Contains(NpmExecutableNames, "npx") {
+		t.Fatalf("NpmExecutableNames = %q, want npx included", NpmExecutableNames)
+	}
+}
+
+// Without the proxy npx is not inspected; npx's arguments are not npm's.
+func TestNpxResolvesNoInstallTargets(t *testing.T) {
+	manager := fixtureNpm(t)
+	manager.npx = true
+	chdirT(t, fixtureNpmProject(t))
+	targets, err := manager.ResolveInstallTargets(context.Background(), []string{"install", "react@18.3.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if targets.Len() != 0 {
+		t.Fatalf("npx resolved %d targets", targets.Len())
+	}
+}
+
 func TestNpmResolveInstallTargets_GatingWithLocalFixture(t *testing.T) {
 	npm := fixtureNpm(t)
 	chdirT(t, fixtureNpmProject(t))

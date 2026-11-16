@@ -158,6 +158,7 @@ When inspecting package manager commands, Datadog credentials and the Datadog si
 |  Package manager  |   Supported versions  |        Inspected subcommands       |
 | :---------------: | :-------------------: | :--------------------------------: |
 | npm               | >= 7.0                | `install` (including aliases)      |
+| npx (proxy mode)  | >= 7.0                | every invocation                   |
 | pip               | >= 22.2               | `install`                          |
 | poetry            | >= 2.0                | `add`, `install`, `sync`, `update` |
 | uv (proxy mode)   | 0.13.4 tested         | `pip install`, `pip sync`, `pip compile`, `add`, `remove`, `sync`, `lock`, `export`, `tree`, `build`, `tool install`, `tool upgrade`, `tool run`/`uvx`, version updates, `venv --seed` |

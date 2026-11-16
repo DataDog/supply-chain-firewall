@@ -145,6 +145,29 @@ func TestUpstreamProxyMatchesSettings(t *testing.T) {
 	}
 }
 
+func TestNpxSettingsIgnoreCommandArguments(t *testing.T) {
+	manager := isolatedNpm(t)
+	manager.npx = true
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"option of the command", []string{"cowsay", "--https-proxy=http://child:1"}, ""},
+		{"option of npx", []string{"--https-proxy=http://corp:1", "cowsay"}, "http://corp:1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			config, err := manager.UpstreamProxy(test.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if config.HTTPSProxy != test.want {
+				t.Fatalf("HTTPSProxy = %q, want %q", config.HTTPSProxy, test.want)
+			}
+		})
+	}
+}
+
 // Only the proxies npm selects are validated: npm never parses the others.
 func TestUnusedInvalidProxyVariablesAreIgnored(t *testing.T) {
 	for _, unused := range [][2]string{{"http_proxy", "corp:8080"}, {"PROXY", "not a url"}} {

@@ -42,6 +42,9 @@ type npmConfig = nodeproxy.Config
 
 func (npm Npm) settings(args []string) (npmDiscoveryResult, error) {
 	environ := os.Environ()
+	if npm.npx {
+		args = args[:npxOptionsEnd(args)]
+	}
 	layers, err := readNpmConfig(args, environ)
 	if err != nil {
 		return npmDiscoveryResult{}, err

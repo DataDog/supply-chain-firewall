@@ -69,6 +69,32 @@ func TestProxyCommandAppendsFlagsWithoutSeparator(t *testing.T) {
 	}
 }
 
+// npx hands everything after the package name to the command it runs, so
+// SCFW's options must come before it and the command's own stay untouched.
+func TestProxyCommandInsertsNpxFlagsBeforePackage(t *testing.T) {
+	config, pem := testClientConfig(t)
+	command := []string{"--yes", "http-server", "--proxy", "http://x", "--noproxy=y"}
+	spec, err := Npm{executable: "/bin/npx", npx: true}.ProxyCommand(context.Background(), command, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := slices.Concat([]string{"--yes"}, scfwFlags(config, pem), []string{"http-server", "--proxy", "http://x", "--noproxy=y"})
+	if !slices.Equal(spec.Args, want) {
+		t.Fatalf("args = %q, want %q", spec.Args, want)
+	}
+}
+
+func TestProxyCommandDropsNpxNoproxyOptions(t *testing.T) {
+	config, pem := testClientConfig(t)
+	spec, err := Npm{executable: "/bin/npx", npx: true}.ProxyCommand(context.Background(), []string{"--noproxy=a", "cowsay"}, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := slices.Concat(scfwFlags(config, pem), []string{"cowsay"}); !slices.Equal(spec.Args, want) {
+		t.Fatalf("args = %q, want %q", spec.Args, want)
+	}
+}
+
 func TestProxyCommandDropsUserNoproxyOptions(t *testing.T) {
 	config, pem := testClientConfig(t)
 	command := []string{"install", "--noproxy=a.test", "x", "--noproxy", "b.test", "--", "--noproxy=c.test"}
@@ -426,6 +452,21 @@ func realNpm(t *testing.T) Npm {
 func TestNpmHelpRunsThroughProxy(t *testing.T) {
 	manager := realNpm(t)
 	for _, args := range [][]string{{"help"}, {"install", "--help"}, {"--version"}} {
+		commandErr, setupErr := proxy.Run(context.Background(), proxy.Options{}, args, manager)
+		if commandErr != nil || setupErr != nil {
+			t.Fatalf("%q failed: command=%v setup=%v", args, commandErr, setupErr)
+		}
+	}
+}
+
+func TestNpxRunsThroughProxy(t *testing.T) {
+	executable, err := exec.LookPath("npx")
+	if err != nil {
+		t.Skip("npx required for npx integration tests")
+	}
+	manager := realNpm(t)
+	manager.executable, manager.npx = executable, true
+	for _, args := range [][]string{{"--version"}, {"--help"}} {
 		commandErr, setupErr := proxy.Run(context.Background(), proxy.Options{}, args, manager)
 		if commandErr != nil || setupErr != nil {
 			t.Fatalf("%q failed: command=%v setup=%v", args, commandErr, setupErr)

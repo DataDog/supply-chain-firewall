@@ -122,7 +122,13 @@ func (npm Npm) ProxyCommand(_ context.Context, command []string, config proxy.Cl
 	if err != nil {
 		return proxy.CommandSpec{}, errors.New("read proxy CA certificate")
 	}
-	args := withoutNoproxyOptions(command)
+	// npx hands everything after its own options to the command it runs.
+	head, tail := command, []string(nil)
+	if npm.npx {
+		end := npxOptionsEnd(command)
+		head, tail = command[:end], command[end:]
+	}
+	args := withoutNoproxyOptions(head)
 	// npm applies the last occurrence of an option, and command-line options
 	// take precedence over environment and .npmrc settings. The PEM uses the
 	// "=" form because, as a separate argument, it would start with dashes.
@@ -134,6 +140,7 @@ func (npm Npm) ProxyCommand(_ context.Context, command []string, config proxy.Cl
 		"--https-proxy="+config.URL, "--proxy="+config.URL, "--noproxy="+npmNoProxySentinel,
 		"--cafile="+config.CACertificatePath, "--ca="+string(pem),
 	)
+	args = append(args, tail...)
 	overrides := proxyEnvironmentOverrides(os.Environ(), config, string(pem))
 	// Lifecycle scripts ignore the proxy variables unless NODE_USE_ENV_PROXY is
 	// set, so they may still connect directly and need the user's own CAs.

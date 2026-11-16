@@ -69,3 +69,34 @@ func TestParseNpmOptions(t *testing.T) {
 		})
 	}
 }
+
+func TestWithoutGlobalOptions(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{"short flag", []string{"install", "-g", "react"}, []string{"install", "react"}},
+		{"long flag", []string{"install", "--global", "react"}, []string{"install", "react"}},
+		{"long flag then false", []string{"install", "--global", "false", "react"}, []string{"install", "react"}},
+		{"short flag then true", []string{"install", "-g", "true", "react"}, []string{"install", "react"}},
+		{"no-global then false", []string{"install", "--no-global", "false", "react"}, []string{"install", "react"}},
+		{"assigned values", []string{"install", "-g=true", "--global=false", "--no-global=1", "react"}, []string{"install", "react"}},
+		{"group -gD", []string{"install", "-gD", "react"}, []string{"install", "-D", "react"}},
+		{"group -Dg", []string{"install", "-Dg", "react"}, []string{"install", "-D", "react"}},
+		{"group with a value letter", []string{"install", "-gC", "/tmp", "react"}, []string{"install", "-C", "/tmp", "react"}},
+		{"group of only g", []string{"install", "-gg", "react"}, []string{"install", "react"}},
+		{"not a group", []string{"install", "-gx", "react"}, []string{"install", "-gx", "react"}},
+		{"after separator", []string{"exec", "--", "node", "-g"}, []string{"exec", "--", "node", "-g"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			original := slices.Clone(test.args)
+			if got := withoutGlobalOptions(test.args); !slices.Equal(got, test.want) {
+				t.Fatalf("withoutGlobalOptions(%q) = %q, want %q", test.args, got, test.want)
+			}
+			if !slices.Equal(test.args, original) {
+				t.Fatalf("input was mutated: %q", test.args)
+			}
+		})
+	}
+}

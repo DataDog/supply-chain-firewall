@@ -371,9 +371,7 @@ func writeNpmJSONFile(path string, content map[string]any) error {
 func (p *npmTempProject) resolveInstallCommandTargets(ctx context.Context, command []string) (*pm.Set[pm.Package], error) {
 	// Global installs don't touch this temporary project's node_modules, so
 	// coerce them into local ones to resolve their targets here instead.
-	localCommand := slices.DeleteFunc(slices.Clone(command), func(tok string) bool {
-		return tok == "-g" || tok == "--global"
-	})
+	localCommand := withoutGlobalOptions(command)
 
 	dryRunArgs := append(slices.Clone(localCommand), "--dry-run", "--loglevel", "silly")
 	dryRunCmd := exec.CommandContext(ctx, p.executable, dryRunArgs...)

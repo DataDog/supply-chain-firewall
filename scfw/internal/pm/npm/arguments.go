@@ -94,6 +94,34 @@ func canonicalNpmOption(argument, name string) string {
 	return ""
 }
 
+// withoutGlobalOptions removes every spelling of the global flag that
+// parseNpmOptions recognizes, along with the true or false literal it
+// consumes, so a global command can be dry-run as a local one.
+func withoutGlobalOptions(command []string) []string {
+	args := make([]string, 0, len(command))
+	for index := 0; index < len(command); index++ {
+		argument := command[index]
+		if argument == "--" {
+			return append(args, command[index:]...)
+		}
+		if isNpmShorthandGroup(argument) {
+			if rest := strings.ReplaceAll(argument, "g", ""); rest != "-" {
+				args = append(args, rest)
+			}
+			continue
+		}
+		name, _, supplied := strings.Cut(strings.TrimLeft(argument, "-"), "=")
+		if name = canonicalNpmOption(argument, name); name != "global" && name != "no-global" {
+			args = append(args, argument)
+			continue
+		}
+		if !supplied && index+1 < len(command) && (command[index+1] == "true" || command[index+1] == "false") {
+			index++
+		}
+	}
+	return args
+}
+
 // npmShorthandLetters are npm's single-letter shorthands, which npm combines
 // in one argument only when every letter is one of them.
 const npmShorthandLetters = "?BCDEHLOPSacdfghlmnpqsvwy"

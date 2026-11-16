@@ -48,6 +48,11 @@ func runFakeNpm(fixtureDir string, args []string) int {
 		fmt.Println(cwd)
 		return 0
 	}
+	// A global dry run would not touch the temporary project, so SCFW must
+	// have turned it into a local one.
+	if slices.Contains(args, "--dry-run") && slices.Contains(parseNpmOptions(args), npmOption{"global", "true"}) {
+		return 1
+	}
 	if slices.Contains(args, "definitely-nonexistent-package-scfw-test-xyz@0.0.0-does-not-exist") {
 		return 1
 	}
@@ -162,6 +167,8 @@ func TestNpmResolveInstallTargets_GatingWithLocalFixture(t *testing.T) {
 		{name: "install", command: []string{"install", "react@18.3.0"}, hasTargets: true},
 		{name: "install alias", command: []string{"add", "react@18.3.0"}, hasTargets: true},
 		{name: "global install", command: []string{"install", "--global", "react@18.3.0"}, hasTargets: true},
+		{name: "global install shorthand group", command: []string{"install", "-gD", "react@18.3.0"}, hasTargets: true},
+		{name: "global install assigned shorthand", command: []string{"install", "-g=true", "react@18.3.0"}, hasTargets: true},
 		{name: "help", command: []string{"install", "--help", "react@18.3.0"}},
 		{name: "already dry run", command: []string{"install", "--dry-run", "react@18.3.0"}},
 		{name: "version", command: []string{"install", "--version"}},

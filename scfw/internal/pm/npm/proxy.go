@@ -7,6 +7,7 @@ package npm
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"maps"
 	"net/url"
@@ -49,22 +50,25 @@ func (npm Npm) ProxyOptions(command []string) (proxy.Options, error) {
 		ProxyForURL: npmProxyForURL(settings),
 		TrustURL:    npmTrustURL(settings.StrictSSL),
 	}
-	// npm ignores a cafile it cannot read and Node ignores an unreadable
-	// NODE_EXTRA_CA_CERTS; Git requires GIT_SSL_CAINFO, so a missing bundle fails.
-	var paths []string
-	for _, path := range []string{settings.CAFile, os.Getenv("NODE_EXTRA_CA_CERTS")} {
-		if _, err := os.Stat(path); path != "" && err == nil {
-			paths = append(paths, path)
+	// npm trusts a readable, non-empty cafile, else ca, instead of the default
+	// roots, and Node then ignores NODE_EXTRA_CA_CERTS. Git requires
+	// GIT_SSL_CAINFO, so a missing bundle fails, and it is always added.
+	tlsOptions := proxy.TLSConfigOptions{CABundlePaths: []string{os.Getenv("GIT_SSL_CAINFO")}}
+	if data, err := os.ReadFile(settings.CAFile); err == nil && len(data) > 0 {
+		tlsOptions.RootCAs = x509.NewCertPool()
+		tlsOptions.CABundlePaths = append(tlsOptions.CABundlePaths, settings.CAFile)
+	} else if len(settings.CA) > 0 {
+		tlsOptions.RootCAs = x509.NewCertPool()
+		for _, ca := range settings.CA {
+			tlsOptions.CABundlePEM = append(tlsOptions.CABundlePEM, []byte(ca))
+		}
+	} else if extra := os.Getenv("NODE_EXTRA_CA_CERTS"); extra != "" {
+		// Node ignores an unreadable bundle.
+		if _, err := os.Stat(extra); err == nil {
+			tlsOptions.CABundlePaths = append(tlsOptions.CABundlePaths, extra)
 		}
 	}
-	var pems [][]byte
-	for _, ca := range settings.CA {
-		pems = append(pems, []byte(ca))
-	}
-	options.UpstreamTLS, err = proxy.NewTLSConfig(proxy.TLSConfigOptions{
-		CABundlePaths: append(paths, os.Getenv("GIT_SSL_CAINFO")),
-		CABundlePEM:   pems,
-	})
+	options.UpstreamTLS, err = proxy.NewTLSConfig(tlsOptions)
 	return options, err
 }
 

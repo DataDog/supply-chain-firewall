@@ -319,6 +319,71 @@ func TestProxyOptionsLoadsTrustLikeNpm(t *testing.T) {
 	}
 }
 
+// As in npm, a readable cafile or else ca replaces the default roots, which
+// also drops NODE_EXTRA_CA_CERTS; the Git bundle is appended regardless.
+func TestProxyOptionsReplacesRootsLikeNpm(t *testing.T) {
+	// Read before isolatedNpm changes the working directory.
+	const registry, other = "registry", "other"
+	pems := map[string]string{registry: readNpmFixture(t, "tls/registry-ca.pem"), other: readNpmFixture(t, "tls/scfw-ca.pem")}
+	poolOf := func(t *testing.T, names ...string) *x509.CertPool {
+		pool := x509.NewCertPool()
+		for _, name := range names {
+			if !pool.AppendCertsFromPEM([]byte(pems[name])) {
+				t.Fatalf("no certificate in %s", name)
+			}
+		}
+		return pool
+	}
+	for _, test := range []struct {
+		name    string
+		prepare func(t *testing.T, registryPath, otherPath string)
+		want    []string
+	}{
+		{"cafile only", func(t *testing.T, registryPath, _ string) {
+			writeNpmFixture(t, ".npmrc", "cafile="+registryPath+"\n")
+		}, []string{registry}},
+		{"ca only", func(t *testing.T, _, _ string) { t.Setenv("npm_config_ca", pems[registry]) }, []string{registry}},
+		{"readable cafile beats ca", func(t *testing.T, registryPath, _ string) {
+			writeNpmFixture(t, ".npmrc", "cafile="+registryPath+"\n")
+			t.Setenv("npm_config_ca", pems[other])
+		}, []string{registry}},
+		{"missing cafile falls back to ca", func(t *testing.T, _, _ string) {
+			writeNpmFixture(t, ".npmrc", "cafile="+filepath.Join(t.TempDir(), "missing.pem")+"\n")
+			t.Setenv("npm_config_ca", pems[registry])
+		}, []string{registry}},
+		{"empty cafile falls back to ca", func(t *testing.T, _, _ string) {
+			empty := filepath.Join(t.TempDir(), "empty.pem")
+			writeNpmFixture(t, empty, "")
+			writeNpmFixture(t, ".npmrc", "cafile="+empty+"\n")
+			t.Setenv("npm_config_ca", pems[registry])
+		}, []string{registry}},
+		{"ca drops NODE_EXTRA_CA_CERTS", func(t *testing.T, registryPath, otherPath string) {
+			writeNpmFixture(t, ".npmrc", "cafile="+registryPath+"\n")
+			t.Setenv("NODE_EXTRA_CA_CERTS", otherPath)
+		}, []string{registry}},
+		{"GIT_SSL_CAINFO is still appended", func(t *testing.T, registryPath, otherPath string) {
+			writeNpmFixture(t, ".npmrc", "cafile="+registryPath+"\n")
+			t.Setenv("GIT_SSL_CAINFO", otherPath)
+		}, []string{registry, other}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manager := isolatedNpm(t)
+			dir := t.TempDir()
+			registryPath, otherPath := filepath.Join(dir, "registry.pem"), filepath.Join(dir, "other.pem")
+			writeNpmFixture(t, registryPath, pems[registry])
+			writeNpmFixture(t, otherPath, pems[other])
+			test.prepare(t, registryPath, otherPath)
+			options, err := manager.ProxyOptions(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !options.UpstreamTLS.RootCAs.Equal(poolOf(t, test.want...)) {
+				t.Fatalf("upstream roots differ from %v", test.want)
+			}
+		})
+	}
+}
+
 func TestProxyOptionsHonorsStrictSSLFalse(t *testing.T) {
 	target := &url.URL{Scheme: "https", Host: "registry.test"}
 	for _, test := range []struct {

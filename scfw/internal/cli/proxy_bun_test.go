@@ -538,6 +538,16 @@ func TestBunConfiguredCafile(t *testing.T) {
 // as a path relative to --cwd, joins SCFW's upstream trust. Bun 1.2 and 1.3 do
 // not read these options before the package name.
 func TestBunxUserCAAfterOptions(t *testing.T) {
+	_, unrelatedCA, _ := proxyTLSIdentity(t)
+	unrelatedPEM := string(unrelatedCA)
+	// Bun accumulates --ca values, so the registry CA is trusted in either order.
+	pemOf := func(path string) string {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
 	forEachBun(t, func(t *testing.T, minor int, executable string) {
 		if minor < 4 {
 			t.Skip("bunx options before the package name need Bun 1.4")
@@ -564,6 +574,8 @@ func TestBunxUserCAAfterOptions(t *testing.T) {
 			{"bun x overridden missing cafile", "bun", func(ca string) []string {
 				return []string{"x", "--cafile", "missing.pem", "--cafile=" + ca, "lab-pkg"}
 			}},
+			{"bun x registry ca first", "bun", func(ca string) []string { return []string{"x", "--ca", pemOf(ca), "--ca", unrelatedPEM, "lab-pkg"} }},
+			{"bunx registry ca last", "bunx", func(ca string) []string { return []string{"--ca=" + unrelatedPEM, "--ca=" + pemOf(ca), "lab-pkg"} }},
 			{"bun x overridden malformed ca", "bun", func(ca string) []string { return []string{"x", "--ca=bogus", "--cafile", ca, "lab-pkg"} }},
 		} {
 			t.Run(test.name, func(t *testing.T) {

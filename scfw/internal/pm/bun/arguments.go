@@ -169,14 +169,11 @@ func joinCwd(current, value string) string {
 	return filepath.Join(current, value)
 }
 
-// effectiveCA returns the CA options Bun uses: the last --cafile, else the
-// last --ca.
+// effectiveCA returns the CA options Bun uses: the last --cafile, else every
+// --ca, which Bun accumulates.
 func (parsed parsedCommand) effectiveCA() (cafiles, cas []string) {
 	if n := len(parsed.cafiles); n > 0 {
 		return parsed.cafiles[n-1:], nil
 	}
-	if n := len(parsed.cas); n > 0 {
-		return nil, parsed.cas[n-1:]
-	}
-	return nil, nil
+	return nil, parsed.cas
 }

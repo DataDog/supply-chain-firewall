@@ -87,11 +87,11 @@ func TestParseCommandInsertsCafileAfterSubcommand(t *testing.T) {
 	if parsed.cwd != "-project" || parsed.config != "" || parsed.insert != 0 {
 		t.Fatalf("bunx decoys: %+v", parsed)
 	}
-	// Bun uses the last --cafile, else the last --ca.
+	// Bun uses the last --cafile, else every --ca.
 	for args, want := range map[string][2]string{
 		"add --cafile=a --cafile=b x": {"b", ""},
 		"add --ca=P --cafile=a x":     {"a", ""},
-		"add --ca=P --ca=Q x":         {"", "Q"},
+		"add --ca=P --ca=Q x":         {"", "PQ"},
 	} {
 		cafiles, cas := parseCommand(4, false, strings.Fields(args)).effectiveCA()
 		if strings.Join(cafiles, "") != want[0] || strings.Join(cas, "") != want[1] {

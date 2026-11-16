@@ -61,6 +61,14 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 		case "/huge.tgz":
 			w.Header().Set("Content-Length", strconv.FormatInt(archive.MaxArtifactBytes+1, 10))
 			w.WriteHeader(http.StatusOK)
+		case "/created.tgz":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write(tarball)
+		case "/non-authoritative.tgz":
+			w.WriteHeader(http.StatusNonAuthoritativeInfo)
+			_, _ = w.Write(tarball)
+		case "/no-content.tgz":
+			w.WriteHeader(http.StatusNoContent)
 		case "/fragment.tgz":
 			http.Redirect(w, r, "/blob/abc#download", http.StatusFound)
 		case "/redirect.tgz":
@@ -89,6 +97,9 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 		{path: "/corrupt.tgz", status: http.StatusBadGateway},
 		{path: "/huge.tgz", status: http.StatusBadGateway},
 		{path: "/redirect.tgz", source: "/blob/abc", status: http.StatusOK, evaluations: 1, body: tarball},
+		{path: "/created.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
+		{path: "/non-authoritative.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
+		{path: "/no-content.tgz", block: true, status: http.StatusNoContent, body: []byte{}},
 		{path: "/fragment.tgz", source: "/blob/abc", status: http.StatusOK, evaluations: 1, body: tarball},
 	} {
 		t.Run(tc.path, func(t *testing.T) {

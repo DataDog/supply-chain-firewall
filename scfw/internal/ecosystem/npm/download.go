@@ -27,17 +27,18 @@ func urlKey(value *url.URL) string {
 
 func (h ProxyHandler) observeOpaqueTarball(ctx context.Context, response proxy.Response) (*proxy.ResponseBodyHook, error) {
 	switch status := response.StatusCode; {
-	case status == http.StatusOK:
+	case status == http.StatusPartialContent || status == http.StatusNotModified:
+		// The client may hold the rest in its cache, so inspect a full copy
+		// before forwarding the original response.
+		return nil, h.inspectFullTarball(ctx, response)
+	case status >= 200 && status < 300 && status != http.StatusNoContent && status != http.StatusResetContent:
+		// Clients unpack any successful body, not only a 200's.
 		return &proxy.ResponseBodyHook{
 			MaxBytes: archive.MaxArtifactBytes,
 			HandleFile: func(ctx context.Context, response proxy.Response, body *io.SectionReader) error {
 				return h.evaluateTarball(ctx, response, body)
 			},
 		}, nil
-	case status == http.StatusPartialContent || status == http.StatusNotModified:
-		// The client may hold the rest in its cache, so inspect a full copy
-		// before forwarding the original response.
-		return nil, h.inspectFullTarball(ctx, response)
 	case status >= 300 && status < 400:
 		if target, err := response.Request.URL.Parse(response.Header.Get("Location")); err == nil && (target.Scheme == "http" || target.Scheme == "https") {
 			h.Classifier.opaqueRedirects.Store(urlKey(target), struct{}{})

@@ -70,6 +70,48 @@ func TestParseNpmOptions(t *testing.T) {
 	}
 }
 
+// The expectations below were measured by running npx-cli.js's own option loop.
+func TestNpxOptionsEnd(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+		want int
+	}{
+		{"no arguments", nil, 0},
+		{"positional first", []string{"cowsay", "hi"}, 0},
+		{"switch", []string{"--yes", "cowsay", "--proxy", "x"}, 1},
+		{"switch shorthand", []string{"-y", "cowsay"}, 1},
+		{"package option", []string{"--package", "cowsay", "cowsay"}, 2},
+		{"package shorthand", []string{"-p", "cowsay", "cowsay"}, 2},
+		{"registry value", []string{"--registry", "https://r/", "cowsay"}, 2},
+		{"registry assigned", []string{"--registry=https://r/", "cowsay"}, 1},
+		{"registry shorthand word", []string{"--reg", "https://r/", "cowsay"}, 2},
+		{"option followed by an option", []string{"--loglevel", "--yes", "cowsay"}, 2},
+		{"loglevel shorthand", []string{"-q", "cowsay"}, 1},
+		{"call option without a command", []string{"--call", "echo hi"}, 2},
+		{"no-install", []string{"--no-install", "cowsay"}, 1},
+		{"workspaces shorthand word", []string{"--ws", "cowsay"}, 1},
+		{"workspace shorthand", []string{"-w", "a", "cowsay"}, 2},
+		{"prefix shorthand assigned", []string{"-C=/tmp", "cowsay"}, 1},
+		{"shell option", []string{"--shell", "sh", "cowsay"}, 2},
+		{"removed option takes a value", []string{"--npm", "x", "cowsay"}, 2},
+		{"removed switch", []string{"--always-spawn", "cowsay"}, 1},
+		{"removed shorthand takes a value", []string{"-n", "x", "cowsay"}, 2},
+		// npx is not aware of no-yes, so it takes the next argument as its value.
+		{"no-yes", []string{"--no-yes", "cowsay", "x"}, 2},
+		// npx expands -y=true to --yes true, which hands true to the command.
+		{"shorthand with a value", []string{"-y=true", "cowsay"}, 0},
+		{"separator", []string{"--yes", "--", "cowsay"}, 1},
+		{"options only", []string{"--yes"}, 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := npxOptionsEnd(test.args); got != test.want {
+				t.Fatalf("npxOptionsEnd(%q) = %d, want %d", test.args, got, test.want)
+			}
+		})
+	}
+}
+
 func TestWithoutGlobalOptions(t *testing.T) {
 	for _, test := range []struct {
 		name string

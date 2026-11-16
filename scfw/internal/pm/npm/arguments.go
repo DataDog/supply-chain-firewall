@@ -5,7 +5,10 @@
 
 package npm
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 type npmOption struct {
 	name, value string
@@ -93,6 +96,78 @@ func canonicalNpmOption(argument, name string) string {
 	}
 	return ""
 }
+
+// npxOptionsEnd returns the index of the first argument npx hands to the
+// command it runs: a "--" or the first positional. It ports the option loop of
+// npm's bin/npx-cli.js, including its habit of expanding a shorthand into
+// separate arguments, so that SCFW's own options land before that boundary.
+// The tables below are those of npm 11.
+func npxOptionsEnd(args []string) int {
+	type argument struct {
+		text  string
+		index int // position in args, shared by everything a shorthand expands to
+	}
+	pending := make([]argument, len(args))
+	for index, text := range args {
+		pending[index] = argument{text, index}
+	}
+	for position := 0; position < len(pending); position++ {
+		current := pending[position]
+		if current.text == "--" || !strings.HasPrefix(current.text, "-") {
+			return current.index
+		}
+		key, value, assigned := strings.Cut(strings.TrimLeft(current.text, "-"), "=")
+		if long, found := npxShorthands[key]; found {
+			expanded := strings.Fields(long)
+			if assigned {
+				expanded = append(expanded, value)
+			}
+			tokens := make([]argument, len(expanded))
+			for index, text := range expanded {
+				tokens[index] = argument{text, current.index}
+			}
+			pending = slices.Replace(pending, position, position+1, tokens...)
+			position--
+			continue
+		}
+		if !assigned && !slices.Contains(npxSwitches, key) &&
+			(slices.Contains(npxValueOptions, key) || position+1 == len(pending) || !strings.HasPrefix(pending[position+1].text, "-")) {
+			position++ // the next argument is this option's value
+		}
+	}
+	return len(args)
+}
+
+// npxShorthands are npm's shorthands, minus n, which npx removed, and p, which
+// npx maps to --package before looking at them.
+var npxShorthands = map[string]string{
+	"d": "--loglevel info", "q": "--loglevel warn", "s": "--loglevel silent", "a": "--all", "c": "--call",
+	"f": "--force", "g": "--global", "L": "--location", "l": "--long", "m": "--message", "C": "--prefix",
+	"S": "--save", "B": "--save-bundle", "D": "--save-dev", "E": "--save-exact", "O": "--save-optional",
+	"P": "--save-prod", "?": "--usage", "H": "--usage", "h": "--usage", "v": "--version", "w": "--workspace",
+	"y": "--yes", "enjoy-by": "--before", "dd": "--loglevel verbose", "ddd": "--loglevel silly",
+	"quiet": "--loglevel warn", "silent": "--loglevel silent", "verbose": "--loglevel verbose",
+	"desc": "--description", "help": "--usage", "local": "--no-global", "no": "--no-yes",
+	"porcelain": "--parseable", "readonly": "--read-only", "reg": "--registry",
+	"iwr": "--include-workspace-root", "ws": "--workspaces",
+}
+
+// npxSwitches take no value: npm's boolean options, which npx reads from
+// @npmcli/config, and the switches npx adds or removed.
+var npxSwitches = strings.Fields(`all allow-same-version allow-scripts-pending allow-scripts-pin audit
+	bin-links browser bypass-2fa color commit-hooks dangerously-allow-all-scripts description dev
+	diff-ignore-all-space diff-name-only diff-no-prefix diff-text dry-run engine-strict expect-results force
+	foreground-scripts format-package-lock fund git-tag-version global global-style if-present ignore-scripts
+	include-attestations include-staged include-workspace-root init-private install-links json legacy-bundling
+	legacy-peer-deps link long offline omit-lockfile-registry-resolved optional package-lock package-lock-only
+	packages-all parseable prefer-dedupe prefer-offline prefer-online production progress provenance read-only
+	rebuild-bundle save save-bundle save-dev save-exact save-optional save-peer save-prod shrinkwrap
+	sign-git-commit sign-git-tag strict-allow-scripts strict-peer-deps strict-ssl timing unicode update-notifier
+	usage version versions workspaces workspaces-update yes
+	always-spawn ignore-existing shell-auto-fallback no-install`)
+
+// npxValueOptions always take a value, even when it starts with a dash.
+var npxValueOptions = strings.Fields("npm node-arg n package p cache userconfig call shell")
 
 // withoutGlobalOptions removes every spelling of the global flag that
 // parseNpmOptions recognizes, along with the true or false literal it

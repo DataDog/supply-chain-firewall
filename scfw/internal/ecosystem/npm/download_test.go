@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -80,6 +81,20 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 			_, _ = w.Write([]byte("<a href=\"/elsewhere\">Found</a>"))
 		case "/no-content.tgz":
 			w.WriteHeader(http.StatusNoContent)
+		case "/upper.tgz":
+			w.Header().Set("Location", "http://LOCALHOST:"+r.Host[strings.LastIndex(r.Host, ":")+1:]+"/blob/upper")
+			w.WriteHeader(http.StatusFound)
+		case "/dots.tgz":
+			w.Header().Set("Location", "/hop/%2e%2e/blob/dots")
+			w.WriteHeader(http.StatusFound)
+		case "/backslash.tgz":
+			w.Header().Set("Location", "/hop\\..\\blob/backslash")
+			w.WriteHeader(http.StatusFound)
+		case "/blob/upper", "/blob/dots", "/blob/backslash":
+			_, _ = w.Write(tarball)
+		case "/bad-location.tgz":
+			w.Header().Set("Location", "http://[bad")
+			w.WriteHeader(http.StatusFound)
 		case "/fragment.tgz":
 			http.Redirect(w, r, "/blob/abc#download", http.StatusFound)
 		case "/redirect.tgz":
@@ -113,6 +128,7 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 		{path: "/reset-content.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
 		{path: "/multiple-choices.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
 		{path: "/no-content.tgz", block: true, status: http.StatusNoContent, body: []byte{}},
+		{path: "/bad-location.tgz", status: http.StatusBadGateway},
 		{path: "/fragment.tgz", source: "/blob/abc", status: http.StatusOK, evaluations: 1, body: tarball},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
@@ -134,6 +150,31 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 			}
 			if tc.source != "" && (artifacts[0].Name != "@acme/widget" || artifacts[0].Version != "1.2.3" || artifacts[0].Source != upstream.URL+tc.source) {
 				t.Fatalf("evaluated %+v, want @acme/widget@1.2.3 from %s", artifacts[0], tc.source)
+			}
+		})
+	}
+
+	// Node follows a Location after WHATWG URL normalization, so the target is
+	// requested in a form the Location does not spell out.
+	for redirect, followed := range map[string]string{
+		"/upper.tgz":     strings.Replace(upstream.URL, "127.0.0.1", "localhost", 1) + "/blob/upper",
+		"/dots.tgz":      upstream.URL + "/blob/dots",
+		"/backslash.tgz": upstream.URL + "/blob/backslash",
+	} {
+		t.Run("normalized "+redirect, func(t *testing.T) {
+			handler, evaluated := recordingHandler(t, errors.New("blocked by policy"))
+			client := proxiedClient(t, handler.HandleRequest)
+			client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+			var response *http.Response
+			for _, target := range []string{upstream.URL + redirect, followed} {
+				var err error
+				if response, err = client.Get(target); err != nil {
+					t.Fatal(err)
+				}
+				_ = response.Body.Close()
+			}
+			if response.StatusCode != http.StatusForbidden || len(evaluated()) != 1 {
+				t.Fatalf("status=%d evaluations=%d, want the normalized redirect target inspected and blocked", response.StatusCode, len(evaluated()))
 			}
 		})
 	}

@@ -11,18 +11,28 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/internal/archive"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
-// urlKey identifies a URL as clients request it: without credentials or a
-// fragment, which a redirect Location may carry but a request never does.
+// urlKey identifies a URL the way Node's WHATWG URL parser normalizes it
+// before requesting, so a redirect target recorded from a Location matches the
+// request the client makes: no credentials or fragment, a lowercase scheme and
+// host without a default port, and a normalized path. Backslashes, literal or
+// escaped, count as slashes; over-matching only inspects more downloads.
 func urlKey(value *url.URL) string {
-	key := *value
-	key.User = nil
-	key.Fragment, key.RawFragment = "", ""
-	return key.String()
+	scheme, host := strings.ToLower(value.Scheme), strings.ToLower(value.Host)
+	if (scheme == "http" && strings.HasSuffix(host, ":80")) || (scheme == "https" && strings.HasSuffix(host, ":443")) {
+		host = host[:strings.LastIndex(host, ":")]
+	}
+	escapedPath := strings.NewReplacer("\\", "/", "%5C", "/", "%5c", "/").Replace(value.EscapedPath())
+	key := scheme + "://" + host + normalizeEscapedPath(escapedPath)
+	if value.RawQuery != "" {
+		key += "?" + value.RawQuery
+	}
+	return key
 }
 
 func (h ProxyHandler) observeOpaqueTarball(ctx context.Context, response proxy.Response) (*proxy.ResponseBodyHook, error) {
@@ -36,7 +46,15 @@ func (h ProxyHandler) observeOpaqueTarball(ctx context.Context, response proxy.R
 		return nil, nil
 	}
 	if location := response.Header.Get("Location"); location != "" && response.StatusCode >= 300 {
-		if target, err := response.Request.URL.Parse(location); err == nil && (target.Scheme == "http" || target.Scheme == "https") {
+		// WHATWG strips surrounding spaces and tabs or newlines anywhere, and
+		// reads backslashes as slashes in http(s) URLs.
+		location = strings.NewReplacer("\t", "", "\n", "", "\r", "", "\\", "/").Replace(strings.TrimSpace(location))
+		target, err := response.Request.URL.Parse(location)
+		if err != nil {
+			// The client may still follow it; an untracked target would skip inspection.
+			return nil, errors.New("cannot resolve npm tarball redirect")
+		}
+		if scheme := strings.ToLower(target.Scheme); scheme == "http" || scheme == "https" {
 			h.Classifier.opaqueRedirects.Store(urlKey(target), struct{}{})
 		}
 	}

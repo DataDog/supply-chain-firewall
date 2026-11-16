@@ -15,6 +15,7 @@ import (
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/npm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/pip"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/pnpm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/poetry"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/uv"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/yarn"
@@ -54,6 +55,13 @@ var packageManagerFactories = []PackageManagerFactory{
 		ProxyHooks: []proxyHookFactory{newNpmProxyHook},
 		New: func(ctx context.Context, name, executable string) (pm.PackageManager, error) {
 			return yarn.NewYarn(ctx, name, executable)
+		},
+	},
+	{
+		Names:      pnpm.ExecutableNames,
+		ProxyHooks: []proxyHookFactory{newNpmProxyHook},
+		New: func(ctx context.Context, name, executable string) (pm.PackageManager, error) {
+			return pnpm.NewPnpm(ctx, name, executable)
 		},
 	},
 	{

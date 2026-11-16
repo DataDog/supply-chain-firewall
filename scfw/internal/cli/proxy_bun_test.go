@@ -466,6 +466,47 @@ func TestBunBypassAttemptsAreStillEvaluated(t *testing.T) {
 	})
 }
 
+// Commands without a --cafile insertion point keep trusting SCFW through
+// NODE_EXTRA_CA_CERTS when bunfig or .npmrc configures a cafile, on every
+// supported release, so their downloads are still evaluated.
+func TestBunConfiguredCafileEnvOnlyCommands(t *testing.T) {
+	script := readProxyFixture(t, "bun/import.js")
+	forEachBun(t, func(t *testing.T, _ int, executable string) {
+		for _, test := range []struct {
+			name, file string
+			args       []string
+		}{
+			{"bun x bunfig", "bunfig.toml", []string{"x", "lab-pkg"}},
+			{"bun x npmrc", ".npmrc", []string{"x", "lab-pkg"}},
+			{"run bunfig", "bunfig.toml", []string{"run", "import.js"}},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				registry := startNpmRegistryWith(t, "bun/package", "bun/packument.json.tmpl")
+				dir := newBunTestProject(t, registry, "")
+				ownBunxCache(t)
+				t.Setenv("NPM_CONFIG_REGISTRY", registry.URL+"/")
+				if test.file == "bunfig.toml" {
+					writeBunFile(t, filepath.Join(dir, "bunfig.toml"), "[install]\ncafile = \""+registry.CAPath+"\"\n")
+				} else {
+					writeBunFile(t, filepath.Join(dir, ".npmrc"), "registry="+registry.URL+"/\ncafile="+registry.CAPath+"\n")
+				}
+				if test.args[0] == "run" {
+					if err := os.Remove(filepath.Join(dir, "package.json")); err != nil {
+						t.Fatal(err)
+					}
+					writeBunFile(t, filepath.Join(dir, "import.js"), script)
+				}
+				run := runBunThroughProxy(t, "bun", executable, test.args, evaluation.OutcomeAllow)
+				assertBunSucceeded(t, run)
+				if run.calls != 1 || registry.TarballHits.Load() != 1 {
+					t.Fatalf("evaluations=%d tarball downloads=%d, want the download evaluated", run.calls, registry.TarballHits.Load())
+				}
+				assertProxyCleaned(t, run.config)
+			})
+		}
+	})
+}
+
 func TestBunChainsToAuthenticatedUpstream(t *testing.T) {
 	forEachBun(t, func(t *testing.T, _ int, executable string) {
 		registry := startNpmRegistry(t)

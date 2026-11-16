@@ -96,6 +96,20 @@ func TestInspectTarballReadsRootManifest(t *testing.T) {
 	}
 }
 
+func TestInspectTarballReadsExactManifestKeys(t *testing.T) {
+	for _, manifest := range []string{
+		`{"name": "blocked-pkg", "Name": "allowed-pkg", "version": "1.0.0"}`,
+		`{"Name": "allowed-pkg", "name": "blocked-pkg", "version": "1.0.0"}`,
+		`{"NAME": "allowed-pkg", "name": "blocked-pkg", "Version": "9.9.9", "version": "1.0.0"}`,
+		`{"name": "allowed-pkg", "name": "blocked-pkg", "version": "1.0.0"}`,
+	} {
+		artifact, found, err := inspect(t, npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: manifest}))
+		if err != nil || !found || artifact.Name != "blocked-pkg" || artifact.Version != "1.0.0" {
+			t.Errorf("%s: inspectTarball() = %+v, %v, %v; want blocked-pkg@1.0.0", manifest, artifact, found, err)
+		}
+	}
+}
+
 func TestInspectTarballReadsRawPAXTar(t *testing.T) {
 	widget := readNpmFixture(t, "manifest/widget.json")
 	var raw bytes.Buffer

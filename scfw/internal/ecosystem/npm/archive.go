@@ -108,15 +108,15 @@ func isManifestEntry(name string) bool {
 
 func parseManifest(manifest []byte) (Artifact, bool, error) {
 	manifest = bytes.TrimPrefix(manifest, []byte("\xef\xbb\xbf"))
-	var fields struct {
-		Name    any `json:"name"`
-		Version any `json:"version"`
-	}
+	// npm reads the exact lowercase keys, last duplicate winning; struct
+	// decoding would also match "Name" or "NAME".
+	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(manifest, &fields); err != nil {
 		return Artifact{}, false, errors.New("npm package archive has an invalid package.json")
 	}
-	name, _ := fields.Name.(string)
-	version, _ := fields.Version.(string)
+	var name, version string
+	_ = json.Unmarshal(fields["name"], &name)
+	_ = json.Unmarshal(fields["version"], &version)
 	version = strings.TrimLeft(strings.TrimSpace(version), "=v")
 	if _, valid := unscopedName(name); !valid || !semverPattern.MatchString(version) {
 		return Artifact{}, false, nil

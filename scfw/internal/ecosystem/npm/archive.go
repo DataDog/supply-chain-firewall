@@ -103,7 +103,8 @@ func isManifestEntry(name string) bool {
 		return false
 	}
 	_, stripped, found := strings.Cut(name, "/")
-	return found && path.Clean("/"+stripped) == "/package.json"
+	// npm unpacks onto the user's filesystem, which may be case-insensitive.
+	return found && strings.EqualFold(path.Clean("/"+stripped), "/package.json")
 }
 
 func parseManifest(manifest []byte) (Artifact, bool, error) {

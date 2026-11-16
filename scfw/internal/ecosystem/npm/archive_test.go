@@ -82,6 +82,8 @@ func TestInspectTarballReadsRootManifest(t *testing.T) {
 		{"zstd", "zstd", "package/package.json", widget, "@acme/widget"},
 		{"byte order mark", "gzip", "package/package.json", "\ufeff" + widget, "@acme/widget"},
 		{"v-prefixed version", "gzip", "package/package.json", readNpmFixture(t, "manifest/v-prefixed.json"), "widget"},
+		{"capitalized manifest", "gzip", "package/Package.json", widget, "@acme/widget"},
+		{"uppercase manifest", "gzip", "package/PACKAGE.JSON", widget, "@acme/widget"},
 		{"dot top directory", "gzip", "./package.json", widget, "@acme/widget"},
 		{"dot segment after top directory", "gzip", "package/./package.json", widget, "@acme/widget"},
 	} {
@@ -128,10 +130,11 @@ func TestInspectTarballReadsRawPAXTar(t *testing.T) {
 
 func TestInspectTarballAllowsNonPackageDownloads(t *testing.T) {
 	for name, data := range map[string][]byte{
-		"no manifest":     npmTarball(t, "gzip", tarEntry{name: "node-v20.0.0/include/node/node.h", body: "#pragma once"}),
-		"no version":      npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: readNpmFixture(t, "manifest/no-version.json")}),
-		"non-archive":     []byte("<html>not a tarball</html>"),
-		"nested manifest": npmTarball(t, "gzip", tarEntry{name: "package/sub/package.json", body: readNpmFixture(t, "manifest/widget.json")}),
+		"no manifest":                 npmTarball(t, "gzip", tarEntry{name: "node-v20.0.0/include/node/node.h", body: "#pragma once"}),
+		"no version":                  npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: readNpmFixture(t, "manifest/no-version.json")}),
+		"non-archive":                 []byte("<html>not a tarball</html>"),
+		"nested manifest":             npmTarball(t, "gzip", tarEntry{name: "package/sub/package.json", body: readNpmFixture(t, "manifest/widget.json")}),
+		"nested capitalized manifest": npmTarball(t, "gzip", tarEntry{name: "package/sub/Package.json", body: readNpmFixture(t, "manifest/widget.json")}),
 		// node-tar strips "." as the top directory, leaving package/package.json nested.
 		"dot-prefixed nested manifest": npmTarball(t, "gzip", tarEntry{name: "./package/package.json", body: readNpmFixture(t, "manifest/widget.json")}),
 	} {
@@ -175,17 +178,19 @@ func TestInspectTarballRejectsUnsafeArchives(t *testing.T) {
 	_ = bombWriter.Close()
 
 	for name, data := range map[string][]byte{
-		"invalid JSON":       npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: readNpmFixture(t, "manifest/invalid.json")}),
-		"two manifests":      npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: widget}, tarEntry{name: "other/package.json", body: widget}),
-		"symlink manifest":   npmTarball(t, "gzip", tarEntry{name: "package/package.json", typeflag: tar.TypeSymlink}),
-		"parent traversal":   npmTarball(t, "gzip", tarEntry{name: "package/../../etc/x", body: "x"}),
-		"oversized manifest": npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: widget + strings.Repeat(" ", int(archive.MaxMetadataBytes))}),
-		"too many entries":   npmTarball(t, "gzip", entries...),
-		"declared size":      npmTarball(t, "gzip", tarEntry{name: "package/data", size: archive.MaxExpandedBytes + 1}),
-		"gzip bomb":          bomb.Bytes(),
-		"corrupt checksum":   corrupt,
-		"truncated gzip":     valid[:len(valid)-12],
-		"zstd window":        window.Bytes(),
+		"invalid JSON":                      npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: readNpmFixture(t, "manifest/invalid.json")}),
+		"two manifests":                     npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: widget}, tarEntry{name: "other/package.json", body: widget}),
+		"case-colliding manifests":          npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: widget}, tarEntry{name: "package/PACKAGE.JSON", body: widget}),
+		"reversed case-colliding manifests": npmTarball(t, "gzip", tarEntry{name: "package/PACKAGE.JSON", body: widget}, tarEntry{name: "package/package.json", body: widget}),
+		"symlink manifest":                  npmTarball(t, "gzip", tarEntry{name: "package/package.json", typeflag: tar.TypeSymlink}),
+		"parent traversal":                  npmTarball(t, "gzip", tarEntry{name: "package/../../etc/x", body: "x"}),
+		"oversized manifest":                npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: widget + strings.Repeat(" ", int(archive.MaxMetadataBytes))}),
+		"too many entries":                  npmTarball(t, "gzip", entries...),
+		"declared size":                     npmTarball(t, "gzip", tarEntry{name: "package/data", size: archive.MaxExpandedBytes + 1}),
+		"gzip bomb":                         bomb.Bytes(),
+		"corrupt checksum":                  corrupt,
+		"truncated gzip":                    valid[:len(valid)-12],
+		"zstd window":                       window.Bytes(),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, _, err := inspect(t, data); err == nil {

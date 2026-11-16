@@ -6,6 +6,7 @@
 package bun
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -63,7 +64,7 @@ func parseCommand(minor int, bunx bool, args []string) parsedCommand {
 		}
 		prefix = append(prefix, arg)
 		if value, found := strings.CutPrefix(arg, "--cwd="); found {
-			parsed.cwd = value
+			parsed.cwd = joinCwd(parsed.cwd, value)
 		}
 		for _, prefix := range []string{"--config=", "-c="} {
 			if value, found := strings.CutPrefix(arg, prefix); found {
@@ -72,10 +73,11 @@ func parseCommand(minor int, bunx bool, args []string) parsedCommand {
 		}
 	}
 	if bunx {
+		// bunx has no global options; its own are read only from 1.4.
 		if minor < bunxMinor {
-			return parsed
+			return parsedCommand{insert: -1, args: args}
 		}
-		parsed.cafiles, parsed.cas = nil, nil
+		parsed.cafiles, parsed.cas, parsed.cwd, parsed.config = nil, nil, "", ""
 		parsed.insert, parsed.args = 0, parsed.scanOptions(args, nil, 0, true)
 		return parsed
 	}
@@ -125,7 +127,7 @@ func (parsed *parsedCommand) scanOptions(args, kept []string, from int, stopAtPo
 				kept = append(kept, value)
 			}
 			if name == "--cwd" {
-				parsed.cwd = value
+				parsed.cwd = joinCwd(parsed.cwd, value)
 			}
 			continue
 		}
@@ -156,4 +158,25 @@ func (parsed *parsedCommand) scanOptions(args, kept []string, from int, stopAtPo
 		}
 	}
 	return kept
+}
+
+// joinCwd applies a --cwd value the way Bun does: each relative value is
+// relative to the previous one, and an absolute value replaces it.
+func joinCwd(current, value string) string {
+	if current == "" || filepath.IsAbs(value) {
+		return value
+	}
+	return filepath.Join(current, value)
+}
+
+// effectiveCA returns the CA options Bun uses: the last --cafile, else the
+// last --ca.
+func (parsed parsedCommand) effectiveCA() (cafiles, cas []string) {
+	if n := len(parsed.cafiles); n > 0 {
+		return parsed.cafiles[n-1:], nil
+	}
+	if n := len(parsed.cas); n > 0 {
+		return nil, parsed.cas[n-1:]
+	}
+	return nil, nil
 }

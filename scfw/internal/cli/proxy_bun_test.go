@@ -557,6 +557,14 @@ func TestBunxUserCAAfterOptions(t *testing.T) {
 			{"bun x relative to cwd", "bun", func(string) []string { return []string{"x", "--cwd=sub", "--cafile=ca.pem", "lab-pkg"} }},
 			{"bunx package option", "bunx", func(ca string) []string { return []string{"--package", "lab-pkg", "--cafile", ca, "lab-pkg"} }},
 			{"bunx relative to cwd", "bunx", func(string) []string { return []string{"--cafile=ca.pem", "--cwd", "sub", "lab-pkg"} }},
+			{"bun x repeated cwd", "bun", func(string) []string { return []string{"x", "--cwd", "a", "--cwd", "b", "--cafile=ca.pem", "lab-pkg"} }},
+			{"bunx env-file value like cwd", "bunx", func(ca string) []string {
+				return []string{"--env-file", "--cwd=decoy", "--cafile", ca, "lab-pkg"}
+			}},
+			{"bun x overridden missing cafile", "bun", func(ca string) []string {
+				return []string{"x", "--cafile", "missing.pem", "--cafile=" + ca, "lab-pkg"}
+			}},
+			{"bun x overridden malformed ca", "bun", func(ca string) []string { return []string{"x", "--ca=bogus", "--cafile", ca, "lab-pkg"} }},
 		} {
 			t.Run(test.name, func(t *testing.T) {
 				registry := startNpmRegistryWith(t, "bun/package", "bun/packument.json.tmpl")
@@ -566,6 +574,8 @@ func TestBunxUserCAAfterOptions(t *testing.T) {
 				// Only the command-line CA lets SCFW trust the registry.
 				t.Setenv("NODE_EXTRA_CA_CERTS", "")
 				writeBunFile(t, filepath.Join(dir, "sub", "ca.pem"), registry.CAPEM)
+				writeBunFile(t, filepath.Join(dir, "a", "b", "ca.pem"), registry.CAPEM)
+				writeBunFile(t, filepath.Join(dir, "--cwd=decoy"), "SCFW_ENV_PROBE=1\n")
 				path := executable
 				if test.invoked == "bunx" {
 					path = bunx

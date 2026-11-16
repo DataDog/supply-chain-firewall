@@ -50,9 +50,10 @@ func (b Bun) settings(command []string) (bunSettings, parsedCommand, error) {
 		HTTPS:   firstEnv("https_proxy", "HTTPS_PROXY"),
 		HTTP:    firstEnv("http_proxy", "HTTP_PROXY"),
 		NoProxy: firstEnv("no_proxy", "NO_PROXY"),
-		CA:      parsed.cas,
 	}
-	for _, file := range parsed.cafiles {
+	cafiles, cas := parsed.effectiveCA()
+	settings.CA = cas
+	for _, file := range cafiles {
 		settings.CAFiles = append(settings.CAFiles, absolute(cwd, file))
 	}
 	settings.Registries = append(settings.Registries, firstEnv("BUN_CONFIG_REGISTRY"), firstEnv("NPM_CONFIG_REGISTRY", "npm_config_registry"))

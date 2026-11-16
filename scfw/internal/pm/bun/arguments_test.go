@@ -6,7 +6,9 @@
 package bun
 
 import (
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -69,7 +71,34 @@ func TestParseCommandInsertsCafileAfterSubcommand(t *testing.T) {
 	if parsed := parseCommand(4, true, []string{"--cwd=sub", "pkg"}); parsed.cwd != "sub" {
 		t.Fatalf("bunx cwd = %q", parsed.cwd)
 	}
-	parsed := parseCommand(4, false, []string{"--cafile=p.pem", "--cwd=sub", "-c=b.toml", "add", "--cafile=a.pem", "--ca", "PEM", "--registry=https://r.example/"})
+	// Bun composes repeated --cwd values; an absolute one replaces the rest.
+	for args, want := range map[string]string{
+		"x --cwd a --cwd b pkg":    filepath.Join("a", "b"),
+		"--cwd=a x --cwd=b pkg":    filepath.Join("a", "b"),
+		"x --cwd a --cwd=/abs pkg": "/abs",
+		"--cwd=a --cwd=b add pkg":  filepath.Join("a", "b"),
+	} {
+		if parsed := parseCommand(4, false, strings.Fields(args)); parsed.cwd != want {
+			t.Errorf("%s: cwd = %q, want %q", args, parsed.cwd, want)
+		}
+	}
+	// Values of bunx options are never read as options.
+	parsed := parseCommand(4, true, []string{"--env-file", "--cwd=decoy", "--cwd", "-project", "--package", "--config=x.toml", "pkg"})
+	if parsed.cwd != "-project" || parsed.config != "" || parsed.insert != 0 {
+		t.Fatalf("bunx decoys: %+v", parsed)
+	}
+	// Bun uses the last --cafile, else the last --ca.
+	for args, want := range map[string][2]string{
+		"add --cafile=a --cafile=b x": {"b", ""},
+		"add --ca=P --cafile=a x":     {"a", ""},
+		"add --ca=P --ca=Q x":         {"", "Q"},
+	} {
+		cafiles, cas := parseCommand(4, false, strings.Fields(args)).effectiveCA()
+		if strings.Join(cafiles, "") != want[0] || strings.Join(cas, "") != want[1] {
+			t.Errorf("%s: cafiles=%q cas=%q, want %q", args, cafiles, cas, want)
+		}
+	}
+	parsed = parseCommand(4, false, []string{"--cafile=p.pem", "--cwd=sub", "-c=b.toml", "add", "--cafile=a.pem", "--ca", "PEM", "--registry=https://r.example/"})
 	if parsed.cwd != "sub" || parsed.config != "b.toml" || !slices.Equal(parsed.cafiles, []string{"p.pem", "a.pem"}) ||
 		!slices.Equal(parsed.cas, []string{"PEM"}) || !slices.Equal(parsed.registries, []string{"https://r.example/"}) {
 		t.Fatalf("parsed = %+v", parsed)

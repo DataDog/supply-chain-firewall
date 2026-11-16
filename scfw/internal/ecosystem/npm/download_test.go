@@ -67,6 +67,17 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 		case "/non-authoritative.tgz":
 			w.WriteHeader(http.StatusNonAuthoritativeInfo)
 			_, _ = w.Write(tarball)
+		case "/reset-content.tgz":
+			w.WriteHeader(http.StatusResetContent)
+			_, _ = w.Write(tarball)
+		case "/multiple-choices.tgz":
+			w.WriteHeader(http.StatusMultipleChoices)
+			_, _ = w.Write(tarball)
+		case "/html-redirect.tgz":
+			w.Header().Set("Content-Type", "text/html")
+			w.Header().Set("Location", "/elsewhere")
+			w.WriteHeader(http.StatusFound)
+			_, _ = w.Write([]byte("<a href=\"/elsewhere\">Found</a>"))
 		case "/no-content.tgz":
 			w.WriteHeader(http.StatusNoContent)
 		case "/fragment.tgz":
@@ -99,6 +110,8 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 		{path: "/redirect.tgz", source: "/blob/abc", status: http.StatusOK, evaluations: 1, body: tarball},
 		{path: "/created.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
 		{path: "/non-authoritative.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
+		{path: "/reset-content.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
+		{path: "/multiple-choices.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
 		{path: "/no-content.tgz", block: true, status: http.StatusNoContent, body: []byte{}},
 		{path: "/fragment.tgz", source: "/blob/abc", status: http.StatusOK, evaluations: 1, body: tarball},
 	} {
@@ -124,6 +137,21 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("redirect body", func(t *testing.T) {
+		handler, evaluated := recordingHandler(t, errors.New("must not be evaluated"))
+		client := proxiedClient(t, handler.HandleRequest)
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		response, err := client.Get(upstream.URL + "/html-redirect.tgz")
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(response.Body)
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusFound || !bytes.Contains(body, []byte("Found")) || len(evaluated()) != 0 {
+			t.Fatalf("status=%d body=%q evaluations=%d, want the 302 and its HTML body forwarded unevaluated", response.StatusCode, body, len(evaluated()))
+		}
+	})
 
 	t.Run("not modified", func(t *testing.T) {
 		handler, evaluated := recordingHandler(t, nil)

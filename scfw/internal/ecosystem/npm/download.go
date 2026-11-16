@@ -31,20 +31,23 @@ func (h ProxyHandler) observeOpaqueTarball(ctx context.Context, response proxy.R
 		// The client may hold the rest in its cache, so inspect a full copy
 		// before forwarding the original response.
 		return nil, h.inspectFullTarball(ctx, response)
-	case status >= 200 && status < 300 && status != http.StatusNoContent && status != http.StatusResetContent:
-		// Clients unpack any successful body, not only a 200's.
-		return &proxy.ResponseBodyHook{
-			MaxBytes: archive.MaxArtifactBytes,
-			HandleFile: func(ctx context.Context, response proxy.Response, body *io.SectionReader) error {
-				return h.evaluateTarball(ctx, response, body)
-			},
-		}, nil
-	case status >= 300 && status < 400:
-		if target, err := response.Request.URL.Parse(response.Header.Get("Location")); err == nil && (target.Scheme == "http" || target.Scheme == "https") {
+	case status < 200 || status == http.StatusNoContent || status >= 400:
+		// No body, or one npm rejects.
+		return nil, nil
+	}
+	if location := response.Header.Get("Location"); location != "" && response.StatusCode >= 300 {
+		if target, err := response.Request.URL.Parse(location); err == nil && (target.Scheme == "http" || target.Scheme == "https") {
 			h.Classifier.opaqueRedirects.Store(urlKey(target), struct{}{})
 		}
 	}
-	return nil, nil
+	// npm unpacks the body of any other status it does not follow, including
+	// 205 and 300; a followed redirect's body is not an archive and passes.
+	return &proxy.ResponseBodyHook{
+		MaxBytes: archive.MaxArtifactBytes,
+		HandleFile: func(ctx context.Context, response proxy.Response, body *io.SectionReader) error {
+			return h.evaluateTarball(ctx, response, body)
+		},
+	}, nil
 }
 
 func (h ProxyHandler) inspectFullTarball(ctx context.Context, original proxy.Response) error {

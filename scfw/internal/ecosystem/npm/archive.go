@@ -15,6 +15,7 @@ import (
 	"errors"
 	"io"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/internal/archive"
@@ -48,6 +49,11 @@ func inspectTarball(ctx context.Context, body *io.SectionReader) (Artifact, bool
 		// The first header may be a PAX or GNU extension that only parses
 		// together with the entry following it.
 		if _, err := tar.NewReader(io.NewSectionReader(body, 0, body.Size())).Next(); err != nil {
+			// node-tar skips invalid blocks and keeps reading, so any valid
+			// header in the body makes it an archive Go cannot read the same way.
+			if found, err := containsTarHeader(ctx, body); found || err != nil {
+				return Artifact{}, false, errors.Join(errors.New("unreadable npm tar archive"), err)
+			}
 			return Artifact{}, false, nil
 		}
 		decoded = body
@@ -57,7 +63,11 @@ func inspectTarball(ctx context.Context, body *io.SectionReader) (Artifact, bool
 	buffered := bufio.NewReader(expanded)
 	var manifest []byte
 	found := false
-	err := archive.WalkTAR(ctx, buffered, func(header *tar.Header, entry io.Reader) error {
+	headers := &headerRecorder{reader: buffered}
+	err := archive.WalkTAR(ctx, headers, func(header *tar.Header, entry io.Reader) error {
+		if err := headers.check(header); err != nil {
+			return err
+		}
 		if !isManifestEntry(header.Name) {
 			return validEntryName(header.Name)
 		}
@@ -81,6 +91,118 @@ func inspectTarball(ctx context.Context, body *io.SectionReader) (Artifact, bool
 		return Artifact{}, false, err
 	}
 	return parseManifest(manifest)
+}
+
+const tarBlock = 512
+
+// containsTarHeader reports whether any 512-byte block of body is a non-zero
+// block with a valid tar header checksum.
+func containsTarHeader(ctx context.Context, body *io.SectionReader) (bool, error) {
+	reader := bufio.NewReaderSize(archive.ContextReader{Ctx: ctx, Reader: io.NewSectionReader(body, 0, body.Size())}, 64<<10)
+	block := make([]byte, tarBlock)
+	for {
+		if _, err := io.ReadFull(reader, block); err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return false, nil
+			}
+			return false, err
+		}
+		if validHeaderChecksum(block) {
+			return true, nil
+		}
+	}
+}
+
+func validHeaderChecksum(block []byte) bool {
+	if bytes.Count(block, []byte{0}) == len(block) {
+		return false
+	}
+	field := strings.Trim(string(block[148:156]), " \x00")
+	want, err := strconv.ParseInt(field, 8, 64)
+	if field == "" || err != nil {
+		return false
+	}
+	var unsigned, signed int64
+	for index, character := range block {
+		if index >= 148 && index < 156 {
+			character = ' '
+		}
+		unsigned += int64(character)
+		signed += int64(int8(character))
+	}
+	return want == unsigned || want == signed
+}
+
+// headerRecorder keeps the raw header blocks Go's tar reader consumes before
+// each entry. Go merges every PAX and GNU extension; node-tar merges only the
+// last local PAX header, lets PAX override a GNU long name, and ignores paths
+// with newlines. Sequences where those rules can disagree are rejected rather
+// than reimplementing node-tar.
+type headerRecorder struct {
+	reader       io.Reader
+	offset, mark int64
+	recorded     []byte
+}
+
+func (r *headerRecorder) Read(buffer []byte) (int, error) {
+	n, err := r.reader.Read(buffer)
+	if start := max(r.mark-r.offset, 0); start < int64(n) {
+		r.recorded = append(r.recorded, buffer[start:n]...)
+	}
+	r.offset += int64(n)
+	if int64(len(r.recorded)) > 2*archive.MaxMetadataBytes {
+		return n, errors.New("npm tar extended headers exceed inspection limit")
+	}
+	return n, err
+}
+
+// check validates the header blocks read since the previous entry's data.
+func (r *headerRecorder) check(header *tar.Header) error {
+	recorded := r.recorded
+	r.recorded, r.mark = nil, r.offset+(header.Size+tarBlock-1)/tarBlock*tarBlock
+	if header.Typeflag == tar.TypeXGlobalHeader {
+		return errors.New("npm tar archive has a global PAX header")
+	}
+	extensions, pax, gnu := 0, false, false
+	for len(recorded) > tarBlock {
+		block := recorded[:tarBlock]
+		field := strings.Trim(string(block[124:136]), " \x00")
+		size, err := strconv.ParseInt(field, 8, 64)
+		if block[124]&0x80 != 0 || err != nil || size < 0 || size > int64(len(recorded)) {
+			return errors.New("invalid npm tar extended header")
+		}
+		switch block[156] {
+		case tar.TypeXHeader:
+			pax = true
+			if err := checkPAXPaths(recorded[tarBlock : tarBlock+size]); err != nil {
+				return err
+			}
+		case tar.TypeGNULongName, tar.TypeGNULongLink:
+			gnu = true
+		}
+		extensions++
+		recorded = recorded[min(tarBlock+(size+tarBlock-1)/tarBlock*tarBlock, int64(len(recorded))):]
+	}
+	if extensions > 1 || (pax && gnu) {
+		return errors.New("ambiguous npm tar extended headers")
+	}
+	return nil
+}
+
+func checkPAXPaths(records []byte) error {
+	for len(records) > 0 {
+		lengthField, _, found := bytes.Cut(records, []byte(" "))
+		length, err := strconv.Atoi(string(lengthField))
+		if !found || err != nil || length <= len(lengthField)+1 || length > len(records) {
+			return errors.New("invalid npm tar PAX record")
+		}
+		key, value, _ := strings.Cut(string(records[len(lengthField)+1:length-1]), "=")
+		if (key == "path" || key == "linkpath") && strings.ContainsAny(value, "\n\x00") {
+			return errors.New("npm tar PAX path contains a newline or NUL")
+		}
+		records = records[length:]
+	}
+	return nil
 }
 
 func validEntryName(name string) error {

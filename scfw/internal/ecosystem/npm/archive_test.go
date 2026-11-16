@@ -10,7 +10,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -98,6 +100,75 @@ func TestInspectTarballReadsRootManifest(t *testing.T) {
 	}
 }
 
+// rawTarEntry builds a ustar header with typeflag, followed by data padded to
+// a block, without Go's tar writer merging or validating extensions.
+func rawTarEntry(name string, typeflag byte, data string) []byte {
+	header := make([]byte, 512)
+	copy(header, name)
+	copy(header[100:], "0000644\x00")
+	copy(header[108:], "0000000\x00")
+	copy(header[116:], "0000000\x00")
+	copy(header[124:], fmt.Sprintf("%011o\x00", len(data)))
+	copy(header[136:], "00000000000\x00")
+	header[156] = typeflag
+	copy(header[257:], "ustar\x0000")
+	copy(header[148:156], "        ")
+	sum := 0
+	for _, character := range header {
+		sum += int(character)
+	}
+	copy(header[148:], fmt.Sprintf("%06o\x00 ", sum))
+	padded := make([]byte, (len(data)+511)/512*512)
+	copy(padded, data)
+	return append(header, padded...)
+}
+
+func paxRecord(key, value string) string {
+	record := " " + key + "=" + value + "\n"
+	length := len(record) + 1
+	for len(strconv.Itoa(length))+len(record) != length {
+		length++
+	}
+	return strconv.Itoa(length) + record
+}
+
+func rawTar(entries ...[]byte) []byte {
+	return append(bytes.Join(entries, nil), make([]byte, 1024)...)
+}
+
+func TestInspectTarballExtendedHeaders(t *testing.T) {
+	widget := readNpmFixture(t, "manifest/widget.json")
+	for name, data := range map[string][]byte{
+		"single PAX path":      rawTar(rawTarEntry("x", tar.TypeXHeader, paxRecord("path", "package/package.json")), rawTarEntry("short", tar.TypeReg, widget)),
+		"single GNU long name": rawTar(rawTarEntry("././@LongLink", tar.TypeGNULongName, "package/package.json\x00"), rawTarEntry("short", tar.TypeReg, widget)),
+	} {
+		t.Run(name, func(t *testing.T) {
+			artifact, found, err := inspect(t, data)
+			if err != nil || !found || artifact.Name != "@acme/widget" {
+				t.Fatalf("inspectTarball() = %+v, %v, %v; want @acme/widget", artifact, found, err)
+			}
+		})
+	}
+	for name, data := range map[string][]byte{
+		// Go merges both PAX headers; node-tar applies only the last one.
+		"two PAX headers": rawTar(rawTarEntry("x", tar.TypeXHeader, paxRecord("path", "package/package.json")),
+			rawTarEntry("x", tar.TypeXHeader, paxRecord("comment", "second")), rawTarEntry("package/ignored", tar.TypeReg, widget)),
+		"GNU long name and PAX": rawTar(rawTarEntry("././@LongLink", tar.TypeGNULongName, "package/ignored\x00"),
+			rawTarEntry("x", tar.TypeXHeader, paxRecord("path", "package/package.json")), rawTarEntry("package/ignored", tar.TypeReg, widget)),
+		// node-tar ignores a PAX path containing a newline.
+		"PAX path with newline": rawTar(rawTarEntry("x", tar.TypeXHeader, paxRecord("path", "package/ignored\nmore")), rawTarEntry("package/package.json", tar.TypeReg, widget)),
+		"global PAX header":     rawTar(rawTarEntry("g", tar.TypeXGlobalHeader, paxRecord("path", "package/package.json")), rawTarEntry("package/ignored", tar.TypeReg, widget)),
+		// node-tar skips an invalid first block and reads the header after it.
+		"invalid block before header": append(bytes.Repeat([]byte{0x78}, 512), rawTar(rawTarEntry("package/package.json", tar.TypeReg, widget))...),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, _, err := inspect(t, data); err == nil {
+				t.Fatal("inspectTarball() returned nil error, want the ambiguous archive rejected")
+			}
+		})
+	}
+}
+
 func TestInspectTarballReadsExactManifestKeys(t *testing.T) {
 	for _, manifest := range []string{
 		`{"name": "blocked-pkg", "Name": "allowed-pkg", "version": "1.0.0"}`,
@@ -133,6 +204,7 @@ func TestInspectTarballAllowsNonPackageDownloads(t *testing.T) {
 		"no manifest":                 npmTarball(t, "gzip", tarEntry{name: "node-v20.0.0/include/node/node.h", body: "#pragma once"}),
 		"no version":                  npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: readNpmFixture(t, "manifest/no-version.json")}),
 		"non-archive":                 []byte("<html>not a tarball</html>"),
+		"binary":                      bytes.Repeat([]byte("\x7fELF\x02\x01\x01\x00binary payload "), 512),
 		"nested manifest":             npmTarball(t, "gzip", tarEntry{name: "package/sub/package.json", body: readNpmFixture(t, "manifest/widget.json")}),
 		"nested capitalized manifest": npmTarball(t, "gzip", tarEntry{name: "package/sub/Package.json", body: readNpmFixture(t, "manifest/widget.json")}),
 		// node-tar strips "." as the top directory, leaving package/package.json nested.

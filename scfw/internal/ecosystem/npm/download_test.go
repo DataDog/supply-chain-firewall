@@ -44,6 +44,7 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 	encoder := gzip.NewWriter(&encoded)
 	_, _ = encoder.Write(tarball)
 	_ = encoder.Close()
+	rawPrefix := append(bytes.Repeat([]byte{0x78}, 512), rawTar(rawTarEntry("package/package.json", '0', readNpmFixture(t, "manifest/widget.json")))...)
 	capitalized := npmTarball(t, "gzip", tarEntry{name: "package/Package.json", body: readNpmFixture(t, "manifest/widget.json")})
 	headers := npmTarball(t, "gzip", tarEntry{name: "node-v20.0.0/include/node/node.h", body: "#pragma once"})
 
@@ -53,6 +54,8 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 		switch r.URL.Path {
 		case "/widget.tgz", "/blob/abc":
 			_, _ = w.Write(tarball)
+		case "/raw-prefix.tgz":
+			_, _ = w.Write(rawPrefix)
 		case "/capitalized.tgz":
 			_, _ = w.Write(capitalized)
 		case "/encoded.tgz":
@@ -125,6 +128,7 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 	}{
 		{path: "/widget.tgz", source: "/widget.tgz", status: http.StatusOK, evaluations: 1, body: tarball},
 		{path: "/widget.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
+		{path: "/raw-prefix.tgz", status: http.StatusBadGateway},
 		{path: "/capitalized.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
 		{path: "/encoded.tgz", source: "/encoded.tgz", status: http.StatusOK, evaluations: 1, body: tarball},
 		{path: "/headers.tar.gz", status: http.StatusOK, body: headers},

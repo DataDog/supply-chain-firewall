@@ -7,10 +7,13 @@ package npm
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/nodeproxy"
@@ -261,8 +264,58 @@ func inWorkspaces(root, member string) bool {
 	return included
 }
 
-// expandBraces expands the first {a,b} group of a glob, recursively; a group
-// without a comma, or an unbalanced one, stays literal.
+var braceRangePattern = regexp.MustCompile(`^(?:(-?\d{1,9})\.\.(-?\d{1,9})|([A-Za-z])\.\.([A-Za-z]))(?:\.\.(-?\d{1,9}))?$`)
+
+// maxBraceRange bounds a range, which comes from a project's package.json.
+const maxBraceRange = 10000
+
+// braceRange expands the body of a {from..to[..step]} group as
+// brace-expansion does: numbers or single letters, in either direction, zero
+// padded when an endpoint has a leading zero. It returns nil for anything
+// else, including a range longer than maxBraceRange.
+func braceRange(body string) []string {
+	match := braceRangePattern.FindStringSubmatch(body)
+	if match == nil {
+		return nil
+	}
+	step := 1
+	if match[5] != "" {
+		step, _ = strconv.Atoi(match[5])
+		step = max(step, -step, 1)
+	}
+	var from, to int
+	format := func(n int) string { return string(rune(n)) }
+	if match[1] != "" {
+		from, _ = strconv.Atoi(match[1])
+		to, _ = strconv.Atoi(match[2])
+		padded := func(number string) bool {
+			number = strings.TrimPrefix(number, "-")
+			return len(number) > 1 && number[0] == '0'
+		}
+		width := 0
+		if padded(match[1]) || padded(match[2]) {
+			width = max(len(match[1]), len(match[2]))
+		}
+		format = func(n int) string { return fmt.Sprintf("%0*d", width, n) }
+	} else {
+		from, to = int(match[3][0]), int(match[4][0])
+	}
+	direction := 1
+	if to < from {
+		direction = -1
+	}
+	if (to-from)*direction/step >= maxBraceRange {
+		return nil
+	}
+	var items []string
+	for n := from; (to-n)*direction >= 0; n += direction * step {
+		items = append(items, format(n))
+	}
+	return items
+}
+
+// expandBraces expands the first {a,b} or {from..to} group of a glob,
+// recursively; any other group, or an unbalanced one, stays literal.
 func expandBraces(pattern string) []string {
 	open := strings.Index(pattern, "{")
 	if open < 0 {
@@ -286,6 +339,9 @@ func expandBraces(pattern string) []string {
 			}
 			options = append(options, pattern[start:index])
 			if len(options) < 2 {
+				options = braceRange(options[0])
+			}
+			if len(options) == 0 {
 				return []string{pattern}
 			}
 			var expanded []string

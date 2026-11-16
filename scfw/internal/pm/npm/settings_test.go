@@ -345,7 +345,7 @@ func writeNpmWorkspace(t *testing.T, rootManifest string) string {
 	root, _ := os.Getwd()
 	writeNpmFixture(t, filepath.Join(root, "package.json"), rootManifest)
 	writeNpmFixture(t, filepath.Join(root, ".npmrc"), "https-proxy=http://root:1\n")
-	for _, member := range []string{"packages/app", "packages/lib", "packages/group", "packages/group/app", "packages/.hidden", "apps/web", "other"} {
+	for _, member := range []string{"packages/app", "packages/lib", "packages/group", "packages/group/app", "packages/.hidden", "packages/v2", "packages/v10", "apps/web", "other"} {
 		writeNpmFixture(t, filepath.Join(root, member, "package.json"), "{}")
 		writeNpmFixture(t, filepath.Join(root, member, ".npmrc"), "https-proxy=http://"+member+":1\n")
 	}
@@ -392,6 +392,17 @@ func TestSettingsProjectLocationInWorkspaces(t *testing.T) {
 		{name: "explicit dot directory", workspaces: `["packages/.hidden"]`, cwd: "packages/.hidden", want: "root"},
 		{name: "node_modules alone is not a member", workspaces: `["packages/*"]`, cwd: "packages/nm", want: "packages/nm"},
 		{name: "the root itself", workspaces: `["packages/*"]`, cwd: ".", want: "root"},
+		{name: "numeric range", workspaces: `["packages/v{1..3}"]`, cwd: "packages/v2", want: "root"},
+		{name: "numeric range excludes", workspaces: `["packages/v{3..5}"]`, cwd: "packages/v2", want: "packages/v2"},
+		{name: "stepped range", workspaces: `["packages/v{1..3..2}"]`, cwd: "packages/v2", want: "packages/v2"},
+		{name: "reverse range", workspaces: `["packages/v{3..1}"]`, cwd: "packages/v2", want: "root"},
+		{name: "zero-padded range", workspaces: `["packages/v{01..03}"]`, cwd: "packages/v2", want: "packages/v2"},
+		{name: "multi-digit range", workspaces: `["packages/v{9..11}"]`, cwd: "packages/v10", want: "root"},
+		{name: "oversized range stays literal", workspaces: `["packages/v{1..99999}"]`, cwd: "packages/v2", want: "packages/v2"},
+		{name: "letter range",workspaces: `["packages/{a..b}pp"]`, cwd: "packages/app", want: "root"},
+		// npm refuses to run with these, so they only need to declare no workspaces.
+		{name: "bare string workspaces", workspaces: `"packages/*"`, cwd: "packages/app", want: "packages/app"},
+		{name: "workspaces true", workspaces: `true`, cwd: "packages/app", want: "packages/app"},
 		{name: "empty list", workspaces: `[]`, cwd: "packages/app", want: "packages/app"},
 		{name: "unreadable manifest is ignored", workspaces: `{ not json`, cwd: "packages/app", want: "packages/app"},
 	} {

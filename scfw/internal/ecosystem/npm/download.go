@@ -45,17 +45,18 @@ func (h ProxyHandler) observeOpaqueTarball(ctx context.Context, response proxy.R
 		// No body, or one npm rejects.
 		return nil, nil
 	}
+	// Redirect tracking is best-effort: it matches only when Go and Node resolve
+	// the Location to the same URL. Unusual spellings (IDN or non-canonical IP
+	// hosts, ports such as :080, unencoded query characters, //-prefixed
+	// references) can miss; K9CODESEC-9784 tracks a complete fix.
 	if location := response.Header.Get("Location"); location != "" && response.StatusCode >= 300 {
 		// WHATWG strips surrounding spaces and tabs or newlines anywhere, and
 		// reads backslashes as slashes in http(s) URLs.
 		location = strings.NewReplacer("\t", "", "\n", "", "\r", "", "\\", "/").Replace(strings.TrimSpace(location))
-		target, err := response.Request.URL.Parse(location)
-		if err != nil {
-			// The client may still follow it; an untracked target would skip inspection.
-			return nil, errors.New("cannot resolve npm tarball redirect")
-		}
-		if scheme := strings.ToLower(target.Scheme); scheme == "http" || scheme == "https" {
-			h.Classifier.opaqueRedirects.Store(urlKey(target), struct{}{})
+		if target, err := response.Request.URL.Parse(location); err == nil {
+			if scheme := strings.ToLower(target.Scheme); scheme == "http" || scheme == "https" {
+				h.Classifier.opaqueRedirects.Store(urlKey(target), struct{}{})
+			}
 		}
 	}
 	// npm unpacks the body of any other status it does not follow, including

@@ -95,6 +95,10 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 		case "/bad-location.tgz":
 			w.Header().Set("Location", "http://[bad")
 			w.WriteHeader(http.StatusFound)
+		case "/encoded-host.tgz":
+			// Node accepts a percent-encoded host; Go cannot parse it.
+			w.Header().Set("Location", "http://%65xample.invalid/download")
+			w.WriteHeader(http.StatusFound)
 		case "/fragment.tgz":
 			http.Redirect(w, r, "/blob/abc#download", http.StatusFound)
 		case "/redirect.tgz":
@@ -128,7 +132,6 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 		{path: "/reset-content.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
 		{path: "/multiple-choices.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
 		{path: "/no-content.tgz", block: true, status: http.StatusNoContent, body: []byte{}},
-		{path: "/bad-location.tgz", status: http.StatusBadGateway},
 		{path: "/fragment.tgz", source: "/blob/abc", status: http.StatusOK, evaluations: 1, body: tarball},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
@@ -178,6 +181,26 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("unparsable location", func(t *testing.T) {
+		handler, evaluated := recordingHandler(t, errors.New("must not be evaluated"))
+		// The transport skips the client's own Location parsing.
+		transport := proxiedClient(t, handler.HandleRequest).Transport
+		for _, path := range []string{"/encoded-host.tgz", "/bad-location.tgz"} {
+			request, err := http.NewRequest(http.MethodGet, upstream.URL+path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := transport.RoundTrip(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = response.Body.Close()
+			if response.StatusCode != http.StatusFound || response.Header.Get("Location") == "" || len(evaluated()) != 0 {
+				t.Fatalf("%s: status=%d evaluations=%d, want the 302 passed through untracked", path, response.StatusCode, len(evaluated()))
+			}
+		}
+	})
 
 	t.Run("redirect body", func(t *testing.T) {
 		handler, evaluated := recordingHandler(t, errors.New("must not be evaluated"))

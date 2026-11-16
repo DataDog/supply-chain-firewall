@@ -12,12 +12,16 @@ import (
 
 // cafileCommands accept --cafile right after the subcommand. Bun 1.2 runs a
 // package script for the ones it does not yet implement, which would receive
-// the option, so those start at 1.3.
+// the option, so those start at 1.3. `bun x` and bunx read options before the
+// package name only from 1.4; earlier releases run the option as a package.
 var cafileCommands = map[string]int{
 	"install": 2, "i": 2, "add": 2, "a": 2, "remove": 2, "rm": 2, "update": 2, "link": 2, "unlink": 2,
 	"patch": 2, "patch-commit": 2, "outdated": 2, "publish": 2, "pm": 2,
-	"audit": 3, "why": 3, "info": 3, "ci": 3,
+	"audit": 3, "why": 3, "info": 3, "ci": 3, "x": 4,
 }
+
+// bunxMinor is the first minor release whose bunx reads --cafile.
+const bunxMinor = 4
 
 type parsedCommand struct {
 	// insert is where --cafile goes, or -1 for commands that pass later
@@ -25,7 +29,9 @@ type parsedCommand struct {
 	insert int
 	// args are the original arguments without the user's --cafile and --ca
 	// options when insert is set.
-	args         []string
+	args []string
+	// name is the subcommand, if any.
+	name         string
 	cwd, config  string
 	registries   []string
 	cafiles, cas []string
@@ -65,9 +71,18 @@ func parseCommand(minor int, bunx bool, args []string) parsedCommand {
 			}
 		}
 	}
-	if bunx || token < 0 {
+	if bunx {
+		if minor < bunxMinor {
+			return parsed
+		}
+		parsed.cafiles, parsed.cas = nil, nil
+		parsed.insert, parsed.args = 0, parsed.scanOptions(args, nil, 0, true)
 		return parsed
 	}
+	if token < 0 {
+		return parsed
+	}
+	parsed.name = args[token]
 	required, found := cafileCommands[args[token]]
 	if !found || minor < required {
 		return parsed
@@ -80,10 +95,19 @@ func parseCommand(minor int, bunx bool, args []string) parsedCommand {
 		}
 		insert++
 	}
-	kept := slices.Concat(prefix, args[token:insert])
-	for index := insert; index < len(args); index++ {
+	kept := parsed.scanOptions(args, slices.Concat(prefix, args[token:insert]), insert, args[token] == "x")
+	parsed.insert, parsed.args = len(prefix)+insert-token, kept
+	return parsed
+}
+
+// scanOptions appends args from index from to kept without the user's --cafile
+// and --ca options, collecting them and --registry values. It stops at "--",
+// and, for commands that pass later arguments to a package, at the first
+// positional argument.
+func (parsed *parsedCommand) scanOptions(args, kept []string, from int, stopAtPositional bool) []string {
+	for index := from; index < len(args); index++ {
 		arg := args[index]
-		if arg == "--" {
+		if arg == "--" || (stopAtPositional && !strings.HasPrefix(arg, "-")) {
 			kept = append(kept, args[index:]...)
 			break
 		}
@@ -114,6 +138,5 @@ func parseCommand(minor int, bunx bool, args []string) parsedCommand {
 			}
 		}
 	}
-	parsed.insert, parsed.args = len(prefix)+insert-token, kept
-	return parsed
+	return kept
 }

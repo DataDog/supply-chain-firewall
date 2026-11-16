@@ -68,9 +68,9 @@ var _ pm.ProxyOptionsProvider = Bun{}
 const noProxySentinel = "scfw.invalid"
 
 // ProxyCommand points Bun at the proxy through its environment and, for
-// package commands, --cafile after the subcommand: Bun 1.4 lets a configured
-// cafile replace NODE_EXTRA_CA_CERTS, and Bun 1.2 and 1.3 ignore --cafile
-// through a proxy, so both are set. Before the subcommand, --cafile would make
+// package commands and, from Bun 1.4, bunx and bun x, --cafile after the
+// subcommand: Bun 1.4 lets a configured cafile replace NODE_EXTRA_CA_CERTS,
+// and Bun 1.2 and 1.3 ignore --cafile through a proxy, so both are set. Before the subcommand, --cafile would make
 // Bun run the next argument as a script. The core proxy owns process
 // execution, signals, streams, and invocation cleanup.
 func (b Bun) ProxyCommand(_ context.Context, command []string, config proxy.ClientConfig) (proxy.CommandSpec, error) {
@@ -83,6 +83,11 @@ func (b Bun) ProxyCommand(_ context.Context, command []string, config proxy.Clie
 	}
 	if err := validateUpstream(settings); err != nil {
 		return proxy.CommandSpec{}, err
+	}
+	// From Bun 1.4, a configured CA replaces NODE_EXTRA_CA_CERTS for bun create,
+	// which takes no --cafile, so it could not trust SCFW.
+	if b.installed.Minor >= bunxMinor && (parsed.name == "create" || parsed.name == "c") && settings.Configured {
+		return proxy.CommandSpec{}, errors.New("bun create is not supported through SCFW on Bun 1.4 and later while bunfig.toml or .npmrc configures ca or cafile")
 	}
 	ca := config.CACertificatePath
 	args := command

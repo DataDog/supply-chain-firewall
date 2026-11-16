@@ -466,43 +466,70 @@ func TestBunBypassAttemptsAreStillEvaluated(t *testing.T) {
 	})
 }
 
-// Commands without a --cafile insertion point keep trusting SCFW through
-// NODE_EXTRA_CA_CERTS when bunfig or .npmrc configures a cafile, on every
-// supported release, so their downloads are still evaluated.
-func TestBunConfiguredCafileEnvOnlyCommands(t *testing.T) {
+// A cafile configured in a project or global bunfig.toml, a --config file, or
+// .npmrc must not stop bunx, bun x, or bun run auto-install from trusting SCFW
+// and being evaluated. Bun 1.4's bun create cannot take SCFW's CA beside a
+// configured one, so SCFW refuses it before Bun starts.
+func TestBunConfiguredCafile(t *testing.T) {
 	script := readProxyFixture(t, "bun/import.js")
-	forEachBun(t, func(t *testing.T, _ int, executable string) {
-		for _, test := range []struct {
-			name, file string
-			args       []string
-		}{
-			{"bun x bunfig", "bunfig.toml", []string{"x", "lab-pkg"}},
-			{"bun x npmrc", ".npmrc", []string{"x", "lab-pkg"}},
-			{"run bunfig", "bunfig.toml", []string{"run", "import.js"}},
-		} {
-			t.Run(test.name, func(t *testing.T) {
-				registry := startNpmRegistryWith(t, "bun/package", "bun/packument.json.tmpl")
-				dir := newBunTestProject(t, registry, "")
-				ownBunxCache(t)
-				t.Setenv("NPM_CONFIG_REGISTRY", registry.URL+"/")
-				if test.file == "bunfig.toml" {
-					writeBunFile(t, filepath.Join(dir, "bunfig.toml"), "[install]\ncafile = \""+registry.CAPath+"\"\n")
-				} else {
-					writeBunFile(t, filepath.Join(dir, ".npmrc"), "registry="+registry.URL+"/\ncafile="+registry.CAPath+"\n")
+	forEachBun(t, func(t *testing.T, minor int, executable string) {
+		bunx := filepath.Join(t.TempDir(), "bunx")
+		if err := os.Symlink(executable, bunx); err != nil {
+			t.Fatal(err)
+		}
+		for _, location := range []string{"project bunfig", "global bunfig", "config option", "npmrc"} {
+			for _, command := range []string{"bun x", "bunx", "run", "create", "c"} {
+				// Bun 1.4 rejects --config before x, and bunx has no such option.
+				if location == "config option" && (command == "bunx" || command == "bun x") {
+					continue
 				}
-				if test.args[0] == "run" {
-					if err := os.Remove(filepath.Join(dir, "package.json")); err != nil {
-						t.Fatal(err)
+				t.Run(location+"/"+command, func(t *testing.T) {
+					registry := startNpmRegistryWith(t, "bun/package", "bun/packument.json.tmpl")
+					dir := newBunTestProject(t, registry, "")
+					ownBunxCache(t)
+					t.Setenv("NPM_CONFIG_REGISTRY", registry.URL+"/")
+					bunfig := "[install]\ncafile = \"" + registry.CAPath + "\"\n"
+					var prefix []string
+					switch location {
+					case "project bunfig":
+						writeBunFile(t, filepath.Join(dir, "bunfig.toml"), bunfig)
+					case "global bunfig":
+						writeBunFile(t, filepath.Join(os.Getenv("XDG_CONFIG_HOME"), ".bunfig.toml"), bunfig)
+						writeBunFile(t, filepath.Join(os.Getenv("HOME"), ".bunfig.toml"), bunfig)
+					case "config option":
+						writeBunFile(t, filepath.Join(dir, "custom.toml"), bunfig)
+						prefix = []string{"--config=custom.toml"}
+					default:
+						writeBunFile(t, filepath.Join(dir, ".npmrc"), "registry="+registry.URL+"/\ncafile="+registry.CAPath+"\n")
 					}
-					writeBunFile(t, filepath.Join(dir, "import.js"), script)
-				}
-				run := runBunThroughProxy(t, "bun", executable, test.args, evaluation.OutcomeAllow)
-				assertBunSucceeded(t, run)
-				if run.calls != 1 || registry.TarballHits.Load() != 1 {
-					t.Fatalf("evaluations=%d tarball downloads=%d, want the download evaluated", run.calls, registry.TarballHits.Load())
-				}
-				assertProxyCleaned(t, run.config)
-			})
+					name, path, args := "bun", executable, []string{"x", "lab-pkg"}
+					switch command {
+					case "bunx":
+						name, path, args = "bunx", bunx, []string{"lab-pkg"}
+					case "run":
+						if err := os.Remove(filepath.Join(dir, "package.json")); err != nil {
+							t.Fatal(err)
+						}
+						writeBunFile(t, filepath.Join(dir, "import.js"), script)
+						args = []string{"run", "import.js"}
+					case "create", "c":
+						args = []string{command, "lab"}
+					}
+					run := runBunThroughProxy(t, name, path, append(prefix, args...), evaluation.OutcomeAllow)
+					if command == "create" || command == "c" {
+						// The registry has no create-lab template, so only setup is checked.
+						if refused := run.setupErr != nil && strings.Contains(run.setupErr.Error(), "bun create"); refused != (minor >= 4) {
+							t.Fatalf("setup error = %v, want a refusal only on Bun 1.4", run.setupErr)
+						}
+						return
+					}
+					assertBunSucceeded(t, run)
+					if run.calls != 1 || registry.TarballHits.Load() != 1 {
+						t.Fatalf("evaluations=%d tarball downloads=%d, want the download evaluated", run.calls, registry.TarballHits.Load())
+					}
+					assertProxyCleaned(t, run.config)
+				})
+			}
 		}
 	})
 }

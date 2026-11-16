@@ -179,6 +179,21 @@ func TestProxyCommand(t *testing.T) {
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
 		t.Fatal("ProxyCommand wrote files in the project")
 	}
+	bunx, err := (Bun{executable: "/bin/bunx", bunx: true, installed: version14}).ProxyCommand(context.Background(), []string{"pkg", "--cafile", "y"}, config)
+	if err != nil || !slices.Equal(bunx.Args, []string{"--cafile=" + ca, "pkg", "--cafile", "y"}) {
+		t.Fatalf("bunx args = %q, %v", bunx.Args, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "bunfig.toml"), []byte("[install]\ncafile = \"x.pem\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"create", "c"} {
+		if _, err := manager.ProxyCommand(context.Background(), []string{name, "tpl"}, config); err == nil || !strings.Contains(err.Error(), "bun create") {
+			t.Fatalf("%s with a configured cafile on 1.4: %v, want a clear refusal", name, err)
+		}
+		if _, err := (Bun{installed: pm.Version{Major: 1, Minor: 3}}).ProxyCommand(context.Background(), []string{name, "tpl"}, config); err != nil {
+			t.Fatalf("%s on 1.3: %v", name, err)
+		}
+	}
 	if _, err := (Bun{installed: pm.Version{Major: 1, Minor: 1}}).ProxyCommand(context.Background(), nil, config); err == nil {
 		t.Fatal("want bun 1.1 rejected")
 	}

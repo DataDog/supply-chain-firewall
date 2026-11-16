@@ -23,6 +23,8 @@ type bunSettings struct {
 	HTTPS, HTTP, NoProxy string
 	CAFiles, CA          []string
 	Registries           []string
+	// Configured reports a ca or cafile from bunfig.toml or .npmrc.
+	Configured bool
 }
 
 func firstEnv(keys ...string) string {
@@ -80,7 +82,9 @@ func (b Bun) settings(command []string) (bunSettings, parsedCommand, error) {
 				settings.Registries = append(settings.Registries, values...)
 			case key == "ca" || key == "ca[]":
 				settings.CA = append(settings.CA, values...)
+				settings.Configured = true
 			case key == "cafile":
+				settings.Configured = true
 				for _, value := range values {
 					settings.CAFiles = append(settings.CAFiles, absolute(filepath.Dir(path), value))
 				}
@@ -153,6 +157,9 @@ func (s *bunSettings) addBunfig(path string) {
 	registry(config.Install.Registry)
 	for _, scope := range config.Install.Scopes {
 		registry(scope)
+	}
+	if config.Install.CA != nil || config.Install.CAFile != "" {
+		s.Configured = true
 	}
 	switch typed := config.Install.CA.(type) {
 	case string:

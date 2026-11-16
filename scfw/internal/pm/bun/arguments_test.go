@@ -32,6 +32,11 @@ func TestParseCommandInsertsCafileAfterSubcommand(t *testing.T) {
 		{name: "x on 1.4 stops at the package", minor: 4, args: []string{"x", "--cafile=a.pem", "pkg", "--cafile", "y", "--ca=z"},
 			insert: 1, kept: []string{"x", "pkg", "--cafile", "y", "--ca=z"}},
 		{name: "bunx on 1.4", minor: 4, bunx: true, args: []string{"--ca", "PEM", "pkg", "--cafile=y"}, insert: 0, kept: []string{"pkg", "--cafile=y"}},
+		{name: "x on 1.4 skips option values", minor: 4,
+			args:   []string{"x", "-p", "pkg", "--cwd", "sub", "--env-file", "e", "--minimum-release-age", "5", "--cafile", "a.pem", "--ca=PEM", "bin", "--cafile=y"},
+			insert: 1, kept: []string{"x", "-p", "pkg", "--cwd", "sub", "--env-file", "e", "--minimum-release-age", "5", "bin", "--cafile=y"}},
+		{name: "bunx on 1.4 skips option values", minor: 4, bunx: true, args: []string{"--package", "pkg", "--cafile=a.pem", "bin"},
+			insert: 0, kept: []string{"--package", "pkg", "bin"}},
 		{name: "bunx on 1.3", minor: 3, bunx: true, args: []string{"pkg"}, insert: -1},
 		{name: "registry kept", minor: 4, args: []string{"add", "--registry", "https://r.example/", "x"}, insert: 1},
 		{name: "ci script on 1.2", minor: 2, args: []string{"ci"}, insert: -1},
@@ -55,6 +60,14 @@ func TestParseCommandInsertsCafileAfterSubcommand(t *testing.T) {
 				t.Fatalf("insert=%d args=%q, want %d %q", parsed.insert, parsed.args, test.insert, kept)
 			}
 		})
+	}
+	for _, args := range [][]string{{"x", "--cwd=sub", "--cafile=ca.pem", "pkg"}, {"x", "--cafile=ca.pem", "--cwd", "sub", "pkg"}} {
+		if parsed := parseCommand(4, false, args); parsed.cwd != "sub" || !slices.Equal(parsed.cafiles, []string{"ca.pem"}) {
+			t.Fatalf("%q: cwd=%q cafiles=%q", args, parsed.cwd, parsed.cafiles)
+		}
+	}
+	if parsed := parseCommand(4, true, []string{"--cwd=sub", "pkg"}); parsed.cwd != "sub" {
+		t.Fatalf("bunx cwd = %q", parsed.cwd)
 	}
 	parsed := parseCommand(4, false, []string{"--cafile=p.pem", "--cwd=sub", "-c=b.toml", "add", "--cafile=a.pem", "--ca", "PEM", "--registry=https://r.example/"})
 	if parsed.cwd != "sub" || parsed.config != "b.toml" || !slices.Equal(parsed.cafiles, []string{"p.pem", "a.pem"}) ||

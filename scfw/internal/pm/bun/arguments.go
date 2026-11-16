@@ -100,10 +100,15 @@ func parseCommand(minor int, bunx bool, args []string) parsedCommand {
 	return parsed
 }
 
+// bunxValueOptions are the options of Bun 1.4's bunx and bun x, besides
+// --cafile, --ca, and --registry, that take the next argument as their value,
+// which is not the package to run.
+var bunxValueOptions = []string{"-p", "--package", "--cwd", "--env-file", "--minimum-release-age"}
+
 // scanOptions appends args from index from to kept without the user's --cafile
 // and --ca options, collecting them and --registry values. It stops at "--",
-// and, for commands that pass later arguments to a package, at the first
-// positional argument.
+// and, for commands that pass later arguments to a package, at the package
+// name, recording --cwd, against which Bun resolves a relative --cafile.
 func (parsed *parsedCommand) scanOptions(args, kept []string, from int, stopAtPositional bool) []string {
 	for index := from; index < len(args); index++ {
 		arg := args[index]
@@ -112,6 +117,18 @@ func (parsed *parsedCommand) scanOptions(args, kept []string, from int, stopAtPo
 			break
 		}
 		name, value, inline := strings.Cut(arg, "=")
+		if stopAtPositional && slices.Contains(bunxValueOptions, name) {
+			kept = append(kept, arg)
+			if !inline && index+1 < len(args) {
+				index++
+				value = args[index]
+				kept = append(kept, value)
+			}
+			if name == "--cwd" {
+				parsed.cwd = value
+			}
+			continue
+		}
 		switch name {
 		case "--cafile", "--ca", "--registry":
 		default:

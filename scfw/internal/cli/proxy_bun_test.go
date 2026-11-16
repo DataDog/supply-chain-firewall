@@ -534,6 +534,53 @@ func TestBunConfiguredCafile(t *testing.T) {
 	})
 }
 
+// On Bun 1.4, a user CA given to bunx or bun x after a value-taking option, or
+// as a path relative to --cwd, joins SCFW's upstream trust. Bun 1.2 and 1.3 do
+// not read these options before the package name.
+func TestBunxUserCAAfterOptions(t *testing.T) {
+	forEachBun(t, func(t *testing.T, minor int, executable string) {
+		if minor < 4 {
+			t.Skip("bunx options before the package name need Bun 1.4")
+		}
+		bunx := filepath.Join(t.TempDir(), "bunx")
+		if err := os.Symlink(executable, bunx); err != nil {
+			t.Fatal(err)
+		}
+		for _, test := range []struct {
+			name, invoked string
+			args          func(ca string) []string
+		}{
+			{"bun x package option", "bun", func(ca string) []string { return []string{"x", "-p", "lab-pkg", "--cafile", ca, "lab-pkg"} }},
+			{"bun x release age", "bun", func(ca string) []string {
+				return []string{"x", "--minimum-release-age", "0", "--cafile", ca, "lab-pkg"}
+			}},
+			{"bun x relative to cwd", "bun", func(string) []string { return []string{"x", "--cwd=sub", "--cafile=ca.pem", "lab-pkg"} }},
+			{"bunx package option", "bunx", func(ca string) []string { return []string{"--package", "lab-pkg", "--cafile", ca, "lab-pkg"} }},
+			{"bunx relative to cwd", "bunx", func(string) []string { return []string{"--cafile=ca.pem", "--cwd", "sub", "lab-pkg"} }},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				registry := startNpmRegistryWith(t, "bun/package", "bun/packument.json.tmpl")
+				dir := newBunTestProject(t, registry, "")
+				ownBunxCache(t)
+				t.Setenv("NPM_CONFIG_REGISTRY", registry.URL+"/")
+				// Only the command-line CA lets SCFW trust the registry.
+				t.Setenv("NODE_EXTRA_CA_CERTS", "")
+				writeBunFile(t, filepath.Join(dir, "sub", "ca.pem"), registry.CAPEM)
+				path := executable
+				if test.invoked == "bunx" {
+					path = bunx
+				}
+				run := runBunThroughProxy(t, test.invoked, path, test.args(registry.CAPath), evaluation.OutcomeAllow)
+				assertBunSucceeded(t, run)
+				if run.calls != 1 || registry.TarballHits.Load() != 1 {
+					t.Fatalf("evaluations=%d tarball downloads=%d, want the download evaluated", run.calls, registry.TarballHits.Load())
+				}
+				assertProxyCleaned(t, run.config)
+			})
+		}
+	})
+}
+
 func TestBunChainsToAuthenticatedUpstream(t *testing.T) {
 	forEachBun(t, func(t *testing.T, _ int, executable string) {
 		registry := startNpmRegistry(t)

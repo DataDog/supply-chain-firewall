@@ -74,8 +74,8 @@ func registerConfigureArg[T configureArgType](name string, defaultValue T, help 
 
 func init() {
 	configureCmd.Flags().BoolVar(&remove, "remove", false, "Remove all Supply Chain Firewall managed configuration.")
-	registerConfigureArg("alias-npm", false, "Add shell aliases to run all npm commands through Supply Chain Firewall.", &aliasNpm)
-	registerConfigureArg("remove-alias-npm", false, "Remove Supply Chain Firewall's npm shell alias.", &removeAliasNpm)
+	registerConfigureArg("alias-npm", false, "Add shell aliases to run npm and npx commands through Supply Chain Firewall.", &aliasNpm)
+	registerConfigureArg("remove-alias-npm", false, "Remove Supply Chain Firewall's npm and npx shell aliases.", &removeAliasNpm)
 	registerConfigureArg("alias-pip", false, "Add shell aliases to run all pip commands through Supply Chain Firewall.", &aliasPip)
 	registerConfigureArg("remove-alias-pip", false, "Remove Supply Chain Firewall's pip shell aliases.", &removeAliasPip)
 	registerConfigureArg("alias-poetry", false, "Add shell aliases to run all poetry commands through Supply Chain Firewall.", &aliasPoetry)
@@ -167,8 +167,9 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 // remain enabled when their corresponding flags are omitted.
 func buildManagedBlock(existingConfig managedConfiguration, scfwHomeChanged, ddSiteChanged bool) string {
 	var b strings.Builder
-	if !removeAliasNpm && (aliasNpm || hasConfiguredAlias(existingConfig.aliases, "npm")) {
+	if !removeAliasNpm && (aliasNpm || hasConfiguredAlias(existingConfig.aliases, "npm", "npx")) {
 		b.WriteString(`alias npm="scfw run -- npm"` + "\n")
+		b.WriteString(`alias npx="scfw run -- npx"` + "\n")
 	}
 	if !removeAliasPip && (aliasPip || hasConfiguredAlias(existingConfig.aliases, "pip", "pip3")) {
 		b.WriteString(`alias pip="scfw run -- pip"` + "\n")

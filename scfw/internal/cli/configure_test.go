@@ -230,7 +230,7 @@ func TestBuildManagedBlock_AliasNpm(t *testing.T) {
 	}
 
 	withAliasNpm(t, true)
-	want := `alias npm="scfw run -- npm"` + "\n"
+	want := `alias npm="scfw run -- npm"` + "\n" + `alias npx="scfw run -- npx"` + "\n"
 	if got := buildManagedBlock(managedConfiguration{}, false, false); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
@@ -1222,6 +1222,83 @@ func TestConfigurePnpmAliasLifecycle(t *testing.T) {
 		content, err := os.ReadFile(filepath.Join(home, name))
 		if err != nil || strings.Contains(string(content), blockStart) || !strings.Contains(string(content), "export EXISTING=1") {
 			t.Fatalf("remove-all failed: %q, %v", content, err)
+		}
+	}
+}
+
+func TestConfigureNpmAliasLifecycle(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	withKeyringDelete(t, func(string, string) error { return nil })
+	for _, name := range configFiles {
+		if err := os.WriteFile(filepath.Join(home, name), []byte("export EXISTING=1\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	execute := func(args ...string) {
+		t.Helper()
+		aliasNpm, removeAliasNpm, remove = false, false, false
+		ddSite = ""
+		for _, name := range []string{"alias-npm", "remove-alias-npm", "remove", "dd-site"} {
+			configureCmd.Flags().Lookup(name).Changed = false
+		}
+		configureCmd.SetArgs(args)
+		if err := configureCmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resetConfigureCmd(t)
+	var first []byte
+	for index, args := range [][]string{{"--alias-npm"}, {"--alias-npm"}, {"--dd-site", "datadoghq.eu"}} {
+		execute(args...)
+		for _, name := range configFiles {
+			content, err := os.ReadFile(filepath.Join(home, name))
+			if err != nil || !strings.Contains(string(content), "export EXISTING=1") {
+				t.Fatalf("alias add/preserve failed: %q, %v", content, err)
+			}
+			for _, alias := range []string{"npm", "npx"} {
+				if strings.Count(string(content), `alias `+alias+`="scfw run -- `+alias+`"`) != 1 {
+					t.Fatalf("alias %s missing or repeated: %q", alias, content)
+				}
+			}
+			if name == configFiles[0] {
+				if index == 1 && !bytes.Equal(content, first) {
+					t.Fatalf("repeating --alias-npm changed %s: %q -> %q", name, first, content)
+				}
+				first = content
+			}
+		}
+	}
+	execute("--remove-alias-npm")
+	for _, name := range configFiles {
+		content, err := os.ReadFile(filepath.Join(home, name))
+		if err != nil || strings.Contains(string(content), "alias np") || !strings.Contains(string(content), "datadoghq.eu") {
+			t.Fatalf("alias removal failed: %q, %v", content, err)
+		}
+	}
+}
+
+// A block written before npx was aliased gains it on the next configure.
+func TestConfigureAddsNpxToExistingNpmAlias(t *testing.T) {
+	resetConfigureCmd(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := filepath.Join(home, ".bashrc")
+	seeded := blockStart + "\n" + `alias npm="scfw run -- npm"` + "\n" + blockEnd + "\n"
+	if err := os.WriteFile(path, []byte(seeded), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configureCmd.SetArgs([]string{"--dd-site", "datadoghq.eu"})
+	if err := configureCmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, alias := range []string{"npm", "npx"} {
+		if strings.Count(string(got), `alias `+alias+`="scfw run -- `+alias+`"`) != 1 {
+			t.Fatalf(".bashrc = %q, want exactly one %s alias", got, alias)
 		}
 	}
 }

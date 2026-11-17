@@ -124,7 +124,7 @@ When passing these values via shell variables, e.g. in scripts, prefer this `=` 
 
 This does two things:
 
-1. Adds shell aliases to your `.bashrc`, `.bash_profile`, `.zshrc`, and `.zprofile` (whichever already exist) so that `npm`, `pip`/`pip3`, and/or `poetry` transparently run through `scfw`. Restart your shell (or source the relevant rc file) for the aliases to take effect.
+1. Adds shell aliases to your `.bashrc`, `.bash_profile`, `.zshrc`, and `.zprofile` (whichever already exist) so that `npm`/`npx`, `pip`/`pip3`, `poetry`, `uv`/`uvx`, `yarn`, and/or `pnpm` transparently run through `scfw`. Restart your shell (or source the relevant rc file) for the aliases to take effect.
 2. Optionally, if provided, stores your Datadog API key and application key securely in your system's keychain, so credentials don't need to be kept in plaintext or supplied on every command.
 
 `scfw configure` is idempotent and may be re-run at any time to change your configuration. Alias options are additive, so aliases configured by an earlier invocation remain in place unless their corresponding `--remove-alias-*` option is passed. The command manages its own clearly indicated block of your shell rc files and never touches anything else you've added.
@@ -133,8 +133,8 @@ Available `configure` options:
 
 | Flag | Description |
 | --- | --- |
-| `--alias-npm` | Add a shell alias to run all npm commands through `scfw`. |
-| `--remove-alias-npm` | Remove the npm shell alias managed by `scfw`. |
+| `--alias-npm` | Add shell aliases to run npm and npx commands through `scfw`. |
+| `--remove-alias-npm` | Remove the npm and npx shell aliases managed by `scfw`. |
 | `--alias-pip` | Add shell aliases to run all pip/pip3 commands through `scfw`. |
 | `--remove-alias-pip` | Remove the pip/pip3 shell aliases managed by `scfw`. |
 | `--alias-uv` | Add shell aliases to run uv and uvx commands through `scfw`. Requires proxy mode for package operations. |
@@ -210,7 +210,7 @@ Package some-evil-package-1.0.0:
 The command was blocked. No changes have been made.
 ```
 
-Note that, once shell aliases have been configured via `scfw configure --alias-npm`/`--alias-pip`/`--alias-poetry`, the explicit `scfw run --` prefix is no longer needed: commands for these package managers run through `scfw` automatically.
+Note that, once shell aliases have been configured via `scfw configure --alias-npm`/`--alias-pip`/`--alias-poetry`/`--alias-uv`/`--alias-yarn`/`--alias-pnpm`, the explicit `scfw run --` prefix is no longer needed: commands for these package managers run through `scfw` automatically.
 
 Set `SCFW_PROXY_ENABLED=1` to evaluate pip and Poetry packages as they are downloaded through an invocation-scoped proxy. For example, `SCFW_PROXY_ENABLED=1 scfw run -- poetry install` inspects downloads made by Poetry, including during `add`, `update`, and `lock`. Existing HTTP/HTTPS proxy URLs, native macOS proxy settings, and configured TLS trust are preserved for outbound connections.
 

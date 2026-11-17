@@ -149,6 +149,7 @@ func seedYarnLockfile(t *testing.T, executable, dir string) {
 
 func TestYarnClassicProxyEndToEnd(t *testing.T) {
 	executable := yarnTestExecutable(t, "SCFW_TEST_YARN_CLASSIC")
+	enableProxyDiagnosticAssertions(t)
 	for _, test := range []struct {
 		name    string
 		args    []string
@@ -369,6 +370,7 @@ func newBerryTestProject(t *testing.T, rc string) string {
 
 func TestYarnBerryProxyEndToEnd(t *testing.T) {
 	executable := yarnTestExecutable(t, "SCFW_TEST_YARN_BERRY")
+	enableProxyDiagnosticAssertions(t)
 	for _, test := range []struct {
 		name    string
 		args    []string

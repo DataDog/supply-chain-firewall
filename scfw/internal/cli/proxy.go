@@ -8,6 +8,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/diagnostic"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 	"net/http"
@@ -40,6 +41,34 @@ func runThroughProxy(
 	// here, rather than letting it end the process before the proxy is cleaned up.
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM)
 	defer stop()
+	// Finalize here, after proxy.Run's cleanup and before the caller can os.Exit.
+	if manager, ok := runner.(pm.PackageManager); ok && debugCaptureEnabled() {
+		selected := true
+		if selector, ok := manager.(pm.ProxyCommandSelector); ok {
+			selected = selector.ProxyCommandSupported(command)
+		}
+		if selected {
+			var capture *proxyDiagnostic
+			ctx, capture = startProxyDiagnostic(ctx, manager, append([]string{manager.Executable()}, command...))
+			defer func() {
+				outcome := "completed"
+				if commandErr != nil || setupErr != nil {
+					outcome = "failed"
+				}
+				if ctx.Err() != nil {
+					outcome = "cancelled"
+				}
+				if capture != nil && (commandErr != nil || setupErr != nil) {
+					capture.recorder.Record("run.error", "Proxy invocation failed or was cancelled", map[string]any{"setup_failed": setupErr != nil, "command_failed": commandErr != nil, "cancelled": ctx.Err() != nil, "setup_error": setupErr, "command_error": commandErr})
+				}
+				capture.finish(outcome)
+			}()
+		}
+	}
+	var observer *proxy.Observer
+	if manager, ok := runner.(pm.PackageManager); ok {
+		observer = diagnosticObserver(ctx, manager, command)
+	}
 
 	var options proxy.Options
 	var err error
@@ -49,7 +78,14 @@ func runThroughProxy(
 		options.Upstream, err = runner.UpstreamProxy(command)
 	}
 	if err != nil {
+		if recorder := diagnostic.FromContext(ctx); recorder != nil {
+			recorder.Record("proxy.setup_error", "Could not resolve proxy configuration", nil)
+		}
 		return nil, fmt.Errorf("resolve upstream proxy: %w", err)
+	}
+	options.Observer = observer
+	if recorder := diagnostic.FromContext(ctx); recorder != nil {
+		recorder.Record("configuration.proxy", "Effective non-secret proxy configuration", map[string]any{"http_proxy": options.Upstream.HTTPProxy, "https_proxy": options.Upstream.HTTPSProxy, "no_proxy": options.Upstream.NoProxy, "trusted_hosts": options.TrustedHosts, "custom_tls": options.UpstreamTLS != nil, "scoped_routes": options.RouteForRequest != nil, "additional_clients": len(options.AdditionalClients)})
 	}
 	if configure != nil {
 		client := newPublicationHTTPClient(options)
@@ -69,7 +105,7 @@ func runThroughProxy(
 type proxyHookConfigurer func(context.Context, *http.Client) ([]proxy.RequestHook, error)
 
 func newPublicationHTTPClient(options proxy.Options) *http.Client {
-	return &http.Client{Transport: proxy.NewTransport(options)}
+	return &http.Client{Transport: proxy.ObserveTransport(proxy.NewTransport(options), options.Observer, "publication")}
 }
 
 // redactCommandArguments returns a reporting/logging copy of a command with

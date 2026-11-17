@@ -224,6 +224,32 @@ Set `SCFW_PROXY_ENABLED=1` to evaluate pip and Poetry packages as they are downl
 
 The `SCFW_ON_WARNING` environment variable (`allow` or `block`) has the same effect as `--allow-on-warning`/`--block-on-warning` and takes precedence over them when set, which is useful for enforcing a consistent policy across a CI environment without changing every invocation. In a non-interactive context (no attached terminal), a warning-level result is blocked by default unless one of these mechanisms is used, so a warning can never be silently ignored.
 
+### Capture proxy diagnostics
+
+Set `SCFW_DEBUG=1` to record one proxy invocation in a local, human-readable YAML journal. This works with configured package-manager aliases and in CI; it never sends diagnostics to stdout or uploads them. Proxy mode must also be enabled. For example:
+
+```sh
+SCFW_PROXY_ENABLED=1 SCFW_DEBUG=1 scfw run -- npm install react
+SCFW_PROXY_ENABLED=1 SCFW_DEBUG=1 SCFW_DEBUG_OUTPUT=/tmp/scfw-debug.yaml scfw run -- pip install requests
+```
+
+With an existing npm alias, the same environment works with `npm install react`. Capture supports the existing npm, Yarn, pnpm/pnpx/pn/pnx, pip/pip3, Poetry, and uv/uvx proxy integrations. Commands normally executed outside proxy mode still run normally and print a warning that no capture was made.
+
+| Environment variable | Behavior |
+| --- | --- |
+| `SCFW_DEBUG` | Only the exact value `1` enables capture. When disabled, no capture file, worker, version probe, body sample, or hash is created. |
+| `SCFW_DEBUG_OUTPUT` | Optional output filename in an existing directory. Does not enable capture by itself. Defaults to a unique `.yaml` file under `${SCFW_HOME}/diagnostics`, or the normal SCFW cache home when `SCFW_HOME` is unset. Existing files and symlinks are never overwritten. |
+
+SCFW announces the destination on stderr. Files have mode `0600`, and the default diagnostics directory is created privately. Capture starts after proxy command selection and includes platform/manager versions, selected non-secret configuration, full filesystem paths, SCFW debug logs, HTTP observations, bounded metadata response text, recognition/publication/cache/policy/report events, and child-process start/exit details. Console log filtering remains unchanged.
+
+Authorization/cookie headers, URL credentials and signed queries, known secrets, private keys, environment dumps, request bodies, package artifact contents, and the child process's terminal stdout/stderr are excluded. Full filesystem paths and package names are intentionally retained. Unknown or unsafe values are omitted rather than formatted. Registry metadata still undergoes redaction because it can contain credential-bearing download URLs.
+
+The file is a stream of versioned YAML documents with timestamps and plain-language messages, separated by `---` and completed with `...`. Metadata appears in readable text blocks. A terminal summary explains the outcome, dropped events, and completeness. Concurrent events may interleave; there are no tracing or request-correlation IDs.
+
+Capture is bounded: metadata candidates are limited to 64 KiB encoded/decoded and persisted excerpts to 4 KiB, individual documents to 64 KiB, the queue to 256 documents/8 MiB, and the journal to 25 MiB/100,000 events. Body hashes cover at most 8 MiB and explicitly indicate incomplete observations. Omitted or truncated bodies have reasons; observed upstream bytes do not imply delivery to the manager. Capture never drains a body, fetches extra metadata, or changes policy inspection limits.
+
+Allow, warn, block, manager/proxy failures, and handled cancellation/interrupts all finalize after cleanup. Diagnostic failures warn without changing the command's result. If publication fails, stderr reports a retained sibling `.partial-*` path where possible. To recover a damaged partial, keep only documents through the last standalone `...` line; a missing summary means the capture is incomplete. SIGKILL/power loss and already-blocked filesystem calls cannot guarantee finalization. Journals are not automatically deleted; remove them when no longer needed.
+
 ## Development
 
 We welcome contributions to Supply Chain Firewall.  Refer to the [CONTRIBUTING](https://github.com/DataDog/supply-chain-firewall/blob/v4/CONTRIBUTING.md) guide for instructions on setting up for development.

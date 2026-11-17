@@ -1,4 +1,5 @@
 {
+  "diagnostic/unrelated": {"message":"unrelated diagnostic response"},
   "metadata/cdn-opaque-wheel": {"files":[{"filename":"project-1.0-py3-none-any.whl","url":"https://cdn.example/objects/opaque?id=wheel"}]},
   "metadata/conflicting-alpha": {"name":"alpha","files":[{"filename":"alpha-1.0.tar.gz","url":"https://cdn.example/shared?token=one"}]},
   "metadata/conflicting-beta": {"name":"beta","files":[{"filename":"beta-2.0.tar.gz","url":"https://user:password@cdn.example/shared?token=one"}]},

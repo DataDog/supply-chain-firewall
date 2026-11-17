@@ -21,6 +21,14 @@ type PackageManager interface {
 	ResolveInstallTargets(ctx context.Context, command []string) (*Set[Package], error)
 }
 
+// DiagnosticInfo describes existing adapter discovery without exposing settings
+// maps or secrets. DiagnosticProvider is consulted only during opt-in capture.
+type DiagnosticInfo struct{ Version, InstalledVersion string }
+
+type DiagnosticProvider interface {
+	DiagnosticInfo(context.Context, []string) DiagnosticInfo
+}
+
 // ProxyRunner is implemented by package managers that can run through the
 // Supply Chain Firewall proxy, which evaluates packages as they are downloaded
 // rather than resolving install targets ahead of time.

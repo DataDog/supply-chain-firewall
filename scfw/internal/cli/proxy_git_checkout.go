@@ -22,8 +22,11 @@ type gitCheckoutPolicy func(evaluate func(context.Context, pm.Package, error) er
 func npmGitCheckoutPolicy(evaluate func(context.Context, pm.Package, error) error) githook.Decide {
 	return func(ctx context.Context, checkout githook.Checkout) error {
 		pkg, found, err := npmregistry.CheckoutPackage(checkout.Dir, checkout.Origin, checkout.SHA)
-		if err != nil || !found {
-			return err
+		if err != nil {
+			return fmt.Errorf("supply chain firewall could not read the git checkout: %w", err)
+		}
+		if !found {
+			return nil
 		}
 		if err := evaluate(ctx, pkg, nil); err != nil {
 			return fmt.Errorf("%w (%s)", err, pkg.Source)

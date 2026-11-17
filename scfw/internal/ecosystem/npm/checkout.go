@@ -6,6 +6,8 @@
 package npm
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
@@ -23,9 +25,11 @@ import (
 const gitCloneMarker = "/_cacache/tmp/git-clone"
 
 // CheckoutPackage identifies the npm package in a git dependency checkout from
-// its root package.json. Checkouts outside npm's temporary clone directories,
-// and checkouts without a usable manifest, are not packages: npm fails on the
-// latter by itself.
+// its root package.json. Checkouts outside npm's temporary clone directories
+// are not packages, and neither are checkouts whose package.json is missing or
+// invalid JSON: npm fails on those by itself. npm installs a manifest without a
+// usable name or version and runs its lifecycle scripts, so that manifest is
+// identified by what it declares, possibly empty.
 func CheckoutPackage(dir, origin, sha string) (pm.Package, bool, error) {
 	if !strings.Contains(filepath.ToSlash(dir), gitCloneMarker) {
 		return pm.Package{}, false, nil
@@ -42,17 +46,34 @@ func CheckoutPackage(dir, origin, sha string) (pm.Package, bool, error) {
 	if err != nil {
 		return pm.Package{}, false, err
 	}
+	// npm has no size limit, so a manifest that cannot be read in full is not
+	// allowed unevaluated.
 	if int64(len(manifest)) > archive.MaxMetadataBytes {
-		return pm.Package{}, false, nil
+		return pm.Package{}, false, errors.New("the checkout's package.json exceeds the inspection limit")
 	}
 	artifact, found, err := parseManifest(manifest)
-	if err != nil || !found {
+	if err != nil {
 		return pm.Package{}, false, nil
+	}
+	if !found {
+		artifact.Name, artifact.Version = declaredIdentity(manifest)
 	}
 	return pm.Package{
 		Ecosystem: common.NPM, Name: artifact.Name, Version: artifact.Version,
 		Source: redactGitRemote(origin) + "#" + sha,
 	}, true, nil
+}
+
+// declaredIdentity returns the name and version a manifest declares, however
+// npm would normalize them, and empty strings for anything that is not a string.
+func declaredIdentity(manifest []byte) (name, version string) {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(bytes.TrimPrefix(manifest, []byte("\xef\xbb\xbf")), &fields) != nil {
+		return "", ""
+	}
+	_ = json.Unmarshal(fields["name"], &name)
+	_ = json.Unmarshal(fields["version"], &version)
+	return name, strings.TrimSpace(version)
 }
 
 // redactGitRemote removes credentials from a git remote, including scp-like

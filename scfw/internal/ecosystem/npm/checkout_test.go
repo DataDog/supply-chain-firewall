@@ -23,12 +23,21 @@ func TestCheckoutPackage(t *testing.T) {
 		notClone               bool
 		want                   pm.Package
 		found                  bool
+		wantErr                bool
 	}{
 		{name: "widget", manifest: readNpmFixture(t, "manifest/widget.json"), origin: "https://host/r.git",
 			want: pm.Package{Ecosystem: common.NPM, Name: "@acme/widget", Version: "1.2.3", Source: "https://host/r.git#abc"}, found: true},
 		{name: "v-prefixed", manifest: readNpmFixture(t, "manifest/v-prefixed.json"), origin: "https://host/r.git",
 			want: pm.Package{Ecosystem: common.NPM, Name: "widget", Version: "1.2.3", Source: "https://host/r.git#abc"}, found: true},
-		{name: "no-version", manifest: readNpmFixture(t, "manifest/no-version.json"), origin: "https://host/r.git"},
+		// npm installs these and runs their lifecycle scripts, so each is evaluated
+		// with the identity it declares.
+		{name: "no-version", manifest: readNpmFixture(t, "manifest/no-version.json"), origin: "https://host/r.git",
+			want: pm.Package{Ecosystem: common.NPM, Name: "widget", Version: "", Source: "https://host/r.git#abc"}, found: true},
+		{name: "loose-only version", manifest: readNpmFixture(t, "manifest/loose-version.json"), origin: "https://host/r.git",
+			want: pm.Package{Ecosystem: common.NPM, Name: "widget", Version: "01.0.0", Source: "https://host/r.git#abc"}, found: true},
+		{name: "no-name", manifest: readNpmFixture(t, "manifest/no-name.json"), origin: "https://host/r.git",
+			want: pm.Package{Ecosystem: common.NPM, Name: "", Version: "1.2.3", Source: "https://host/r.git#abc"}, found: true},
+		// npm fails on these by itself.
 		{name: "no package.json", origin: "https://host/r.git"},
 		{name: "invalid manifest", manifest: readNpmFixture(t, "manifest/invalid.json"), origin: "https://host/r.git"},
 		{name: "not a temporary clone", manifest: readNpmFixture(t, "manifest/widget.json"), origin: "https://host/r.git", notClone: true},
@@ -38,7 +47,8 @@ func TestCheckoutPackage(t *testing.T) {
 			want: pm.Package{Ecosystem: common.NPM, Name: "@acme/widget", Version: "1.2.3", Source: "ssh://host/r.git#abc"}, found: true},
 		{name: "scp-like remote", manifest: readNpmFixture(t, "manifest/widget.json"), origin: "git@host:o/r.git",
 			want: pm.Package{Ecosystem: common.NPM, Name: "@acme/widget", Version: "1.2.3", Source: "host:o/r.git#abc"}, found: true},
-		{name: "oversized manifest", manifest: oversized, origin: "https://host/r.git"},
+		// npm has no size limit, so an oversized manifest cannot be allowed unread.
+		{name: "oversized manifest", manifest: oversized, origin: "https://host/r.git", wantErr: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "_cacache", "tmp", "git-cloneX")
@@ -54,8 +64,8 @@ func TestCheckoutPackage(t *testing.T) {
 				}
 			}
 			got, found, err := CheckoutPackage(dir, test.origin, "abc")
-			if err != nil {
-				t.Fatalf("CheckoutPackage() error = %v", err)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("CheckoutPackage() error = %v, want error %v", err, test.wantErr)
 			}
 			if found != test.found || got != test.want {
 				t.Fatalf("CheckoutPackage() = %+v, %v; want %+v, %v", got, found, test.want, test.found)

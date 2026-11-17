@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/diagnostic"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
@@ -93,6 +94,9 @@ func (e *proxyPackageEvaluator) evaluatePackage(requestContext context.Context, 
 		e.mutex.Unlock()
 
 		if exists {
+			if capture := diagnostic.FromContext(e.runContext); capture != nil {
+				capture.Record("evaluation.cache", "Reusing cached or in-flight policy decision", map[string]any{"name": pkg.Name, "version": pkg.Version, "source": pkg.Source})
+			}
 			select {
 			case <-decision.done:
 				if decision.complete {
@@ -116,6 +120,10 @@ func (e *proxyPackageEvaluator) evaluatePackage(requestContext context.Context, 
 }
 
 func (e *proxyPackageEvaluator) evaluatePolicy(ctx context.Context, pkg pm.Package, publishErr error) (error, bool) {
+	capture := diagnostic.FromContext(ctx)
+	if capture != nil {
+		capture.Record("evaluation.start", "Evaluating package policy", map[string]any{"ecosystem": string(pkg.Ecosystem), "name": pkg.Name, "version": pkg.Version, "source": pkg.Source, "publication_failed": publishErr != nil})
+	}
 	if err := ctx.Err(); err != nil {
 		return err, false
 	}
@@ -126,6 +134,9 @@ func (e *proxyPackageEvaluator) evaluatePolicy(ctx context.Context, pkg pm.Packa
 	}
 	targets := pm.NewSet(pkg)
 	report, err := e.evaluator.EvaluateInstallTargets(ctx, false, targets)
+	if capture != nil {
+		capture.Record("evaluation.finish", "Package policy evaluation finished", map[string]any{"name": pkg.Name, "version": pkg.Version, "outcome": string(report.Outcome), "failed": err != nil})
+	}
 	if err != nil {
 		if isContextError(err) {
 			return err, false
@@ -156,6 +167,9 @@ func (e *proxyPackageEvaluator) evaluatePolicy(ctx context.Context, pkg pm.Packa
 	if report.Outcome == evaluation.OutcomeBlock {
 		resolved = evaluation.OutcomeBlock
 	}
+	if capture != nil {
+		capture.Record("policy.decision", "Resolved package firewall decision", map[string]any{"name": pkg.Name, "version": pkg.Version, "outcome": string(report.Outcome), "decision": string(resolved)})
+	}
 	e.report(ctx, targets, report, resolved)
 	if err := ctx.Err(); err != nil {
 		return err, false
@@ -171,6 +185,9 @@ func isContextError(err error) bool {
 }
 
 func (e *proxyPackageEvaluator) allowEvaluationFailures(ctx context.Context, pkg pm.Package, failures []evaluation.Failure) error {
+	if capture := diagnostic.FromContext(ctx); capture != nil {
+		capture.Record("policy.decision", "Allowing package after evaluation failure", map[string]any{"name": pkg.Name, "version": pkg.Version, "outcome": string(evaluation.OutcomeError), "decision": string(evaluation.OutcomeAllow)})
+	}
 	report := evaluation.ScfwPolicyEvaluationReport{
 		Outcome: evaluation.OutcomeError,
 		Results: []evaluation.PackageEvaluationResult{{
@@ -211,6 +228,10 @@ func (e *proxyPackageEvaluator) report(
 	report evaluation.ScfwPolicyEvaluationReport,
 	resolved evaluation.Outcome,
 ) {
+	capture := diagnostic.FromContext(ctx)
+	if capture != nil {
+		capture.Record("report.start", "Reporting firewall outcome", map[string]any{"decision": string(resolved)})
+	}
 	if err := e.reporter.ReportFirewallOutcome(
 		ctx,
 		e.installTimestamp,
@@ -222,6 +243,11 @@ func (e *proxyPackageEvaluator) report(
 		report,
 		resolved,
 	); err != nil {
+		if capture != nil {
+			capture.Record("report.finish", "Firewall outcome reporting failed", map[string]any{"failed": true})
+		}
 		slog.Warn("failed to report proxy firewall outcome", "error", err)
+	} else if capture != nil {
+		capture.Record("report.finish", "Firewall outcome reported", map[string]any{"failed": false, "decision": string(resolved)})
 	}
 }

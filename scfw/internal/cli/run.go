@@ -132,6 +132,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 	}
 
 	if selector, ok := packageManager.(pm.ProxyCommandSelector); ok && !selector.ProxyCommandSupported(cmdArgs[1:]) {
+		warnNoDebugCapture()
 		exitOnCommandError(packageManager.RunCommand(cmd.Context(), cmdArgs[1:]))
 		return nil
 	}
@@ -171,6 +172,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 		slog.Warn("proxy mode is not yet supported for this package manager; falling back to dry-run resolution", "package_manager", packageManagerName)
 	}
 
+	warnNoDebugCapture()
 	slog.Debug("resolving package installation targets", "package_manager", packageManagerName)
 	installTargets, err := packageManager.ResolveInstallTargets(cmd.Context(), cmdArgs[1:])
 	if err != nil {

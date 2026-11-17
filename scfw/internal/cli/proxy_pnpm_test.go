@@ -164,6 +164,7 @@ func seedPnpmLockfile(t *testing.T, executable, dir string) {
 
 func TestPnpmProxyEndToEnd(t *testing.T) {
 	forEachPnpm(t, func(t *testing.T, _ int, executable string) {
+		enableProxyDiagnosticAssertions(t)
 		for _, test := range []struct {
 			name    string
 			args    []string

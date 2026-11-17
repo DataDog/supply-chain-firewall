@@ -80,6 +80,7 @@ func (r *capturingPoetryRunner) ProxyCommand(ctx context.Context, args []string,
 
 func TestPoetryProxyEndToEnd(t *testing.T) {
 	manager := poetryForProxyTest(t)
+	enableProxyDiagnosticAssertions(t)
 	projectFixture := readProxyFixture(t, "poetry/pyproject.toml.tmpl")
 	localConfig := readProxyFixture(t, "poetry/poetry.toml")
 	userConfig := readProxyFixture(t, "poetry/config.toml")

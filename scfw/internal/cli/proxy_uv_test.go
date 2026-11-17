@@ -106,6 +106,7 @@ func assertUVProxyCleaned(t *testing.T, runner *capturingUVRunner) {
 
 func TestUVProxyEndToEnd(t *testing.T) {
 	executable := uvTestEnvironment(t)
+	enableProxyDiagnosticAssertions(t)
 	wheel := pypiWheel(t)
 	seedWheel := pypiWheelNamed(t, "pip")
 	simple := readProxyJSONFixture(t, "uv/simple")

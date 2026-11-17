@@ -1,0 +1,5 @@
+{
+  "metadata": {"name":"example-package","versions":{},"token":"body-token-canary","dist":{"tarball":"https://user:body-userinfo-canary@registry.test/pkg.tgz?signature=body-query-canary"}},
+  "simple": {"meta":{"api-version":"1.0"},"files":[]},
+  "unrelated": {"message":"unrelated-canary"}
+}

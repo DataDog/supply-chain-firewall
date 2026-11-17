@@ -67,6 +67,7 @@ func Run(ctx context.Context, options Options, command []string, configurer Comm
 	if len(options.AdditionalClients) > 0 {
 		config.AdditionalClients = make(map[string]ClientConfig, len(options.AdditionalClients))
 		for name, clientOptions := range options.AdditionalClients {
+			clientOptions.Observer = options.Observer
 			clientOptions.ClientIdentity = "client:" + name
 			clientOptions.RequestHooks = append(slices.Clone(options.RequestHooks), clientOptions.RequestHooks...)
 			client, err := Start(ctx, clientOptions)
@@ -127,7 +128,17 @@ func Run(ctx context.Context, options Options, command []string, configurer Comm
 	}
 	child.WaitDelay = 5 * time.Second
 	slog.Debug("running command through proxy")
+	if options.Observer != nil {
+		options.Observer.notify("child.start", "Starting package manager", map[string]any{"executable": spec.Executable})
+	}
 	err = child.Run()
+	if options.Observer != nil {
+		exitCode := -1
+		if child.ProcessState != nil {
+			exitCode = child.ProcessState.ExitCode()
+		}
+		options.Observer.notify("child.exit", "Package manager exited", map[string]any{"exit_code": exitCode, "failed": err != nil, "cancelled": ctx.Err() != nil})
+	}
 	if separateGroup && child.Process != nil {
 		_ = syscall.Kill(-child.Process.Pid, syscall.SIGKILL)
 	}

@@ -49,6 +49,7 @@ func TestPipProxyEndToEnd(t *testing.T) {
 			if err != nil {
 				t.Skip("pip required for integration tests")
 			}
+			enableProxyDiagnosticAssertions(t)
 			for _, key := range []string{"http_proxy", "HTTP_PROXY", "https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY", "PIP_PROXY", "PIP_CERT", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "PIP_CLIENT_CERT", "PIP_TRUSTED_HOST", "PIP_EXTRA_INDEX_URL"} {
 				t.Setenv(key, "")
 			}

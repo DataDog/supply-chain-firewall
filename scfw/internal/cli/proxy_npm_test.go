@@ -211,6 +211,7 @@ func TestNpmProxyEndToEnd(t *testing.T) {
 	if _, err := exec.LookPath("npm"); err != nil {
 		t.Skip("npm required for npm integration tests")
 	}
+	enableProxyDiagnosticAssertions(t)
 	for _, test := range []struct {
 		name    string
 		args    func(registry *npmTestRegistry, dir string) []string

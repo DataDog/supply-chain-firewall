@@ -93,6 +93,8 @@ type ResponseBodyHook struct {
 
 // Options configures a proxy.
 type Options struct {
+	// Observer receives optional passive diagnostics; nil performs no capture work.
+	Observer *Observer
 	// ClientIdentity identifies this listener when a request presents no TLS
 	// identity. Run assigns identities to additional client listeners.
 	ClientIdentity string
@@ -152,6 +154,7 @@ type ClientConfig struct {
 
 // Server is a running proxy with its own per-run certificate authority.
 type Server struct {
+	observer     *Observer
 	listener     net.Listener
 	httpServer   *http.Server
 	transport    *Transport
@@ -203,6 +206,7 @@ func Start(ctx context.Context, options Options) (*Server, error) {
 
 	serverCtx, cancel := context.WithCancel(ctx)
 	server := &Server{
+		observer:     options.Observer,
 		listener:     listener,
 		transport:    NewTransport(options),
 		clientConfig: ClientConfig{URL: proxyURL, CACertificatePath: certificatePath},
@@ -226,6 +230,9 @@ func Start(ctx context.Context, options Options) (*Server, error) {
 	}()
 
 	slog.Debug("started package manager proxy", "url", proxyURL)
+	if server.observer != nil {
+		server.observer.notify("proxy.start", "Started invocation proxy", map[string]any{"url": proxyURL, "client": options.ClientIdentity})
+	}
 	return server, nil
 }
 
@@ -239,6 +246,7 @@ func (server *Server) ClientConfig() ClientConfig {
 // open CONNECT tunnels. Close is idempotent.
 func (server *Server) Close() error {
 	server.closeOnce.Do(func() {
+		defer func() { server.observer.notify("proxy.stop", "Stopped invocation proxy", nil) }()
 		server.cancel()
 		closeErr := server.httpServer.Close()
 		server.connectionsMutex.Lock()
@@ -317,8 +325,14 @@ func (server *Server) newHandler(
 			identity = listenerIdentity
 		}
 		observed := Request{Method: request.Method, URL: *request.URL, Header: request.Header.Clone(), ClientIdentity: identity}
+		if server.observer != nil {
+			server.observer.notify("http.request", "Observed package-manager request", map[string]any{"method": request.Method, "url": request.URL.String(), "client": identity, "headers": observedHeaders(request.Header), "advertised_request_bytes": request.ContentLength})
+		}
 		responseHooks, err := runRequestHooks(request.Context(), requestHooks, observed)
 		if err != nil {
+			if server.observer != nil {
+				server.observer.notify("http.rejected", "Policy rejected the request before forwarding", map[string]any{"url": request.URL.String(), "status": http.StatusForbidden})
+			}
 			slog.Debug("proxy rejected request", "method", request.Method, "url", redactURL(request.URL), "reason", err)
 			return request, goproxy.NewResponse(request, goproxy.ContentTypeText, http.StatusForbidden, err.Error()+"\n")
 		}
@@ -326,11 +340,14 @@ func (server *Server) newHandler(
 		// above never reach them.
 		proxyCtx.RoundTripper = goproxy.RoundTripperFunc(func(request *http.Request, _ *goproxy.ProxyCtx) (*http.Response, error) {
 			forwarded := request.WithContext(context.WithValue(request.Context(), clientIdentityContextKey{}, identity))
-			response, err := server.transport.RoundTrip(forwarded)
+			response, err := ObserveTransport(server.transport, server.observer, listenerIdentity).RoundTrip(forwarded)
 			if err != nil {
 				return nil, err
 			}
 			if err := runResponseHooks(request.Context(), observed, response, responseHooks, filepath.Dir(server.clientConfig.CACertificatePath)); err != nil {
+				if server.observer != nil {
+					server.observer.notify("http.inspection_error", "Response inspection rejected or failed", map[string]any{"url": request.URL.String(), "policy_rejected": errors.Is(err, ErrResponseRejected)})
+				}
 				_ = response.Body.Close()
 				// Hook and transport errors may contain credentials or body data.
 				// Do not expose their contents in the response or diagnostics.

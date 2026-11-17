@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/diagnostic"
 )
 
 var (
@@ -88,6 +90,9 @@ func (cache *PublicationCache) packument(ctx context.Context, client *http.Clien
 		cache.mutex.Unlock()
 
 		if exists {
+			if capture := diagnostic.FromContext(ctx); capture != nil {
+				capture.Record("publication.cache", "Reusing cached or in-flight npm publication lookup", map[string]any{"url": packumentURL.String()})
+			}
 			select {
 			case <-entry.done:
 				if entry.incomplete {

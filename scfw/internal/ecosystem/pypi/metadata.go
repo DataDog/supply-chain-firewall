@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/diagnostic"
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
 )
@@ -216,6 +217,9 @@ func (cache *MetadataCache) Discover(
 	cache.mutex.Unlock()
 
 	if exists {
+		if capture := diagnostic.FromContext(ctx); capture != nil {
+			capture.Record("publication.cache", "Reusing cached or in-flight Python metadata discovery", map[string]any{"name": project})
+		}
 		select {
 		case <-discovery.done:
 			return discovery.err
@@ -766,6 +770,11 @@ func (cache *MetadataCache) ResolveArtifactPublishDate(
 		return time.Time{}, err
 	}
 	publishDate, found := cache.PublishDate(artifact)
+	if found {
+		if capture := diagnostic.FromContext(ctx); capture != nil {
+			capture.Record("publication.cache", "Reusing observed Python publication date", map[string]any{"name": artifact.Name, "version": artifact.Version, "source": artifact.Source})
+		}
+	}
 	var publishErr error
 	if !found && client != nil {
 		publishDate, publishErr = cache.ResolvePublishDate(ctx, client, artifact)

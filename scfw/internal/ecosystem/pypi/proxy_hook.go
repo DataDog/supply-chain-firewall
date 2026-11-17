@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/diagnostic"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/common"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
@@ -76,10 +77,20 @@ func newProxyHook(runContext context.Context, options ProxyHookOptions) (*proxyH
 }
 
 func (h *proxyHook) resolveArtifact(ctx context.Context, artifact Artifact) (pm.Package, error) {
+	capture := diagnostic.FromContext(ctx)
+	var start time.Time
+	if capture != nil {
+		start = time.Now()
+		capture.Record("package.recognized", "Recognized Python package download", map[string]any{"ecosystem": "pypi", "name": artifact.Name, "version": artifact.Version, "source": artifact.Source})
+		capture.Record("publication.start", "Resolving Python publication date", map[string]any{"name": artifact.Name, "version": artifact.Version})
+	}
 	pkg := pm.Package{Ecosystem: common.PYPI, Name: artifact.Name, Version: artifact.Version, Source: artifact.Source}
 	publishDate, err := h.Metadata.ResolveArtifactPublishDate(ctx, h.Client, artifact, h.resolveDate)
 	if err == nil {
 		pkg.PublishDate = publishDate.UTC()
+	}
+	if capture != nil {
+		capture.Record("publication.finish", "Python publication lookup finished", map[string]any{"name": artifact.Name, "version": artifact.Version, "publication_date": pkg.PublishDate, "failed": err != nil, "elapsed_ns": int64(time.Since(start))})
 	}
 	return pkg, err
 }

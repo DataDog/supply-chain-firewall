@@ -31,5 +31,5 @@ func berryProxyCommand(executable string, command []string, config proxy.ClientC
 		"YARN_HTTPS_CA_FILE_PATH": config.CACertificatePath,
 		"GIT_SSL_CAINFO":          config.CACertificatePath, "NODE_EXTRA_CA_CERTS": extraCAs,
 	})
-	return proxy.CommandSpec{Executable: executable, Args: slices.Clone(command), EnvOverrides: overrideVariants(os.Environ(), canonical)}, nil
+	return proxy.CommandSpec{Executable: executable, Args: slices.Clone(command), EnvOverrides: nodeproxy.OverrideVariants(os.Environ(), canonical)}, nil
 }

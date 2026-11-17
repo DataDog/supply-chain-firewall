@@ -32,11 +32,13 @@ var (
 	aliasPoetry       bool
 	aliasUV           bool
 	aliasYarn         bool
+	aliasPnpm         bool
 	removeAliasNpm    bool
 	removeAliasPip    bool
 	removeAliasPoetry bool
 	removeAliasUV     bool
 	removeAliasYarn   bool
+	removeAliasPnpm   bool
 	ddAPIKey          string
 	ddAppKey          string
 	ddSite            string
@@ -82,6 +84,8 @@ func init() {
 	registerConfigureArg("remove-alias-uv", false, "Remove Supply Chain Firewall's uv and uvx shell aliases.", &removeAliasUV)
 	registerConfigureArg("alias-yarn", false, "Add a shell alias to run all yarn commands through Supply Chain Firewall.", &aliasYarn)
 	registerConfigureArg("remove-alias-yarn", false, "Remove Supply Chain Firewall's yarn shell alias.", &removeAliasYarn)
+	registerConfigureArg("alias-pnpm", false, "Add shell aliases to run pnpm, pnpx, pn, and pnx commands through Supply Chain Firewall.", &aliasPnpm)
+	registerConfigureArg("remove-alias-pnpm", false, "Remove Supply Chain Firewall's pnpm, pnpx, pn, and pnx shell aliases.", &removeAliasPnpm)
 	registerConfigureArg("dd-api-key", "", "Datadog API key used for policy evaluation and reporting (optional).", &ddAPIKey)
 	registerConfigureArg("dd-app-key", "", "Datadog application key used for policy evaluation and reporting (optional).", &ddAppKey)
 	registerConfigureArg("dd-site", "", "Datadog site parameter used for Datadog evaluation and reporting (optional).", &ddSite)
@@ -91,6 +95,7 @@ func init() {
 	configureCmd.MarkFlagsMutuallyExclusive("alias-poetry", "remove-alias-poetry")
 	configureCmd.MarkFlagsMutuallyExclusive("alias-uv", "remove-alias-uv")
 	configureCmd.MarkFlagsMutuallyExclusive("alias-yarn", "remove-alias-yarn")
+	configureCmd.MarkFlagsMutuallyExclusive("alias-pnpm", "remove-alias-pnpm")
 	configureCmd.MarkFlagsOneRequired(configureArgNames...)
 }
 
@@ -178,6 +183,12 @@ func buildManagedBlock(existingConfig managedConfiguration, scfwHomeChanged, ddS
 	}
 	if !removeAliasYarn && (aliasYarn || hasConfiguredAlias(existingConfig.aliases, "yarn")) {
 		b.WriteString(`alias yarn="scfw run -- yarn"` + "\n")
+	}
+	if !removeAliasPnpm && (aliasPnpm || hasConfiguredAlias(existingConfig.aliases, "pnpm", "pnpx", "pn", "pnx")) {
+		b.WriteString(`alias pnpm="scfw run -- pnpm"` + "\n")
+		b.WriteString(`alias pnpx="scfw run -- pnpx"` + "\n")
+		b.WriteString(`alias pn="scfw run -- pn"` + "\n")
+		b.WriteString(`alias pnx="scfw run -- pnx"` + "\n")
 	}
 	configuredScfwHome := existingConfig.scfwHome
 	if scfwHomeChanged || scfwHome != "" {

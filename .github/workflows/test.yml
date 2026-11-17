@@ -17,7 +17,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Check out code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -52,8 +52,27 @@ jobs:
           echo "SCFW_TEST_YARN_CLASSIC=$RUNNER_TEMP/yarn-classic/node_modules/yarn/bin/yarn.js" >> "$GITHUB_ENV"
           echo "SCFW_TEST_YARN_BERRY=$RUNNER_TEMP/yarn-berry/node_modules/@yarnpkg/cli-dist/bin/yarn.js" >> "$GITHUB_ENV"
 
+      # pnpm 11 requires Node 22.13 or later.
+      - name: Set up Node.js for pnpm integration tests
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      # pnpm 12's npm package is a launcher that needs its install script, so
+      # the native binary is installed directly.
+      - name: Set up pnpm for integration tests
+        run: |
+          npm install --ignore-scripts --prefix "$RUNNER_TEMP/pnpm-10" pnpm@10.34.9
+          npm install --ignore-scripts --prefix "$RUNNER_TEMP/pnpm-11" pnpm@11.28.9
+          npm install --ignore-scripts --prefix "$RUNNER_TEMP/pnpm-12" @pnpm/exe.linux-x64@12.18.0
+          echo "SCFW_TEST_PNPM_10=$RUNNER_TEMP/pnpm-10/node_modules/pnpm/bin/pnpm.cjs" >> "$GITHUB_ENV"
+          echo "SCFW_TEST_PNPM_11=$RUNNER_TEMP/pnpm-11/node_modules/pnpm/bin/pnpm.mjs" >> "$GITHUB_ENV"
+          echo "SCFW_TEST_PNPM_12=$RUNNER_TEMP/pnpm-12/node_modules/@pnpm/exe.linux-x64/pnpm" >> "$GITHUB_ENV"
+
       - name: Run tests
-        run: go test -count=2 ./scfw/...
+        # The real package-manager end-to-end tests exceed go test's default
+        # 10-minute package timeout when run twice.
+        run: go test -count=2 -timeout 25m ./scfw/...
 
   poetry-proxy:
     runs-on: ubuntu-latest

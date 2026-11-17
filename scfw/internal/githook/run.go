@@ -8,6 +8,7 @@ package githook
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -26,7 +27,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	socket, name, gitArgs := args[0], args[1], args[2:]
 	// Flag 1 marks a branch checkout, which covers clones and "checkout <sha>".
-	if name == "post-checkout" && len(gitArgs) == 3 && gitArgs[2] == "1" {
+	if name == "post-checkout" && len(gitArgs) == 3 && gitArgs[2] == "1" && !inSubmodule(ctx) {
 		if status := ask(ctx, socket, gitArgs[1], stderr); status != 0 {
 			return status
 		}
@@ -66,9 +67,52 @@ func unreachable(stderr io.Writer, err error) int {
 	return 1
 }
 
-// chain runs the hook Git would have run without SCFW's hooks.
-func chain(_ context.Context, _, _ string, _ []string, _ io.Reader, _, _ io.Writer) int {
+// chain runs the hook Git would have run without SCFW's hooks: the effective
+// core.hooksPath other than ours, else the repository's hooks directory.
+func chain(ctx context.Context, ours, name string, gitArgs []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	dir := ""
+	// Values are listed from lowest to highest precedence; ours comes last.
+	values, _ := gitOutput(ctx, "config", "--type=path", "--get-all", "core.hooksPath")
+	for _, value := range strings.Split(values, "\n") {
+		if value != "" && filepath.Clean(value) != filepath.Clean(ours) {
+			dir = value
+		}
+	}
+	if dir == "" {
+		common, err := gitOutput(ctx, "rev-parse", "--git-common-dir")
+		if err != nil {
+			return 0
+		}
+		dir = filepath.Join(common, "hooks")
+	} else if !filepath.IsAbs(dir) {
+		// Git resolves a relative core.hooksPath against the working tree root.
+		top, err := gitOutput(ctx, "rev-parse", "--show-toplevel")
+		if err != nil {
+			return 0
+		}
+		dir = filepath.Join(top, dir)
+	}
+	hook := filepath.Join(dir, name)
+	if info, err := os.Stat(hook); err != nil || info.IsDir() || info.Mode().Perm()&0o111 == 0 {
+		return 0
+	}
+	child := exec.CommandContext(ctx, hook, gitArgs...)
+	child.Stdin, child.Stdout, child.Stderr = stdin, stdout, stderr
+	if err := child.Run(); err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			return exit.ExitCode()
+		}
+		_, _ = fmt.Fprintf(stderr, "supply chain firewall could not run git hook %s: %v\n", name, err)
+		return 1
+	}
 	return 0
+}
+
+// A submodule belongs to the package its superproject is checked out for.
+func inSubmodule(ctx context.Context) bool {
+	superproject, err := gitOutput(ctx, "rev-parse", "--show-superproject-working-tree")
+	return err == nil && superproject != ""
 }
 
 func gitOutput(ctx context.Context, args ...string) (string, error) {

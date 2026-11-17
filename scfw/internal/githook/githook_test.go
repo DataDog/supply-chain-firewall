@@ -220,3 +220,112 @@ func TestApplyAppendsAfterExistingEntries(t *testing.T) {
 		t.Fatalf("post-checkout hook missing or not executable: %v", err)
 	}
 }
+
+func writeHook(t *testing.T, dir, name, body string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"+body+"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// commitWithHooks commits without disabling hooks, unlike commit.
+func commitWithHooks(t *testing.T, dir string, env map[string]string) (string, error) {
+	t.Helper()
+	mustGit(t, dir, env, "add", ".")
+	return git(t, dir, env, "-c", "commit.gpgsign=false", "-c", "user.name=SCFW Test", "-c", "user.email=scfw@example.invalid", "commit", "-q", "-m", "change")
+}
+
+func TestUserLocalHooksPathStillRuns(t *testing.T) {
+	gitEnvironment(t)
+	repository, _ := sourceRepository(t)
+	marker := filepath.Join(t.TempDir(), "marker")
+	mustGit(t, repository, nil, "config", "core.hooksPath", ".husky")
+	writeHook(t, filepath.Join(repository, ".husky"), "pre-commit", "echo ran > '"+marker+"'\nexit 3")
+	_, env := startHooks(t, (&recorder{}).decide)
+	if err := os.WriteFile(filepath.Join(repository, "index.js"), []byte("1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output, err := commitWithHooks(t, repository, env)
+	if err == nil {
+		t.Fatalf("commit succeeded, want the user's failing pre-commit hook to stop it\n%s", output)
+	}
+	if !exists(marker) {
+		t.Fatal("the user's local core.hooksPath pre-commit hook did not run")
+	}
+}
+
+func TestDefaultHooksDirectoryStillRuns(t *testing.T) {
+	gitEnvironment(t)
+	repository, _ := sourceRepository(t)
+	marker := filepath.Join(t.TempDir(), "marker")
+	writeHook(t, filepath.Join(repository, ".git", "hooks"), "post-commit", "echo ran > '"+marker+"'")
+	_, env := startHooks(t, (&recorder{}).decide)
+	if err := os.WriteFile(filepath.Join(repository, "index.js"), []byte("1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := commitWithHooks(t, repository, env); err != nil {
+		t.Fatalf("commit: %v\n%s", err, output)
+	}
+	if !exists(marker) {
+		t.Fatal("the repository's .git/hooks post-commit hook did not run")
+	}
+}
+
+func TestGlobalHooksPathRunsAfterAllowedClone(t *testing.T) {
+	gitEnvironment(t)
+	source, _ := sourceRepository(t)
+	global := t.TempDir()
+	marker := filepath.Join(t.TempDir(), "marker")
+	writeHook(t, filepath.Join(global, "hooks"), "post-checkout", "echo ran > '"+marker+"'")
+	config := filepath.Join(global, "gitconfig")
+	if err := os.WriteFile(config, []byte("[core]\n\thooksPath = "+filepath.Join(global, "hooks")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", config)
+	_, env := startHooks(t, (&recorder{}).decide)
+	mustGit(t, t.TempDir(), env, "clone", "-q", "file://"+source, filepath.Join(t.TempDir(), "clone"))
+	if !exists(marker) {
+		t.Fatal("the global core.hooksPath post-checkout hook did not run after an allowed clone")
+	}
+}
+
+func TestSubmoduleCheckoutIsNotEvaluated(t *testing.T) {
+	gitEnvironment(t)
+	submodule, _ := sourceRepository(t)
+	superproject, _ := sourceRepository(t)
+	mustGit(t, superproject, nil, "-c", "protocol.file.allow=always", "submodule", "add", "-q", "file://"+submodule, "vendor")
+	commit(t, superproject, "add submodule")
+	decisions := &recorder{}
+	_, env := startHooks(t, decisions.decide)
+	destination := filepath.Join(t.TempDir(), "clone")
+	mustGit(t, t.TempDir(), env, "-c", "protocol.file.allow=always", "clone", "-q", "--recurse-submodules", "file://"+superproject, destination)
+
+	checkouts := decisions.recorded()
+	if len(checkouts) != 1 || resolved(t, checkouts[0].Dir) != resolved(t, destination) {
+		t.Fatalf("checkouts = %+v, want only the superproject %s", checkouts, destination)
+	}
+}
+
+func TestFileCheckoutIsNotEvaluated(t *testing.T) {
+	gitEnvironment(t)
+	source, _ := sourceRepository(t)
+	decisions := &recorder{}
+	_, env := startHooks(t, decisions.decide)
+	destination := filepath.Join(t.TempDir(), "clone")
+	mustGit(t, t.TempDir(), env, "clone", "-q", "file://"+source, destination)
+	if err := os.WriteFile(filepath.Join(destination, "package.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, destination, env, "checkout", "--", "package.json")
+	if checkouts := decisions.recorded(); len(checkouts) != 1 {
+		t.Fatalf("checkouts = %+v, want only the clone", checkouts)
+	}
+}

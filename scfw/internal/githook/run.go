@@ -71,10 +71,15 @@ func unreachable(stderr io.Writer, err error) int {
 // core.hooksPath other than ours, else the repository's hooks directory.
 func chain(ctx context.Context, ours, name string, gitArgs []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	dir := ""
-	// Values are listed from lowest to highest precedence; ours comes last.
+	// Values are listed from lowest to highest precedence. A nested scfw run
+	// appends its hooks after ours, so the hook below ours is the last value
+	// before it, not the last value overall.
 	values, _ := gitOutput(ctx, "config", "--type=path", "--get-all", "core.hooksPath")
 	for _, value := range strings.Split(values, "\n") {
-		if value != "" && filepath.Clean(value) != filepath.Clean(ours) {
+		if filepath.Clean(value) == filepath.Clean(ours) {
+			break
+		}
+		if value != "" {
 			dir = value
 		}
 	}

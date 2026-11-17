@@ -13,7 +13,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
@@ -218,6 +220,51 @@ func TestApplyAppendsAfterExistingEntries(t *testing.T) {
 	}
 	if info, err := os.Stat(filepath.Join(spec.EnvOverrides["GIT_CONFIG_VALUE_2"], "post-checkout")); err != nil || info.Mode().Perm()&0o100 == 0 {
 		t.Fatalf("post-checkout hook missing or not executable: %v", err)
+	}
+}
+
+// A nested scfw run stacks its hooks on the outer ones; each layer must forward
+// to the layer below it rather than back up the stack.
+func TestNestedHooksForwardToTheLayerBelow(t *testing.T) {
+	gitEnvironment(t)
+	repository, _ := sourceRepository(t)
+	marker := filepath.Join(t.TempDir(), "marker")
+	writeHook(t, filepath.Join(repository, ".git", "hooks"), "pre-commit", "echo ran > '"+marker+"'")
+	spec := &proxy.CommandSpec{EnvOverrides: map[string]string{}}
+	for range 2 {
+		hooks, err := Start(context.Background(), os.Args[0], (&recorder{}).decide)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = hooks.Close() })
+		hooks.Apply(spec)
+	}
+	if err := os.WriteFile(filepath.Join(repository, "index.js"), []byte("1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Stage without the hooks: only the guarded commit below may loop.
+	mustGit(t, repository, nil, "add", ".")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	child := exec.CommandContext(ctx, "git", "-c", "commit.gpgsign=false", "-c", "user.name=SCFW Test",
+		"-c", "user.email=scfw@example.invalid", "commit", "-q", "-m", "change")
+	child.Dir = repository
+	child.Env = os.Environ()
+	for key, value := range spec.EnvOverrides {
+		child.Env = append(child.Env, key+"="+value)
+	}
+	// A forwarding loop spawns hook processes without end; kill the whole group.
+	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	child.Cancel = func() error { return syscall.Kill(-child.Process.Pid, syscall.SIGKILL) }
+	output, err := child.CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatal("nested hooks forwarded to each other without end")
+	}
+	if err != nil {
+		t.Fatalf("commit: %v\n%s", err, output)
+	}
+	if !exists(marker) {
+		t.Fatal("the repository's pre-commit hook did not run under nested hooks")
 	}
 }
 

@@ -52,16 +52,21 @@ func (npm Npm) ProxyOptions(command []string) (proxy.Options, error) {
 	}
 	// npm trusts a readable, non-empty cafile, else ca, instead of the default
 	// roots, and Node then ignores NODE_EXTRA_CA_CERTS. Git requires
-	// GIT_SSL_CAINFO, so a missing bundle fails, and it is always added.
+	// GIT_SSL_CAINFO, so a missing bundle fails, and it is always added. An
+	// empty ca is unset, as in npm.
 	tlsOptions := proxy.TLSConfigOptions{CABundlePaths: []string{os.Getenv("GIT_SSL_CAINFO")}}
+	var inlineCA [][]byte
+	for _, ca := range settings.CA {
+		if ca != "" {
+			inlineCA = append(inlineCA, []byte(ca))
+		}
+	}
 	if data, err := os.ReadFile(settings.CAFile); err == nil && len(data) > 0 {
 		tlsOptions.RootCAs = x509.NewCertPool()
 		tlsOptions.CABundlePaths = append(tlsOptions.CABundlePaths, settings.CAFile)
-	} else if len(settings.CA) > 0 {
+	} else if len(inlineCA) > 0 {
 		tlsOptions.RootCAs = x509.NewCertPool()
-		for _, ca := range settings.CA {
-			tlsOptions.CABundlePEM = append(tlsOptions.CABundlePEM, []byte(ca))
-		}
+		tlsOptions.CABundlePEM = inlineCA
 	} else if extra := os.Getenv("NODE_EXTRA_CA_CERTS"); extra != "" {
 		// Node ignores an unreadable bundle.
 		if _, err := os.Stat(extra); err == nil {

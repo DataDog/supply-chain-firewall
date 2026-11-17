@@ -410,6 +410,36 @@ func TestProxyOptionsReplacesRootsLikeNpm(t *testing.T) {
 	}
 }
 
+// npm treats an empty ca as unset, so Node keeps its default roots and the
+// NODE_EXTRA_CA_CERTS bundle still applies.
+func TestProxyOptionsIgnoresEmptyCA(t *testing.T) {
+	caPEM, leafPEM := readNpmFixture(t, "tls/registry-ca.pem"), readNpmFixture(t, "tls/registry-leaf.pem")
+	for _, test := range []struct {
+		name  string
+		npmrc string
+		args  []string
+	}{
+		{"npmrc ca", "ca=\n", nil},
+		{"npmrc ca array", "ca[]=\n", nil},
+		{"option", "", []string{"install", "--ca="}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manager := isolatedNpm(t)
+			extra := filepath.Join(t.TempDir(), "extra.pem")
+			writeNpmFixture(t, extra, caPEM)
+			t.Setenv("NODE_EXTRA_CA_CERTS", extra)
+			writeNpmFixture(t, ".npmrc", test.npmrc)
+			options, err := manager.ProxyOptions(test.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !verifiesRegistry(t, options, leafPEM) {
+				t.Fatal("an empty ca replaced the default roots instead of being ignored")
+			}
+		})
+	}
+}
+
 func TestProxyOptionsHonorsStrictSSLFalse(t *testing.T) {
 	target := &url.URL{Scheme: "https", Host: "registry.test"}
 	for _, test := range []struct {

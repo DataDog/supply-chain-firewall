@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -171,17 +172,14 @@ func TestNewNpmDetectsNpx(t *testing.T) {
 	}
 }
 
-// Without the proxy npx is not inspected; npx's arguments are not npm's.
-func TestNpxResolvesNoInstallTargets(t *testing.T) {
+// Without the proxy nothing would evaluate what npx runs, so it must not run.
+func TestNpxRequiresProxyMode(t *testing.T) {
 	manager := fixtureNpm(t)
 	manager.npx = true
 	chdirT(t, fixtureNpmProject(t))
-	targets, err := manager.ResolveInstallTargets(context.Background(), []string{"install", "react@18.3.0"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if targets.Len() != 0 {
-		t.Fatalf("npx resolved %d targets", targets.Len())
+	targets, err := manager.ResolveInstallTargets(context.Background(), []string{"cowsay"})
+	if err == nil || !strings.Contains(err.Error(), "SCFW_PROXY_ENABLED=1") {
+		t.Fatalf("ResolveInstallTargets() = %v, %v, want a proxy mode error", targets, err)
 	}
 }
 

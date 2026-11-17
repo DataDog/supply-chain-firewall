@@ -7,6 +7,7 @@ package npm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -106,9 +107,10 @@ func (npm Npm) RunCommand(ctx context.Context, command []string) error {
 }
 
 func (npm Npm) ResolveInstallTargets(ctx context.Context, command []string) (*pm.Set[pm.Package], error) {
-	// npx is only inspected through the proxy: its arguments are not npm's.
+	// Only the proxy sees what npx downloads; without it nothing would be
+	// evaluated, so refuse rather than run it unchecked.
 	if npm.npx {
-		return pm.NewSet[pm.Package](), nil
+		return nil, errors.New("npx requires proxy mode (set SCFW_PROXY_ENABLED=1)")
 	}
 
 	// Only the install subcommand (or one of its aliases) is supported for now.

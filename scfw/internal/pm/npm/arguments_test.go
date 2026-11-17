@@ -38,7 +38,8 @@ func TestParseNpmOptions(t *testing.T) {
 		{"shorthand group without g", []string{"-Dq"}, nil},
 		{"global shorthand equals true", []string{"-g=true"}, []npmOption{{"global", "true"}}},
 		{"global shorthand equals false", []string{"-g=false"}, []npmOption{{"global", "false"}}},
-		{"no-global then false", []string{"--no-global", "false", "install"}, []npmOption{{"global", "false"}}},
+		// npm negates the literal that follows: --no-global false is --global.
+		{"no-global then false", []string{"--no-global", "false", "install"}, []npmOption{{"global", "true"}}},
 		{"no-global then true", []string{"--no-global", "true"}, []npmOption{{"global", "false"}}},
 		{"no-global equals false", []string{"--no-global=false"}, []npmOption{{"global", "true"}}},
 		{"no-global equals true", []string{"--no-global=true"}, []npmOption{{"global", "false"}}},
@@ -123,7 +124,11 @@ func TestWithoutGlobalOptions(t *testing.T) {
 		{"long flag then false", []string{"install", "--global", "false", "react"}, []string{"install", "react"}},
 		{"short flag then true", []string{"install", "-g", "true", "react"}, []string{"install", "react"}},
 		{"no-global then false", []string{"install", "--no-global", "false", "react"}, []string{"install", "react"}},
-		{"assigned values", []string{"install", "-g=true", "--global=false", "--no-global=1", "react"}, []string{"install", "react"}},
+		{"assigned booleans", []string{"install", "-g=true", "--global=false", "--no-global=true", "react"}, []string{"install", "react"}},
+		// npm reads any other assigned value as the next positional argument.
+		{"assigned value is a package", []string{"install", "-g=evil"}, []string{"install", "evil"}},
+		{"long assigned value is a package", []string{"install", "--global=evil"}, []string{"install", "evil"}},
+		{"negated assigned value is a package", []string{"install", "--no-global=evil"}, []string{"install", "evil"}},
 		{"group -gD", []string{"install", "-gD", "react"}, []string{"install", "-D", "react"}},
 		{"group -Dg", []string{"install", "-Dg", "react"}, []string{"install", "-D", "react"}},
 		{"group with a value letter", []string{"install", "-gC", "/tmp", "react"}, []string{"install", "-C", "/tmp", "react"}},

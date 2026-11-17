@@ -49,7 +49,7 @@ func parseNpmOptions(args []string) []npmOption {
 				enabled = (value != "false") != negated
 			case index+1 < len(args) && (args[index+1] == "true" || args[index+1] == "false"):
 				index++
-				enabled = args[index] == "true" && !negated
+				enabled = (args[index] == "true") != negated
 			}
 			name, value = flag, "true"
 			if !enabled {
@@ -171,7 +171,9 @@ var npxValueOptions = strings.Fields("npm node-arg n package p cache userconfig 
 
 // withoutGlobalOptions removes every spelling of the global flag that
 // parseNpmOptions recognizes, along with the true or false literal it
-// consumes, so a global command can be dry-run as a local one.
+// consumes, so a global command can be dry-run as a local one. Any other
+// assigned value is not the flag's: npm reads it as the next positional
+// argument, so it stays.
 func withoutGlobalOptions(command []string) []string {
 	args := make([]string, 0, len(command))
 	for index := 0; index < len(command); index++ {
@@ -185,10 +187,13 @@ func withoutGlobalOptions(command []string) []string {
 			}
 			continue
 		}
-		name, _, supplied := strings.Cut(strings.TrimLeft(argument, "-"), "=")
+		name, value, supplied := strings.Cut(strings.TrimLeft(argument, "-"), "=")
 		if name = canonicalNpmOption(argument, name); name != "global" && name != "no-global" {
 			args = append(args, argument)
 			continue
+		}
+		if supplied && value != "true" && value != "false" {
+			args = append(args, value)
 		}
 		if !supplied && index+1 < len(command) && (command[index+1] == "true" || command[index+1] == "false") {
 			index++

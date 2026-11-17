@@ -360,6 +360,17 @@ func TestSettingsSkipsProjectNpmrcForGlobal(t *testing.T) {
 	})
 }
 
+// Groups multiply, and the pattern comes from a project's package.json.
+func TestExpandBracesIsBounded(t *testing.T) {
+	const pattern = "v{1..99}{1..99}{1..99}"
+	if got := expandBraces(pattern); !slices.Equal(got, []string{pattern}) {
+		t.Fatalf("expandBraces(%q) returned %d patterns", pattern, len(got))
+	}
+	if got := expandBraces("v{1..9}{1..9}{1..9}"); len(got) != 729 {
+		t.Fatalf("a small product expanded to %d patterns, want 729", len(got))
+	}
+}
+
 func TestMatchSegment(t *testing.T) {
 	for _, test := range []struct {
 		pattern, name string

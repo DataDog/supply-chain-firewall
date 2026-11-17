@@ -269,13 +269,14 @@ func inWorkspaces(root, member string) bool {
 
 var braceRangePattern = regexp.MustCompile(`^(?:(-?\d{1,9})\.\.(-?\d{1,9})|([A-Za-z])\.\.([A-Za-z]))(?:\.\.(-?\d{1,9}))?$`)
 
-// maxBraceRange bounds a range, which comes from a project's package.json.
-const maxBraceRange = 10000
+// maxBraceExpansions bounds a range and the work of expanding a pattern, both
+// of which come from a project's package.json.
+const maxBraceExpansions = 10000
 
 // braceRange expands the body of a {from..to[..step]} group as
 // brace-expansion does: numbers or single letters, in either direction, zero
 // padded when an endpoint has a leading zero. It returns nil for anything
-// else, including a range longer than maxBraceRange.
+// else, including a range longer than maxBraceExpansions.
 func braceRange(body string) []string {
 	match := braceRangePattern.FindStringSubmatch(body)
 	if match == nil {
@@ -307,7 +308,7 @@ func braceRange(body string) []string {
 	if to < from {
 		direction = -1
 	}
-	if (to-from)*direction/step >= maxBraceRange {
+	if (to-from)*direction/step >= maxBraceExpansions {
 		return nil
 	}
 	var items []string
@@ -318,8 +319,20 @@ func braceRange(body string) []string {
 }
 
 // expandBraces expands the first {a,b} or {from..to} group of a glob,
-// recursively; any other group, or an unbalanced one, stays literal.
+// recursively; any other group, or an unbalanced one, stays literal. A pattern
+// that would take more than maxBraceExpansions steps stays literal as a whole.
 func expandBraces(pattern string) []string {
+	budget := maxBraceExpansions
+	if expanded := expandBracesWithin(pattern, &budget); budget >= 0 {
+		return expanded
+	}
+	return []string{pattern}
+}
+
+func expandBracesWithin(pattern string, budget *int) []string {
+	if *budget--; *budget < 0 {
+		return nil
+	}
 	open := strings.Index(pattern, "{")
 	if open < 0 {
 		return []string{pattern}
@@ -349,7 +362,10 @@ func expandBraces(pattern string) []string {
 			}
 			var expanded []string
 			for _, option := range options {
-				expanded = append(expanded, expandBraces(pattern[:open]+option+pattern[index+1:])...)
+				if *budget < 0 {
+					break
+				}
+				expanded = append(expanded, expandBracesWithin(pattern[:open]+option+pattern[index+1:], budget)...)
 			}
 			return expanded
 		}

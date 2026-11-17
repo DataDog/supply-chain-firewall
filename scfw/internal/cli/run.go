@@ -26,6 +26,7 @@ import (
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/git"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/githook"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
@@ -139,6 +140,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 	if proxyEnabled() {
 		if runner, ok := packageManager.(pm.ProxyRunner); ok {
 			var configure proxyHookConfigurer
+			var decide githook.Decide
 			if len(packageManagerFactory.ProxyHooks) > 0 {
 				configure = func(ctx context.Context, client *http.Client) ([]proxy.RequestHook, error) {
 					evaluator, err := newEvaluator(ctx, mode)
@@ -150,6 +152,9 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 						ctx, installTimestamp, cmdArgs, packageManagerName, packageManager.Executable(), gitMetadata.RepositoryURL,
 						evaluator, reporter, os.Stderr,
 					)
+					if packageManagerFactory.GitCheckouts != nil {
+						decide = packageManagerFactory.GitCheckouts(packageEvaluator.evaluatePackage)
+					}
 					hooks := make([]proxy.RequestHook, 0, len(packageManagerFactory.ProxyHooks))
 					for _, factory := range packageManagerFactory.ProxyHooks {
 						hook, err := factory(ctx, packageManager, cmdArgs[1:], client, packageEvaluator.evaluatePackage)
@@ -161,7 +166,20 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 					return hooks, nil
 				}
 			}
+			var hooked *gitHookRunner
+			if packageManagerFactory.GitCheckouts != nil {
+				executable, err := os.Executable()
+				if err != nil {
+					return fmt.Errorf("scfw run: %w", err)
+				}
+				hooked = &gitHookRunner{ProxyRunner: runner, executable: executable, decide: &decide}
+				runner = hooked
+			}
 			commandErr, err := runThroughProxy(cmd.Context(), runner, cmdArgs[1:], configure)
+			// exitOnCommandError exits the process, so the hooks are removed first.
+			if hooked != nil {
+				hooked.Close()
+			}
 			if err != nil {
 				return fmt.Errorf("scfw run: %w", err)
 			}

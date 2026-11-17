@@ -221,6 +221,21 @@ func TestApplyAppendsAfterExistingEntries(t *testing.T) {
 	}
 }
 
+func TestCloseRemovesHooks(t *testing.T) {
+	hooks, err := Start(context.Background(), os.Args[0], (&recorder{}).decide)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := &proxy.CommandSpec{}
+	hooks.Apply(spec)
+	if err := hooks.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if dir := filepath.Dir(spec.EnvOverrides["GIT_CONFIG_VALUE_0"]); exists(dir) {
+		t.Fatalf("hooks directory %s remains after Close", dir)
+	}
+}
+
 func writeHook(t *testing.T, dir, name, body string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o700); err != nil {

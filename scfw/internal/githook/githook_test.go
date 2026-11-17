@@ -268,6 +268,23 @@ func TestNestedHooksForwardToTheLayerBelow(t *testing.T) {
 	}
 }
 
+// Git skips a hook it cannot execute, so Start must not rely on mode bits that
+// a noexec mount would override.
+func TestExecutableUsesAccessNotModeBits(t *testing.T) {
+	dir := t.TempDir()
+	runnable, plain := filepath.Join(dir, "runnable"), filepath.Join(dir, "plain")
+	if err := os.WriteFile(runnable, []byte("#!/bin/sh\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(plain, []byte("#!/bin/sh\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !canExecute(runnable) || canExecute(plain) || canExecute(filepath.Join(dir, "missing")) {
+		t.Fatalf("canExecute() = %v, %v, %v; want true, false, false",
+			canExecute(runnable), canExecute(plain), canExecute(filepath.Join(dir, "missing")))
+	}
+}
+
 func TestCloseRemovesHooks(t *testing.T) {
 	hooks, err := Start(context.Background(), os.Args[0], (&recorder{}).decide)
 	if err != nil {

@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
@@ -93,6 +94,11 @@ func start(ctx context.Context, dir, executable string, decide Decide) (*Hooks, 
 			return nil, errors.New("could not write git hook")
 		}
 	}
+	// Git silently skips a hook it cannot execute, which would let checkouts
+	// through unevaluated, for example from a noexec temporary directory.
+	if !canExecute(filepath.Join(hooksDir, "post-checkout")) {
+		return nil, fmt.Errorf("git hooks in %s cannot be executed; set TMPDIR to a directory that allows executables", hooksDir)
+	}
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
 		return nil, fmt.Errorf("listen for git hooks: %w", err)
@@ -152,6 +158,13 @@ func (h *Hooks) Close() error {
 		err = removeErr
 	}
 	return err
+}
+
+// canExecute asks the kernel, which also applies noexec mounts, rather than
+// checking mode bits.
+func canExecute(path string) bool {
+	const executeAccess = 0x1 // X_OK
+	return syscall.Access(path, executeAccess) == nil
 }
 
 func shellQuoted(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }

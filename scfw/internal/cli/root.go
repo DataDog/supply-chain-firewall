@@ -52,6 +52,7 @@ Set SCFW_VERBOSE to enable detailed progress and diagnostic logging.`,
 		configureCmd,
 		doctorCmd,
 		runCmd,
+		newGitHookCmd(),
 	)
 
 	return cmd

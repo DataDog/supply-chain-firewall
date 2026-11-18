@@ -97,6 +97,8 @@ func TestReportAliases(t *testing.T) {
 		t.Fatalf("failed to seed %q: %v", bashrc, err)
 	}
 	if err := os.WriteFile(zshrc, []byte(blockStart+"\n"+
+		`alias bun="scfw run -- bun"`+"\n"+
+		`alias bunx="scfw run -- bunx"`+"\n"+
 		`alias npm="scfw run -- npm"`+"\n"+
 		`alias npx="scfw run -- npx"`+"\n"+
 		`alias poetry="scfw run -- poetry"`+"\n"+
@@ -114,6 +116,8 @@ func TestReportAliases(t *testing.T) {
 	}
 
 	wantLines := []string{
+		"✅ Alias bun is set in " + zshrc,
+		"✅ Alias bunx is set in " + zshrc,
 		"✅ Alias npm is set in " + bashrc + ", " + zshrc,
 		"✅ Alias npx is set in " + bashrc + ", " + zshrc,
 		"✅ Alias pip is set in " + bashrc,
@@ -126,7 +130,7 @@ func TestReportAliases(t *testing.T) {
 		"✅ Alias uv is set in " + zshrc,
 		"✅ Alias uvx is set in " + zshrc,
 		"✅ Alias yarn is set in " + zshrc,
-		"ℹ️ Run `alias npm npx pip pip3 pn pnpm pnpx pnx poetry uv uvx yarn` to check which aliases are active in the current terminal. If an alias configured above is not found, reload your terminal.",
+		"ℹ️ Run `alias bun bunx npm npx pip pip3 pn pnpm pnpx pnx poetry uv uvx yarn` to check which aliases are active in the current terminal. If an alias configured above is not found, reload your terminal.",
 	}
 	for _, want := range wantLines {
 		if !strings.Contains(output.String(), want+"\n") {

@@ -7,6 +7,7 @@ package gitproxy
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -43,7 +44,13 @@ func (s *Settings) ChildOverrides(overrides map[string]string, config proxy.Clie
 	if err != nil {
 		return err
 	}
-	forced := map[string]string{"http.proxy": config.URL, "http.sslcainfo": ca, "http.sslcapath": "", "http.sslverify": "true"}
+	// An empty CA directory adds no trust. Some libcurl builds (macOS system
+	// libcurl) reject an empty CA path value and fail every HTTPS request.
+	caPath := filepath.Join(filepath.Dir(config.CACertificatePath), "git-capath")
+	if err := os.Mkdir(caPath, 0700); err != nil && !errors.Is(err, fs.ErrExist) {
+		return errors.New("could not prepare invocation Git CA directory")
+	}
+	forced := map[string]string{"http.proxy": config.URL, "http.sslcainfo": ca, "http.sslcapath": caPath, "http.sslverify": "true"}
 	for _, entry := range s.entries {
 		if strings.HasPrefix(entry.key, "http.") && !strings.HasSuffix(entry.key, ".proxy") {
 			prefix := entry.key[:strings.LastIndexByte(entry.key, '.')+1]
@@ -94,6 +101,6 @@ func (s *Settings) ChildOverrides(overrides map[string]string, config proxy.Clie
 	// snapshot. Replay only through COUNT so multivalued entries occur once.
 	overrides["GIT_CONFIG_PARAMETERS"] = ""
 	overrides["GIT_SSL_CAINFO"] = ca
-	overrides["GIT_SSL_CAPATH"] = ""
+	overrides["GIT_SSL_CAPATH"] = caPath
 	return s.prepareRemoteHelpers(overrides, config)
 }

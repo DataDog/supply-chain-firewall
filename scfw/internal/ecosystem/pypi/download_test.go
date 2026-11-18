@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/internal/archive"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
@@ -141,7 +142,7 @@ func TestOpaqueArchiveHTTPEncodings(t *testing.T) {
 					t.Fatal(err)
 				}
 				called := false
-				err := inspectDecodedArchive(context.Background(), io.NewSectionReader(bytes.NewReader(encoded.Bytes()), 0, int64(encoded.Len())), encoding, func(body *io.SectionReader) error {
+				err := archive.InspectDecoded(context.Background(), io.NewSectionReader(bytes.NewReader(encoded.Bytes()), 0, int64(encoded.Len())), encoding, func(body *io.SectionReader) error {
 					artifact, found, err := inspectArchive(context.Background(), body)
 					called = found && artifact.Name == "project" && artifact.Version == "1.0"
 					return err

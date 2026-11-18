@@ -14,10 +14,12 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 
 	"golang.org/x/net/http/httpproxy"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/gitproxy"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/nodeproxy"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
@@ -74,7 +76,16 @@ func (npm Npm) ProxyOptions(command []string) (proxy.Options, error) {
 		}
 	}
 	options.UpstreamTLS, err = proxy.NewTLSConfig(tlsOptions)
-	return options, err
+	if err != nil {
+		return proxy.Options{}, err
+	}
+	git, err := npm.gitSettings(command)
+	if err != nil {
+		return proxy.Options{}, err
+	}
+	options.AdditionalClients = git.AdditionalClients()
+	options.AdditionalClients["git"] = proxy.Options{RouteForRequest: git.Route}
+	return options, nil
 }
 
 var _ pm.ProxyOptionsProvider = Npm{}
@@ -152,7 +163,50 @@ func (npm Npm) ProxyCommand(_ context.Context, command []string, config proxy.Cl
 	if overrides["NODE_EXTRA_CA_CERTS"], err = nodeproxy.NodeExtraCACerts(config.CACertificatePath, pem); err != nil {
 		return proxy.CommandSpec{}, err
 	}
-	return proxy.CommandSpec{Executable: npm.Executable(), Args: args, EnvOverrides: overrides}, nil
+	gitConfig := config
+	if git, exists := config.AdditionalClients["git"]; exists {
+		gitConfig = git
+		gitConfig.AdditionalClients = config.AdditionalClients
+	}
+	git, err := npm.gitSettings(command)
+	if err != nil {
+		return proxy.CommandSpec{}, err
+	}
+	if err := git.ChildOverrides(overrides, gitConfig); err != nil {
+		return proxy.CommandSpec{}, err
+	}
+	return proxy.CommandSpec{
+		Executable: npm.Executable(), Args: args, EnvOverrides: overrides, EnvRemovals: []string{"GIT_SSL_NO_VERIFY"},
+	}, nil
+}
+
+// The same snapshot configures outbound Git requests and the child process.
+type npmProxyState struct {
+	mutex   sync.Mutex
+	command []string
+	git     *gitproxy.Settings
+}
+
+func (npm Npm) gitSettings(command []string) (*gitproxy.Settings, error) {
+	if npm.proxyState != nil {
+		npm.proxyState.mutex.Lock()
+		defer npm.proxyState.mutex.Unlock()
+		if npm.proxyState.git != nil && slices.Equal(command, npm.proxyState.command) {
+			return npm.proxyState.git, nil
+		}
+	}
+	directory, err := npm.ProjectDirectory(command)
+	if err != nil {
+		return nil, err
+	}
+	settings, err := gitproxy.Read(directory)
+	if err != nil {
+		return nil, err
+	}
+	if npm.proxyState != nil {
+		npm.proxyState.command, npm.proxyState.git = slices.Clone(command), settings
+	}
+	return settings, nil
 }
 
 // withoutNoproxyOptions removes the user's --noproxy options before "--".
@@ -180,8 +234,8 @@ func withoutNoproxyOptions(command []string) []string {
 	return args
 }
 
-// proxyEnvironmentOverrides routes npm, its lifecycle scripts, and Git through
-// the proxy. npm reads npm_config_* names case-insensitively and accepts dashes
+// proxyEnvironmentOverrides routes npm and its lifecycle scripts through the
+// proxy; Git receives its own client through gitproxy. npm reads npm_config_* names case-insensitively and accepts dashes
 // for underscores, and npm 7-10 prefer a non-lowercase variant over the
 // lowercase one. The core replaces exact keys only, so every variant already
 // present in environ receives the same value as its canonical key.
@@ -191,7 +245,7 @@ func proxyEnvironmentOverrides(environ []string, config proxy.ClientConfig, caPE
 		"npm_config_proxy": config.URL, "npm_config_https_proxy": config.URL,
 		"npm_config_noproxy": npmNoProxySentinel,
 		"npm_config_cafile":  config.CACertificatePath, "npm_config_ca": caPEM,
-		"NODE_EXTRA_CA_CERTS": config.CACertificatePath, "GIT_SSL_CAINFO": config.CACertificatePath,
+		"NODE_EXTRA_CA_CERTS": config.CACertificatePath,
 	})
 	overrides := maps.Clone(canonical)
 	for _, item := range environ {

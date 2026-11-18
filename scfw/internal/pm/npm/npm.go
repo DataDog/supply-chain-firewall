@@ -46,6 +46,7 @@ type Npm struct {
 	version            pm.Version
 	versionErr         error
 	resolvePublishDate func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error)
+	proxyState         *npmProxyState
 }
 
 func (npm Npm) packagePublishDate(ctx context.Context, pkg pm.Package) (time.Time, error) {
@@ -70,7 +71,7 @@ func NewNpm(ctx context.Context, name, executable string) (Npm, error) {
 	// actually need the version, not every use of this npm executable.
 	version, versionErr := resolveNpmVersion(ctx, executable)
 
-	return Npm{executable: executable, npx: filepath.Base(name) == "npx", version: version, versionErr: versionErr}, nil
+	return Npm{executable: executable, npx: filepath.Base(name) == "npx", version: version, versionErr: versionErr, proxyState: &npmProxyState{}}, nil
 }
 
 func (npm Npm) checkVersion() error {

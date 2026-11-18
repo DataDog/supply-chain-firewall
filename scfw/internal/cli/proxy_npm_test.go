@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/githook"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/npm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
@@ -41,11 +42,16 @@ type npmTestRegistry struct {
 
 func npmTarball(t *testing.T) []byte {
 	t.Helper()
+	return npmTarballFrom(t, "npm/package")
+}
+
+func npmTarballFrom(t *testing.T, fixture string) []byte {
+	t.Helper()
 	var buffer bytes.Buffer
 	compressed := gzip.NewWriter(&buffer)
 	writer := tar.NewWriter(compressed)
 	for _, name := range []string{"package.json", "index.js"} {
-		body := readProxyFixture(t, filepath.Join("npm", "package", name))
+		body := readProxyFixture(t, filepath.Join(fixture, name))
 		header := &tar.Header{Name: "package/" + name, Mode: 0644, Size: int64(len(body)), ModTime: time.Unix(1700000000, 0)}
 		if err := writer.WriteHeader(header); err != nil {
 			t.Fatal(err)
@@ -63,19 +69,58 @@ func npmTarball(t *testing.T) []byte {
 	return buffer.Bytes()
 }
 
+// npmDirectTarballPath serves lab-pkg outside the registry layout, as a direct
+// tarball dependency does.
+const npmDirectTarballPath = "/downloads/lab-pkg.tgz"
+
+// npmGitArchivePath serves lab-pkg as GitHub codeload and GitLab do: a
+// git archive with a global PAX comment header.
+const npmGitArchivePath = "/downloads/lab-pkg-git.tar.gz"
+
+func npmGitArchive(t *testing.T) []byte {
+	t.Helper()
+	dir := t.TempDir()
+	for _, name := range []string{"package.json", "index.js"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(readProxyFixture(t, filepath.Join("npm", "package", name))), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}, {"-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-qm", "lab"}} {
+		if output, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, output)
+		}
+	}
+	archive, err := exec.Command("git", "-C", dir, "archive", "--format=tar.gz", "--prefix=lab-pkg-0123abc/", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return archive
+}
+
 func startNpmRegistry(t *testing.T) *npmTestRegistry {
 	t.Helper()
-	tarball := npmTarball(t)
+	return startNpmRegistryWith(t, "npm/package", "npm/packument.json.tmpl")
+}
+
+// startNpmRegistryWith serves lab-pkg from the package and packument fixtures.
+func startNpmRegistryWith(t *testing.T, packageFixture, packumentFixture string) *npmTestRegistry {
+	t.Helper()
+	tarball := npmTarballFrom(t, packageFixture)
+	gitArchive := npmGitArchive(t)
 	digest := sha512.Sum512(tarball)
 	integrity := "sha512-" + base64.StdEncoding.EncodeToString(digest[:])
-	packument := readProxyFixture(t, "npm/packument.json.tmpl")
+	packument := readProxyFixture(t, packumentFixture)
 	registry := &npmTestRegistry{}
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/lab-pkg":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprintf(w, packument, registry.URL+"/lab-pkg/-/lab-pkg-1.0.0.tgz", integrity)
-		case "/lab-pkg/-/lab-pkg-1.0.0.tgz":
+		case npmGitArchivePath:
+			registry.TarballHits.Add(1)
+			w.Header().Set("Content-Type", "application/x-gzip")
+			_, _ = w.Write(gitArchive)
+		case "/lab-pkg/-/lab-pkg-1.0.0.tgz", npmDirectTarballPath:
 			registry.TarballHits.Add(1)
 			w.Header().Set("Content-Type", "application/octet-stream")
 			_, _ = w.Write(tarball)
@@ -164,6 +209,18 @@ type npmProxyRun struct {
 
 func runNpmThroughProxy(t *testing.T, args []string, outcome evaluation.Outcome) npmProxyRun {
 	t.Helper()
+	return runNpmProxy(t, args, outcome, false)
+}
+
+// runNpmGitThroughProxy also installs the git checkout hooks scfw run adds,
+// with the test binary standing in for the scfw executable.
+func runNpmGitThroughProxy(t *testing.T, args []string, outcome evaluation.Outcome) npmProxyRun {
+	t.Helper()
+	return runNpmProxy(t, args, outcome, true)
+}
+
+func runNpmProxy(t *testing.T, args []string, outcome evaluation.Outcome, gitHooks bool) npmProxyRun {
+	t.Helper()
 	executable, err := exec.LookPath("npm")
 	if err != nil {
 		t.Skip("npm required for npm integration tests")
@@ -185,12 +242,21 @@ func runNpmThroughProxy(t *testing.T, args []string, outcome evaluation.Outcome)
 		}
 		return evaluation.ScfwPolicyEvaluationReport{Outcome: outcome}, nil
 	})
+	var decide githook.Decide
 	configure := func(ctx context.Context, client *http.Client) ([]proxy.RequestHook, error) {
 		packageEvaluator := newProxyPackageEvaluator(ctx, time.Now(), append([]string{"npm"}, args...), "npm", manager.Executable(), "", evaluator, nopReporter{}, &details)
+		if gitHooks {
+			decide = npmGitCheckoutPolicy(packageEvaluator.evaluatePackage)
+		}
 		hook, err := newNpmProxyHook(ctx, manager, args, client, packageEvaluator.evaluatePackage)
 		return []proxy.RequestHook{hook}, err
 	}
-	runner := capturingNpmRunner{Npm: manager, capture: func(config proxy.ClientConfig) { run.config = config }}
+	var runner pm.ProxyRunner = capturingNpmRunner{Npm: manager, capture: func(config proxy.ClientConfig) { run.config = config }}
+	if gitHooks {
+		hooked := &gitHookRunner{ProxyRunner: runner, executable: os.Args[0], decide: &decide}
+		defer hooked.Close()
+		runner = hooked
+	}
 	commandErr, setupErr := runThroughProxy(context.Background(), runner, args, configure)
 	if setupErr != nil {
 		t.Fatal(setupErr)
@@ -219,7 +285,17 @@ func TestNpmProxyEndToEnd(t *testing.T) {
 		// hits is the number of tarball downloads the run itself may make.
 		hits, calls int32
 		failed      bool
+		// direct expects the package evaluated with the direct tarball URL as its source.
+		direct bool
 	}{
+		// npm fetches a direct tarball once to read its manifest and again to unpack it.
+		{name: "url-allow", args: directTarballArgs, outcome: evaluation.OutcomeAllow, hits: 2, calls: 1, direct: true},
+		{name: "git-archive-allow", args: func(registry *npmTestRegistry, _ string) []string {
+			return []string{"install", registry.URL + npmGitArchivePath}
+		}, outcome: evaluation.OutcomeAllow, hits: 2, calls: 1},
+		{name: "url-block", args: directTarballArgs, outcome: evaluation.OutcomeBlock, hits: 1, calls: 1, failed: true, direct: true},
+		{name: "url-ci-block", args: func(*npmTestRegistry, string) []string { return []string{"ci"} },
+			prepare: seedNpmDirectLockfile, outcome: evaluation.OutcomeBlock, hits: 1, calls: 1, failed: true, direct: true},
 		{name: "install-allow", outcome: evaluation.OutcomeAllow, hits: 1, calls: 1},
 		{name: "install-block", outcome: evaluation.OutcomeBlock, calls: 1, failed: true},
 		{name: "warn-continues", outcome: evaluation.OutcomeWarn, hits: 1, calls: 1},
@@ -274,6 +350,14 @@ func TestNpmProxyEndToEnd(t *testing.T) {
 			if run.calls != test.calls {
 				t.Fatalf("evaluations = %d, want %d", run.calls, test.calls)
 			}
+			if test.direct && !slices.Equal(run.sources, []string{registry.URL + npmDirectTarballPath}) {
+				t.Fatalf("evaluated sources = %v, want the direct tarball URL", run.sources)
+			}
+			if test.failed {
+				if _, err := os.Stat(filepath.Join(dir, "node_modules", "lab-pkg")); err == nil {
+					t.Fatal("blocked package was installed")
+				}
+			}
 			if test.outcome == evaluation.OutcomeWarn && (!strings.Contains(run.details, "WARN") || strings.Contains(run.details, "Proceed")) {
 				t.Fatalf("unexpected warning output: %s", run.details)
 			}
@@ -291,6 +375,23 @@ func TestNpmProxyEndToEnd(t *testing.T) {
 			assertProxyCleaned(t, run.config)
 		})
 	}
+}
+
+func directTarballArgs(registry *npmTestRegistry, _ string) []string {
+	return []string{"install", registry.URL + npmDirectTarballPath}
+}
+
+// seedNpmDirectLockfile leaves a lockfile resolving lab-pkg to the direct
+// tarball URL, with an empty cache.
+func seedNpmDirectLockfile(t *testing.T, registry *npmTestRegistry, dir string) {
+	t.Helper()
+	if run := runNpmThroughProxy(t, directTarballArgs(registry, dir), evaluation.OutcomeAllow); run.commandErr != nil {
+		t.Fatalf("seed install failed: %v", run.commandErr)
+	}
+	if err := os.RemoveAll(filepath.Join(dir, "node_modules")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("npm_config_cache", t.TempDir())
 }
 
 // seedNpmLockfile installs lab-pkg once, then leaves only the manifest and

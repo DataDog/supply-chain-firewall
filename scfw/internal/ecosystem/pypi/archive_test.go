@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/internal/archive"
 	"github.com/klauspost/compress/zstd"
 	"github.com/ulikunitz/xz"
 	"github.com/ulikunitz/xz/lzma"
@@ -130,7 +131,7 @@ func TestArchiveMetadataValidation(t *testing.T) {
 		{"duplicate version", "Version: 2.0\n" + metadata},
 		{"dynamic version", "Dynamic: Version\n" + metadata},
 		{"dynamic name", "Dynamic: name\n" + metadata},
-		{"oversized metadata", metadata + strings.Repeat("x", int(maxArchiveMetadataBytes))},
+		{"oversized metadata", metadata + strings.Repeat("x", int(archive.MaxMetadataBytes))},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			for _, format := range []string{"gzip", "zip", "zstd"} {
@@ -182,13 +183,13 @@ func TestArchiveLimitsAndNonPackages(t *testing.T) {
 	}
 	var huge bytes.Buffer
 	writer := tar.NewWriter(&huge)
-	if err := writer.WriteHeader(&tar.Header{Name: "project-1.0/data", Mode: 0600, Size: maxExpandedArchiveBytes + 1}); err != nil {
+	if err := writer.WriteHeader(&tar.Header{Name: "project-1.0/data", Mode: 0600, Size: archive.MaxExpandedBytes + 1}); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := inspectTestArchive(context.Background(), huge.Bytes()); err == nil {
 		t.Fatal("unbounded expanded archive was accepted")
 	}
-	entries := make([]archiveTestEntry, maxArchiveEntries+1)
+	entries := make([]archiveTestEntry, archive.MaxEntries+1)
 	for index := range entries {
 		entries[index].name = "empty"
 	}
@@ -253,7 +254,7 @@ func TestZstandardArchiveIntegrityAndLimits(t *testing.T) {
 	}
 	var huge bytes.Buffer
 	writer := tar.NewWriter(&huge)
-	if err := writer.WriteHeader(&tar.Header{Name: "project-1.0/data", Mode: 0600, Size: maxExpandedArchiveBytes + 1}); err != nil {
+	if err := writer.WriteHeader(&tar.Header{Name: "project-1.0/data", Mode: 0600, Size: archive.MaxExpandedBytes + 1}); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := inspectTestArchive(context.Background(), encoder.EncodeAll(huge.Bytes(), nil)); err == nil {

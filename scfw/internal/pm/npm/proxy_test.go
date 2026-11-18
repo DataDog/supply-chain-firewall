@@ -523,7 +523,7 @@ func TestProxyEnvironmentOverrides(t *testing.T) {
 		"HTTP_PROXY": config.URL, "http_proxy": config.URL, "HTTPS_PROXY": config.URL, "https_proxy": config.URL,
 		"ALL_PROXY": config.URL, "all_proxy": config.URL, "npm_config_proxy": config.URL, "npm_config_https_proxy": config.URL,
 		"NO_PROXY": "", "no_proxy": "", "npm_config_noproxy": "scfw.invalid",
-		"npm_config_cafile": "/run/ca.pem", "NODE_EXTRA_CA_CERTS": "/run/ca.pem", "GIT_SSL_CAINFO": "/run/ca.pem",
+		"npm_config_cafile": "/run/ca.pem", "NODE_EXTRA_CA_CERTS": "/run/ca.pem",
 		"npm_config_ca": "PEM",
 	}
 	if !maps.Equal(got, want) {
@@ -548,5 +548,58 @@ func TestProxyEnvironmentOverridesCoverExistingVariants(t *testing.T) {
 	}
 	if _, found := got["NPM_CONFIG_REGISTRY"]; found {
 		t.Error("unrelated npm configuration must not be overridden")
+	}
+}
+
+// isolatedGitConfig keeps the host's Git configuration out of the snapshot.
+func isolatedGitConfig(t *testing.T) {
+	t.Helper()
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	for _, key := range []string{"GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_SSL_NO_VERIFY"} {
+		t.Setenv(key, "")
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestProxyOptionsAddsGitClient(t *testing.T) {
+	npm := isolatedNpm(t)
+	isolatedGitConfig(t)
+	options, err := npm.ProxyOptions([]string{"install"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.AdditionalClients["git"].RouteForRequest == nil {
+		t.Fatal("npm must route its Git traffic through a dedicated git client")
+	}
+}
+
+func TestProxyCommandRoutesGitThroughGitClient(t *testing.T) {
+	config, _ := testClientConfig(t)
+	npm := isolatedNpm(t)
+	isolatedGitConfig(t)
+	npm.executable = "/bin/npm"
+	gitCA := filepath.Join(t.TempDir(), "git-ca.pem")
+	config.AdditionalClients = map[string]proxy.ClientConfig{"git": {URL: "http://127.0.0.1:7", CACertificatePath: gitCA}}
+	spec, err := npm.ProxyCommand(context.Background(), []string{"install"}, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	routed := false
+	for key, value := range spec.EnvOverrides {
+		if strings.HasPrefix(key, "GIT_CONFIG_KEY_") && value == "http.proxy" {
+			routed = spec.EnvOverrides["GIT_CONFIG_VALUE_"+strings.TrimPrefix(key, "GIT_CONFIG_KEY_")] == "http://127.0.0.1:7"
+		}
+	}
+	if !routed {
+		t.Fatalf("http.proxy must name the git client, overrides = %v", spec.EnvOverrides)
+	}
+	if spec.EnvOverrides["GIT_SSL_CAINFO"] != gitCA {
+		t.Fatalf("GIT_SSL_CAINFO = %q, want the git client CA", spec.EnvOverrides["GIT_SSL_CAINFO"])
+	}
+	if !slices.Contains(spec.EnvRemovals, "GIT_SSL_NO_VERIFY") {
+		t.Fatalf("EnvRemovals = %v, want GIT_SSL_NO_VERIFY", spec.EnvRemovals)
 	}
 }

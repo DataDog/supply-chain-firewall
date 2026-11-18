@@ -1,0 +1,8 @@
+[install]
+registry = { url = "https://bunfig.example/", token = "$BUN_TEST_TOKEN" }
+cafile = "bunfig-ca.pem"
+ca = ["-----BEGIN CERTIFICATE-----inline"]
+
+[install.scopes]
+string = "https://string-scope.example/"
+table = { url = "https://${SCOPE_HOST}/", token = "secret" }

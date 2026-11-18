@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -64,18 +65,35 @@ func runNpmSelectionFixture(directory, selected string, args []string) int {
 				return 1
 			}
 		}
-		fmt.Println(string(c.Configuration))
+		var config map[string]any
+		if err := json.Unmarshal(c.Configuration, &config); err != nil {
+			return 1
+		}
+		config["prefix"] = directory
+		config["userconfig"] = filepath.Join(directory, "user.npmrc")
+		config["globalconfig"] = filepath.Join(directory, "global.npmrc")
+		_ = json.NewEncoder(os.Stdout).Encode(config)
 		return 0
 	}
 	if slices.Contains(args, "--package-lock-only") {
 		if slices.Contains(args, "--no-save") && !slices.Contains(args, "--save") {
 			return 0
 		}
-		if err := writeNpmJSONFile("package-lock.json", map[string]any{"packages": c.Packages}); err != nil {
+		root := "."
+		for _, option := range parseNpmOptions(args) {
+			if option.name == "prefix" {
+				root = option.value
+			}
+		}
+		if err := writeNpmJSONFile(filepath.Join(root, "package-lock.json"), map[string]any{"packages": c.Packages}); err != nil {
 			return 1
 		}
 	} else {
-		for handle := range c.Packages {
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]int{"added": len(c.Packages), "changed": 0})
+		for handle, entry := range c.Packages {
+			name := strings.TrimPrefix(handle, npmNodeModulesPrefix)
+			version, _ := entry.(map[string]any)["version"].(string)
+			fmt.Fprintf(os.Stderr, "npm silly placeDep ROOT %s@%s OK for:  want: %s\n", name, version, version)
 			fmt.Fprintln(os.Stderr, "npm silly ADD "+handle)
 		}
 	}

@@ -1,0 +1,53 @@
+{
+  "self with spaces": {
+    "log": "npm silly placeDep ROOT scfw-self-source@1.0.0 OK for:  want: file:../source with spaces\nnpm silly placeDep node_modules/scfw-self-source is-number@6.0.0 OK for: scfw-self-source@1.0.0 want: 6.0.0\nnpm silly ADD node_modules/scfw-self-source\nnpm silly ADD node_modules/scfw-self-source/node_modules/is-number",
+    "roots": {
+      "scfw-self-source": "file:../source with spaces"
+    },
+    "versions": {
+      "node_modules/scfw-self-source": "1.0.0",
+      "node_modules/scfw-self-source/node_modules/is-number": "6.0.0"
+    },
+    "handles": [
+      "node_modules/scfw-self-source",
+      "node_modules/scfw-self-source/node_modules/is-number"
+    ]
+  },
+  "npm7 alias and scoped target": {
+    "log": "npm sill placeDep ROOT alias@6.0.0 OK for:  want: npm:is-number@6.0.0\nnpm sill placeDep ROOT @scope/name@1.0.0 OK for:  want: ^1.0.0\nnpm sill CHANGE node_modules/alias\nnpm sill ADD node_modules/@scope/name",
+    "roots": {
+      "alias": "npm:is-number@6.0.0",
+      "@scope/name": "^1.0.0"
+    },
+    "versions": {
+      "node_modules/alias": "6.0.0",
+      "node_modules/@scope/name": "1.0.0"
+    },
+    "handles": [
+      "node_modules/alias",
+      "node_modules/@scope/name"
+    ]
+  },
+  "unchanged": {
+    "log": "npm verbose exit 0",
+    "roots": {},
+    "versions": {},
+    "handles": null
+  },
+  "malformed placement": {
+    "log": "npm silly placeDep ROOT malformed",
+    "error": true
+  },
+  "malformed target": {
+    "log": "npm silly ADD node_modules/example trailing",
+    "error": true
+  },
+  "traversal": {
+    "log": "npm silly ADD node_modules/../example",
+    "error": true
+  },
+  "missing version": {
+    "log": "npm silly placeDep ROOT example@ OK for:  want: latest",
+    "error": true
+  }
+}

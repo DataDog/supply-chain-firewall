@@ -1,0 +1,2 @@
+#!/bin/sh
+echo "$SCFW_FAKE_BUN_VERSION"

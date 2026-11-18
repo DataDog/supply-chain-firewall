@@ -27,6 +27,8 @@ type PackageManagerFactory struct {
 	Names      []string
 	New        func(ctx context.Context, name, executable string) (pm.PackageManager, error)
 	ProxyHooks []proxyHookFactory
+	// GitCheckouts evaluates the git dependencies the manager checks out.
+	GitCheckouts gitCheckoutPolicy
 }
 
 var packageManagerFactories = []PackageManagerFactory{
@@ -38,8 +40,9 @@ var packageManagerFactories = []PackageManagerFactory{
 		},
 	},
 	{
-		Names:      npm.NpmExecutableNames,
-		ProxyHooks: []proxyHookFactory{newNpmProxyHook},
+		Names:        npm.NpmExecutableNames,
+		ProxyHooks:   []proxyHookFactory{newNpmProxyHook},
+		GitCheckouts: npmGitCheckoutPolicy,
 		New: func(ctx context.Context, name, executable string) (pm.PackageManager, error) {
 			return npm.NewNpm(ctx, name, executable)
 		},

@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/githook"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/npm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
@@ -208,6 +209,18 @@ type npmProxyRun struct {
 
 func runNpmThroughProxy(t *testing.T, args []string, outcome evaluation.Outcome) npmProxyRun {
 	t.Helper()
+	return runNpmProxy(t, args, outcome, false)
+}
+
+// runNpmGitThroughProxy also installs the git checkout hooks scfw run adds,
+// with the test binary standing in for the scfw executable.
+func runNpmGitThroughProxy(t *testing.T, args []string, outcome evaluation.Outcome) npmProxyRun {
+	t.Helper()
+	return runNpmProxy(t, args, outcome, true)
+}
+
+func runNpmProxy(t *testing.T, args []string, outcome evaluation.Outcome, gitHooks bool) npmProxyRun {
+	t.Helper()
 	executable, err := exec.LookPath("npm")
 	if err != nil {
 		t.Skip("npm required for npm integration tests")
@@ -229,12 +242,21 @@ func runNpmThroughProxy(t *testing.T, args []string, outcome evaluation.Outcome)
 		}
 		return evaluation.ScfwPolicyEvaluationReport{Outcome: outcome}, nil
 	})
+	var decide githook.Decide
 	configure := func(ctx context.Context, client *http.Client) ([]proxy.RequestHook, error) {
 		packageEvaluator := newProxyPackageEvaluator(ctx, time.Now(), append([]string{"npm"}, args...), "npm", manager.Executable(), "", evaluator, nopReporter{}, &details)
+		if gitHooks {
+			decide = npmGitCheckoutPolicy(packageEvaluator.evaluatePackage)
+		}
 		hook, err := newNpmProxyHook(ctx, manager, args, client, packageEvaluator.evaluatePackage)
 		return []proxy.RequestHook{hook}, err
 	}
-	runner := capturingNpmRunner{Npm: manager, capture: func(config proxy.ClientConfig) { run.config = config }}
+	var runner pm.ProxyRunner = capturingNpmRunner{Npm: manager, capture: func(config proxy.ClientConfig) { run.config = config }}
+	if gitHooks {
+		hooked := &gitHookRunner{ProxyRunner: runner, executable: os.Args[0], decide: &decide}
+		defer hooked.Close()
+		runner = hooked
+	}
 	commandErr, setupErr := runThroughProxy(context.Background(), runner, args, configure)
 	if setupErr != nil {
 		t.Fatal(setupErr)

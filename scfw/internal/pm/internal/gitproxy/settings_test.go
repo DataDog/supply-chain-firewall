@@ -200,3 +200,28 @@ func TestReadOnlyGitSnapshotAndProcessOverrides(t *testing.T) {
 		t.Fatal("parent Git configuration changed")
 	}
 }
+
+// libcurl builds that load an empty CA path as a directory fail every HTTPS
+// request, so the CA path must be an existing empty directory.
+func TestChildOverridesUseEmptyCADirectory(t *testing.T) {
+	settings, err := Read(gitNetworkEnvironment(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	overrides := map[string]string{}
+	config := proxy.ClientConfig{URL: "http://127.0.0.1:9", CACertificatePath: filepath.Join(t.TempDir(), "ca.pem")}
+	if err := settings.ChildOverrides(overrides, config); err != nil {
+		t.Fatal(err)
+	}
+	path := overrides["GIT_SSL_CAPATH"]
+	if entries, err := os.ReadDir(path); path == "" || err != nil || len(entries) != 0 {
+		t.Fatalf("GIT_SSL_CAPATH = %q (%v), want an existing empty directory", path, err)
+	}
+	for key, value := range overrides {
+		if strings.HasPrefix(key, "GIT_CONFIG_KEY_") && strings.HasSuffix(value, ".sslcapath") {
+			if got := overrides["GIT_CONFIG_VALUE_"+strings.TrimPrefix(key, "GIT_CONFIG_KEY_")]; got != path {
+				t.Fatalf("%s = %q, want %q", value, got, path)
+			}
+		}
+	}
+}

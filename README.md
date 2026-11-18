@@ -167,6 +167,8 @@ When inspecting package manager commands, Datadog credentials and the Datadog si
 | pnpm (proxy mode) | 10.x, 11.x, 12.x      | `install`, `add`, `update`, `remove`, `dedupe`, `fetch`, `import`, `deploy`, `dlx`/`pnpx`, `create`, `-r`/`--filter` workspace installs |
 | bun (proxy mode)  | 1.2+ (1.x)            | all commands, including `bunx`/`bun x`, `create`, and auto-install during `bun run`/`bun <file>` |
 
+With `SCFW_PROXY_ENABLED=1`, npm Git dependencies are evaluated whether npm fetches them over HTTPS, SSH, or a local path: SCFW reads the name and version from the checked-out `package.json` before npm uses the checkout or runs its `prepare` script, and reports the repository URL and commit as the source. Git HTTPS traffic uses a separate temporary proxy and CA that honor the user's Git proxy settings. A dependency selected from a repository subdirectory (`#path:`) is evaluated by the repository's root `package.json`. Git dependencies of Yarn, pnpm, and the Python package managers are not evaluated.
+
 Enable uv interception with `SCFW_PROXY_ENABLED=1`, then use `scfw run -- uv pip install requests` or configure `--alias-uv`. Unrelated uv commands pass through unchanged. Proxy mode evaluates distributions requested over HTTP(S); packages already available in uv's cache, local paths, and Git source contents are not evaluated. Git HTTPS traffic still traverses the proxy and trusts its invocation CA.
 
 `uv run` always executes directly without SCFW proxy setup, including scripts and `--with` dependencies. Its arguments, environment, and standard input pass through unchanged; SCFW does not evaluate its package downloads or intercept its application traffic.

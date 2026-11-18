@@ -370,7 +370,7 @@ func pipCacheEvidence(r *caseRun, label string, leaf candidate, present bool) er
 	if err != nil {
 		return err
 	}
-	args := []string{filepath.Join(filepath.Dir(r.Cell.Executable), "python"), script, r.Env["PIP_CACHE_DIR"]}
+	args := []string{r.Cell.Runtime, script, r.Env["PIP_CACHE_DIR"]}
 	for _, node := range []candidate{r.Candidate, leaf} {
 		args = append(args, "https://pypi.org/simple/"+node.Project+"/", node.Artifacts[0].URL)
 	}
@@ -507,5 +507,49 @@ func TestHarnessPipGraph(t *testing.T) {
 		if (err == nil) != (name == "required") {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+}
+
+func TestHarnessPipCacheUsesConfiguredRuntime(t *testing.T) {
+	fixture, err := os.ReadFile("testdata/graph_cache/pip/cache_runtime.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, adjacent := range []bool{false, true} {
+		t.Run(fmt.Sprintf("adjacent-python-%t", adjacent), func(t *testing.T) {
+			root := t.TempDir()
+			env, err := isolatedEnvironment(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			runtime := filepath.Join(root, "selected runtime", "python3")
+			launcher := filepath.Join(root, "launchers", "pip")
+			paths := []string{runtime, launcher}
+			if adjacent {
+				paths = append(paths, filepath.Join(filepath.Dir(launcher), "python"))
+			}
+			for _, path := range paths {
+				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, fixture, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			selected := candidate{Project: "root", Artifacts: []artifact{{URL: "https://registry/root.whl", SHA256: strings.Repeat("1", 64)}}}
+			leaf := candidate{Project: "leaf", Artifacts: []artifact{{URL: "https://registry/leaf.whl", SHA256: strings.Repeat("2", 64)}}}
+			env["SCFW_TEST_PYTHON_RUNTIME"] = runtime
+			env["SCFW_TEST_ROOT_SHA"] = selected.Artifacts[0].SHA256
+			env["SCFW_TEST_LEAF_SHA"] = leaf.Artifacts[0].SHA256
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			r := &caseRun{Context: ctx, Cell: cell{Executable: launcher, Runtime: runtime}, Candidate: selected, Root: root, WorkDir: filepath.Join(root, "work"), Env: env, Result: &result{}}
+			if err := pipCacheEvidence(r, "warm", leaf, true); err != nil {
+				t.Fatal(err)
+			}
+			if len(r.Result.Commands) != 1 || r.Result.Commands[0].Argv[0] != runtime {
+				t.Fatalf("cache evidence did not record configured runtime: %+v", r.Result.Commands)
+			}
+		})
 	}
 }

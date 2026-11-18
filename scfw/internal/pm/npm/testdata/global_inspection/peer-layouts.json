@@ -372,5 +372,200 @@
       }
     },
     "error": true
+  },
+  "ordinary registry target collapses to a same-version alias": {
+    "log": "npm silly placeDep ROOT ordinary-root@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep ROOT peer-root@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/ordinary-root is-buffer@1.0.0 OK for: ordinary-root@1.0.0 want: 1.0.0\nnpm silly placeDep node_modules/peer-root is-buffer@1.0.0 OK for: peer-root@1.0.0 want: npm:is-number@1.0.0\nnpm silly ADD node_modules/ordinary-root\nnpm silly ADD node_modules/peer-root\nnpm silly ADD node_modules/ordinary-root/node_modules/is-buffer\nnpm silly ADD node_modules/peer-root/node_modules/is-buffer\n",
+    "packages": {
+      "node_modules/ordinary-root": {
+        "version": "1.0.0",
+        "dependencies": {
+          "is-buffer": "1.0.0"
+        }
+      },
+      "node_modules/peer-root": {
+        "version": "1.0.0",
+        "peerDependencies": {
+          "is-buffer": "npm:is-number@1.0.0"
+        }
+      },
+      "node_modules/is-buffer": {
+        "name": "is-number",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/is-number/-/is-number-1.0.0.tgz"
+      }
+    },
+    "error": true
+  },
+  "exact ordinary registry handle has a different canonical name": {
+    "log": "npm silly placeDep ROOT is-buffer@1.0.0 OK for:  want: 1.0.0\nnpm silly ADD node_modules/is-buffer\n",
+    "packages": {
+      "node_modules/is-buffer": {
+        "name": "different-package",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/different-package/-/different-package-1.0.0.tgz"
+      }
+    },
+    "want": {
+      "different-package": "1.0.0"
+    },
+    "error": true
+  },
+  "scoped registry handle has a different canonical name": {
+    "log": "npm silly placeDep ROOT @scope/leaf@1.0.0 OK for:  want: ^1.0.0\nnpm silly ADD node_modules/@scope/leaf\n",
+    "packages": {
+      "node_modules/@scope/leaf": {
+        "name": "different-package",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/different-package/-/different-package-1.0.0.tgz"
+      }
+    },
+    "want": {
+      "different-package": "1.0.0"
+    },
+    "error": true
+  },
+  "ordinary registry tag keeps its name": {
+    "log": "npm silly placeDep ROOT ordinary@1.0.0 OK for:  want: latest\nnpm silly ADD node_modules/ordinary\n",
+    "packages": {
+      "node_modules/ordinary": {
+        "name": "ordinary",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/ordinary/-/ordinary-1.0.0.tgz"
+      }
+    },
+    "want": {
+      "ordinary": "1.0.0"
+    }
+  },
+  "scoped registry range keeps its name": {
+    "log": "npm silly placeDep ROOT @scope/leaf@1.0.0 OK for:  want: >=1 <2\nnpm silly ADD node_modules/@scope/leaf\n",
+    "packages": {
+      "node_modules/@scope/leaf": {
+        "name": "@scope/leaf",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/@scope/leaf/-/leaf-1.0.0.tgz"
+      }
+    },
+    "want": {
+      "@scope/leaf": "1.0.0"
+    }
+  },
+  "file alias keeps source canonical name": {
+    "log": "npm silly placeDep ROOT source-alias@1.0.0 OK for:  want: file:/fixtures/local.tgz\nnpm silly ADD node_modules/source-alias\n",
+    "packages": {
+      "node_modules/source-alias": {
+        "name": "canonical-local",
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/local.tgz"
+      }
+    },
+    "want": {
+      "canonical-local": "1.0.0"
+    }
+  },
+  "URL alias keeps source canonical name": {
+    "log": "npm silly placeDep ROOT source-alias@1.0.0 OK for:  want: https://example.test/local.tgz\nnpm silly ADD node_modules/source-alias\n",
+    "packages": {
+      "node_modules/source-alias": {
+        "name": "canonical-local",
+        "version": "1.0.0",
+        "resolved": "https://example.test/local.tgz"
+      }
+    },
+    "want": {
+      "canonical-local": "1.0.0"
+    }
+  },
+  "Git alias keeps source canonical name": {
+    "log": "npm silly placeDep ROOT source-alias@1.0.0 OK for:  want: git+ssh://git@example.test/local.git\nnpm silly ADD node_modules/source-alias\n",
+    "packages": {
+      "node_modules/source-alias": {
+        "name": "canonical-local",
+        "version": "1.0.0",
+        "resolved": "git+ssh://git@example.test/local.git"
+      }
+    },
+    "want": {
+      "canonical-local": "1.0.0"
+    }
+  },
+  "hosted Git alias keeps source canonical name": {
+    "log": "npm silly placeDep ROOT source-alias@1.0.0 OK for:  want: owner/repository\nnpm silly ADD node_modules/source-alias\n",
+    "packages": {
+      "node_modules/source-alias": {
+        "name": "canonical-local",
+        "version": "1.0.0",
+        "resolved": "git+https://github.com/owner/repository.git"
+      }
+    },
+    "want": {
+      "canonical-local": "1.0.0"
+    }
+  },
+  "relative directory alias keeps source canonical name": {
+    "log": "npm silly placeDep ROOT source-alias@1.0.0 OK for:  want: ./local\nnpm silly ADD node_modules/source-alias\n",
+    "packages": {
+      "node_modules/source-alias": {
+        "name": "canonical-local",
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/local"
+      }
+    },
+    "want": {
+      "canonical-local": "1.0.0"
+    }
+  },
+  "bare archive alias keeps source canonical name": {
+    "log": "npm silly placeDep ROOT source-alias@1.0.0 OK for:  want: LOCAL.TGZ\nnpm silly ADD node_modules/source-alias\n",
+    "packages": {
+      "node_modules/source-alias": {
+        "name": "canonical-local",
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/LOCAL.TGZ"
+      }
+    },
+    "want": {
+      "canonical-local": "1.0.0"
+    }
+  },
+  "Windows file alias keeps source canonical name": {
+    "log": "npm silly placeDep ROOT source-alias@1.0.0 OK for:  want: C:\\fixtures\\local\nnpm silly ADD node_modules/source-alias\n",
+    "packages": {
+      "node_modules/source-alias": {
+        "name": "canonical-local",
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/local"
+      }
+    },
+    "want": {
+      "canonical-local": "1.0.0"
+    }
+  },
+  "case-insensitive registry alias keeps its name": {
+    "log": "npm silly placeDep ROOT alias@1.0.0 OK for:  want: NPM:ordinary@1.0.0\nnpm silly ADD node_modules/alias\n",
+    "packages": {
+      "node_modules/alias": {
+        "name": "ordinary",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/ordinary/-/ordinary-1.0.0.tgz"
+      }
+    },
+    "want": {
+      "ordinary": "1.0.0"
+    }
+  },
+  "case-insensitive registry alias rejects a different name": {
+    "log": "npm silly placeDep ROOT alias@1.0.0 OK for:  want: NPM:ordinary@1.0.0\nnpm silly ADD node_modules/alias\n",
+    "packages": {
+      "node_modules/alias": {
+        "name": "different-package",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/different-package/-/different-package-1.0.0.tgz"
+      }
+    },
+    "want": {
+      "different-package": "1.0.0"
+    },
+    "error": true
   }
 }

@@ -104,16 +104,11 @@ func (p *npmTempProject) resolveGlobalInstallTargets(ctx context.Context, comman
 		if version, ok := resolution.versions[handle]; !ok || version != pkg.Version {
 			return nil, fmt.Errorf("npm global target %s disagrees with inspection lockfile", handle)
 		}
-		// Equal alias versions can denote different packages after npm moves
-		// peers between the global and shallow layouts. Check native alias
-		// identity even when the original handle exists in the private lock.
-		if name, alias := strings.CutPrefix(resolution.placements[handle].wanted, "npm:"); alias {
-			if version := strings.LastIndex(name, "@"); version > 0 {
-				name = name[:version]
-			}
-			if pkg.Name != name {
-				return nil, fmt.Errorf("npm global target %s resolves alias for %s as different package %s", handle, name, pkg.Name)
-			}
+		// Equal versions can denote different packages after npm moves peers
+		// between global and shallow layouts. Validate ordinary registry names
+		// as well as aliases, including when the exact handle exists.
+		if name := npmGlobalRegistryName(handle, resolution.placements[handle].wanted); name != "" && pkg.Name != name {
+			return nil, fmt.Errorf("npm global target %s resolves request for %s as different package %s", handle, name, pkg.Name)
 		}
 		publishDate, err := p.resolvePublishDate(ctx, pkg)
 		if err != nil {
@@ -124,6 +119,26 @@ func (p *npmTempProject) resolveGlobalInstallTargets(ctx context.Context, comman
 		targets.Add(pkg)
 	}
 	return targets, nil
+}
+
+// Registry requests derive their canonical name from the installed handle or
+// explicit npm: alias. Native file, URL and Git requests may deliberately use a
+// dependency name different from their source manifest, so leave their identity
+// to the lockfile. npm has already validated the spec; no range parsing is needed.
+func npmGlobalRegistryName(handle, wanted string) string {
+	lower := strings.ToLower(wanted)
+	if strings.HasPrefix(lower, "npm:") {
+		name := wanted[len("npm:"):]
+		if version := strings.LastIndex(name, "@"); version > 0 {
+			name = name[:version]
+		}
+		return name
+	}
+	if strings.ContainsAny(wanted, ":/\\") || strings.HasPrefix(wanted, ".") ||
+		strings.HasSuffix(lower, ".tgz") || strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tar") {
+		return ""
+	}
+	return handle[strings.LastIndex(handle, npmNodeModulesPrefix)+len(npmNodeModulesPrefix):]
 }
 
 // The same native placement log supplies request specs and concrete versions.

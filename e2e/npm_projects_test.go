@@ -450,6 +450,9 @@ func runNPMProject(r *caseRun, options npmProjectOptions) error {
 		if !strings.Contains(string(nativeStderr), "ETARGET") || !strings.Contains(string(stderr), "ETARGET") {
 			return fmt.Errorf("native resolution error diagnostic was not preserved")
 		}
+		if !reflect.DeepEqual(before, after) || !reflect.DeepEqual(previous, state) {
+			return fmt.Errorf("unresolved install changed the original project")
+		}
 	}
 	return nil
 }
@@ -498,8 +501,12 @@ func npmProjectArtifacts(r *caseRun, state []npmProjectPackage, candidates []can
 }
 func npmProjectPolicy(r *caseRun, targets []npmProjectPackage, target candidate, blocked bool) error {
 	records, err := readPolicy(r.Env["SCFW_LOG_FILE"])
-	if len(targets) == 0 && r.Spec.Mode == "proxy" && os.IsNotExist(err) {
+	unresolvedResolution := r.Spec.Mode == "resolution" && r.Spec.Variant == "resolution-unresolved-allow" && r.Result.SCFWExit > 0
+	if len(targets) == 0 && !blocked && (r.Spec.Mode == "proxy" || unresolvedResolution) && os.IsNotExist(err) {
 		r.Result.PolicyOutcome, r.Result.ResolvedAction = "NOT_OBSERVED", "ALLOW"
+		if unresolvedResolution {
+			r.Result.ResolvedAction = "REJECT"
+		}
 		return nil
 	}
 	if err != nil {
@@ -562,5 +569,59 @@ func TestHarnessNPMProjectTargets(t *testing.T) {
 	local := npmProjectPackage{Path: "node_modules/local", Name: "local", Version: "1", Local: true}
 	if got := npmProjectTargets([]npmProjectPackage{old, newer, duplicate, local}, []npmProjectPackage{old}); !reflect.DeepEqual(got, []npmProjectPackage{newer, duplicate}) {
 		t.Fatalf("incorrect changed/duplicate/local selection: %+v", got)
+	}
+}
+
+func TestHarnessNPMProjectMissingPolicy(t *testing.T) {
+	for _, c := range []struct {
+		name, mode, variant, logState, outcome, action string
+		exit                                           int
+		targets, blocked, wantError                    bool
+	}{
+		{name: "failed-resolution", mode: "resolution", variant: "resolution-unresolved-allow", exit: 1, outcome: "NOT_OBSERVED", action: "REJECT"},
+		{name: "successful-resolution", mode: "resolution", variant: "resolution-unresolved-allow", wantError: true},
+		{name: "failed-launch", mode: "resolution", variant: "resolution-unresolved-allow", exit: -1, wantError: true},
+		{name: "ordinary-resolution", mode: "resolution", variant: "resolution-manifest-no-lock-allow", wantError: true},
+		{name: "final-command-failure", mode: "resolution", variant: "resolution-final-failure-allow", exit: 1, wantError: true},
+		{name: "selected-target", mode: "resolution", variant: "resolution-unresolved-allow", exit: 1, targets: true, wantError: true},
+		{name: "required-block", mode: "resolution", variant: "resolution-unresolved-allow", exit: 1, blocked: true, wantError: true},
+		{name: "empty-log", mode: "resolution", variant: "resolution-unresolved-allow", exit: 1, logState: "empty", wantError: true},
+		{name: "unreadable-log", mode: "resolution", variant: "resolution-unresolved-allow", exit: 1, logState: "directory", wantError: true},
+		{name: "proxy-no-targets", mode: "proxy", variant: "proxy-unresolved-allow", exit: 1, outcome: "NOT_OBSERVED", action: "ALLOW"},
+		{name: "proxy-selected-target", mode: "proxy", variant: "proxy-manifest-no-lock-allow", targets: true, wantError: true},
+		{name: "proxy-required-block", mode: "proxy", variant: "proxy-manifest-no-lock-block", blocked: true, wantError: true},
+		{name: "ordinary-policy-report", mode: "resolution", variant: "resolution-manifest-no-lock-allow", targets: true, logState: "allow", outcome: "ALLOW", action: "ALLOW"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "policy.jsonl")
+			target := candidate{Project: "selected", Version: "1"}
+			r := &caseRun{Cell: cell{Executable: "/selected/npm"}, Spec: scenario{Mode: c.mode, Variant: c.variant}, Env: map[string]string{"SCFW_LOG_FILE": path}, Result: &result{SCFWExit: c.exit, Evidence: map[string]fileEvidence{}}}
+			switch c.logState {
+			case "empty":
+				if err := os.WriteFile(path, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "directory":
+				if err := os.Mkdir(path, 0700); err != nil {
+					t.Fatal(err)
+				}
+			case "allow":
+				record := policyRecord{Manager: "npm", Executable: r.Cell.Executable, Outcome: "ALLOW", Packages: []policyPackage{{Name: target.Project, Version: target.Version, Outcome: "ALLOW"}}}
+				if err := writeJSON(path, record); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var targets []npmProjectPackage
+			if c.targets {
+				targets = []npmProjectPackage{{Name: target.Project, Version: target.Version}}
+			}
+			err := npmProjectPolicy(r, targets, target, c.blocked)
+			if (err != nil) != c.wantError {
+				t.Fatalf("policy error=%v, wantError=%t", err, c.wantError)
+			}
+			if err == nil && (r.Result.PolicyOutcome != c.outcome || r.Result.ResolvedAction != c.action) {
+				t.Fatalf("policy=%s action=%s, want %s/%s", r.Result.PolicyOutcome, r.Result.ResolvedAction, c.outcome, c.action)
+			}
+		})
 	}
 }

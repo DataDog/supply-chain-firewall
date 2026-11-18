@@ -1,0 +1,7 @@
+findings:
+  - severity: {{printf "%q" .Severity}}
+    finding: "SCFW E2E exact-version finding"
+    packages:
+      - ecosystem: {{printf "%q" .Ecosystem}}
+        name: {{printf "%q" .Name}}
+        versions: [{{printf "%q" .Version}}]

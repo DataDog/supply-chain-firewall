@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "cells": [{
+    "id": "linux-arm64-pip-26.2.2-python-3.12.10",
+    "os": "linux", "arch": "arm64", "runner": "native-linux-arm64",
+    "manager": "pip", "executable": "/absolute/path/to/pip", "manager_version": "26.2.2",
+    "runtime": "/absolute/path/to/python3", "runtime_version": "3.12.10",
+    "git": "/absolute/path/to/git", "git_version": "2.55.0",
+    "provisioning": "Provide exact pinned pip and Python executables; copy this example and replace paths.",
+    "modes": ["resolution", "proxy"], "capabilities": ["public-network"], "suites": ["pip-baseline"]
+  }]
+}

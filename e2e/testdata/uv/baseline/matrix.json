@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "cells": [
+    {
+      "id": "linux-arm64-uv-0.13.4-python-3.12.10",
+      "os": "linux",
+      "arch": "arm64",
+      "runner": "native-linux-arm64",
+      "manager": "uv",
+      "executable": "/absolute/path/to/uv",
+      "manager_version": "0.13.4",
+      "runtime": "/absolute/path/to/python3",
+      "runtime_version": "3.12.10",
+      "git": "/absolute/path/to/git",
+      "git_version": "2.55.0",
+      "provisioning": "Install uv 0.13.4 with uvx beside it and exact Python; replace paths and native platform.",
+      "modes": [
+        "proxy"
+      ],
+      "capabilities": [
+        "public-network"
+      ],
+      "suites": [
+        "uv-baseline"
+      ]
+    }
+  ]
+}

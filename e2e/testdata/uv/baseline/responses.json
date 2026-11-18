@@ -1,0 +1,118 @@
+{
+  "old": {
+    "info": {
+      "name": "cowsay",
+      "version": "6.1",
+      "requires_dist": []
+    },
+    "urls": [
+      {
+        "filename": "cowsay-6.1-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/cowsay.whl",
+        "upload_time_iso_8601": "2026-01-01T00:00:00Z",
+        "yanked": false,
+        "requires_python": ">=3.8",
+        "digests": {
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    ]
+  },
+  "recent": {
+    "info": {
+      "name": "cowsay",
+      "version": "6.1",
+      "requires_dist": []
+    },
+    "urls": [
+      {
+        "filename": "cowsay-6.1-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/cowsay.whl",
+        "upload_time_iso_8601": "2026-01-10T00:00:00Z",
+        "yanked": false,
+        "requires_python": ">=3.8",
+        "digests": {
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    ]
+  },
+  "yanked": {
+    "info": {
+      "name": "cowsay",
+      "version": "6.1",
+      "requires_dist": []
+    },
+    "urls": [
+      {
+        "filename": "cowsay-6.1-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/cowsay.whl",
+        "upload_time_iso_8601": "2026-01-01T00:00:00Z",
+        "yanked": true,
+        "requires_python": ">=3.8",
+        "digests": {
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    ]
+  },
+  "dependencies": {
+    "info": {
+      "name": "cowsay",
+      "version": "6.1",
+      "requires_dist": [
+        "unexpected-dependency"
+      ]
+    },
+    "urls": [
+      {
+        "filename": "cowsay-6.1-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/cowsay.whl",
+        "upload_time_iso_8601": "2026-01-01T00:00:00Z",
+        "yanked": false,
+        "requires_python": ">=3.8",
+        "digests": {
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    ]
+  },
+  "incompatible": {
+    "info": {
+      "name": "cowsay",
+      "version": "6.1",
+      "requires_dist": []
+    },
+    "urls": [
+      {
+        "filename": "cowsay-6.1-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/cowsay.whl",
+        "upload_time_iso_8601": "2026-01-01T00:00:00Z",
+        "yanked": false,
+        "requires_python": ">=3.14",
+        "digests": {
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    ]
+  },
+  "source_only": {
+    "info": {
+      "name": "cowsay",
+      "version": "6.1",
+      "requires_dist": []
+    },
+    "urls": [
+      {
+        "filename": "cowsay-6.1.tar.gz",
+        "url": "https://files.pythonhosted.org/cowsay.whl",
+        "upload_time_iso_8601": "2026-01-01T00:00:00Z",
+        "yanked": false,
+        "requires_python": ">=3.8",
+        "digests": {
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    ]
+  }
+}

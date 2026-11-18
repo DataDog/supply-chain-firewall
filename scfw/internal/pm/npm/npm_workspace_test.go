@@ -54,6 +54,29 @@ func workspaceFixture(t *testing.T) (string, map[string][]byte) {
 }
 
 func runNpmWorkspaceFixture(args []string) int {
+	if fixture := os.Getenv("SCFW_TEST_NPM_VERSIONLESS_WORKSPACE"); fixture != "" {
+		if len(args) > 0 && args[0] == "prefix" {
+			cwd, _ := os.Getwd()
+			fmt.Println(cwd)
+			return 0
+		}
+		if len(args) > 0 && args[0] == "config" {
+			fmt.Println(`{"global":false}`)
+			return 0
+		}
+		if _, err := os.Stat("packages/member/package.json"); err != nil {
+			return 1
+		}
+		if slices.Contains(args, "--package-lock-only") {
+			content, err := os.ReadFile(fixture)
+			if err != nil || os.WriteFile("package-lock.json", content, 0600) != nil {
+				return 1
+			}
+		} else {
+			fmt.Fprintln(os.Stderr, "npm silly ADD node_modules/member\nnpm silly ADD node_modules/is-number")
+		}
+		return 0
+	}
 	if os.Getenv("SCFW_TEST_NPM_WORKSPACE_DISABLED") != "" {
 		return runNpmDisabledWorkspaceFixture(args)
 	}
@@ -281,5 +304,64 @@ func TestNpmWorkspaceDisabledUsesMemberLock(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNpmWorkspaceVersionlessMember(t *testing.T) {
+	manager := fixtureNpm(t)
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "packages/member"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]map[string]any{
+		"package.json":                 {"name": "root", "private": true, "workspaces": []string{"packages/*"}},
+		"packages/member/package.json": {"name": "member", "private": true, "dependencies": map[string]string{"is-number": "6.0.0"}},
+	}
+	for name, manifest := range files {
+		if err := writeNpmJSONFile(filepath.Join(root, name), manifest); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fixture, err := filepath.Abs("testdata/workspace-resolution/versionless.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SCFW_TEST_NPM_WORKSPACE", "1")
+	t.Setenv("SCFW_TEST_NPM_VERSIONLESS_WORKSPACE", fixture)
+	t.Chdir(root)
+	targets, err := manager.ResolveInstallTargets(context.Background(), []string{"install"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if targets.Len() != 2 {
+		t.Fatalf("targets=%v, want local member and registry dependency", targets)
+	}
+	for pkg := range targets.Items() {
+		switch pkg.Name {
+		case "member":
+			if pkg.Version != "" || !filepath.IsAbs(pkg.Source) {
+				t.Fatalf("local versionless member=%+v", pkg)
+			}
+		case "is-number":
+			if pkg.Version != "6.0.0" || pkg.Source != "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz" {
+				t.Fatalf("registry dependency=%+v", pkg)
+			}
+		default:
+			t.Fatalf("unexpected target %+v", pkg)
+		}
+	}
+	for name, want := range files {
+		got, err := readNpmJSONFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual, _ := json.Marshal(got)
+		expected, _ := json.Marshal(want)
+		if !bytes.Equal(actual, expected) {
+			t.Fatalf("source manifest changed: %s", name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "package-lock.json")); !os.IsNotExist(err) {
+		t.Fatalf("inspection wrote original lock: %v", err)
 	}
 }

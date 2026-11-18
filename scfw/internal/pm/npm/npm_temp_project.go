@@ -927,6 +927,12 @@ func resolveNpmInstallTarget(
 		link, _ := entry["link"].(bool)
 		resolvedHandle, _ := entry["resolved"].(string)
 		if !link || resolvedHandle == "" {
+			// Workspace/local directory manifests need not declare a published
+			// version. Only a successfully followed local link establishes that
+			// origin; direct registry entries remain required to have a version.
+			if !link && targetSourceOverride != nil && *targetSourceOverride != "" && resolvedHandle == "" && (entry["version"] == nil || entry["version"] == "") {
+				return pm.Package{Ecosystem: ecosystem.NPM, Name: targetName, Source: *targetSourceOverride}, nil
+			}
 			return pm.Package{}, fmt.Errorf("missing version data for installation target %s in package-lock.json", targetName)
 		}
 

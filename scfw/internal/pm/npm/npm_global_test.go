@@ -138,6 +138,13 @@ func runNpmGlobalFixture(args []string) int {
 				}
 			}
 		}
+		if fixture := os.Getenv("SCFW_TEST_NPM_GLOBAL_LOCK"); fixture != "" {
+			content, err := os.ReadFile(fixture)
+			if err != nil || os.WriteFile(filepath.Join(root, "package-lock.json"), content, 0600) != nil {
+				return 1
+			}
+			return 0
+		}
 		packages := map[string]any{"node_modules/react": map[string]any{"version": "18.3.0"}}
 		if os.Getenv("SCFW_TEST_NPM_GLOBAL_DUPLICATE") == "1" {
 			packages = map[string]any{}
@@ -448,5 +455,57 @@ func TestNpmGlobalCountsPrecedeCanonicalDeduplication(t *testing.T) {
 	}
 	if targets.Len() != 1 {
 		t.Fatalf("two installed handles should resolve to one canonical policy package: %v", targets)
+	}
+}
+
+func TestNpmGlobalPeerLayouts(t *testing.T) {
+	content, err := os.ReadFile("testdata/global_inspection/peer-layouts.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases map[string]struct {
+		Log      string            `json:"log"`
+		Packages map[string]any    `json:"packages"`
+		Want     map[string]string `json:"want"`
+		Error    bool              `json:"error"`
+	}
+	if err := json.Unmarshal(content, &cases); err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			manager := fixtureNpm(t)
+			t.Setenv("SCFW_TEST_NPM_GLOBAL_CONFIG", "true")
+			t.Setenv("SCFW_TEST_NPM_GLOBAL_PREFIX", t.TempDir())
+			t.Setenv("SCFW_TEST_NPM_USERCONFIG", filepath.Join(t.TempDir(), "user config"))
+			t.Setenv("SCFW_TEST_NPM_GLOBALCONFIG", filepath.Join(t.TempDir(), "global config"))
+			t.Setenv("SCFW_TEST_NPM_GLOBAL_LOG", c.Log)
+			lock := filepath.Join(t.TempDir(), "package-lock.json")
+			if err := writeNpmJSONFile(lock, map[string]any{"packages": c.Packages}); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("SCFW_TEST_NPM_GLOBAL_LOCK", lock)
+			t.Chdir(fixtureNpmProject(t))
+			targets, err := manager.ResolveInstallTargets(context.Background(), []string{"install", "-g", "has-peer@1.0.0"})
+			if c.Error {
+				if err == nil {
+					t.Fatalf("expected conflicting global metadata to fail, got %v", targets)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := map[string]string{}
+			for pkg := range targets.Items() {
+				got[pkg.Name] = pkg.Version
+				if pkg.Name == "is-number" && pkg.Source != "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz" {
+					t.Fatalf("registry dependency source changed: %+v", pkg)
+				}
+			}
+			if !reflect.DeepEqual(got, c.Want) {
+				t.Fatalf("targets=%v, want %v", got, c.Want)
+			}
+		})
 	}
 }

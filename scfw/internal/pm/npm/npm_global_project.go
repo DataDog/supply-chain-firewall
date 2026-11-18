@@ -24,12 +24,17 @@ import (
 type npmGlobalProject struct{ prefix string }
 
 type npmGlobalResolution struct {
-	roots    map[string]any
-	versions map[string]string
-	handles  []string
+	roots      map[string]any
+	versions   map[string]string
+	handles    []string
+	placements map[string]npmGlobalDependency
 }
 
-var npmGlobalPlacement = regexp.MustCompile(`^npm (?:sill|silly) placeDep (\S+) (\S+) OK for: .* want: (.+)$`)
+type npmGlobalDependency struct {
+	owner, wanted string
+}
+
+var npmGlobalPlacement = regexp.MustCompile(`^npm (?:sill|silly) placeDep (\S+) (\S+) OK for: (.*?) want: (.+)$`)
 
 // Global dry runs retain npm's original cwd and destination. In particular,
 // npm synthesizes a current-directory package when no positional target remains.
@@ -75,8 +80,8 @@ func (p *npmTempProject) resolveGlobalInstallTargets(ctx context.Context, comman
 		return nil, err
 	}
 	// Keep original relative operands anchored to the caller's cwd. All writes
-	// are forced into the private prefix. Shallow/global-style placement matches
-	// native global Arborist layout, enabling exact handle/version reconciliation.
+	// are forced into the private prefix. Peer placement can differ between
+	// global and shallow layouts; reconcile those targets by their dependency edges.
 	args = npmInspectionArgs(command, p.inspectionOptions...)
 	args = npmInspectionArgs(args, "--global=false", "--global-style=true", "--install-strategy=shallow", "--package-lock-only", "--package-lock=true", "--ignore-scripts", "--save")
 	child = exec.CommandContext(ctx, p.executable, args...)
@@ -92,7 +97,7 @@ func (p *npmTempProject) resolveGlobalInstallTargets(ctx context.Context, comman
 		return nil, errors.New("malformed global inspection package lockfile")
 	}
 	for _, handle := range resolution.handles {
-		pkg, err := resolveNpmInstallTarget(dependencies, p.dir, handle, "", nil)
+		pkg, err := resolveNpmGlobalInstallTarget(dependencies, p.dir, handle, resolution)
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +119,7 @@ func (p *npmTempProject) resolveGlobalInstallTargets(ctx context.Context, comman
 // Lockfile metadata still owns package identity (including aliases) and source.
 // Unknown or inconsistent records fail closed instead of dropping targets.
 func parseNpmGlobalResolution(log, base string) (npmGlobalResolution, error) {
-	result := npmGlobalResolution{roots: map[string]any{}, versions: map[string]string{}}
+	result := npmGlobalResolution{roots: map[string]any{}, versions: map[string]string{}, placements: map[string]npmGlobalDependency{}}
 	for _, line := range strings.Split(log, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 3 || fields[0] != "npm" || (fields[1] != "sill" && fields[1] != "silly") {
@@ -126,7 +131,7 @@ func parseNpmGlobalResolution(log, base string) (npmGlobalResolution, error) {
 			if match == nil {
 				return result, fmt.Errorf("unrecognized npm global placement: %s", line)
 			}
-			parent, pair, wanted := match[1], match[2], match[3]
+			parent, pair, owner, wanted := match[1], match[2], match[3], match[4]
 			split := strings.LastIndex(pair, "@")
 			if split <= 0 || split == len(pair)-1 {
 				return result, errors.New("npm global placement lacks name or version")
@@ -140,6 +145,7 @@ func parseNpmGlobalResolution(log, base string) (npmGlobalResolution, error) {
 				return result, fmt.Errorf("invalid npm global target handle %q", handle)
 			}
 			result.versions[handle] = version
+			result.placements[handle] = npmGlobalDependency{owner: owner, wanted: wanted}
 			if parent == "ROOT" {
 				if strings.HasPrefix(wanted, npmFileURIPrefix) {
 					source := strings.TrimPrefix(wanted, npmFileURIPrefix)
@@ -158,6 +164,85 @@ func parseNpmGlobalResolution(log, base string) (npmGlobalResolution, error) {
 		}
 	}
 	return result, nil
+}
+
+// Resolve an exact handle first. When native global peer placement differs,
+// follow the recorded owner's dependency edge in the private lock instead of
+// guessing from a package name. Every matching owner must agree on identity,
+// version and source; an existing conflicting handle remains an error.
+func resolveNpmGlobalInstallTarget(dependencies map[string]any, directory, handle string, resolution npmGlobalResolution) (pm.Package, error) {
+	if _, exists := dependencies[handle]; exists {
+		return resolveNpmInstallTarget(dependencies, directory, handle, "", nil)
+	}
+	placement := resolution.placements[handle]
+	name := handle[strings.LastIndex(handle, npmNodeModulesPrefix)+len(npmNodeModulesPrefix):]
+	var result pm.Package
+	found := false
+	for ownerHandle, value := range dependencies {
+		entry, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		ownerName, _ := entry["name"].(string)
+		if ownerName == "" {
+			ownerName = ownerHandle
+			if index := strings.LastIndex(ownerHandle, npmNodeModulesPrefix); index >= 0 {
+				ownerName = ownerHandle[index+len(npmNodeModulesPrefix):]
+			}
+		}
+		ownerVersion, _ := entry["version"].(string)
+		if placement.owner == "" || ownerName+"@"+ownerVersion != placement.owner {
+			continue
+		}
+		declared := false
+		for _, section := range []string{"dependencies", "optionalDependencies", "peerDependencies"} {
+			edges, _ := entry[section].(map[string]any)
+			if spec, ok := edges[name].(string); ok && spec == placement.wanted {
+				declared = true
+			}
+		}
+		if !declared {
+			continue
+		}
+		candidate, ok := npmGlobalDependencyHandle(dependencies, ownerHandle, name)
+		if !ok {
+			return pm.Package{}, fmt.Errorf("missing global dependency %s of %s", name, placement.owner)
+		}
+		pkg, err := resolveNpmInstallTarget(dependencies, directory, candidate, "", nil)
+		if err != nil {
+			return pm.Package{}, err
+		}
+		if pkg.Version != resolution.versions[handle] || (found && pkg != result) {
+			return pm.Package{}, fmt.Errorf("npm global target %s has conflicting inspection metadata", handle)
+		}
+		result, found = pkg, true
+	}
+	if !found {
+		return pm.Package{}, fmt.Errorf("missing matching dependency edge for npm global target %s", handle)
+	}
+	return result, nil
+}
+
+// npm resolves a dependency from the nearest node_modules directory, including
+// an ancestor's hoisted peer. Never search past an existing conflicting entry.
+func npmGlobalDependencyHandle(dependencies map[string]any, owner, name string) (string, bool) {
+	for {
+		handle := npmNodeModulesPrefix + name
+		if owner != "" {
+			handle = owner + "/" + handle
+		}
+		if _, exists := dependencies[handle]; exists {
+			return handle, true
+		}
+		if owner == "" {
+			return "", false
+		}
+		if parent := strings.LastIndex(owner, "/"+npmNodeModulesPrefix); parent >= 0 {
+			owner = owner[:parent]
+		} else {
+			owner = ""
+		}
+	}
 }
 
 func validNpmGlobalHandle(handle string) bool {

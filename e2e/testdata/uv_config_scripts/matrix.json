@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "cells": [
+    {
+      "id": "linux-arm64-uv-0.13.4-python-3.12.10",
+      "os": "linux",
+      "arch": "arm64",
+      "runner": "native-linux-arm64",
+      "manager": "uv",
+      "executable": "/absolute/path/to/uv-0.13.4",
+      "manager_version": "0.13.4",
+      "runtime": "/absolute/path/to/python3",
+      "runtime_version": "3.12.10",
+      "git": "/absolute/path/to/git",
+      "git_version": "2.55.0",
+      "provisioning": "Provision exact uv and Python; replace absolute paths and native platform. File-proxy capability is verified present on 0.13.4 and absent on 0.9.0.",
+      "modes": [
+        "proxy"
+      ],
+      "capabilities": [
+        "public-network",
+        "uv-file-proxy",
+        "uv-working-directory-env"
+      ],
+      "suites": [
+        "uv-config-scripts"
+      ]
+    },
+    {
+      "id": "linux-arm64-uv-0.9.0-python-3.12.10",
+      "os": "linux",
+      "arch": "arm64",
+      "runner": "native-linux-arm64",
+      "manager": "uv",
+      "executable": "/absolute/path/to/uv-0.9.0",
+      "manager_version": "0.9.0",
+      "runtime": "/absolute/path/to/python3",
+      "runtime_version": "3.12.10",
+      "git": "/absolute/path/to/git",
+      "git_version": "2.55.0",
+      "provisioning": "Provision exact uv and Python; replace absolute paths and native platform. File-proxy capability is verified present on 0.13.4 and absent on 0.9.0.",
+      "modes": [
+        "proxy"
+      ],
+      "capabilities": [
+        "public-network"
+      ],
+      "suites": [
+        "uv-config-scripts"
+      ]
+    }
+  ]
+}

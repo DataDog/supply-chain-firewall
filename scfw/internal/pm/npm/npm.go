@@ -12,19 +12,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
-
-// npmInstallCommandAliases are all the tokens npm recognizes as the install
-// subcommand. https://docs.npmjs.com/cli/v10/commands/npm-install
-var npmInstallCommandAliases = []string{
-	"install", "add", "i", "in", "ins", "inst", "insta", "instal", "isnt", "isnta", "isntal", "isntall",
-}
 
 var npmDryRunSkipOptions = []string{"-h", "--help", "--dry-run", "--version"}
 
@@ -126,8 +119,13 @@ func (npm Npm) ResolveInstallTargets(ctx context.Context, command []string) (*pm
 		return nil, errors.New("npx requires proxy mode (set SCFW_PROXY_ENABLED=1)")
 	}
 
-	// Only the install subcommand (or one of its aliases) is supported for now.
-	if !slices.ContainsFunc(command, func(tok string) bool { return slices.Contains(npmInstallCommandAliases, tok) }) {
+	// Only install can be resolved here. Another command that fetches packages
+	// would run unevaluated, so refuse it.
+	invocation := parseNpmInvocation(command)
+	switch name, kind := invocation.command(); {
+	case kind == npmFetch && !invocation.noop:
+		return nil, fmt.Errorf("npm %s requires proxy mode (set SCFW_PROXY_ENABLED=1)", name)
+	case kind != npmInstall:
 		return pm.NewSet[pm.Package](), nil
 	}
 
@@ -136,10 +134,8 @@ func (npm Npm) ResolveInstallTargets(ctx context.Context, command []string) (*pm
 	}
 
 	// The presence of these options prevents the command from actually running.
-	for _, opt := range npmDryRunSkipOptions {
-		if slices.Contains(command, opt) {
-			return pm.NewSet[pm.Package](), nil
-		}
+	if invocation.noop {
+		return pm.NewSet[pm.Package](), nil
 	}
 
 	proj, err := newNpmTempProject(ctx, npm.Executable())

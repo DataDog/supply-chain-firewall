@@ -191,8 +191,12 @@ func TestNpmResolveInstallTargets_GatingWithLocalFixture(t *testing.T) {
 		name       string
 		command    []string
 		hasTargets bool
+		refuses    string // the command expected in the proxy mode refusal
 	}{
 		{name: "install", command: []string{"install", "react@18.3.0"}, hasTargets: true},
+		{name: "install after a flag", command: []string{"--silent", "install", "react@18.3.0"}, hasTargets: true},
+		{name: "install after an option with a value", command: []string{"--prefix", "web", "install", "react@18.3.0"}, hasTargets: true},
+		{name: "install after a separator", command: []string{"--", "install", "react@18.3.0"}, hasTargets: true},
 		{name: "install alias", command: []string{"add", "react@18.3.0"}, hasTargets: true},
 		{name: "global install", command: []string{"install", "--global", "react@18.3.0"}, hasTargets: true},
 		{name: "global install shorthand group", command: []string{"install", "-gD", "react@18.3.0"}, hasTargets: true},
@@ -201,11 +205,53 @@ func TestNpmResolveInstallTargets_GatingWithLocalFixture(t *testing.T) {
 		{name: "already dry run", command: []string{"install", "--dry-run", "react@18.3.0"}},
 		{name: "version", command: []string{"install", "--version"}},
 		{name: "other command", command: []string{"list"}},
+		{name: "script named like an install alias", command: []string{"run", "add"}},
+		{name: "audit without fix", command: []string{"audit"}},
+		{name: "init without an initializer", command: []string{"init", "-y"}},
+		{name: "fetching command with --dry-run", command: []string{"ci", "--dry-run"}},
+		{name: "fetching command with --help", command: []string{"ci", "--help"}},
+		// Best effort: an abbreviation is not recognized.
+		{name: "abbreviated update", command: []string{"upd"}},
+		{name: "ci", command: []string{"ci"}, refuses: "ci"},
+		{name: "clean-install", command: []string{"clean-install"}, refuses: "ci"},
+		{name: "update", command: []string{"update"}, refuses: "update"},
+		{name: "up", command: []string{"up", "x"}, refuses: "update"},
+		{name: "ci after flags", command: []string{"--silent", "-g", "ci"}, refuses: "ci"},
+		{name: "ci after an option with a value", command: []string{"--prefix", "web", "ci"}, refuses: "ci"},
+		{name: "ci after a color value", command: []string{"--color", "always", "ci"}, refuses: "ci"},
+		{name: "ci after a separator", command: []string{"--", "ci"}, refuses: "ci"},
+		{name: "ci after an option value and a separator", command: []string{"-C", "web", "--", "ci"}, refuses: "ci"},
+		{name: "init initializer after a separator", command: []string{"init", "--", "vite"}, refuses: "init"},
+		{name: "audit fix after a separator", command: []string{"audit", "--", "fix"}, refuses: "audit"},
+		// An option value named like a command is refused rather than guessed past.
+		{name: "option value named like a command", command: []string{"--prefix", "x", "install", "react@18.3.0"}, refuses: "exec"},
+		{name: "exec", command: []string{"exec", "cowsay"}, refuses: "exec"},
+		{name: "x", command: []string{"x", "cowsay"}, refuses: "exec"},
+		{name: "uninstall", command: []string{"rm", "x"}, refuses: "uninstall"},
+		{name: "link", command: []string{"link"}, refuses: "link"},
+		{name: "prune", command: []string{"prune"}, refuses: "prune"},
+		{name: "cache add", command: []string{"cache", "add", "x"}, refuses: "cache"},
+		{name: "audit fix", command: []string{"audit", "fix"}, refuses: "audit"},
+		{name: "init with an initializer", command: []string{"init", "react-app"}, refuses: "init"},
+		{name: "create", command: []string{"create", "vite"}, refuses: "init"},
+		{name: "help flag of the executed tool", command: []string{"exec", "--", "tsc", "--help"}, refuses: "exec"},
+		{name: "version flag of the executed tool", command: []string{"exec", "--", "cowsay", "--version"}, refuses: "exec"},
+		{name: "dry-run after the separator", command: []string{"ci", "--", "--dry-run"}, refuses: "ci"},
+		{name: "dry-run set to false", command: []string{"ci", "--dry-run", "false"}, refuses: "ci"},
+		{name: "dry-run assigned false", command: []string{"ci", "--dry-run=false"}, refuses: "ci"},
+		{name: "install dry-run set to false", command: []string{"install", "--dry-run", "false", "react@18.3.0"}, hasTargets: true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			targets, err := npm.ResolveInstallTargets(context.Background(), tc.command)
+			if tc.refuses != "" {
+				if err == nil || !strings.Contains(err.Error(), "npm "+tc.refuses+" requires proxy mode") ||
+					!strings.Contains(err.Error(), "SCFW_PROXY_ENABLED=1") {
+					t.Fatalf("ResolveInstallTargets(%v) = %v, want the %s proxy mode refusal", tc.command, err, tc.refuses)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("ResolveInstallTargets(%v) failed: %v", tc.command, err)
 			}

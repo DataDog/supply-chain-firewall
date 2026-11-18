@@ -298,6 +298,10 @@ func withoutGlobalOptions(command []string) []string {
 		if argument == "--" {
 			return append(args, command[index:]...)
 		}
+		if !strings.HasPrefix(argument, "-") {
+			args = append(args, argument)
+			continue
+		}
 		if isNpmShorthandGroup(argument) {
 			if rest := strings.ReplaceAll(argument, "g", ""); rest != "-" {
 				args = append(args, rest)

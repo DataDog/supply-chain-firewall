@@ -216,6 +216,10 @@ func TestWithoutGlobalOptions(t *testing.T) {
 		{"group of only g", []string{"install", "-gg", "react"}, []string{"install", "react"}},
 		{"not a group", []string{"install", "-gx", "react"}, []string{"install", "-gx", "react"}},
 		{"after separator", []string{"exec", "--", "node", "-g"}, []string{"exec", "--", "node", "-g"}},
+		// Without a dash, g is a package name, and so is a following true or false.
+		{"package named g", []string{"install", "g"}, []string{"install", "g"}},
+		{"package named g before another", []string{"install", "g", "react"}, []string{"install", "g", "react"}},
+		{"packages named g and false", []string{"install", "g", "false"}, []string{"install", "g", "false"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			original := slices.Clone(test.args)

@@ -144,7 +144,9 @@ func (pip Pip) ResolveInstallTargets(ctx context.Context, command []string) (*pm
 
 	// Otherwise, this is probably a live `pip install` command.
 	// To be certain, we would need to write a full parser for pip.
-	dryRunArgs := append(slices.Clone(command), "--dry-run", "-qqqqq", "--report", "-")
+	// Older pip can print download progress with --log despite quiet flags.
+	// Disable it only for discovery so stdout remains a complete JSON report.
+	dryRunArgs := append(slices.Clone(command), "--dry-run", "-qqqqq", "--progress-bar", "off", "--report", "-")
 	output, err := exec.CommandContext(ctx, pip.Executable(), dryRunArgs...).Output()
 	if err != nil {
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {

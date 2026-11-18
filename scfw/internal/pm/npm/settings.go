@@ -7,13 +7,11 @@ package npm
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
+	"runtime"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/nodeproxy"
@@ -250,12 +248,25 @@ func inWorkspaces(root, member string) bool {
 	if err != nil {
 		return false
 	}
-	segments := strings.Split(filepath.ToSlash(relative), "/")
+	relative = filepath.ToSlash(relative)
+	if globIgnoresCase {
+		relative = strings.ToLower(relative)
+	}
+	segments := strings.Split(relative, "/")
 	included := false
 	for _, pattern := range patterns {
 		pattern, excluded := strings.CutPrefix(pattern, "!")
 		for _, expanded := range expandBraces(pattern) {
 			expanded = strings.Trim(strings.TrimPrefix(expanded, "./"), "/")
+			if globIgnoresCase {
+				expanded = strings.ToLower(expanded)
+			}
+			// An exclusion left unexpanded (a range, extglob, POSIX class, or an
+			// expansion over budget) excludes every member, so SCFW never reads
+			// the root's settings where npm would not.
+			if excluded && (strings.ContainsAny(expanded, "{(") || strings.Contains(expanded, "[[:")) {
+				return false
+			}
 			if matchSegments(strings.Split(expanded, "/"), segments) {
 				if excluded {
 					return false
@@ -267,60 +278,16 @@ func inWorkspaces(root, member string) bool {
 	return included
 }
 
-var braceRangePattern = regexp.MustCompile(`^(?:(-?\d{1,9})\.\.(-?\d{1,9})|([A-Za-z])\.\.([A-Za-z]))(?:\.\.(-?\d{1,9}))?$`)
+// globIgnoresCase is true where npm's glob matches workspaces case-insensitively.
+var globIgnoresCase = runtime.GOOS == "darwin" || runtime.GOOS == "windows"
 
-// maxBraceExpansions bounds a range and the work of expanding a pattern, both
-// of which come from a project's package.json.
+// maxBraceExpansions bounds the work of expanding a pattern, which comes from a
+// project's package.json and multiplies with every group.
 const maxBraceExpansions = 10000
 
-// braceRange expands the body of a {from..to[..step]} group as
-// brace-expansion does: numbers or single letters, in either direction, zero
-// padded when an endpoint has a leading zero. It returns nil for anything
-// else, including a range longer than maxBraceExpansions.
-func braceRange(body string) []string {
-	match := braceRangePattern.FindStringSubmatch(body)
-	if match == nil {
-		return nil
-	}
-	step := 1
-	if match[5] != "" {
-		step, _ = strconv.Atoi(match[5])
-		step = max(step, -step, 1)
-	}
-	var from, to int
-	format := func(n int) string { return string(rune(n)) }
-	if match[1] != "" {
-		from, _ = strconv.Atoi(match[1])
-		to, _ = strconv.Atoi(match[2])
-		padded := func(number string) bool {
-			number = strings.TrimPrefix(number, "-")
-			return len(number) > 1 && number[0] == '0'
-		}
-		width := 0
-		if padded(match[1]) || padded(match[2]) {
-			width = max(len(match[1]), len(match[2]))
-		}
-		format = func(n int) string { return fmt.Sprintf("%0*d", width, n) }
-	} else {
-		from, to = int(match[3][0]), int(match[4][0])
-	}
-	direction := 1
-	if to < from {
-		direction = -1
-	}
-	if (to-from)*direction/step >= maxBraceExpansions {
-		return nil
-	}
-	var items []string
-	for n := from; (to-n)*direction >= 0; n += direction * step {
-		items = append(items, format(n))
-	}
-	return items
-}
-
-// expandBraces expands the first {a,b} or {from..to} group of a glob,
-// recursively; any other group, or an unbalanced one, stays literal. A pattern
-// that would take more than maxBraceExpansions steps stays literal as a whole.
+// expandBraces expands the first {a,b} group of a glob, recursively; a group
+// without a comma, or an unbalanced one, stays literal. A pattern that would
+// take more than maxBraceExpansions steps stays literal as a whole.
 func expandBraces(pattern string) []string {
 	budget := maxBraceExpansions
 	if expanded := expandBracesWithin(pattern, &budget); budget >= 0 {
@@ -355,9 +322,6 @@ func expandBracesWithin(pattern string, budget *int) []string {
 			}
 			options = append(options, pattern[start:index])
 			if len(options) < 2 {
-				options = braceRange(options[0])
-			}
-			if len(options) == 0 {
 				return []string{pattern}
 			}
 			var expanded []string
@@ -389,105 +353,13 @@ func matchSegments(pattern, path []string) bool {
 		if len(path) == 0 || strings.HasPrefix(path[0], ".") && !strings.HasPrefix(pattern[0], ".") {
 			return false
 		}
-		if !matchSegment(pattern[0], path[0]) {
+		// Glob negates a class with "!", filepath.Match with "^".
+		if matched, err := filepath.Match(strings.ReplaceAll(pattern[0], "[!", "[^"), path[0]); err != nil || !matched {
 			return false
 		}
 		pattern, path = pattern[1:], path[1:]
 	}
 	return len(path) == 0
-}
-
-// matchSegment matches one path segment against a glob segment: *, ?, [...]
-// and the extglobs @(a|b), ?(a|b), +(a|b) and *(a|b). The !(a|b) extglob is
-// not supported and never matches.
-func matchSegment(pattern, name string) bool {
-	expression, ok := globRegexp(pattern)
-	if !ok {
-		return false
-	}
-	matched, err := regexp.MatchString("^(?:"+expression+")$", name)
-	return err == nil && matched
-}
-
-// globRegexp translates a glob segment to a regular expression, and reports
-// false for a form it does not support.
-func globRegexp(pattern string) (string, bool) {
-	var expression strings.Builder
-	for index := 0; index < len(pattern); index++ {
-		char := pattern[index]
-		if index+1 < len(pattern) && pattern[index+1] == '(' && strings.IndexByte("@?+*!", char) >= 0 {
-			alternatives, end := extglobAlternatives(pattern, index+1)
-			if char == '!' || end < 0 {
-				return "", false
-			}
-			for position, alternative := range alternatives {
-				translated, ok := globRegexp(alternative)
-				if !ok {
-					return "", false
-				}
-				alternatives[position] = translated
-			}
-			fmt.Fprintf(&expression, "(?:%s)%s", strings.Join(alternatives, "|"), strings.TrimPrefix(string(char), "@"))
-			index = end
-			continue
-		}
-		switch char {
-		case '*':
-			expression.WriteString("[^/]*")
-		case '?':
-			expression.WriteString("[^/]")
-		case '[':
-			// A ] right after the opening [ belongs to the class.
-			end := -1
-			if index+2 <= len(pattern) {
-				end = strings.IndexByte(pattern[index+2:], ']')
-			}
-			if end < 0 {
-				expression.WriteString(`\[`)
-				continue
-			}
-			class := strings.NewReplacer(`\`, `\\`, "[", `\[`).Replace(pattern[index+1 : index+2+end])
-			if rest, negated := strings.CutPrefix(class, "!"); negated {
-				class = "^" + rest
-			}
-			fmt.Fprintf(&expression, "[%s]", class)
-			index += end + 2
-		case '\\':
-			if index+1 < len(pattern) {
-				index++
-			}
-			expression.WriteString(regexp.QuoteMeta(pattern[index : index+1]))
-		default:
-			expression.WriteString(regexp.QuoteMeta(pattern[index : index+1]))
-		}
-	}
-	return expression.String(), true
-}
-
-// extglobAlternatives splits the parenthesized group opening at open into its
-// top-level | alternatives and returns the index of its closing parenthesis,
-// or -1 when it is unterminated.
-func extglobAlternatives(pattern string, open int) ([]string, int) {
-	var alternatives []string
-	depth, start := 0, open+1
-	for index := open; index < len(pattern); index++ {
-		switch pattern[index] {
-		case '\\':
-			index++
-		case '(':
-			depth++
-		case '|':
-			if depth == 1 {
-				alternatives = append(alternatives, pattern[start:index])
-				start = index + 1
-			}
-		case ')':
-			if depth--; depth == 0 {
-				return append(alternatives, pattern[start:index]), index
-			}
-		}
-	}
-	return nil, -1
 }
 
 // expandNpmPath resolves an npm path setting: a leading ~ is the home

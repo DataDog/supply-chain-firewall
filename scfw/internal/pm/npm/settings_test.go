@@ -8,6 +8,7 @@ package npm
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"syscall"
@@ -362,40 +363,12 @@ func TestSettingsSkipsProjectNpmrcForGlobal(t *testing.T) {
 
 // Groups multiply, and the pattern comes from a project's package.json.
 func TestExpandBracesIsBounded(t *testing.T) {
-	const pattern = "v{1..99}{1..99}{1..99}"
+	pattern := strings.Repeat("{a,b}", 20)
 	if got := expandBraces(pattern); !slices.Equal(got, []string{pattern}) {
 		t.Fatalf("expandBraces(%q) returned %d patterns", pattern, len(got))
 	}
-	if got := expandBraces("v{1..9}{1..9}{1..9}"); len(got) != 729 {
-		t.Fatalf("a small product expanded to %d patterns, want 729", len(got))
-	}
-}
-
-func TestMatchSegment(t *testing.T) {
-	for _, test := range []struct {
-		pattern, name string
-		want          bool
-	}{
-		{"a[", "a[", true},
-		{"[", "[", true},
-		{"[!a]b", "cb", true},
-		{"[!a]b", "ab", false},
-		{"[a!]", "!", true},
-		{"[a!]", "b", false},
-		{"@(a", "a", false},
-		{"@(a|b)c", "bc", true},
-		{"@(a|@(b|c))", "c", true},
-		{"+(ab)", "abab", true},
-		{"?(ab)", "", true},
-		{"!(a)", "b", false},
-		{`a\*`, "a*", true},
-		{`a\*`, "ab", false},
-	} {
-		t.Run(test.pattern+" on "+test.name, func(t *testing.T) {
-			if got := matchSegment(test.pattern, test.name); got != test.want {
-				t.Fatalf("matchSegment(%q, %q) = %v, want %v", test.pattern, test.name, got, test.want)
-			}
-		})
+	if got := expandBraces(strings.Repeat("{a,b}", 3)); len(got) != 8 {
+		t.Fatalf("a small product expanded to %d patterns, want 8", len(got))
 	}
 }
 
@@ -407,7 +380,7 @@ func writeNpmWorkspace(t *testing.T, rootManifest string) string {
 	root, _ := os.Getwd()
 	writeNpmFixture(t, filepath.Join(root, "package.json"), rootManifest)
 	writeNpmFixture(t, filepath.Join(root, ".npmrc"), "https-proxy=http://root:1\n")
-	for _, member := range []string{"packages/app", "packages/lib", "packages/group", "packages/group/app", "packages/.hidden", "packages/v2", "packages/v10", "apps/web", "other"} {
+	for _, member := range []string{"packages/app", "packages/lib", "packages/group", "packages/group/app", "packages/.hidden", "packages/v2", "apps/web", "other"} {
 		writeNpmFixture(t, filepath.Join(root, member, "package.json"), "{}")
 		writeNpmFixture(t, filepath.Join(root, member, ".npmrc"), "https-proxy=http://"+member+":1\n")
 	}
@@ -420,6 +393,11 @@ func writeNpmWorkspace(t *testing.T, rootManifest string) string {
 
 // The expectations below were measured with npm 11's `npm prefix`.
 func TestSettingsProjectLocationInWorkspaces(t *testing.T) {
+	// glob ignores case on macOS and Windows.
+	caseExcluded := "root"
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		caseExcluded = "packages/app"
+	}
 	for _, test := range []struct {
 		name       string
 		workspaces string
@@ -454,21 +432,18 @@ func TestSettingsProjectLocationInWorkspaces(t *testing.T) {
 		{name: "explicit dot directory", workspaces: `["packages/.hidden"]`, cwd: "packages/.hidden", want: "root"},
 		{name: "node_modules alone is not a member", workspaces: `["packages/*"]`, cwd: "packages/nm", want: "packages/nm"},
 		{name: "the root itself", workspaces: `["packages/*"]`, cwd: ".", want: "root"},
-		{name: "numeric range", workspaces: `["packages/v{1..3}"]`, cwd: "packages/v2", want: "root"},
-		{name: "numeric range excludes", workspaces: `["packages/v{3..5}"]`, cwd: "packages/v2", want: "packages/v2"},
-		{name: "stepped range", workspaces: `["packages/v{1..3..2}"]`, cwd: "packages/v2", want: "packages/v2"},
-		{name: "reverse range", workspaces: `["packages/v{3..1}"]`, cwd: "packages/v2", want: "root"},
-		{name: "zero-padded range", workspaces: `["packages/v{01..03}"]`, cwd: "packages/v2", want: "packages/v2"},
-		{name: "multi-digit range", workspaces: `["packages/v{9..11}"]`, cwd: "packages/v10", want: "root"},
-		{name: "oversized range stays literal", workspaces: `["packages/v{1..99999}"]`, cwd: "packages/v2", want: "packages/v2"},
-		{name: "@() extglob", workspaces: `["packages/@(app|lib)"]`, cwd: "packages/app", want: "root"},
-		{name: "@() extglob not listed", workspaces: `["packages/@(lib|web)"]`, cwd: "packages/app", want: "packages/app"},
-		{name: "+() extglob", workspaces: `["packages/+(a|p)"]`, cwd: "packages/app", want: "root"},
-		{name: "?() extglob", workspaces: `["packages/ap?(p)"]`, cwd: "packages/app", want: "root"},
-		{name: "*() extglob", workspaces: `["packages/a*(p)"]`, cwd: "packages/app", want: "root"},
-		// npm matches everything but lib; SCFW does not support !() and treats it as no match.
-		{name: "!() extglob is not supported", workspaces: `["packages/!(lib)"]`, cwd: "packages/app", want: "packages/app"},
-		{name: "letter range", workspaces: `["packages/{a..b}pp"]`, cwd: "packages/app", want: "root"},
+		// npm also expands ranges and extglobs; SCFW leaves them literal, which only
+		// reads the member's own configuration.
+		{name: "range is not supported", workspaces: `["packages/v{1..3}"]`, cwd: "packages/v2", want: "packages/v2"},
+		{name: "extglob is not supported", workspaces: `["packages/@(app|lib)"]`, cwd: "packages/app", want: "packages/app"},
+		{name: "negated class", workspaces: `["packages/[!a]pp"]`, cwd: "packages/app", want: "packages/app"},
+		{name: "negated class matches", workspaces: `["packages/[!x]pp"]`, cwd: "packages/app", want: "root"},
+		// An exclusion SCFW cannot evaluate as npm does excludes every member.
+		{name: "extglob exclusion", workspaces: `["packages/*", "!packages/@(app|lib)"]`, cwd: "packages/app", want: "packages/app"},
+		{name: "range exclusion", workspaces: `["packages/*", "!packages/v{1..3}"]`, cwd: "packages/v2", want: "packages/v2"},
+		{name: "POSIX class exclusion", workspaces: `["packages/*", "!packages/[[:alpha:]]pp"]`, cwd: "packages/app", want: "packages/app"},
+		{name: "supported exclusion keeps other members", workspaces: `["packages/*", "!packages/lib"]`, cwd: "packages/app", want: "root"},
+		{name: "exclusion case", workspaces: `["packages/*", "!packages/App"]`, cwd: "packages/app", want: caseExcluded},
 		// npm refuses to run with these, so they only need to declare no workspaces.
 		{name: "bare string workspaces", workspaces: `"packages/*"`, cwd: "packages/app", want: "packages/app"},
 		{name: "workspaces true", workspaces: `true`, cwd: "packages/app", want: "packages/app"},

@@ -1,0 +1,244 @@
+// Unless explicitly stated otherwise all files in this repository are licensed
+// under the Apache License 2.0.
+// This product includes software developed at Datadog (https://www.datadoghq.com/).
+// Copyright 2024-present Datadog, Inc.
+
+package npm
+
+import (
+	"bytes"
+	"compress/gzip"
+	"context"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/internal/archive"
+)
+
+func TestProxyHandlerDefersOpaqueTarballsToResponse(t *testing.T) {
+	handler, evaluated := recordingHandler(t, nil)
+	for _, raw := range []string{
+		"https://codeload.github.com/acme/widget/tar.gz/0123abc",
+		"https://npm.pkg.github.com/download/@acme/widget/1.2.3/abcdef",
+		"https://example.com/widget.tgz",
+	} {
+		hook, err := handler.HandleRequest(context.Background(), getRequest(t, raw))
+		if hook == nil || err != nil {
+			t.Fatalf("%s: HandleRequest() = %v, %v; want a response hook", raw, hook != nil, err)
+		}
+	}
+	if got := len(evaluated()); got != 0 {
+		t.Fatalf("evaluations = %d, want none before the response", got)
+	}
+}
+
+func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
+	tarball := npmTarball(t, "gzip", tarEntry{name: "widget-0123abc/package.json", body: readNpmFixture(t, "manifest/widget.json")})
+	var encoded bytes.Buffer
+	encoder := gzip.NewWriter(&encoded)
+	_, _ = encoder.Write(tarball)
+	_ = encoder.Close()
+	rawPrefix := append(bytes.Repeat([]byte{0x78}, 512), rawTar(rawTarEntry("package/package.json", '0', readNpmFixture(t, "manifest/widget.json")))...)
+	capitalized := npmTarball(t, "gzip", tarEntry{name: "package/Package.json", body: readNpmFixture(t, "manifest/widget.json")})
+	headers := npmTarball(t, "gzip", tarEntry{name: "node-v20.0.0/include/node/node.h", body: "#pragma once"})
+
+	var fetches atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetches.Add(1)
+		switch r.URL.Path {
+		case "/widget.tgz", "/blob/abc":
+			_, _ = w.Write(tarball)
+		case "/raw-prefix.tgz":
+			_, _ = w.Write(rawPrefix)
+		case "/capitalized.tgz":
+			_, _ = w.Write(capitalized)
+		case "/encoded.tgz":
+			w.Header().Set("Content-Encoding", "gzip")
+			_, _ = w.Write(encoded.Bytes())
+		case "/headers.tar.gz":
+			_, _ = w.Write(headers)
+		case "/corrupt.tgz":
+			_, _ = w.Write(tarball[:len(tarball)-12])
+		case "/huge.tgz":
+			w.Header().Set("Content-Length", strconv.FormatInt(archive.MaxArtifactBytes+1, 10))
+			w.WriteHeader(http.StatusOK)
+		case "/created.tgz":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write(tarball)
+		case "/non-authoritative.tgz":
+			w.WriteHeader(http.StatusNonAuthoritativeInfo)
+			_, _ = w.Write(tarball)
+		case "/reset-content.tgz":
+			w.WriteHeader(http.StatusResetContent)
+			_, _ = w.Write(tarball)
+		case "/multiple-choices.tgz":
+			w.WriteHeader(http.StatusMultipleChoices)
+			_, _ = w.Write(tarball)
+		case "/html-redirect.tgz":
+			w.Header().Set("Content-Type", "text/html")
+			w.Header().Set("Location", "/elsewhere")
+			w.WriteHeader(http.StatusFound)
+			_, _ = w.Write([]byte("<a href=\"/elsewhere\">Found</a>"))
+		case "/no-content.tgz":
+			w.WriteHeader(http.StatusNoContent)
+		case "/upper.tgz":
+			w.Header().Set("Location", "http://LOCALHOST:"+r.Host[strings.LastIndex(r.Host, ":")+1:]+"/blob/upper")
+			w.WriteHeader(http.StatusFound)
+		case "/dots.tgz":
+			w.Header().Set("Location", "/hop/%2e%2e/blob/dots")
+			w.WriteHeader(http.StatusFound)
+		case "/backslash.tgz":
+			w.Header().Set("Location", "/hop\\..\\blob/backslash")
+			w.WriteHeader(http.StatusFound)
+		case "/blob/upper", "/blob/dots", "/blob/backslash":
+			_, _ = w.Write(tarball)
+		case "/bad-location.tgz":
+			w.Header().Set("Location", "http://[bad")
+			w.WriteHeader(http.StatusFound)
+		case "/encoded-host.tgz":
+			// Node accepts a percent-encoded host; Go cannot parse it.
+			w.Header().Set("Location", "http://%65xample.invalid/download")
+			w.WriteHeader(http.StatusFound)
+		case "/fragment.tgz":
+			http.Redirect(w, r, "/blob/abc#download", http.StatusFound)
+		case "/redirect.tgz":
+			http.Redirect(w, r, "/blob/abc", http.StatusFound)
+		case "/cached.tgz":
+			if r.Header.Get("If-None-Match") != "" {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+			_, _ = w.Write(tarball)
+		}
+	}))
+	defer upstream.Close()
+
+	for _, tc := range []struct {
+		path, source string
+		block        bool
+		status       int
+		evaluations  int
+		body         []byte
+	}{
+		{path: "/widget.tgz", source: "/widget.tgz", status: http.StatusOK, evaluations: 1, body: tarball},
+		{path: "/widget.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
+		{path: "/raw-prefix.tgz", status: http.StatusBadGateway},
+		{path: "/capitalized.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
+		{path: "/encoded.tgz", source: "/encoded.tgz", status: http.StatusOK, evaluations: 1, body: tarball},
+		{path: "/headers.tar.gz", status: http.StatusOK, body: headers},
+		{path: "/corrupt.tgz", status: http.StatusBadGateway},
+		{path: "/huge.tgz", status: http.StatusBadGateway},
+		{path: "/redirect.tgz", source: "/blob/abc", status: http.StatusOK, evaluations: 1, body: tarball},
+		{path: "/created.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
+		{path: "/non-authoritative.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
+		{path: "/reset-content.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
+		{path: "/multiple-choices.tgz", block: true, status: http.StatusForbidden, evaluations: 1},
+		{path: "/no-content.tgz", block: true, status: http.StatusNoContent, body: []byte{}},
+		{path: "/fragment.tgz", source: "/blob/abc", status: http.StatusOK, evaluations: 1, body: tarball},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			var result error
+			if tc.block {
+				result = errors.New("blocked by policy")
+			}
+			handler, evaluated := recordingHandler(t, result)
+			response, err := proxiedClient(t, handler.HandleRequest).Get(upstream.URL + tc.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, _ := io.ReadAll(response.Body)
+			_ = response.Body.Close()
+			artifacts := evaluated()
+			if response.StatusCode != tc.status || len(artifacts) != tc.evaluations || (tc.body != nil && !bytes.Equal(body, tc.body)) {
+				t.Fatalf("status=%d evaluations=%d body-match=%v, want %d, %d and the upstream bytes",
+					response.StatusCode, len(artifacts), bytes.Equal(body, tc.body), tc.status, tc.evaluations)
+			}
+			if tc.source != "" && (artifacts[0].Name != "@acme/widget" || artifacts[0].Version != "1.2.3" || artifacts[0].Source != upstream.URL+tc.source) {
+				t.Fatalf("evaluated %+v, want @acme/widget@1.2.3 from %s", artifacts[0], tc.source)
+			}
+		})
+	}
+
+	// Node follows a Location after WHATWG URL normalization, so the target is
+	// requested in a form the Location does not spell out.
+	for redirect, followed := range map[string]string{
+		"/upper.tgz":     strings.Replace(upstream.URL, "127.0.0.1", "localhost", 1) + "/blob/upper",
+		"/dots.tgz":      upstream.URL + "/blob/dots",
+		"/backslash.tgz": upstream.URL + "/blob/backslash",
+	} {
+		t.Run("normalized "+redirect, func(t *testing.T) {
+			handler, evaluated := recordingHandler(t, errors.New("blocked by policy"))
+			client := proxiedClient(t, handler.HandleRequest)
+			client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+			var response *http.Response
+			for _, target := range []string{upstream.URL + redirect, followed} {
+				var err error
+				if response, err = client.Get(target); err != nil {
+					t.Fatal(err)
+				}
+				_ = response.Body.Close()
+			}
+			if response.StatusCode != http.StatusForbidden || len(evaluated()) != 1 {
+				t.Fatalf("status=%d evaluations=%d, want the normalized redirect target inspected and blocked", response.StatusCode, len(evaluated()))
+			}
+		})
+	}
+
+	t.Run("unparsable location", func(t *testing.T) {
+		handler, evaluated := recordingHandler(t, errors.New("must not be evaluated"))
+		// The transport skips the client's own Location parsing.
+		transport := proxiedClient(t, handler.HandleRequest).Transport
+		for _, path := range []string{"/encoded-host.tgz", "/bad-location.tgz"} {
+			request, err := http.NewRequest(http.MethodGet, upstream.URL+path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := transport.RoundTrip(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = response.Body.Close()
+			if response.StatusCode != http.StatusFound || response.Header.Get("Location") == "" || len(evaluated()) != 0 {
+				t.Fatalf("%s: status=%d evaluations=%d, want the 302 passed through untracked", path, response.StatusCode, len(evaluated()))
+			}
+		}
+	})
+
+	t.Run("redirect body", func(t *testing.T) {
+		handler, evaluated := recordingHandler(t, errors.New("must not be evaluated"))
+		client := proxiedClient(t, handler.HandleRequest)
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		response, err := client.Get(upstream.URL + "/html-redirect.tgz")
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(response.Body)
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusFound || !bytes.Contains(body, []byte("Found")) || len(evaluated()) != 0 {
+			t.Fatalf("status=%d body=%q evaluations=%d, want the 302 and its HTML body forwarded unevaluated", response.StatusCode, body, len(evaluated()))
+		}
+	})
+
+	t.Run("not modified", func(t *testing.T) {
+		handler, evaluated := recordingHandler(t, nil)
+		handler.Client = upstream.Client()
+		request, _ := http.NewRequest(http.MethodGet, upstream.URL+"/cached.tgz", nil)
+		request.Header.Set("If-None-Match", `"cached"`)
+		before := fetches.Load()
+		response, err := proxiedClient(t, handler.HandleRequest).Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusNotModified || len(evaluated()) != 1 || fetches.Load()-before != 2 {
+			t.Fatalf("status=%d evaluations=%d fetches=%d, want 304 after one full re-fetch evaluated once",
+				response.StatusCode, len(evaluated()), fetches.Load()-before)
+		}
+	})
+}

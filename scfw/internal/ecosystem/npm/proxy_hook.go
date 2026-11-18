@@ -51,7 +51,7 @@ func newProxyHook(runContext context.Context, options ProxyHookOptions) (*proxyH
 		return nil, err
 	}
 	handler := &proxyHook{
-		ProxyHandler: ProxyHandler{Classifier: classifier},
+		ProxyHandler: ProxyHandler{Classifier: classifier, Client: options.Client},
 		client:       options.Client,
 		publications: &PublicationCache{},
 	}
@@ -66,6 +66,11 @@ func newProxyHook(runContext context.Context, options ProxyHookOptions) (*proxyH
 
 func (h *proxyHook) resolveArtifact(ctx context.Context, artifact Artifact) (pm.Package, error) {
 	pkg := pm.Package{Ecosystem: common.NPM, Name: artifact.Name, Version: artifact.Version, Source: artifact.Source}
+	if artifact.PackumentURL.Host == "" {
+		// A tarball identified from its contents has no registry to ask; another
+		// registry's date would describe a different artifact.
+		return pkg, nil
+	}
 	publishDate, err := h.publications.Resolve(ctx, h.client, artifact)
 	if err == nil {
 		pkg.PublishDate = publishDate.UTC()

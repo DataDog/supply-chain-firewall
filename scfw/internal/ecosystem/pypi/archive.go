@@ -19,7 +19,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/klauspost/compress/zstd"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/internal/archive"
 	"github.com/ulikunitz/xz"
 	"github.com/ulikunitz/xz/lzma"
 )
@@ -27,10 +27,7 @@ import (
 const (
 	// MaxArtifactBytes bounds wire and HTTP-decoded opaque downloads. Known
 	// distribution filenames continue to be evaluated before downloading.
-	MaxArtifactBytes        int64 = 512 << 20
-	maxExpandedArchiveBytes int64 = 1 << 30
-	maxArchiveMetadataBytes int64 = 1 << 20
-	maxArchiveEntries             = 10000
+	MaxArtifactBytes = archive.MaxArtifactBytes
 )
 
 type archiveScan struct {
@@ -62,18 +59,18 @@ func inspectArchiveFormat(ctx context.Context, body *io.SectionReader, format Ar
 	case ArchiveUnknown:
 		return Artifact{}, false, nil
 	case ArchiveZIP:
-		archive, err := zip.NewReader(body, body.Size())
+		zipArchive, err := zip.NewReader(body, body.Size())
 		if err != nil {
 			return Artifact{}, false, err
 		}
-		return inspectZIP(ctx, archive)
+		return inspectZIP(ctx, zipArchive)
 	case ArchiveZstandard:
-		decoder, err := zstd.NewReader(archiveContextReader{ctx, reader}, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(64<<20))
+		decoder, err := archive.NewZstdReader(archive.ContextReader{Ctx: ctx, Reader: reader})
 		if err != nil {
 			return Artifact{}, false, err
 		}
 		defer decoder.Close()
-		expanded := &io.LimitedReader{R: archiveContextReader{ctx, decoder}, N: maxExpandedArchiveBytes + 1}
+		expanded := &io.LimitedReader{R: archive.ContextReader{Ctx: ctx, Reader: decoder}, N: archive.MaxExpandedBytes + 1}
 		artifact, found, err := inspectTARContent(ctx, expanded)
 		if err == nil {
 			// Validate checksums and following frames before releasing the original bytes.
@@ -129,53 +126,34 @@ func inspectTARContent(ctx context.Context, reader io.Reader) (Artifact, bool, e
 }
 
 func inspectTAR(ctx context.Context, reader io.Reader) (Artifact, bool, error) {
-	limited := &io.LimitedReader{R: archiveContextReader{ctx, reader}, N: maxExpandedArchiveBytes + 1}
-	archive := tar.NewReader(limited)
 	scan := archiveScan{}
-	for entries := 0; ; entries++ {
-		if err := ctx.Err(); err != nil {
-			return Artifact{}, false, err
-		}
-		header, err := archive.Next()
-		if errors.Is(err, io.EOF) {
-			if limited.N <= 0 {
-				return Artifact{}, false, errors.New("expanded Python archive exceeds inspection limit")
-			}
-			return scan.result()
-		}
-		if err != nil {
-			return Artifact{}, false, err
-		}
-		if entries >= maxArchiveEntries || header.Size > limited.N {
-			return Artifact{}, false, errors.New("python archive exceeds inspection limit")
-		}
+	err := archive.WalkTAR(ctx, reader, func(header *tar.Header, entry io.Reader) error {
 		metadata, err := scan.entry(header.Name)
-		if err != nil {
-			return Artifact{}, false, err
-		}
-		if !metadata {
-			continue
+		if err != nil || !metadata {
+			return err
 		}
 		if header.Typeflag != tar.TypeReg {
-			return Artifact{}, false, errors.New("python archive metadata is not a regular file")
+			return errors.New("python archive metadata is not a regular file")
 		}
-		if err := scan.readMetadata(ctx, archive, header.Size); err != nil {
-			return Artifact{}, false, err
-		}
+		return scan.readMetadata(ctx, entry, header.Size)
+	})
+	if err != nil {
+		return Artifact{}, false, err
 	}
+	return scan.result()
 }
 
-func inspectZIP(ctx context.Context, archive *zip.Reader) (Artifact, bool, error) {
-	if len(archive.File) > maxArchiveEntries {
+func inspectZIP(ctx context.Context, zipArchive *zip.Reader) (Artifact, bool, error) {
+	if len(zipArchive.File) > archive.MaxEntries {
 		return Artifact{}, false, errors.New("python archive exceeds entry limit")
 	}
 	scan := archiveScan{}
 	var expanded uint64
-	for _, file := range archive.File {
+	for _, file := range zipArchive.File {
 		if err := ctx.Err(); err != nil {
 			return Artifact{}, false, err
 		}
-		if file.UncompressedSize64 > uint64(maxExpandedArchiveBytes)-expanded {
+		if file.UncompressedSize64 > uint64(archive.MaxExpandedBytes)-expanded {
 			return Artifact{}, false, errors.New("expanded Python archive exceeds inspection limit")
 		}
 		expanded += file.UncompressedSize64
@@ -222,14 +200,14 @@ func (scan *archiveScan) entry(name string) (bool, error) {
 }
 
 func (scan *archiveScan) readMetadata(ctx context.Context, reader io.Reader, size int64) error {
-	if size > maxArchiveMetadataBytes || scan.found {
+	if size > archive.MaxMetadataBytes || scan.found {
 		return errors.New("oversized or ambiguous Python archive metadata")
 	}
-	body, err := io.ReadAll(io.LimitReader(archiveContextReader{ctx, reader}, maxArchiveMetadataBytes+1))
+	body, err := io.ReadAll(io.LimitReader(archive.ContextReader{Ctx: ctx, Reader: reader}, archive.MaxMetadataBytes+1))
 	if err != nil {
 		return err
 	}
-	if int64(len(body)) > maxArchiveMetadataBytes {
+	if int64(len(body)) > archive.MaxMetadataBytes {
 		return errors.New("python archive metadata exceeds inspection limit")
 	}
 	// Core metadata can end at EOF without the blank line expected by MIMEHeader.
@@ -258,16 +236,4 @@ func (scan archiveScan) result() (Artifact, bool, error) {
 		return Artifact{}, false, errors.New("python source archive has no usable package metadata")
 	}
 	return scan.artifact, scan.found, nil
-}
-
-type archiveContextReader struct {
-	ctx    context.Context
-	reader io.Reader
-}
-
-func (reader archiveContextReader) Read(buffer []byte) (int, error) {
-	if err := reader.ctx.Err(); err != nil {
-		return 0, err
-	}
-	return reader.reader.Read(buffer)
 }

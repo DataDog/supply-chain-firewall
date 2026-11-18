@@ -53,7 +53,7 @@ func TestClassify(t *testing.T) {
 		// GitLab names scoped tarballs after the full scoped name, literal or percent-encoded.
 		{url: "https://gitlab.example/api/v4/projects/1/packages/npm/@scope/pkg/-/@scope/pkg-1.0.0.tgz", kind: RequestTarball, name: "@scope/pkg", version: "1.0.0", packumentPath: "/api/v4/projects/1/packages/npm/@scope%2Fpkg"},
 		{url: "https://gitlab.example/api/v4/projects/1/packages/npm/@scope%2Fpkg/-/@scope%2Fpkg-1.0.0.tgz", kind: RequestTarball, name: "@scope/pkg", version: "1.0.0", packumentPath: "/api/v4/projects/1/packages/npm/@scope%2Fpkg"},
-		{url: "https://gitlab.example/api/v4/projects/1/packages/npm/@scope/pkg/-/@other/pkg-1.0.0.tgz", kind: RequestUnrelated},
+		{url: "https://gitlab.example/api/v4/projects/1/packages/npm/@scope/pkg/-/@other/pkg-1.0.0.tgz", kind: RequestOpaqueTarball},
 		// Registries serve equivalent paths identically: encoded unreserved
 		// characters and repeated slashes must not hide a tarball.
 		{url: "https://registry.npmjs.org/left-pad/%2D/left-pad-1.3.0.tgz", kind: RequestTarball, name: "left-pad", version: "1.3.0", packumentPath: "/left-pad"},
@@ -95,12 +95,20 @@ func TestClassify(t *testing.T) {
 		{url: "https://registry.npmjs.org/-/whoami", kind: RequestRegistryAPI},
 		{url: "https://registry.npmjs.org/-/user/org.couchdb.user:alice", kind: RequestRegistryAPI},
 
-		{url: "https://cdn.npmmirror.com/packages/left-pad/1.3.0/left-pad-1.3.0.tgz", kind: RequestUnrelated},
-		{url: "https://registry.npmjs.org/left-pad/-/other-1.3.0.tgz", kind: RequestUnrelated},
-		{url: "https://registry.npmjs.org/left-pad/-/left-pad-1.3.tgz", kind: RequestUnrelated},
-		{url: "https://registry.npmjs.org/left-pad/-/left-pad-latest.tgz", kind: RequestUnrelated},
+		// Tarball-shaped downloads outside the registry layout are identified from their contents.
+		{url: "https://cdn.npmmirror.com/packages/left-pad/1.3.0/left-pad-1.3.0.tgz", kind: RequestOpaqueTarball},
+		{url: "https://registry.npmjs.org/left-pad/-/other-1.3.0.tgz", kind: RequestOpaqueTarball},
+		{url: "https://registry.npmjs.org/left-pad/-/left-pad-1.3.tgz", kind: RequestOpaqueTarball},
+		{url: "https://registry.npmjs.org/left-pad/-/left-pad-latest.tgz", kind: RequestOpaqueTarball},
+		{url: "https://registry.npmjs.org/left-pad/-/sub/left-pad-1.3.0.tgz", kind: RequestOpaqueTarball},
+		{url: "https://example.com/downloads/Pkg.TAR.GZ", kind: RequestOpaqueTarball},
+		{url: "https://github.com/acme/widget/archive/0123abc.tar.gz", kind: RequestOpaqueTarball},
+		{url: "https://codeload.github.com/acme/widget/tar.gz/0123abc", kind: RequestOpaqueTarball},
+		{url: "https://npm.pkg.github.com/download/@acme/widget/1.0.0/abcdef", kind: RequestOpaqueTarball},
+		{url: "https://codeload.github.com/acme/widget/zip/0123abc", kind: RequestUnrelated},
+		{url: "https://codeload.github.com/acme/tar.gz/0123abc", kind: RequestUnrelated},
+		{url: "https://npm.pkg.github.com/@acme%2fwidget", kind: RequestUnrelated},
 		{url: "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.zip", kind: RequestUnrelated},
-		{url: "https://registry.npmjs.org/left-pad/-/sub/left-pad-1.3.0.tgz", kind: RequestUnrelated},
 		{url: "ftp://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz", kind: RequestUnrelated},
 	}
 
@@ -139,6 +147,16 @@ func TestClassifyRedactsSource(t *testing.T) {
 	}
 	if artifact.PackumentURL.User != nil {
 		t.Fatal("packument URL kept the tarball URL's user information")
+	}
+}
+
+func TestClassifyOpaqueTarballKeepsRedactedSource(t *testing.T) {
+	kind, artifact := newDefaultClassifier(t).Classify(mustParseURL(t, "https://user:pw@codeload.github.com/acme/widget/tar.gz/0123abc?token=x"))
+	if kind != RequestOpaqueTarball || artifact.Name != "" {
+		t.Fatalf("Classify() = %v %+v, want an opaque tarball without a URL-derived identity", kind, artifact)
+	}
+	if want := "https://codeload.github.com/acme/widget/tar.gz/0123abc"; artifact.Source != want {
+		t.Fatalf("Source = %q, want %q", artifact.Source, want)
 	}
 }
 

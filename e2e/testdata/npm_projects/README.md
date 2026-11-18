@@ -18,12 +18,12 @@ and changes from a previously installed version. Policy reports are checked
 separately from installed state. A manager failure must retain its native exit
 and diagnostic without becoming a policy BLOCK.
 
-The suite registers 70 cases. Both modes run the following modern npm variants:
+Both modes run the following modern npm variants:
 
 | Scenario | Variants |
 | --- | --- |
 | NPM-02 | ALLOW/BLOCK from manifest with/without a lock; development and production selection (the production finding targets the omitted development package and must not block); an explicit global target under NODE_ENV=production with a case-local prefix; duplicate versions; upgrade and downgrade from an existing installation |
-| NPM-03 | ALLOW/BLOCK for workspaces, a local file dependency with a real public dependency, and a harmless final-project lifecycle marker |
+| NPM-03 | ALLOW/BLOCK for root workspaces, explicit selection, member-directory invocation, selected-workspace production omission, a local file dependency with a real public dependency, and a harmless final-project lifecycle marker |
 | NPM-04 | ALLOW/list-BLOCK npm ci; help, version, and dry-run with a finding that must not become a package evaluation |
 | CORE-14 | Unresolvable version with native ETARGET; an allowed installation whose final-project hook fails with the native exit |
 | CORE-11 | Genuine npm 6.x inspected installation rejection in resolution, real artifact BLOCK in proxy, and informational version commands in both modes |
@@ -82,8 +82,12 @@ separate production fixes satisfy the same assertions. The corresponding proxy
 cases retain the intended behavior. A failing applicable case must never be
 converted to N/A or an expected failure to publish a green suite.
 
+Workspace coverage includes explicit workspace selection and member-directory invocations in both modes, each compared with native npm. Two members with different public dependency graphs expose accidental root-wide resolution. Selected-workspace production cases retain an exact finding for the omitted dev dependency. Member-local installations and lockfiles are observed on npm versions that place them there; root and member source snapshots remain protected on resolution BLOCK.
+
 Global production cases install only under the isolated case prefix. They check native and wrapped installed identity, exact policy selection, public tarball download URLs, and unchanged local project files; npm global installs do not create a project lockfile.
 
 Production no-save cases bootstrap a native lock with a dev-only package, then explicitly install it with --save-prod --no-save --omit=dev. They require the selected package and its dependencies to be evaluated, and preserve original manifest/lock bytes for both ALLOW and BLOCK.
 
 The paired --save-dev --no-save --omit=dev variants verify the opposite selection: the explicitly named dev-only graph remains omitted, including with an exact BLOCK finding, while the required production package is evaluated and installed.
+
+Unhoisted workspace cases first obtain a native lock with different root and member versions of the same public package, then widen the member constraint while keeping its exact nested lock entry. Native ALLOW/BLOCK controls require SCFW to evaluate the locked version rather than silently selecting the newer root version.

@@ -7,6 +7,7 @@ package npm
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -66,6 +67,86 @@ func TestParseNpmOptions(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			if got := parseNpmOptions(test.args); !slices.Equal(got, test.want) {
 				t.Fatalf("parseNpmOptions(%q) = %v, want %v", test.args, got, test.want)
+			}
+		})
+	}
+}
+
+// Only a plain script command runs without the proxy. Anything unusual stays
+// proxied, so no option spelling can hide a command that fetches packages.
+func TestNpmProxyCommandSupported(t *testing.T) {
+	for want, commands := range map[bool][]string{
+		false: {
+			"run build", "run add", "run-script x", "rum x", "urn x", "test", "t", "tst", "start", "stop", "restart",
+			"run build -- --foo", "--silent run build", "-s run build", "-s -g run x", "--loglevel=warn test",
+			"--foo=bar start", "--ignore-scripts run build",
+			// npm runs a script whichever word is the command.
+			"-- run build", "--foo run start", "--prefix run test",
+		},
+		true: {
+			"install x", "ci", "exec cowsay", "x cowsay", "update", "view x", "pack x", "diff a b", "help install", "ls",
+			"", "--version", "--help", "-h", "init -w pkg", "version patch -w pkg", "rest",
+			// An option that may take a value could hide the command, so these stay proxied.
+			"-C docs ci", "-C docs run build", "--prefix web run build", "-w api test", "--regis https://r/ ci",
+			"--no-color run build", "--color always run build", "--loglevel silly run build", "--prefix run install",
+			"--prefix test -- install evil", "-C start -- ci",
+		},
+	} {
+		for _, command := range commands {
+			t.Run(command, func(t *testing.T) {
+				if got := (Npm{}).ProxyCommandSupported(strings.Fields(command)); got != want {
+					t.Fatalf("ProxyCommandSupported(%q) = %v, want %v", command, got, want)
+				}
+			})
+		}
+	}
+	// npx may download the package it runs, whatever the arguments say.
+	for _, command := range []string{"cowsay", "--yes cowsay --help", "--help", "run build"} {
+		if !(Npm{npx: true}).ProxyCommandSupported(strings.Fields(command)) {
+			t.Errorf("npx %q must be proxied", command)
+		}
+	}
+}
+
+func TestNpmInvocationCommand(t *testing.T) {
+	for _, test := range []struct {
+		command string
+		name    string
+		kind    npmKind
+		noop    bool
+	}{
+		{"", "", npmOther, false},
+		{"install react", "install", npmInstall, false},
+		{"isntal react", "install", npmInstall, false},
+		{"-g false install react", "install", npmInstall, false},
+		{"--dry-run false install react", "install", npmInstall, false},
+		{"install --dry-run react", "install", npmInstall, true},
+		{"--version", "", npmOther, true},
+		{"run build", "run", npmScript, false},
+		{"run install", "run", npmScript, false},
+		{"-- install react", "install", npmInstall, false},
+		{"exec -- tsc --help", "exec", npmFetch, false},
+		{"ci --help false", "ci", npmFetch, false},
+		{"audit", "audit", npmOther, false},
+		{"audit --audit-level high fix", "audit", npmFetch, false},
+		{"cache ls", "cache", npmOther, false},
+		{"cache add x", "cache", npmFetch, false},
+		{"init -y", "init", npmOther, false},
+		{"create vite", "init", npmFetch, false},
+		{"view react", "view", npmOther, false},
+		// After an option that may take a value, the most demanding word is the command.
+		{"--prefix run install", "install", npmInstall, false},
+		{"--prefix web ci", "ci", npmFetch, false},
+		{"--prefix run test", "run", npmScript, false},
+		{"--loglevel silly run build", "silly", npmOther, false},
+		{"--color always ci", "ci", npmFetch, false},
+		{"--cache /x cache add y", "cache", npmFetch, false},
+	} {
+		t.Run(test.command, func(t *testing.T) {
+			invocation := parseNpmInvocation(strings.Fields(test.command))
+			name, kind := invocation.command()
+			if name != test.name || kind != test.kind || invocation.noop != test.noop {
+				t.Fatalf("command() = %q, %d, noop %v; want %q, %d, noop %v", name, kind, invocation.noop, test.name, test.kind, test.noop)
 			}
 		})
 	}

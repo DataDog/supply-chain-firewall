@@ -106,6 +106,19 @@ func (npm Npm) RunCommand(ctx context.Context, command []string) error {
 	return child.Run()
 }
 
+var _ pm.ProxyCommandSelector = Npm{}
+
+// ProxyCommandSupported proxies every command except a script command: npm
+// downloads nothing for it, and the script's own traffic should not be forced
+// through the proxy. npx may download the package it runs.
+func (npm Npm) ProxyCommandSupported(command []string) bool {
+	if npm.npx {
+		return true
+	}
+	_, kind := parseNpmInvocation(command).command()
+	return kind != npmScript
+}
+
 func (npm Npm) ResolveInstallTargets(ctx context.Context, command []string) (*pm.Set[pm.Package], error) {
 	// Only the proxy sees what npx downloads; without it nothing would be
 	// evaluated, so refuse rather than run it unchecked.

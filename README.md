@@ -157,13 +157,15 @@ When inspecting package manager commands, Datadog credentials and the Datadog si
 
 |  Package manager  |   Supported versions  |        Inspected subcommands       |
 | :---------------: | :-------------------: | :--------------------------------: |
-| npm               | >= 7.0                | `install` (including aliases)      |
+| npm               | >= 7.0                | `install` (including aliases); in proxy mode every command except scripts |
 | npx (proxy mode)  | >= 7.0                | every invocation                   |
 | pip               | >= 22.2               | `install`                          |
 | poetry            | >= 2.0                | `add`, `install`, `sync`, `update` |
 | uv (proxy mode)   | 0.13.4 tested         | `pip install`, `pip sync`, `pip compile`, `add`, `remove`, `sync`, `lock`, `export`, `tree`, `build`, `tool install`, `tool upgrade`, `tool run`/`uvx`, version updates, `venv --seed` |
 | yarn (proxy mode) | 1.22+, 4.x            | bare `yarn`, `install`, `add`, `upgrade`/`up`, `upgrade-interactive`, `create`, `global add`, `dlx`, `workspaces focus` |
 | pnpm (proxy mode) | 10.x, 11.x, 12.x      | `install`, `add`, `update`, `remove`, `dedupe`, `fetch`, `import`, `deploy`, `dlx`/`pnpx`, `create`, `-r`/`--filter` workspace installs |
+
+Enable npm interception with `SCFW_PROXY_ENABLED=1`, then use `scfw run -- npm install react` or configure `--alias-npm`, which also covers `npx`. In proxy mode every npm command is proxied except `npm run`, `npm test`, `npm start`, `npm stop` and `npm restart`, which execute directly without SCFW proxy setup. Package commands that a script runs itself are not evaluated, so run those through `scfw run --` or the shell aliases. Unusual options before the command, such as `--prefix web run build`, keep a script proxied. `npx` and `npm exec` always run through the SCFW proxy, because they may download the package they run; the executed tool's own network traffic passes through the proxy as well.
 
 Enable uv interception with `SCFW_PROXY_ENABLED=1`, then use `scfw run -- uv pip install requests` or configure `--alias-uv`. Unrelated uv commands pass through unchanged. Proxy mode evaluates distributions requested over HTTP(S); packages already available in uv's cache, local paths, and Git source contents are not evaluated. Git HTTPS traffic still traverses the proxy and trusts its invocation CA.
 

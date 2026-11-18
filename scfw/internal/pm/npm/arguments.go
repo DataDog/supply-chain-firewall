@@ -169,6 +169,123 @@ var npxSwitches = strings.Fields(`all allow-same-version allow-scripts-pending a
 // npxValueOptions always take a value, even when it starts with a dash.
 var npxValueOptions = strings.Fields("npm node-arg n package p cache userconfig call shell")
 
+// npmKind is what an npm command needs from SCFW, ordered so that an ambiguous
+// command line can take its most demanding reading.
+type npmKind int
+
+const (
+	npmScript  npmKind = iota // only runs a package.json script: no proxy
+	npmOther                  // proxied, but not inspected without the proxy
+	npmInstall                // resolved with a dry run without the proxy
+	npmFetch                  // fetches packages that only the proxy sees
+)
+
+// npmCommands are the npm 11 commands SCFW treats specially, with their aliases
+// from lib/utils/cmd-list.js. Every other command is npmOther.
+var npmCommands = []struct {
+	name    string
+	kind    npmKind
+	aliases []string
+}{
+	{"install", npmInstall, []string{"add", "i", "in", "ins", "inst", "insta", "instal", "isnt", "isnta", "isntal", "isntall"}},
+	{"run", npmScript, []string{"run-script", "rum", "urn"}},
+	{"test", npmScript, []string{"t", "tst"}},
+	{"start", npmScript, nil},
+	{"stop", npmScript, nil},
+	{"restart", npmScript, nil},
+	{"ci", npmFetch, []string{"clean-install", "ic", "install-clean", "isntall-clean"}},
+	{"install-ci-test", npmFetch, []string{"cit", "sit", "clean-install-test"}},
+	{"install-test", npmFetch, []string{"it"}},
+	{"update", npmFetch, []string{"u", "up", "upgrade", "udpate"}},
+	{"dedupe", npmFetch, []string{"ddp"}},
+	{"exec", npmFetch, []string{"x"}},
+	{"link", npmFetch, []string{"ln"}},
+	{"prune", npmFetch, nil},
+	{"uninstall", npmFetch, []string{"unlink", "remove", "rm", "r", "un"}},
+	{"audit", npmFetch, nil},                        // only audit fix
+	{"cache", npmFetch, nil},                        // only cache add
+	{"init", npmFetch, []string{"create", "innit"}}, // only with an initializer
+}
+
+// classifyNpmCommand returns the command word names and what it needs, given
+// the positional arguments after it.
+func classifyNpmCommand(word string, rest []string) (string, npmKind) {
+	for _, command := range npmCommands {
+		if word != command.name && !slices.Contains(command.aliases, word) {
+			continue
+		}
+		switch {
+		case command.name == "audit" && !slices.Contains(rest, "fix"),
+			command.name == "cache" && !slices.Contains(rest, "add"),
+			command.name == "init" && len(rest) == 0:
+			return command.name, npmOther
+		}
+		return command.name, command.kind
+	}
+	return word, npmOther
+}
+
+type npmInvocation struct {
+	words   []string // positional arguments, including every argument after "--"
+	certain bool     // words[0] is the command
+	noop    bool     // a help, version, or dry-run option keeps npm from acting
+}
+
+// parseNpmInvocation does not know which npm options take a value, so an
+// option that may take one leaves the command uncertain.
+func parseNpmInvocation(args []string) npmInvocation {
+	invocation := npmInvocation{certain: true}
+	for index, argument := range args {
+		switch {
+		case argument == "--":
+			// npm reads everything after it as positional, even the command.
+			invocation.words = append(invocation.words, args[index+1:]...)
+			return invocation
+		case strings.HasPrefix(argument, "-") && argument != "-":
+			if slices.Contains(npmDryRunSkipOptions, argument) && (index+1 == len(args) || args[index+1] != "false") {
+				invocation.noop = true
+			}
+			if len(invocation.words) == 0 && !strings.Contains(argument, "=") && !npmValuelessOption(argument) {
+				invocation.certain = false
+			}
+		case (argument == "true" || argument == "false") && index > 0 && strings.HasPrefix(args[index-1], "-"):
+			// the value of a Boolean option
+		default:
+			invocation.words = append(invocation.words, argument)
+		}
+	}
+	return invocation
+}
+
+// command returns the command npm runs and what it needs. When the command is
+// uncertain, any word could be it, so the most demanding one is taken.
+func (invocation npmInvocation) command() (string, npmKind) {
+	if len(invocation.words) == 0 {
+		return "", npmOther
+	}
+	name, kind := classifyNpmCommand(invocation.words[0], invocation.words[1:])
+	if invocation.certain {
+		return name, kind
+	}
+	for index := 1; index < len(invocation.words); index++ {
+		if other, otherKind := classifyNpmCommand(invocation.words[index], invocation.words[index+1:]); otherKind > kind {
+			name, kind = other, otherKind
+		}
+	}
+	return name, kind
+}
+
+// npmValuelessOption reports whether an option written without "=" certainly
+// takes no value. color and browser also accept a string.
+func npmValuelessOption(argument string) bool {
+	name := strings.TrimLeft(argument, "-")
+	if !strings.HasPrefix(argument, "--") {
+		return strings.Trim(name, npmShorthandLetters) == "" && !strings.ContainsAny(name, "CLcmw")
+	}
+	return slices.Contains(npxSwitches, name) && name != "color" && name != "browser" ||
+		slices.Contains([]string{"silent", "quiet", "verbose"}, name)
+}
+
 // withoutGlobalOptions removes every spelling of the global flag that
 // parseNpmOptions recognizes, along with the true or false literal it
 // consumes, so a global command can be dry-run as a local one. Any other

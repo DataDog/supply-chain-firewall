@@ -36,6 +36,12 @@ func TestMain(m *testing.M) {
 }
 
 func runFakeNpm(fixtureDir string, args []string) int {
+	if os.Getenv("SCFW_TEST_NPM_PREFIX_PROJECT") != "" {
+		return runNpmPrefixFixture(args)
+	}
+	if selected := os.Getenv("SCFW_TEST_NPM_SELECTION_CASE"); selected != "" {
+		return runNpmSelectionFixture(fixtureDir, selected, args)
+	}
 	if slices.Contains(args, "--version") {
 		fmt.Println("10.8.2")
 		return 0

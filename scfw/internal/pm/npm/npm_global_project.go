@@ -104,6 +104,17 @@ func (p *npmTempProject) resolveGlobalInstallTargets(ctx context.Context, comman
 		if version, ok := resolution.versions[handle]; !ok || version != pkg.Version {
 			return nil, fmt.Errorf("npm global target %s disagrees with inspection lockfile", handle)
 		}
+		// Equal alias versions can denote different packages after npm moves
+		// peers between the global and shallow layouts. Check native alias
+		// identity even when the original handle exists in the private lock.
+		if name, alias := strings.CutPrefix(resolution.placements[handle].wanted, "npm:"); alias {
+			if version := strings.LastIndex(name, "@"); version > 0 {
+				name = name[:version]
+			}
+			if pkg.Name != name {
+				return nil, fmt.Errorf("npm global target %s resolves alias for %s as different package %s", handle, name, pkg.Name)
+			}
+		}
 		publishDate, err := p.resolvePublishDate(ctx, pkg)
 		if err != nil {
 			slog.Warn("failed to resolve package publish date", "ecosystem", pkg.Ecosystem, "name", pkg.Name, "version", pkg.Version, "error", err)

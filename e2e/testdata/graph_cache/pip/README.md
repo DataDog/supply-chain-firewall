@@ -24,9 +24,12 @@ Every invocation has fresh manager state except the named cache priming/reuse
 steps. Version invocations retain only the policy/verifier home. Metadata priming
 uses native `pip index versions`, and the read-only `inspect_cache.py` verifies
 simple-index entries exist while both wheel bodies are absent. That script uses
-the exact manager's vendored CacheControl cache key and serializer: pip22.2 stores
-HTTP bodies inline, while newer pip uses separate HTTP-v2 bodies. Allowed public
-installs retain exact cached artifact SHA256 after execution. HTTP-warm reuse
+the configured Python's vendored CacheControl key normalization and MessagePack
+decoder, then reads the native layouts directly: pip22.2 stores HTTP bodies inline,
+while newer pip uses separate HTTP-v2 bodies. It does not depend on that Python
+having the same pip cache API as the selected manager. Metadata reads are bounded
+to 17 MiB and bodies to 16 MiB; malformed or unsupported entries fail inspection.
+Allowed public installs retain exact cached artifact SHA256 after execution. HTTP-warm reuse
 removes installed state and adds an exact BLOCK: resolution still evaluates,
 while proxy reports no new artifact evaluation when pip uses cached wheel bytes.
 
@@ -58,4 +61,13 @@ export SCFW_E2E_SUITES=pip-graph-cache
 env -u GIT_DIR -u GIT_WORK_TREE go test -buildvcs=false -tags=e2e ./e2e -run '^TestPlan$' -count=1
 env -u GIT_DIR -u GIT_WORK_TREE go test -buildvcs=false -tags=e2e ./e2e -run '^TestDiscover$' -count=1
 env -u GIT_DIR -u GIT_WORK_TREE go test -buildvcs=false -tags=e2e ./e2e -run '^TestE2E$' -count=1 -timeout=20m
+```
+
+`cache_formats.py` checks both layouts, missing entries, invalid serialization,
+read bounds, and read-only behavior. The offline Go harness runs it when Python
+and pip's decoder dependencies are available. It can also be run with each
+provisioned interpreter directly:
+
+```sh
+python3 e2e/testdata/graph_cache/pip/cache_formats.py
 ```

@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -551,5 +552,24 @@ func TestHarnessPipCacheUsesConfiguredRuntime(t *testing.T) {
 				t.Fatalf("cache evidence did not record configured runtime: %+v", r.Result.Commands)
 			}
 		})
+	}
+}
+
+func TestHarnessPipCacheFormats(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("cache inspector regression requires Python with pip")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	probe := exec.CommandContext(ctx, python, "-c", "from pip._vendor import msgpack; from pip._vendor.cachecontrol.controller import CacheController")
+	probe.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
+	if output, err := probe.CombinedOutput(); err != nil {
+		t.Skipf("cache inspector regression requires pip's decoder dependencies: %v: %s", err, output)
+	}
+	command := exec.CommandContext(ctx, python, "testdata/graph_cache/pip/cache_formats.py")
+	command.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("cache format regression: %v\n%s", err, output)
 	}
 }

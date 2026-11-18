@@ -71,6 +71,9 @@ type candidate struct {
 	LatestValidStart time.Time          `json:"latest_valid_start"`
 	Constraints      []string           `json:"constraints"`
 	Evidence         []string           `json:"evidence"`
+
+	AgeThresholdHours int      `json:"age_threshold_hours,omitempty"`
+	ApplicableCells   []string `json:"applicable_cells,omitempty"`
 }
 type discovery struct {
 	SchemaVersion int                  `json:"schema_version"`

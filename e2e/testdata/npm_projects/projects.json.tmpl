@@ -1,0 +1,15 @@
+{
+  "manifest": {"package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "dependencies":{"{{.Direct.Project}}":"{{.Direct.Version}}"}}},
+  "graph": {"package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "dependencies":{"{{.Root.Project}}":"{{.Root.Version}}"}}},
+  "dev": {"package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "dependencies":{"{{.Direct.Project}}":"{{.Direct.Version}}"}, "devDependencies":{"{{.Root.Project}}":"{{.Root.Version}}"}}},
+  "duplicates": {"package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "dependencies":{"{{.Direct.Project}}":"{{.Direct.Version}}", "{{.Root.Project}}":"{{.Root.Version}}"}}},
+  "workspace": {
+    "package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "workspaces":["packages/*"]},
+    "packages/member/package.json": {"name":"scfw-e2e-member", "version":"1.0.0", "private":true, "dependencies":{"{{.Direct.Project}}":"{{.Direct.Version}}"}}
+  },
+  "local": {
+    "package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "dependencies":{"scfw-e2e-local":"file:./local", "{{.Direct.Project}}":"{{.Direct.Version}}"}},
+    "local/package.json": {"name":"scfw-e2e-local", "version":"1.0.0", "private":true}
+  },
+  "marker": {"package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "scripts":{"postinstall":{{.Lifecycle}}}, "dependencies":{"{{.Direct.Project}}":"{{.Direct.Version}}"}}}
+}

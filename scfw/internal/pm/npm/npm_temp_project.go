@@ -44,6 +44,7 @@ type npmTempProject struct {
 	executable         string
 	projectRoot        string // empty if the current directory is not part of an npm project
 	dir                string
+	commandDir         string // original invocation directory within the isolated project
 	inspectionOptions  []string
 	global             *npmGlobalProject
 	resolvePublishDate func(context.Context, pm.Package) (time.Time, error)
@@ -57,9 +58,21 @@ func newNpmTempProject(ctx context.Context, executable string, command []string)
 	if err != nil {
 		return nil, err
 	}
+	// A workspace-disabled member owns its project and lockfile. Ask native
+	// npm with that selection before copying or resolving any target handles.
+	projectOptions := withoutNpmWorkspaceSelection(prefixOptions)
+	workspaces := ""
+	for _, option := range parseNpmOptions(command) {
+		if option.name == "workspaces" {
+			workspaces = option.value
+		}
+	}
+	if workspaces == "false" {
+		projectOptions = npmInspectionArgs(projectOptions, "--workspaces=false")
+	}
 	projectRoot := ""
 	if global == nil {
-		projectRoot, err = resolveNpmProjectRoot(ctx, executable, prefixOptions)
+		projectRoot, err = resolveNpmProjectRoot(ctx, executable, projectOptions)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve npm project root: %w", err)
 		}
@@ -93,6 +106,10 @@ func newNpmTempProject(ctx context.Context, executable string, command []string)
 		}
 	}
 
+	if len(prefixOptions) != 0 {
+		// Explicit prefix selects the project independently of the caller cwd.
+		proj.commandDir = ""
+	}
 	return proj, nil
 }
 
@@ -112,7 +129,182 @@ func (p *npmTempProject) copyProjectFiles() error {
 	if err := copyNpmNodeModules(p.projectRoot, p.dir); err != nil {
 		return err
 	}
-	return copyNpmrc(p.projectRoot, p.dir)
+	if err := copyNpmrc(p.projectRoot, p.dir); err != nil {
+		return err
+	}
+	if err := p.copyWorkspaceProjects(); err != nil {
+		return err
+	}
+	working, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	if physical, err := filepath.EvalSymlinks(working); err == nil {
+		working = physical
+	}
+	relative, err := filepath.Rel(p.projectRoot, working)
+	if err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		p.commandDir = filepath.Join(p.dir, relative)
+		return os.MkdirAll(p.commandDir, 0o755)
+	}
+	return nil
+}
+
+func (p *npmTempProject) workingDirectory() string {
+	if p.commandDir != "" {
+		return p.commandDir
+	}
+	return p.dir
+}
+
+// copyWorkspaceProjects mirrors declared workspace metadata and installed state,
+// leaving ordinary source files out. npm still owns workspace glob/selection
+// semantics, including relative links between members. Referencing the original
+// member directories would let --package-lock-only rewrite their manifests.
+func (p *npmTempProject) copyWorkspaceProjects() error {
+	manifest, err := readNpmJSONFile(filepath.Join(p.projectRoot, "package.json"))
+	if err != nil {
+		return err
+	}
+	if _, exists := manifest["workspaces"]; !exists {
+		return nil
+	}
+	copies := map[string]string{p.projectRoot: p.dir}
+	err = filepath.WalkDir(p.projectRoot, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			if path == p.dir || entry.Name() == "node_modules" || entry.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.Name() != "package.json" || filepath.Dir(path) == p.projectRoot {
+			return nil
+		}
+		source := filepath.Dir(path)
+		if !inWorkspaces(p.projectRoot, source) {
+			return nil
+		}
+		relative, err := filepath.Rel(p.projectRoot, source)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(p.dir, relative)
+		if err := os.MkdirAll(target, 0o755); err != nil {
+			return err
+		}
+		for _, copyFile := range []func(string, string) error{copyNpmPackageJSON, copyNpmLockfile, copyNpmNodeModules, copyNpmrc} {
+			if err := copyFile(source, target); err != nil {
+				return err
+			}
+		}
+		copies[source] = target
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	for _, directory := range copies {
+		for _, name := range []string{"package.json", "package-lock.json"} {
+			path := filepath.Join(directory, name)
+			content, err := readNpmJSONFile(path)
+			if os.IsNotExist(err) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			relocateNpmWorkspaceReferences(content, directory, copies)
+			if err := writeNpmJSONFile(path, content); err != nil {
+				return err
+			}
+		}
+		modules := filepath.Join(directory, "node_modules")
+		if _, err := os.Lstat(modules); os.IsNotExist(err) {
+			continue
+		}
+		if err := filepath.WalkDir(modules, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.Type()&fs.ModeSymlink == 0 {
+				return nil
+			}
+			link, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			if !filepath.IsAbs(link) {
+				link = filepath.Join(filepath.Dir(path), link)
+			}
+			if target, copied := copies[filepath.Clean(link)]; copied {
+				if err := os.Remove(path); err != nil {
+					return err
+				}
+				return os.Symlink(target, path)
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func relocateNpmWorkspaceReferences(content map[string]any, directory string, copies map[string]string) {
+	relocate := func(path string) string {
+		absolute := path
+		if !filepath.IsAbs(absolute) {
+			absolute = filepath.Join(directory, path)
+		}
+		if target, copied := copies[filepath.Clean(absolute)]; copied {
+			if relative, err := filepath.Rel(directory, target); err == nil {
+				return relative
+			}
+		}
+		// Unhoisted lock entries belong to the member's copied node_modules too.
+		for source, target := range copies {
+			relative, err := filepath.Rel(source, absolute)
+			if err != nil || !strings.HasPrefix(relative, "node_modules"+string(filepath.Separator)) {
+				continue
+			}
+			if relocated, err := filepath.Rel(directory, filepath.Join(target, relative)); err == nil {
+				return relocated
+			}
+		}
+		return path
+	}
+	relocateDependencies := func(entry map[string]any) {
+		for _, section := range npmDependencySections {
+			dependencies, _ := entry[section].(map[string]any)
+			for name, value := range dependencies {
+				if spec, ok := value.(string); ok && strings.HasPrefix(spec, npmFileURIPrefix) {
+					dependencies[name] = npmFileURIPrefix + relocate(strings.TrimPrefix(spec, npmFileURIPrefix))
+				}
+			}
+		}
+	}
+	relocateDependencies(content)
+	packages, _ := content["packages"].(map[string]any)
+	for _, key := range slices.Collect(maps.Keys(packages)) {
+		entry, _ := packages[key].(map[string]any)
+		if key != "" && !strings.HasPrefix(key, npmNodeModulesPrefix) {
+			if next := relocate(key); next != key {
+				packages[next] = packages[key]
+				delete(packages, key)
+			}
+		}
+		if resolved, ok := entry["resolved"].(string); ok {
+			if strings.HasPrefix(resolved, npmFileURIPrefix) {
+				entry["resolved"] = npmFileURIPrefix + relocate(strings.TrimPrefix(resolved, npmFileURIPrefix))
+			} else if entry["link"] == true {
+				entry["resolved"] = relocate(resolved)
+			}
+		}
+		relocateDependencies(entry)
+	}
 }
 
 // resolveNpmProjectRoot runs `<executable> prefix` and returns its output if
@@ -497,9 +689,9 @@ func (p *npmTempProject) resolveInstallCommandTargets(ctx context.Context, comma
 		// Clustered global flags cannot escape the private local inspection.
 		localCommand = npmInspectionArgs(localCommand, "--global=false")
 	}
-	dryRunArgs := npmInspectionArgs(localCommand, "--dry-run", "--loglevel", "silly")
+	dryRunArgs := npmInspectionArgs(localCommand, "--dry-run", "--ignore-scripts", "--loglevel", "silly")
 	dryRunCmd := exec.CommandContext(ctx, p.executable, dryRunArgs...)
-	dryRunCmd.Dir = p.dir
+	dryRunCmd.Dir = p.workingDirectory()
 	var stderr bytes.Buffer
 	dryRunCmd.Stderr = &stderr
 
@@ -526,7 +718,7 @@ func (p *npmTempProject) resolveInstallCommandTargets(ctx context.Context, comma
 	// its current dependency flags must describe the dry-run target graph.
 	lockOnlyArgs := npmInspectionArgs(localCommand, "--package-lock-only", "--ignore-scripts", "--save")
 	lockOnlyCmd := exec.CommandContext(ctx, p.executable, lockOnlyArgs...)
-	lockOnlyCmd.Dir = p.dir
+	lockOnlyCmd.Dir = p.workingDirectory()
 	if output, err := lockOnlyCmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("failed to run npm --package-lock-only install: %w: %s", err, output)
 	}
@@ -585,10 +777,16 @@ func (p *npmTempProject) resolveInstallCommandTargets(ctx context.Context, comma
 // configuration instead of interpreting selection flags ourselves. npm 7 may
 // report a type in both lists; explicit inclusion always wins.
 func (p *npmTempProject) omitsDevelopmentDependencies(ctx context.Context, command []string) (bool, error) {
-	args := append([]string{"config", "list"}, command...)
+	if p.global != nil {
+		return false, nil
+	}
+	args := append([]string{"config", "list"}, withoutNpmWorkspaceSelection(command)...)
 	args = npmInspectionArgs(args, append(slices.Clone(p.inspectionOptions), "--json")...)
 	child := exec.CommandContext(ctx, p.executable, args...)
 	child.Dir = p.dir
+	// config does not support workspace selection, but selection does not
+	// change the root project configuration npm applies to member installs.
+	child.Env = withoutNpmWorkspaceEnvironment()
 	output, err := child.Output()
 	if err != nil {
 		return false, fmt.Errorf("failed to read npm dependency selection: %w", err)

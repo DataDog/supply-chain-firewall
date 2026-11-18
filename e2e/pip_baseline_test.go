@@ -103,8 +103,17 @@ func runPipBaseline(r *caseRun, options pipOptions) error {
 	executable := r.Cell.Executable
 	if launcher == "pip3" {
 		executable = filepath.Join(filepath.Dir(executable), "pip3")
-		if _, err := os.Stat(executable); err != nil {
+		version, err := r.Command("pip3-version", executable, "--version")
+		if err != nil {
 			return classified("INFRASTRUCTURE_FAILURE", err)
+		}
+		output, err := os.ReadFile(version.Stdout.Path)
+		if err != nil {
+			return classified("INFRASTRUCTURE_FAILURE", err)
+		}
+		fields := strings.Fields(string(output))
+		if len(fields) < 2 || fields[0] != "pip" || fields[1] != r.Cell.ManagerVersion {
+			return classified("INFRASTRUCTURE_FAILURE", fmt.Errorf("version mismatch for %s: want %s, got %s", executable, r.Cell.ManagerVersion, output))
 		}
 	}
 	if options.spaces {

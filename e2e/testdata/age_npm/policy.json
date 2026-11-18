@@ -1,0 +1,168 @@
+{
+  "warning": [
+    {
+      "timestamp": "2026-01-10T00:00:00Z",
+      "package_manager": "npm",
+      "executable": "/npm",
+      "outcome": "ALLOW",
+      "packages": [
+        {
+          "ecosystem": "npm",
+          "package_name": "fixture-leaf",
+          "package_version": "1.0.0",
+          "outcome": "WARN",
+          "findings": [
+            {
+              "verifier": "PackageAgeVerifier",
+              "severity": "WARNING",
+              "text": "Package npm fixture-leaf@1.0.0 was published less than 24 hours ago: treat new releases with caution"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "list": [
+    {
+      "timestamp": "2026-01-10T00:00:00Z",
+      "package_manager": "npm",
+      "executable": "/npm",
+      "outcome": "ALLOW",
+      "packages": [
+        {
+          "ecosystem": "npm",
+          "package_name": "fixture-leaf",
+          "package_version": "1.0.0",
+          "outcome": "WARN",
+          "findings": [
+            {
+              "verifier": "FindingsListVerifier",
+              "severity": "WARNING",
+              "text": "Package npm fixture-leaf@1.0.0 was published less than 24 hours ago: treat new releases with caution"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "wrong-version": [
+    {
+      "timestamp": "2026-01-10T00:00:00Z",
+      "package_manager": "npm",
+      "executable": "/npm",
+      "outcome": "ALLOW",
+      "packages": [
+        {
+          "ecosystem": "npm",
+          "package_name": "fixture-leaf",
+          "package_version": "1.1.0",
+          "outcome": "WARN",
+          "findings": [
+            {
+              "verifier": "PackageAgeVerifier",
+              "severity": "WARNING",
+              "text": "Package npm fixture-leaf@1.0.0 was published less than 24 hours ago: treat new releases with caution"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "other-finding": [
+    {
+      "timestamp": "2026-01-10T00:00:00Z",
+      "package_manager": "npm",
+      "executable": "/npm",
+      "outcome": "ALLOW",
+      "packages": [
+        {
+          "ecosystem": "npm",
+          "package_name": "fixture-leaf",
+          "package_version": "1.0.0",
+          "outcome": "WARN",
+          "findings": [
+            {
+              "verifier": "PackageAgeVerifier",
+              "severity": "WARNING",
+              "text": "Package npm fixture-leaf@1.0.0 was published less than 24 hours ago: treat new releases with caution"
+            },
+            {
+              "verifier": "OSVVerifier",
+              "severity": "WARNING",
+              "text": "other warning"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "wrong-threshold": [
+    {
+      "timestamp": "2026-01-10T00:00:00Z",
+      "package_manager": "npm",
+      "executable": "/npm",
+      "outcome": "ALLOW",
+      "packages": [
+        {
+          "ecosystem": "npm",
+          "package_name": "fixture-leaf",
+          "package_version": "1.0.0",
+          "outcome": "WARN",
+          "findings": [
+            {
+              "verifier": "PackageAgeVerifier",
+              "severity": "WARNING",
+              "text": "Package npm fixture-leaf@1.0.0 was published less than 240 hours ago: treat new releases with caution"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "failure": [
+    {
+      "timestamp": "2026-01-10T00:00:00Z",
+      "package_manager": "npm",
+      "executable": "/npm",
+      "outcome": "ALLOW",
+      "packages": [
+        {
+          "ecosystem": "npm",
+          "package_name": "fixture-leaf",
+          "package_version": "1.0.0",
+          "outcome": "WARN",
+          "findings": [
+            {
+              "verifier": "PackageAgeVerifier",
+              "severity": "WARNING",
+              "text": "Package npm fixture-leaf@1.0.0 was published less than 24 hours ago: treat new releases with caution"
+            }
+          ],
+          "failures": [
+            {
+              "verifier": "OSVVerifier",
+              "error": "unavailable"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "allowed": [
+    {
+      "timestamp": "2026-01-10T00:00:00Z",
+      "package_manager": "npm",
+      "executable": "/npm",
+      "outcome": "ALLOW",
+      "packages": [
+        {
+          "ecosystem": "npm",
+          "package_name": "fixture-leaf",
+          "package_version": "1.0.0",
+          "outcome": "ALLOW",
+          "findings": []
+        }
+      ]
+    }
+  ]
+}

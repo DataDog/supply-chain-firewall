@@ -41,11 +41,16 @@ type npmTestRegistry struct {
 
 func npmTarball(t *testing.T) []byte {
 	t.Helper()
+	return npmTarballFrom(t, "npm/package")
+}
+
+func npmTarballFrom(t *testing.T, fixture string) []byte {
+	t.Helper()
 	var buffer bytes.Buffer
 	compressed := gzip.NewWriter(&buffer)
 	writer := tar.NewWriter(compressed)
 	for _, name := range []string{"package.json", "index.js"} {
-		body := readProxyFixture(t, filepath.Join("npm", "package", name))
+		body := readProxyFixture(t, filepath.Join(fixture, name))
 		header := &tar.Header{Name: "package/" + name, Mode: 0644, Size: int64(len(body)), ModTime: time.Unix(1700000000, 0)}
 		if err := writer.WriteHeader(header); err != nil {
 			t.Fatal(err)
@@ -65,10 +70,16 @@ func npmTarball(t *testing.T) []byte {
 
 func startNpmRegistry(t *testing.T) *npmTestRegistry {
 	t.Helper()
-	tarball := npmTarball(t)
+	return startNpmRegistryWith(t, "npm/package", "npm/packument.json.tmpl")
+}
+
+// startNpmRegistryWith serves lab-pkg from the package and packument fixtures.
+func startNpmRegistryWith(t *testing.T, packageFixture, packumentFixture string) *npmTestRegistry {
+	t.Helper()
+	tarball := npmTarballFrom(t, packageFixture)
 	digest := sha512.Sum512(tarball)
 	integrity := "sha512-" + base64.StdEncoding.EncodeToString(digest[:])
-	packument := readProxyFixture(t, "npm/packument.json.tmpl")
+	packument := readProxyFixture(t, packumentFixture)
 	registry := &npmTestRegistry{}
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

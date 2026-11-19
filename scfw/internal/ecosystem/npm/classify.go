@@ -74,6 +74,40 @@ func NewClassifier(options ClassifierOptions) (*Classifier, error) {
 	return classifier, nil
 }
 
+// publicRegistryHosts are served over https by the public npm registry;
+// lockfiles name either one regardless of the configured registry.
+var publicRegistryHosts = []string{"registry.npmjs.org", "registry.yarnpkg.com"}
+
+// isKnownRegistry reports whether requestURL shares the origin of a configured
+// or public registry. The base path is ignored: registries serve tarballs
+// outside it on the same origin.
+func (classifier *Classifier) isKnownRegistry(requestURL *url.URL) bool {
+	scheme, host := strings.ToLower(requestURL.Scheme), strings.ToLower(requestURL.Hostname())
+	port := effectivePort(requestURL)
+	for _, public := range publicRegistryHosts {
+		if scheme == "https" && host == public && port == "443" {
+			return true
+		}
+	}
+	for index := range classifier.registries {
+		registry := &classifier.registries[index]
+		if strings.EqualFold(registry.Scheme, scheme) && strings.EqualFold(registry.Hostname(), host) && effectivePort(registry) == port {
+			return true
+		}
+	}
+	return false
+}
+
+func effectivePort(value *url.URL) string {
+	if port := value.Port(); port != "" {
+		return port
+	}
+	if strings.EqualFold(value.Scheme, "http") {
+		return "80"
+	}
+	return "443"
+}
+
 // Classify recognizes npm registry requests from the URL path alone: clients
 // disagree on Accept headers, so those are never evidence. Tarballs are
 // recognized on any host, so an unknown host cannot opt out of evaluation.

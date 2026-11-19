@@ -68,8 +68,8 @@ func TestProxyHandlerEvaluatesTarballOnAnyHost(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer t")
 
 	hook, err := handler.HandleRequest(context.Background(), request)
-	if hook != nil || err != nil {
-		t.Fatalf("HandleRequest() = %v, %v; want no response hook and no error", hook != nil, err)
+	if hook == nil || err != nil {
+		t.Fatalf("HandleRequest() = %v, %v; want a verifying response hook and no error", hook != nil, err)
 	}
 	artifacts := evaluated()
 	if len(artifacts) != 1 {
@@ -77,6 +77,35 @@ func TestProxyHandlerEvaluatesTarballOnAnyHost(t *testing.T) {
 	}
 	if artifacts[0].Name != "left-pad" || artifacts[0].Version != "1.3.0" || artifacts[0].authorization != "Bearer t" {
 		t.Fatalf("evaluated %+v, want left-pad@1.3.0 carrying the request's Authorization", artifacts[0])
+	}
+}
+
+func TestProxyHandlerDoesNotHoldKnownRegistryTarballs(t *testing.T) {
+	handler, evaluated := recordingHandler(t, nil)
+	classifier, err := NewClassifier(ClassifierOptions{RegistryURLs: []string{"https://npm.corp.example/api/npm/"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.Classifier = classifier
+	for _, raw := range []string{
+		"https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz",
+		"https://REGISTRY.yarnpkg.com:443/left-pad/-/left-pad-1.3.0.tgz",
+		"https://npm.corp.example/other/left-pad/-/left-pad-1.3.0.tgz",
+	} {
+		if hook, err := handler.HandleRequest(context.Background(), getRequest(t, raw)); hook != nil || err != nil {
+			t.Fatalf("%s: HandleRequest() = %v, %v; want no response hook", raw, hook != nil, err)
+		}
+	}
+	for _, raw := range []string{
+		"http://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz",
+		"https://npm.corp.example:8443/left-pad/-/left-pad-1.3.0.tgz",
+	} {
+		if hook, err := handler.HandleRequest(context.Background(), getRequest(t, raw)); hook == nil || err != nil {
+			t.Fatalf("%s: HandleRequest() = %v, %v; want a verifying response hook", raw, hook != nil, err)
+		}
+	}
+	if got := len(evaluated()); got != 5 {
+		t.Fatalf("evaluations = %d, want each tarball evaluated before forwarding", got)
 	}
 }
 

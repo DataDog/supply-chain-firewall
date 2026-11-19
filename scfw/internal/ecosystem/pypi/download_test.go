@@ -456,7 +456,10 @@ func TestProxyHandlerVerifiesDistributionIdentityOnUnknownHosts(t *testing.T) {
 		"wheel-name":    wheel("evil", "1.0"),
 		"sdist-version": sdist("project", "2.0"),
 		"text":          []byte("not an archive"),
+		"plain-name":    wheel("evil", "1.0"),
+		"html-wheel":    wheel("project", "1.0"),
 	}
+	contentTypes := map[string]string{"plain-name": "text/plain", "html-wheel": "text/html"}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		variant := r.URL.Query().Get("v")
 		switch {
@@ -471,6 +474,9 @@ func TestProxyHandlerVerifiesDistributionIdentityOnUnknownHosts(t *testing.T) {
 		case r.Header.Get("If-None-Match") != "":
 			w.WriteHeader(http.StatusNotModified)
 		default:
+			if contentType := contentTypes[variant]; contentType != "" {
+				w.Header().Set("Content-Type", contentType)
+			}
 			_, _ = w.Write(bodies[variant])
 		}
 	}))
@@ -488,6 +494,8 @@ func TestProxyHandlerVerifiesDistributionIdentityOnUnknownHosts(t *testing.T) {
 		{name: "redirect to mismatch", file: "project-1.0-py3-none-any.whl", variant: "redirect", status: http.StatusForbidden},
 		{name: "partial match", file: "project-1.0-py3-none-any.whl", variant: "wheel", header: "Range", status: http.StatusPartialContent},
 		{name: "partial mismatch", file: "project-1.0-py3-none-any.whl", variant: "wheel-name", header: "Range", status: http.StatusForbidden},
+		{name: "cached mismatch labeled text", file: "project-1.0-py3-none-any.whl", variant: "plain-name", header: "If-None-Match", status: http.StatusForbidden},
+		{name: "partial match labeled html", file: "project-1.0-py3-none-any.whl", variant: "html-wheel", header: "Range", status: http.StatusPartialContent},
 		{name: "cached mismatch", file: "project-1.0.tar.gz", variant: "sdist-version", header: "If-None-Match", status: http.StatusForbidden},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

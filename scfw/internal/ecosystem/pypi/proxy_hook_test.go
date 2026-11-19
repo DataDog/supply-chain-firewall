@@ -108,7 +108,14 @@ func TestPyPIProxyStreamsHTMLWithoutWaitingForTheCompleteBody(t *testing.T) {
 			defer upstream.Close()
 			defer release()
 			var evaluations atomic.Int32
-			handler := testProxyHook(t)
+			// A configured index keeps streaming; unknown hosts are verified.
+			handler, err := newProxyHook(context.Background(), ProxyHookOptions{
+				ClassifierOptions: RequestClassifierOptions{SimpleIndexURLs: []string{upstream.URL + "/simple/"}},
+				EvaluatePackage:   func(context.Context, pm.Package, error) error { return nil },
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
 			handler.EvaluateArtifact = func(context.Context, Artifact) error { evaluations.Add(1); return nil }
 			server, err := proxy.Start(context.Background(), proxy.Options{RequestHooks: []proxy.RequestHook{handler.HandleRequest}})
 			if err != nil {

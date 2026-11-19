@@ -61,6 +61,13 @@ func init() {
 			if err := runPipBaseline(r, pipOptions{proxy: "1", block: blocked, errorOnBlock: blocked}); err != nil {
 				return err
 			}
+			// Keep the primary run's summary while retaining both runs' evidence,
+			// including evidence from a failed subsequent install.
+			primary := *r.Result
+			defer func() {
+				r.Result.PolicyOutcome, r.Result.ResolvedAction = primary.PolicyOutcome, primary.ResolvedAction
+				r.Result.SCFWExit, r.Result.SCFWSignal = primary.SCFWExit, primary.SCFWSignal
+			}()
 			next := *r
 			next.Root = filepath.Join(r.Root, "subsequent")
 			next.WorkDir = filepath.Join(next.Root, "work")

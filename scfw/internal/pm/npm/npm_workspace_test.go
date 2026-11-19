@@ -365,3 +365,130 @@ func TestNpmWorkspaceVersionlessMember(t *testing.T) {
 		t.Fatalf("inspection wrote original lock: %v", err)
 	}
 }
+
+func TestNpmWorkspaceCopySkipsUnrelatedDirectories(t *testing.T) {
+	for _, workspaces := range []any{[]string{}, []string{"packages/*"}, map[string]any{"packages": []string{"{packages,tools}/*"}}} {
+		t.Run(fmt.Sprint(workspaces), func(t *testing.T) {
+			root, _ := workspaceFixture(t)
+			manifest, err := readNpmJSONFile(filepath.Join(root, "package.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			manifest["workspaces"] = workspaces
+			if err := writeNpmJSONFile(filepath.Join(root, "package.json"), manifest); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"unrelated/private", "packages/member/private"} {
+				path := filepath.Join(root, name)
+				if err := os.MkdirAll(path, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(path, 0); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(path, 0700) })
+				if _, err := os.ReadDir(path); !os.IsPermission(err) {
+					t.Skip("directory permissions are not enforced")
+				}
+			}
+			p := npmTempProject{projectRoot: root, dir: t.TempDir()}
+			if err := p.copyProjectFiles(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestNpmWorkspaceCopyIgnoresMemberLockfiles(t *testing.T) {
+	root, _ := workspaceFixture(t)
+	content, err := os.ReadFile("testdata/workspace-resolution/invalid-member-lock.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "packages/member/package-lock.json")
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	p := npmTempProject{projectRoot: root, dir: t.TempDir()}
+	if err := p.copyProjectFiles(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(p.dir, "packages/member/package-lock.json")); !os.IsNotExist(err) {
+		t.Fatalf("member lockfile must remain ignored: %v", err)
+	}
+	actual, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(actual, content) {
+		t.Fatalf("member lockfile changed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(p.dir, "package-lock.json")); err != nil {
+		t.Fatalf("root lockfile missing: %v", err)
+	}
+}
+
+func TestNpmWorkspaceCopyAcceptsBOMManifest(t *testing.T) {
+	root, _ := workspaceFixture(t)
+	content, err := os.ReadFile("testdata/workspace-resolution/bom-member-package.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "packages/member/package.json")
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	p := npmTempProject{projectRoot: root, dir: t.TempDir()}
+	if err := p.copyProjectFiles(); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := readNpmJSONFile(filepath.Join(p.dir, "packages/member/package.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest["name"] != "member" {
+		t.Fatalf("member manifest not copied: %v", manifest)
+	}
+	actual, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(actual, content) {
+		t.Fatalf("member manifest changed: %v", err)
+	}
+}
+
+func TestNpmWorkspaceCopyPreservesPatternSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		patterns any
+		members  []string
+	}{
+		{"recursive", []string{"packages/**"}, []string{"member", "shared"}},
+		{"recursive-prefix", []string{"**/packages/*"}, []string{"member", "shared"}},
+		{"braces", []string{"{packages,tools}/{member,shared}"}, []string{"member", "shared"}},
+		{"object", map[string]any{"packages": []string{"packages/*"}}, []string{"member", "shared"}},
+		{"exclusion", []string{"packages/*", "!packages/shared"}, []string{"member"}},
+		{"empty", []string{}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, _ := workspaceFixture(t)
+			manifest, err := readNpmJSONFile(filepath.Join(root, "package.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			manifest["workspaces"] = tc.patterns
+			if err := writeNpmJSONFile(filepath.Join(root, "package.json"), manifest); err != nil {
+				t.Fatal(err)
+			}
+			p := npmTempProject{projectRoot: root, dir: t.TempDir()}
+			if err := p.copyProjectFiles(); err != nil {
+				t.Fatal(err)
+			}
+			for _, member := range []string{"member", "shared"} {
+				_, err := os.Stat(filepath.Join(p.dir, "packages", member, "package.json"))
+				if slices.Contains(tc.members, member) {
+					if err != nil {
+						t.Fatalf("workspace %s was not copied: %v", member, err)
+					}
+				} else if !os.IsNotExist(err) {
+					t.Fatalf("unexpected workspace %s: %v", member, err)
+				}
+			}
+		})
+	}
+}

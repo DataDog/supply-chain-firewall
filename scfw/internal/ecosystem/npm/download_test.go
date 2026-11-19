@@ -444,3 +444,39 @@ func TestProxyHandlerVerifiesTarballIdentityOnUnknownHosts(t *testing.T) {
 		})
 	}
 }
+
+func TestProxyHandlerRefetchSendsNoReferer(t *testing.T) {
+	tarball := npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: `{"name": "left-pad", "version": "1.3.0"}`})
+	var referers atomic.Int32
+	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Referer") != "" {
+			referers.Add(1)
+		}
+		_, _ = w.Write(tarball)
+	}))
+	defer destination.Close()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Range") != "" {
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write(tarball[:10])
+			return
+		}
+		http.Redirect(w, r, destination.URL+"/blob", http.StatusFound)
+	}))
+	defer upstream.Close()
+	handler, _ := recordingHandler(t, nil)
+	handler.Client = upstream.Client()
+	request, err := http.NewRequest(http.MethodGet, upstream.URL+"/left-pad/-/left-pad-1.3.0.tgz?token=secret", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Range", "bytes=0-9")
+	response, err := proxiedClient(t, handler.HandleRequest).Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusPartialContent || referers.Load() != 0 {
+		t.Fatalf("status=%d requests with Referer=%d, want 206 and none", response.StatusCode, referers.Load())
+	}
+}

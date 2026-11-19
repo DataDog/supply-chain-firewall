@@ -136,7 +136,8 @@ func (e ProxyHandler) inspectFullDownload(ctx context.Context, original proxy.Re
 		return true, errors.New("could not inspect complete Python download")
 	}
 	mediaType, _, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
-	if !required && !e.Classifier.archiveURLCandidate(&original.Request.URL) && mediaType != "" && !isDownloadMediaType(mediaType) {
+	// An expected identity needs the bytes: a label alone cannot prove metadata.
+	if expected == nil && !required && !e.Classifier.archiveURLCandidate(&original.Request.URL) && mediaType != "" && !isDownloadMediaType(mediaType) {
 		// An archive-shaped project endpoint can initially look unrelated.
 		// Keep the original 304's metadata classification and refresh path.
 		return false, nil

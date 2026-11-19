@@ -605,6 +605,20 @@ func normalizePyPIURLEscapes(value string) string {
 
 // HasRegistrySource reports whether source is a known PyPI registry URL, ported from
 // package.py's Package.has_registry_source in the Python reference.
+// isKnownIndex reports whether requestURL is served by PyPI or shares the
+// origin of a configured index. Direct URLs are not known: any host can be one.
+func (classifier *RequestClassifier) isKnownIndex(requestURL *url.URL) bool {
+	if slices.Contains(pyPIRegistryDomains, strings.ToLower(requestURL.Hostname())) {
+		return true
+	}
+	for index := range classifier.simpleIndexes {
+		if sameURLOrigin(&classifier.simpleIndexes[index].match, requestURL) {
+			return true
+		}
+	}
+	return false
+}
+
 func HasRegistrySource(source string) bool {
 	u, err := url.Parse(source)
 	if err != nil {

@@ -16,10 +16,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/internal/archive"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
@@ -437,5 +439,140 @@ func TestPartialArchiveSelectionUsesManagerVisibleHeaders(t *testing.T) {
 	}
 	if response.Header.Get("Content-Type") != "application/zip" || response.StatusCode != http.StatusPartialContent {
 		t.Fatal("mutated forwarded response metadata")
+	}
+}
+
+func TestProxyHandlerVerifiesDistributionIdentityOnUnknownHosts(t *testing.T) {
+	metadata := func(name, version string) string {
+		return "Metadata-Version: 2.1\nName: " + name + "\nVersion: " + version + "\n"
+	}
+	wheel := func(name, version string) []byte {
+		return packageArchive(t, "zip", []archiveTestEntry{{name: "project-1.0.dist-info/METADATA", body: metadata(name, version)}})
+	}
+	sdist := func(name, version string) []byte {
+		return packageArchive(t, "gzip", []archiveTestEntry{{name: "project-1.0/PKG-INFO", body: metadata(name, version)}})
+	}
+	bodies := map[string][]byte{
+		"wheel":         wheel("Project", "1.0.0"),
+		"wheel-name":    wheel("evil", "1.0"),
+		"sdist-version": sdist("project", "2.0"),
+		"text":          []byte("not an archive"),
+		"plain-name":    wheel("evil", "1.0"),
+		"html-wheel":    wheel("project", "1.0"),
+	}
+	bodies["empty-json"] = []byte("{}")
+	contentTypes := map[string]string{"plain-name": "text/plain", "html-wheel": "text/html", "empty-json": "application/json"}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		variant := r.URL.Query().Get("v")
+		switch {
+		case variant == "redirect":
+			http.Redirect(w, r, "/blob?v=wheel-name", http.StatusFound)
+		case r.URL.Query().Get("status") != "":
+			status, _ := strconv.Atoi(r.URL.Query().Get("status"))
+			w.WriteHeader(status)
+			_, _ = w.Write(bodies[variant])
+		case variant == "json" || (variant == "json-cached" && r.Header.Get("If-None-Match") == ""):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(readPyPIJSONFixture(t, "metadata/artifact-endpoint-simple")))
+		case r.Header.Get("Range") != "":
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write(bodies[variant][:min(4, len(bodies[variant]))])
+		case r.Header.Get("If-None-Match") != "":
+			w.WriteHeader(http.StatusNotModified)
+		default:
+			if contentType := contentTypes[variant]; contentType != "" {
+				w.Header().Set("Content-Type", contentType)
+			}
+			_, _ = w.Write(bodies[variant])
+		}
+	}))
+	defer upstream.Close()
+
+	for _, tc := range []struct {
+		name, file, variant, header string
+		serve, status               int
+	}{
+		{name: "300 mismatch", file: "project-1.0-py3-none-any.whl", variant: "wheel-name", serve: 300, status: http.StatusForbidden},
+		{name: "302 without location mismatch", file: "project-1.0-py3-none-any.whl", variant: "wheel-name", serve: 302, status: http.StatusForbidden},
+		{name: "307 without location mismatch", file: "project-1.0-py3-none-any.whl", variant: "wheel-name", serve: 307, status: http.StatusForbidden},
+		{name: "300 match", file: "project-1.0-py3-none-any.whl", variant: "wheel", serve: 300, status: 300},
+		{name: "302 without location match", file: "project-1.0-py3-none-any.whl", variant: "wheel", serve: 302, status: 302},
+		{name: "307 without location match", file: "project-1.0-py3-none-any.whl", variant: "wheel", serve: 307, status: 307},
+		{name: "matching wheel", file: "project-1.0-py3-none-any.whl", variant: "wheel", status: http.StatusOK},
+		{name: "wheel name mismatch", file: "project-1.0-py3-none-any.whl", variant: "wheel-name", status: http.StatusForbidden},
+		{name: "sdist version mismatch", file: "project-1.0.tar.gz", variant: "sdist-version", status: http.StatusForbidden},
+		{name: "not an archive", file: "project-1.0.tar.gz", variant: "text", status: http.StatusBadGateway},
+		{name: "metadata endpoint", file: "project-1.0-py3-none-any.whl", variant: "json", status: http.StatusOK},
+		{name: "redirect to mismatch", file: "project-1.0-py3-none-any.whl", variant: "redirect", status: http.StatusForbidden},
+		{name: "partial match", file: "project-1.0-py3-none-any.whl", variant: "wheel", header: "Range", status: http.StatusPartialContent},
+		{name: "partial mismatch", file: "project-1.0-py3-none-any.whl", variant: "wheel-name", header: "Range", status: http.StatusForbidden},
+		{name: "cached mismatch labeled text", file: "project-1.0-py3-none-any.whl", variant: "plain-name", header: "If-None-Match", status: http.StatusForbidden},
+		{name: "partial match labeled html", file: "project-1.0-py3-none-any.whl", variant: "html-wheel", header: "Range", status: http.StatusPartialContent},
+		{name: "cached unrecognized json", file: "project-1.0-py3-none-any.whl", variant: "empty-json", header: "If-None-Match", status: http.StatusBadGateway},
+		{name: "partial unrecognized json", file: "project-1.0-py3-none-any.whl", variant: "empty-json", header: "Range", status: http.StatusBadGateway},
+		{name: "cached metadata endpoint", file: "project-1.0-py3-none-any.whl", variant: "json-cached", header: "If-None-Match", status: http.StatusNotModified},
+		{name: "cached mismatch", file: "project-1.0.tar.gz", variant: "sdist-version", header: "If-None-Match", status: http.StatusForbidden},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := testProxyHook(t)
+			handler.Client = upstream.Client()
+			var evaluated []Artifact
+			handler.EvaluateArtifact = func(_ context.Context, artifact Artifact) error {
+				evaluated = append(evaluated, artifact)
+				return nil
+			}
+			server, err := proxy.Start(context.Background(), proxy.Options{RequestHooks: []proxy.RequestHook{handler.HandleRequest}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer server.Close()
+			proxyURL, _ := url.Parse(server.ClientConfig().URL)
+			transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+			defer transport.CloseIdleConnections()
+			client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+			target := upstream.URL + "/files/" + tc.file + "?v=" + tc.variant
+			if tc.serve != 0 {
+				target += "&status=" + strconv.Itoa(tc.serve)
+			}
+			request, err := http.NewRequest(http.MethodGet, target, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.header != "" {
+				request.Header.Set(tc.header, "bytes=0-3")
+			}
+			response, err := client.Do(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = response.Body.Close()
+			if response.StatusCode != tc.status || len(evaluated) != 1 || evaluated[0].Name != "project" || evaluated[0].Version != "1.0" {
+				t.Fatalf("status=%d evaluations=%+v, want %d after evaluating only project 1.0", response.StatusCode, evaluated, tc.status)
+			}
+		})
+	}
+}
+
+func TestProxyHandlerStreamsKnownIndexDistributions(t *testing.T) {
+	handler, err := newProxyHook(context.Background(), ProxyHookOptions{
+		ClassifierOptions: RequestClassifierOptions{SimpleIndexURLs: []string{"https://index.example/simple/"}},
+		EvaluatePackage:   func(context.Context, pm.Package, error) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{
+		"https://files.pythonhosted.org/packages/ab/project-1.0-py3-none-any.whl",
+		"https://index.example/packages/project-1.0.tar.gz",
+	} {
+		request := proxy.Request{Method: http.MethodGet, URL: mustParseHookURL(t, raw)}
+		responseHook, err := handler.HandleRequest(context.Background(), request)
+		if err != nil || responseHook == nil {
+			t.Fatalf("%s: response hook=%v error=%v", raw, responseHook != nil, err)
+		}
+		header := http.Header{"Content-Type": {"application/octet-stream"}}
+		if bodyHook, err := responseHook(context.Background(), proxy.Response{Request: request, StatusCode: http.StatusOK, Header: header}); err != nil || bodyHook != nil {
+			t.Fatalf("%s: body hook=%v error=%v; want the download streamed", raw, bodyHook != nil, err)
+		}
 	}
 }

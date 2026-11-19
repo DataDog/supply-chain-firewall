@@ -1370,7 +1370,8 @@ func TestPyPIProxyWarnsBeforeForwardingArtifact(t *testing.T) {
 		return time.Now(), nil
 	}
 	handler.setClassifierOptions(pypi.RequestClassifierOptions{
-		DirectArtifactURLs: []string{upstream.URL + "/project-1.0.tar.gz"},
+		// A configured index is not held for identity verification.
+		SimpleIndexURLs: []string{upstream.URL + "/simple/"},
 	})
 	server, err := proxy.Start(context.Background(), proxy.Options{RequestHooks: []proxy.RequestHook{handler.pypiHandler().HandleRequest}})
 	if err != nil {

@@ -80,7 +80,8 @@ func (h ProxyHandler) verifyTarball(expected Artifact) proxy.ResponseHook {
 			return nil, h.inspectFullTarball(ctx, response, &expected)
 		case status < 200 || status == http.StatusNoContent || status >= 400:
 			return nil, nil
-		case status >= 300 && response.Header.Get("Location") != "":
+		case (status == http.StatusMovedPermanently || status == http.StatusFound || status == http.StatusSeeOther ||
+			status == http.StatusTemporaryRedirect || status == http.StatusPermanentRedirect) && response.Header.Get("Location") != "":
 			// The full fetch follows the redirect the client is about to follow.
 			return nil, h.inspectFullTarball(ctx, response, &expected)
 		}

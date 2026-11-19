@@ -254,6 +254,14 @@ func TestProxyHandlerVerifiesTarballIdentityOnUnknownHosts(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		variant := r.URL.Query().Get("v")
 		switch {
+		case r.URL.Query().Get("status") != "":
+			status, _ := strconv.Atoi(r.URL.Query().Get("status"))
+			if r.URL.Query().Has("location") {
+				// npm does not follow a 300, so its body is installed.
+				w.Header().Set("Location", "/blob")
+			}
+			w.WriteHeader(status)
+			_, _ = w.Write(tarballs[variant])
 		case variant == "redirect":
 			http.Redirect(w, r, "/blob", http.StatusFound)
 		case r.URL.Path == "/blob":
@@ -277,8 +285,16 @@ func TestProxyHandlerVerifiesTarballIdentityOnUnknownHosts(t *testing.T) {
 	for _, tc := range []struct {
 		name, variant, header string
 		client                bool
-		status                int
+		serve, status         int
 	}{
+		{name: "300 mismatch", variant: "name", serve: 300, status: http.StatusForbidden},
+		{name: "302 without location mismatch", variant: "name", serve: 302, status: http.StatusForbidden},
+		{name: "307 without location mismatch", variant: "version", serve: 307, status: http.StatusForbidden},
+		{name: "300 match", variant: "match", serve: 300, status: 300},
+		{name: "300 with location match", variant: "match&location", serve: 300, status: 300},
+		{name: "300 with location mismatch", variant: "name&location", serve: 300, status: http.StatusForbidden},
+		{name: "302 without location match", variant: "match", serve: 302, status: 302},
+		{name: "307 without location match", variant: "match", serve: 307, status: 307},
 		{name: "match", variant: "match", status: http.StatusOK},
 		{name: "other name", variant: "name", status: http.StatusForbidden},
 		{name: "other version", variant: "version", status: http.StatusForbidden},
@@ -298,7 +314,7 @@ func TestProxyHandlerVerifiesTarballIdentityOnUnknownHosts(t *testing.T) {
 			}
 			client := proxiedClient(t, handler.HandleRequest)
 			client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-			request, err := http.NewRequest(http.MethodGet, upstream.URL+"/left-pad/-/left-pad-1.3.0.tgz?v="+tc.variant, nil)
+			request, err := http.NewRequest(http.MethodGet, upstream.URL+"/left-pad/-/left-pad-1.3.0.tgz?v="+tc.variant+"&status="+map[bool]string{true: strconv.Itoa(tc.serve)}[tc.serve != 0], nil)
 			if err != nil {
 				t.Fatal(err)
 			}

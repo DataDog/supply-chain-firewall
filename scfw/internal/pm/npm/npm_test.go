@@ -7,6 +7,7 @@ package npm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -50,14 +51,18 @@ func runFakeNpm(fixtureDir string, args []string) int {
 		return runNpmSelectionFixture(fixtureDir, selected, args)
 	}
 	if len(args) > 0 && args[0] == "config" {
-		fmt.Println(`{"global":false}`)
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
+			"global":       false,
+			"userconfig":   filepath.Join(fixtureDir, "user.npmrc"),
+			"globalconfig": filepath.Join(fixtureDir, "global.npmrc"),
+		})
 		return 0
 	}
 	if slices.Contains(args, "--version") {
 		fmt.Println("10.8.2")
 		return 0
 	}
-	if len(args) == 1 && args[0] == "prefix" {
+	if len(args) > 0 && args[0] == "prefix" {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return 1

@@ -162,21 +162,46 @@ func (p *npmTempProject) workingDirectory() string {
 // semantics, including relative links between members. Referencing the original
 // member directories would let --package-lock-only rewrite their manifests.
 func (p *npmTempProject) copyWorkspaceProjects() error {
-	manifest, err := readNpmJSONFile(filepath.Join(p.projectRoot, "package.json"))
-	if err != nil {
-		return err
+	var patterns [][]string
+	for _, pattern := range npmWorkspacePatterns(p.projectRoot) {
+		if strings.HasPrefix(pattern, "!") {
+			continue
+		}
+		for _, expanded := range expandBraces(pattern) {
+			expanded = strings.Trim(strings.TrimPrefix(expanded, "./"), "/")
+			if globIgnoresCase {
+				expanded = strings.ToLower(expanded)
+			}
+			patterns = append(patterns, strings.Split(expanded, "/"))
+		}
 	}
-	if _, exists := manifest["workspaces"]; !exists {
+	if len(patterns) == 0 {
 		return nil
 	}
 	copies := map[string]string{p.projectRoot: p.dir}
-	err = filepath.WalkDir(p.projectRoot, func(path string, entry fs.DirEntry, err error) error {
+	err := filepath.WalkDir(p.projectRoot, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if entry.IsDir() {
 			if path == p.dir || entry.Name() == "node_modules" || entry.Name() == ".git" {
 				return filepath.SkipDir
+			}
+			if path != p.projectRoot {
+				relative, err := filepath.Rel(p.projectRoot, path)
+				if err != nil {
+					return err
+				}
+				relative = filepath.ToSlash(relative)
+				if globIgnoresCase {
+					relative = strings.ToLower(relative)
+				}
+				segments := strings.Split(relative, "/")
+				if !slices.ContainsFunc(patterns, func(pattern []string) bool {
+					return npmWorkspacePatternPrefix(pattern, segments)
+				}) {
+					return filepath.SkipDir
+				}
 			}
 			return nil
 		}
@@ -195,7 +220,8 @@ func (p *npmTempProject) copyWorkspaceProjects() error {
 		if err := os.MkdirAll(target, 0o755); err != nil {
 			return err
 		}
-		for _, copyFile := range []func(string, string) error{copyNpmPackageJSON, copyNpmLockfile, copyNpmNodeModules, copyNpmrc} {
+		// npm uses the selected project root lockfile, ignoring member lockfiles.
+		for _, copyFile := range []func(string, string) error{copyNpmPackageJSON, copyNpmNodeModules, copyNpmrc} {
 			if err := copyFile(source, target); err != nil {
 				return err
 			}
@@ -251,6 +277,22 @@ func (p *npmTempProject) copyWorkspaceProjects() error {
 		}
 	}
 	return nil
+}
+
+// npmWorkspacePatternPrefix reports whether a directory can lead to a match.
+// Stop before reading directories outside workspace globs, including source
+// subdirectories below a workspace whose pattern has already been exhausted.
+func npmWorkspacePatternPrefix(pattern, path []string) bool {
+	if len(path) == 0 {
+		return true
+	}
+	if len(pattern) == 0 {
+		return false
+	}
+	if pattern[0] == "**" {
+		return npmWorkspacePatternPrefix(pattern[1:], path) || npmWorkspacePatternPrefix(pattern, path[1:])
+	}
+	return matchSegments(pattern[:1], path[:1]) && npmWorkspacePatternPrefix(pattern[1:], path[1:])
 }
 
 func relocateNpmWorkspaceReferences(content map[string]any, directory string, copies map[string]string) {
@@ -655,7 +697,7 @@ func readNpmJSONFile(path string) (map[string]any, error) {
 		return nil, err
 	}
 	var content map[string]any
-	if err := json.Unmarshal(data, &content); err != nil {
+	if err := json.Unmarshal(bytes.TrimPrefix(data, []byte("\xef\xbb\xbf")), &content); err != nil {
 		return nil, fmt.Errorf("failed to decode %s: %w", path, err)
 	}
 	return content, nil

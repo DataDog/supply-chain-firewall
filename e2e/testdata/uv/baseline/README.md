@@ -36,8 +36,11 @@ Thirty cases cover these assigned variants:
 | CORE-12 | uv and uvx explicit executable paths containing spaces |
 | UV-03 | Tool install/run/upgrade/uvx ALLOW and BLOCK; native child error propagation |
 | UV-05 | Direct command/script/module/stdin/`--with`/help/version |
-| REPORT-01 | Exact local ALLOW/BLOCK identities |
+| REPORT-01 | Exact local ALLOW/BLOCK identities, command and Git repository |
 | LIFE-01 | Allowed/blocked invocation listener and temporary-file cleanup |
+
+Baseline commands disable ambient uv configuration with `UV_NO_CONFIG=1` so
+registry selection cannot be changed by host or ancestor configuration.
 
 Every protected case checks mode-specific exits, exact public package policy
 identity, installed state or tool output, and cleanup. Upgrade BLOCK preserves the

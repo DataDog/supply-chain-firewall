@@ -261,6 +261,7 @@ func prepareUV(r *caseRun, options uvOptions) (string, string, error) {
 	r.Env["PATH"] = filepath.Dir(r.Cell.Executable) + string(os.PathListSeparator) + filepath.Dir(r.Cell.Runtime) + string(os.PathListSeparator) + r.Env["PATH"]
 	r.Env["UV_PYTHON"], r.Env["UV_PYTHON_DOWNLOADS"] = r.Cell.Runtime, "never"
 	r.Env["UV_DEFAULT_INDEX"] = "https://pypi.org/simple"
+	r.Env["UV_NO_CONFIG"] = "1"
 	for key, dir := range map[string]string{"UV_CACHE_DIR": "uv-cache", "UV_TOOL_DIR": "tools", "UV_TOOL_BIN_DIR": "tools-bin"} {
 		r.Env[key] = filepath.Join(r.Root, dir)
 		if err := os.MkdirAll(r.Env[key], 0700); err != nil {
@@ -315,6 +316,14 @@ func runUVBaseline(r *caseRun, options uvOptions) error {
 	}
 	if options.direct != "" {
 		return runUVDirect(r, executable, options)
+	}
+	if r.Spec.Scenario == "REPORT-01" {
+		if _, err := r.Command("git-init", r.Cell.Git, "init", "--quiet"); err != nil {
+			return classified("INFRASTRUCTURE_FAILURE", err)
+		}
+		if _, err := r.Command("git-origin", r.Cell.Git, "remote", "add", "origin", "https://example.invalid/scfw-e2e.git"); err != nil {
+			return err
+		}
 	}
 	c := r.Candidate
 	if options.block {
@@ -406,6 +415,11 @@ func runUVBaseline(r *caseRun, options uvOptions) error {
 	}
 	if err := assertPolicy(records, c, launcher, executable, outcome); err != nil {
 		return err
+	}
+	if r.Spec.Scenario == "REPORT-01" {
+		if err := assertUVReportMetadata(records, append([]string{launcher}, args...)); err != nil {
+			return err
+		}
 	}
 	r.Result.PolicyOutcome, r.Result.ResolvedAction = outcome, outcome
 	if err := r.Keep("policy", r.Env["SCFW_LOG_FILE"]); err != nil {
@@ -624,4 +638,40 @@ func runUVDirect(r *caseRun, executable string, options uvOptions) error {
 	}
 	r.Result.ResolvedAction = "BYPASS"
 	return assertUVNoProxy(r, string(stderr))
+}
+
+func assertUVReportMetadata(records []policyRecord, command []string) error {
+	if len(records) == 0 {
+		return fmt.Errorf("missing policy report")
+	}
+	for _, record := range records {
+		if record.Repository != "https://example.invalid/scfw-e2e.git" || record.Command != strings.Join(command, " ") {
+			return fmt.Errorf("incorrect repository or command in uv policy report: repository=%q command=%q", record.Repository, record.Command)
+		}
+	}
+	return nil
+}
+
+func TestHarnessUVReportMetadata(t *testing.T) {
+	command := []string{"uv", "pip", "install", "--python", "/path with spaces/python", "example==1.0"}
+	valid := policyRecord{Repository: "https://example.invalid/scfw-e2e.git", Command: strings.Join(command, " ")}
+	for _, test := range []struct {
+		name    string
+		records []policyRecord
+		valid   bool
+	}{
+		{name: "valid", records: []policyRecord{valid, valid}, valid: true},
+		{name: "missing-report"},
+		{name: "missing-repository", records: []policyRecord{{Command: valid.Command}}},
+		{name: "wrong-repository", records: []policyRecord{{Command: valid.Command, Repository: "https://wrong.invalid/repository"}}},
+		{name: "missing-command", records: []policyRecord{{Repository: valid.Repository}}},
+		{name: "wrong-command", records: []policyRecord{{Repository: valid.Repository, Command: "uv pip install different==1.0"}}},
+		{name: "later-corrupt-record", records: []policyRecord{valid, {Repository: valid.Repository}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := assertUVReportMetadata(test.records, command); (err == nil) != test.valid {
+				t.Fatalf("accepted=%v, want %v: %v", err == nil, test.valid, err)
+			}
+		})
+	}
 }

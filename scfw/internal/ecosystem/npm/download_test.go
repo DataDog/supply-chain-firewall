@@ -242,3 +242,78 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 		}
 	})
 }
+
+func TestProxyHandlerVerifiesTarballIdentityOnUnknownHosts(t *testing.T) {
+	manifest := func(name, version string) string {
+		return `{"name": "` + name + `", "version": "` + version + `"}`
+	}
+	matching := npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: manifest("left-pad", "1.3.0")})
+	otherName := npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: manifest("evil", "1.3.0")})
+	otherVersion := npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: manifest("left-pad", "9.9.9")})
+	tarballs := map[string][]byte{"match": matching, "name": otherName, "version": otherVersion}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		variant := r.URL.Query().Get("v")
+		switch {
+		case variant == "redirect":
+			http.Redirect(w, r, "/blob", http.StatusFound)
+		case r.URL.Path == "/blob":
+			_, _ = w.Write(otherName)
+		case variant == "text":
+			_, _ = w.Write([]byte("not a tarball"))
+		case variant == "huge":
+			w.Header().Set("Content-Length", strconv.FormatInt(archive.MaxArtifactBytes+1, 10))
+			w.WriteHeader(http.StatusOK)
+		case r.Header.Get("Range") != "":
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write(tarballs[variant][:10])
+		case r.Header.Get("If-None-Match") != "":
+			w.WriteHeader(http.StatusNotModified)
+		default:
+			_, _ = w.Write(tarballs[variant])
+		}
+	}))
+	defer upstream.Close()
+
+	for _, tc := range []struct {
+		name, variant, header string
+		client                bool
+		status                int
+	}{
+		{name: "match", variant: "match", status: http.StatusOK},
+		{name: "other name", variant: "name", status: http.StatusForbidden},
+		{name: "other version", variant: "version", status: http.StatusForbidden},
+		{name: "not an archive", variant: "text", status: http.StatusBadGateway},
+		{name: "oversized", variant: "huge", status: http.StatusBadGateway},
+		{name: "redirect to other package", variant: "redirect", client: true, status: http.StatusForbidden},
+		{name: "partial match", variant: "match", header: "Range", client: true, status: http.StatusPartialContent},
+		{name: "partial mismatch", variant: "name", header: "Range", client: true, status: http.StatusForbidden},
+		{name: "partial without client", variant: "match", header: "Range", status: http.StatusBadGateway},
+		{name: "cached match", variant: "match", header: "If-None-Match", client: true, status: http.StatusNotModified},
+		{name: "cached mismatch", variant: "version", header: "If-None-Match", client: true, status: http.StatusForbidden},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler, evaluated := recordingHandler(t, nil)
+			if tc.client {
+				handler.Client = upstream.Client()
+			}
+			client := proxiedClient(t, handler.HandleRequest)
+			client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+			request, err := http.NewRequest(http.MethodGet, upstream.URL+"/left-pad/-/left-pad-1.3.0.tgz?v="+tc.variant, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.header != "" {
+				request.Header.Set(tc.header, "bytes=0-9")
+			}
+			response, err := client.Do(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = response.Body.Close()
+			artifacts := evaluated()
+			if response.StatusCode != tc.status || len(artifacts) != 1 || artifacts[0].Name != "left-pad" || artifacts[0].Version != "1.3.0" {
+				t.Fatalf("status=%d evaluations=%+v, want %d after evaluating only left-pad@1.3.0", response.StatusCode, artifacts, tc.status)
+			}
+		})
+	}
+}

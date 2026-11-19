@@ -22,7 +22,8 @@ type ProxyHandler struct {
 }
 
 // HandleRequest invokes the artifact callback before a registry tarball is
-// forwarded upstream. Opaque tarballs get a response hook that identifies them
+// forwarded upstream; tarballs from unknown hosts are also held until their
+// package.json declares the evaluated package. Opaque tarballs get a response hook that identifies them
 // from their package.json. Every other request passes untouched: packument
 // bodies are never inspected, so large packuments cannot fail the install.
 func (h ProxyHandler) HandleRequest(requestContext context.Context, request proxy.Request) (proxy.ResponseHook, error) {
@@ -36,7 +37,11 @@ func (h ProxyHandler) HandleRequest(requestContext context.Context, request prox
 	switch kind {
 	case RequestTarball:
 		artifact.authorization = request.Header.Get("Authorization")
-		return nil, h.EvaluateArtifact(requestContext, artifact)
+		if err := h.EvaluateArtifact(requestContext, artifact); err != nil || h.Classifier.isKnownRegistry(&request.URL) {
+			return nil, err
+		}
+		// An unknown host could serve another package under this name.
+		return h.verifyTarball(artifact), nil
 	case RequestOpaqueTarball:
 		return h.observeOpaqueTarball, nil
 	}

@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "cells": [
+    {
+      "id": "linux-arm64-poetry-2.0.0-python-3.12.10",
+      "os": "linux",
+      "arch": "arm64",
+      "runner": "native-linux-arm64",
+      "manager": "poetry",
+      "executable": "/absolute/path/to/poetry-2.0.0/bin/poetry",
+      "manager_version": "2.0.0",
+      "runtime": "/absolute/path/to/python3",
+      "runtime_version": "3.12.10",
+      "git": "/absolute/path/to/git",
+      "git_version": "2.55.0",
+      "provisioning": "Install pinned Poetry in a separate manager environment. Set native OS/arch and exact tool paths before execution.",
+      "modes": [
+        "resolution",
+        "proxy"
+      ],
+      "capabilities": [
+        "public-network"
+      ],
+      "suites": [
+        "poetry-baseline"
+      ]
+    },
+    {
+      "id": "linux-arm64-poetry-2.5.1-python-3.12.10",
+      "os": "linux",
+      "arch": "arm64",
+      "runner": "native-linux-arm64",
+      "manager": "poetry",
+      "executable": "/absolute/path/to/poetry-2.5.1/bin/poetry",
+      "manager_version": "2.5.1",
+      "runtime": "/absolute/path/to/python3",
+      "runtime_version": "3.12.10",
+      "git": "/absolute/path/to/git",
+      "git_version": "2.55.0",
+      "provisioning": "Install pinned Poetry in a separate manager environment. Set native OS/arch and exact tool paths before execution.",
+      "modes": [
+        "resolution",
+        "proxy"
+      ],
+      "capabilities": [
+        "public-network"
+      ],
+      "suites": [
+        "poetry-baseline"
+      ]
+    }
+  ]
+}

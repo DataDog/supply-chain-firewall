@@ -8,6 +8,7 @@ package npm
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"syscall"
@@ -142,6 +143,29 @@ func TestUpstreamProxyMatchesSettings(t *testing.T) {
 	}
 	if config.HTTPSProxy != "http://hp:4" || config.HTTPProxy != "http://hp:4" || config.NoProxy != "internal.test" {
 		t.Fatalf("upstream = %+v", config)
+	}
+}
+
+func TestNpxSettingsIgnoreCommandArguments(t *testing.T) {
+	manager := isolatedNpm(t)
+	manager.npx = true
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"option of the command", []string{"cowsay", "--https-proxy=http://child:1"}, ""},
+		{"option of npx", []string{"--https-proxy=http://corp:1", "cowsay"}, "http://corp:1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			config, err := manager.UpstreamProxy(test.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if config.HTTPSProxy != test.want {
+				t.Fatalf("HTTPSProxy = %q, want %q", config.HTTPSProxy, test.want)
+			}
+		})
 	}
 }
 
@@ -306,6 +330,9 @@ func TestSettingsSkipsProjectNpmrcForGlobal(t *testing.T) {
 		{name: "--global false", args: []string{"--global", "false", "install"}},
 		{name: "-g false", args: []string{"-g", "false", "install"}},
 		{name: "--no-global overrides env", args: []string{"--no-global"}, env: [2]string{"npm_config_global", "true"}},
+		{name: "-gD", args: []string{"-gD", "install"}, skip: true},
+		{name: "-g=true", args: []string{"-g=true"}, skip: true},
+		{name: "--no-global=false", args: []string{"--no-global=false"}, skip: true},
 		{name: "--location=global", args: []string{"--location=global"}, skip: true},
 		{name: "env global", env: [2]string{"npm_config_global", "true"}, skip: true},
 		{name: "env location", env: [2]string{"npm_config_location", "global"}, skip: true},
@@ -334,6 +361,17 @@ func TestSettingsSkipsProjectNpmrcForGlobal(t *testing.T) {
 	})
 }
 
+// Groups multiply, and the pattern comes from a project's package.json.
+func TestExpandBracesIsBounded(t *testing.T) {
+	pattern := strings.Repeat("{a,b}", 20)
+	if got := expandBraces(pattern); !slices.Equal(got, []string{pattern}) {
+		t.Fatalf("expandBraces(%q) returned %d patterns", pattern, len(got))
+	}
+	if got := expandBraces(strings.Repeat("{a,b}", 3)); len(got) != 8 {
+		t.Fatalf("a small product expanded to %d patterns, want 8", len(got))
+	}
+}
+
 // writeNpmWorkspace lays out a root with the given package.json beside members
 // that each carry their own .npmrc, so the proxy read back names the directory
 // whose configuration was used.
@@ -342,7 +380,7 @@ func writeNpmWorkspace(t *testing.T, rootManifest string) string {
 	root, _ := os.Getwd()
 	writeNpmFixture(t, filepath.Join(root, "package.json"), rootManifest)
 	writeNpmFixture(t, filepath.Join(root, ".npmrc"), "https-proxy=http://root:1\n")
-	for _, member := range []string{"packages/app", "packages/lib", "packages/group", "packages/group/app", "packages/.hidden", "apps/web", "other"} {
+	for _, member := range []string{"packages/app", "packages/lib", "packages/group", "packages/group/app", "packages/.hidden", "packages/v2", "apps/web", "other"} {
 		writeNpmFixture(t, filepath.Join(root, member, "package.json"), "{}")
 		writeNpmFixture(t, filepath.Join(root, member, ".npmrc"), "https-proxy=http://"+member+":1\n")
 	}
@@ -355,6 +393,11 @@ func writeNpmWorkspace(t *testing.T, rootManifest string) string {
 
 // The expectations below were measured with npm 11's `npm prefix`.
 func TestSettingsProjectLocationInWorkspaces(t *testing.T) {
+	// glob ignores case on macOS and Windows.
+	caseExcluded := "root"
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		caseExcluded = "packages/app"
+	}
 	for _, test := range []struct {
 		name       string
 		workspaces string
@@ -389,6 +432,21 @@ func TestSettingsProjectLocationInWorkspaces(t *testing.T) {
 		{name: "explicit dot directory", workspaces: `["packages/.hidden"]`, cwd: "packages/.hidden", want: "root"},
 		{name: "node_modules alone is not a member", workspaces: `["packages/*"]`, cwd: "packages/nm", want: "packages/nm"},
 		{name: "the root itself", workspaces: `["packages/*"]`, cwd: ".", want: "root"},
+		// npm also expands ranges and extglobs; SCFW leaves them literal, which only
+		// reads the member's own configuration.
+		{name: "range is not supported", workspaces: `["packages/v{1..3}"]`, cwd: "packages/v2", want: "packages/v2"},
+		{name: "extglob is not supported", workspaces: `["packages/@(app|lib)"]`, cwd: "packages/app", want: "packages/app"},
+		{name: "negated class", workspaces: `["packages/[!a]pp"]`, cwd: "packages/app", want: "packages/app"},
+		{name: "negated class matches", workspaces: `["packages/[!x]pp"]`, cwd: "packages/app", want: "root"},
+		// An exclusion SCFW cannot evaluate as npm does excludes every member.
+		{name: "extglob exclusion", workspaces: `["packages/*", "!packages/@(app|lib)"]`, cwd: "packages/app", want: "packages/app"},
+		{name: "range exclusion", workspaces: `["packages/*", "!packages/v{1..3}"]`, cwd: "packages/v2", want: "packages/v2"},
+		{name: "POSIX class exclusion", workspaces: `["packages/*", "!packages/[[:alpha:]]pp"]`, cwd: "packages/app", want: "packages/app"},
+		{name: "supported exclusion keeps other members", workspaces: `["packages/*", "!packages/lib"]`, cwd: "packages/app", want: "root"},
+		{name: "exclusion case", workspaces: `["packages/*", "!packages/App"]`, cwd: "packages/app", want: caseExcluded},
+		// npm refuses to run with these, so they only need to declare no workspaces.
+		{name: "bare string workspaces", workspaces: `"packages/*"`, cwd: "packages/app", want: "packages/app"},
+		{name: "workspaces true", workspaces: `true`, cwd: "packages/app", want: "packages/app"},
 		{name: "empty list", workspaces: `[]`, cwd: "packages/app", want: "packages/app"},
 		{name: "unreadable manifest is ignored", workspaces: `{ not json`, cwd: "packages/app", want: "packages/app"},
 	} {

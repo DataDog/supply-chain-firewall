@@ -87,6 +87,7 @@ func TestReportAliases(t *testing.T) {
 	zshrc := filepath.Join(home, ".zshrc")
 	if err := os.WriteFile(bashrc, []byte(blockStart+"\n"+
 		`alias npm="scfw run -- npm"`+"\n"+
+		`alias npx="scfw run -- npx"`+"\n"+
 		`alias pip="scfw run -- pip"`+"\n"+
 		`alias pip3="scfw run -- pip3"`+"\n"+
 		`alias pn="scfw run -- pn"`+"\n"+
@@ -99,6 +100,7 @@ func TestReportAliases(t *testing.T) {
 		`alias bun="scfw run -- bun"`+"\n"+
 		`alias bunx="scfw run -- bunx"`+"\n"+
 		`alias npm="scfw run -- npm"`+"\n"+
+		`alias npx="scfw run -- npx"`+"\n"+
 		`alias poetry="scfw run -- poetry"`+"\n"+
 		`alias uv="scfw run -- uv"`+"\n"+
 		`alias uvx="scfw run -- uvx"`+"\n"+
@@ -117,6 +119,7 @@ func TestReportAliases(t *testing.T) {
 		"✅ Alias bun is set in " + zshrc,
 		"✅ Alias bunx is set in " + zshrc,
 		"✅ Alias npm is set in " + bashrc + ", " + zshrc,
+		"✅ Alias npx is set in " + bashrc + ", " + zshrc,
 		"✅ Alias pip is set in " + bashrc,
 		"✅ Alias pip3 is set in " + bashrc,
 		"✅ Alias pn is set in " + bashrc,
@@ -127,7 +130,7 @@ func TestReportAliases(t *testing.T) {
 		"✅ Alias uv is set in " + zshrc,
 		"✅ Alias uvx is set in " + zshrc,
 		"✅ Alias yarn is set in " + zshrc,
-		"ℹ️ Run `alias bun bunx npm pip pip3 pn pnpm pnpx pnx poetry uv uvx yarn` to check which aliases are active in the current terminal. If an alias configured above is not found, reload your terminal.",
+		"ℹ️ Run `alias bun bunx npm npx pip pip3 pn pnpm pnpx pnx poetry uv uvx yarn` to check which aliases are active in the current terminal. If an alias configured above is not found, reload your terminal.",
 	}
 	for _, want := range wantLines {
 		if !strings.Contains(output.String(), want+"\n") {

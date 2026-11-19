@@ -69,6 +69,32 @@ func TestProxyCommandAppendsFlagsWithoutSeparator(t *testing.T) {
 	}
 }
 
+// npx hands everything after the package name to the command it runs, so
+// SCFW's options must come before it and the command's own stay untouched.
+func TestProxyCommandInsertsNpxFlagsBeforePackage(t *testing.T) {
+	config, pem := testClientConfig(t)
+	command := []string{"--yes", "http-server", "--proxy", "http://x", "--noproxy=y"}
+	spec, err := Npm{executable: "/bin/npx", npx: true}.ProxyCommand(context.Background(), command, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := slices.Concat([]string{"--yes"}, scfwFlags(config, pem), []string{"http-server", "--proxy", "http://x", "--noproxy=y"})
+	if !slices.Equal(spec.Args, want) {
+		t.Fatalf("args = %q, want %q", spec.Args, want)
+	}
+}
+
+func TestProxyCommandDropsNpxNoproxyOptions(t *testing.T) {
+	config, pem := testClientConfig(t)
+	spec, err := Npm{executable: "/bin/npx", npx: true}.ProxyCommand(context.Background(), []string{"--noproxy=a", "cowsay"}, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := slices.Concat(scfwFlags(config, pem), []string{"cowsay"}); !slices.Equal(spec.Args, want) {
+		t.Fatalf("args = %q, want %q", spec.Args, want)
+	}
+}
+
 func TestProxyCommandDropsUserNoproxyOptions(t *testing.T) {
 	config, pem := testClientConfig(t)
 	command := []string{"install", "--noproxy=a.test", "x", "--noproxy", "b.test", "--", "--noproxy=c.test"}
@@ -319,6 +345,101 @@ func TestProxyOptionsLoadsTrustLikeNpm(t *testing.T) {
 	}
 }
 
+// As in npm, a readable cafile or else ca replaces the default roots, which
+// also drops NODE_EXTRA_CA_CERTS; the Git bundle is appended regardless.
+func TestProxyOptionsReplacesRootsLikeNpm(t *testing.T) {
+	// Read before isolatedNpm changes the working directory.
+	const registry, other = "registry", "other"
+	pems := map[string]string{registry: readNpmFixture(t, "tls/registry-ca.pem"), other: readNpmFixture(t, "tls/scfw-ca.pem")}
+	poolOf := func(t *testing.T, names ...string) *x509.CertPool {
+		pool := x509.NewCertPool()
+		for _, name := range names {
+			if !pool.AppendCertsFromPEM([]byte(pems[name])) {
+				t.Fatalf("no certificate in %s", name)
+			}
+		}
+		return pool
+	}
+	for _, test := range []struct {
+		name    string
+		prepare func(t *testing.T, registryPath, otherPath string)
+		want    []string
+	}{
+		{"cafile only", func(t *testing.T, registryPath, _ string) {
+			writeNpmFixture(t, ".npmrc", "cafile="+registryPath+"\n")
+		}, []string{registry}},
+		{"ca only", func(t *testing.T, _, _ string) { t.Setenv("npm_config_ca", pems[registry]) }, []string{registry}},
+		{"readable cafile beats ca", func(t *testing.T, registryPath, _ string) {
+			writeNpmFixture(t, ".npmrc", "cafile="+registryPath+"\n")
+			t.Setenv("npm_config_ca", pems[other])
+		}, []string{registry}},
+		{"missing cafile falls back to ca", func(t *testing.T, _, _ string) {
+			writeNpmFixture(t, ".npmrc", "cafile="+filepath.Join(t.TempDir(), "missing.pem")+"\n")
+			t.Setenv("npm_config_ca", pems[registry])
+		}, []string{registry}},
+		{"empty cafile falls back to ca", func(t *testing.T, _, _ string) {
+			empty := filepath.Join(t.TempDir(), "empty.pem")
+			writeNpmFixture(t, empty, "")
+			writeNpmFixture(t, ".npmrc", "cafile="+empty+"\n")
+			t.Setenv("npm_config_ca", pems[registry])
+		}, []string{registry}},
+		{"ca drops NODE_EXTRA_CA_CERTS", func(t *testing.T, registryPath, otherPath string) {
+			writeNpmFixture(t, ".npmrc", "cafile="+registryPath+"\n")
+			t.Setenv("NODE_EXTRA_CA_CERTS", otherPath)
+		}, []string{registry}},
+		{"GIT_SSL_CAINFO is still appended", func(t *testing.T, registryPath, otherPath string) {
+			writeNpmFixture(t, ".npmrc", "cafile="+registryPath+"\n")
+			t.Setenv("GIT_SSL_CAINFO", otherPath)
+		}, []string{registry, other}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manager := isolatedNpm(t)
+			dir := t.TempDir()
+			registryPath, otherPath := filepath.Join(dir, "registry.pem"), filepath.Join(dir, "other.pem")
+			writeNpmFixture(t, registryPath, pems[registry])
+			writeNpmFixture(t, otherPath, pems[other])
+			test.prepare(t, registryPath, otherPath)
+			options, err := manager.ProxyOptions(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !options.UpstreamTLS.RootCAs.Equal(poolOf(t, test.want...)) {
+				t.Fatalf("upstream roots differ from %v", test.want)
+			}
+		})
+	}
+}
+
+// npm treats an empty ca as unset, so Node keeps its default roots and the
+// NODE_EXTRA_CA_CERTS bundle still applies.
+func TestProxyOptionsIgnoresEmptyCA(t *testing.T) {
+	caPEM, leafPEM := readNpmFixture(t, "tls/registry-ca.pem"), readNpmFixture(t, "tls/registry-leaf.pem")
+	for _, test := range []struct {
+		name  string
+		npmrc string
+		args  []string
+	}{
+		{"npmrc ca", "ca=\n", nil},
+		{"npmrc ca array", "ca[]=\n", nil},
+		{"option", "", []string{"install", "--ca="}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manager := isolatedNpm(t)
+			extra := filepath.Join(t.TempDir(), "extra.pem")
+			writeNpmFixture(t, extra, caPEM)
+			t.Setenv("NODE_EXTRA_CA_CERTS", extra)
+			writeNpmFixture(t, ".npmrc", test.npmrc)
+			options, err := manager.ProxyOptions(test.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !verifiesRegistry(t, options, leafPEM) {
+				t.Fatal("an empty ca replaced the default roots instead of being ignored")
+			}
+		})
+	}
+}
+
 func TestProxyOptionsHonorsStrictSSLFalse(t *testing.T) {
 	target := &url.URL{Scheme: "https", Host: "registry.test"}
 	for _, test := range []struct {
@@ -361,6 +482,21 @@ func realNpm(t *testing.T) Npm {
 func TestNpmHelpRunsThroughProxy(t *testing.T) {
 	manager := realNpm(t)
 	for _, args := range [][]string{{"help"}, {"install", "--help"}, {"--version"}} {
+		commandErr, setupErr := proxy.Run(context.Background(), proxy.Options{}, args, manager)
+		if commandErr != nil || setupErr != nil {
+			t.Fatalf("%q failed: command=%v setup=%v", args, commandErr, setupErr)
+		}
+	}
+}
+
+func TestNpxRunsThroughProxy(t *testing.T) {
+	executable, err := exec.LookPath("npx")
+	if err != nil {
+		t.Skip("npx required for npx integration tests")
+	}
+	manager := realNpm(t)
+	manager.executable, manager.npx = executable, true
+	for _, args := range [][]string{{"--version"}, {"--help"}} {
 		commandErr, setupErr := proxy.Run(context.Background(), proxy.Options{}, args, manager)
 		if commandErr != nil || setupErr != nil {
 			t.Fatalf("%q failed: command=%v setup=%v", args, commandErr, setupErr)

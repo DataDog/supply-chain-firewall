@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -39,6 +40,9 @@ type npmConfig = nodeproxy.Config
 
 func (npm Npm) settings(args []string) (npmDiscoveryResult, error) {
 	environ := os.Environ()
+	if npm.npx {
+		args = args[:npxOptionsEnd(args)]
+	}
 	layers, err := readNpmConfig(args, environ)
 	if err != nil {
 		return npmDiscoveryResult{}, err
@@ -244,12 +248,25 @@ func inWorkspaces(root, member string) bool {
 	if err != nil {
 		return false
 	}
-	segments := strings.Split(filepath.ToSlash(relative), "/")
+	relative = filepath.ToSlash(relative)
+	if globIgnoresCase {
+		relative = strings.ToLower(relative)
+	}
+	segments := strings.Split(relative, "/")
 	included := false
 	for _, pattern := range patterns {
 		pattern, excluded := strings.CutPrefix(pattern, "!")
 		for _, expanded := range expandBraces(pattern) {
 			expanded = strings.Trim(strings.TrimPrefix(expanded, "./"), "/")
+			if globIgnoresCase {
+				expanded = strings.ToLower(expanded)
+			}
+			// An exclusion left unexpanded (a range, extglob, POSIX class, or an
+			// expansion over budget) excludes every member, so SCFW never reads
+			// the root's settings where npm would not.
+			if excluded && (strings.ContainsAny(expanded, "{(") || strings.Contains(expanded, "[[:")) {
+				return false
+			}
 			if matchSegments(strings.Split(expanded, "/"), segments) {
 				if excluded {
 					return false
@@ -261,9 +278,28 @@ func inWorkspaces(root, member string) bool {
 	return included
 }
 
+// globIgnoresCase is true where npm's glob matches workspaces case-insensitively.
+var globIgnoresCase = runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+
+// maxBraceExpansions bounds the work of expanding a pattern, which comes from a
+// project's package.json and multiplies with every group.
+const maxBraceExpansions = 10000
+
 // expandBraces expands the first {a,b} group of a glob, recursively; a group
-// without a comma, or an unbalanced one, stays literal.
+// without a comma, or an unbalanced one, stays literal. A pattern that would
+// take more than maxBraceExpansions steps stays literal as a whole.
 func expandBraces(pattern string) []string {
+	budget := maxBraceExpansions
+	if expanded := expandBracesWithin(pattern, &budget); budget >= 0 {
+		return expanded
+	}
+	return []string{pattern}
+}
+
+func expandBracesWithin(pattern string, budget *int) []string {
+	if *budget--; *budget < 0 {
+		return nil
+	}
 	open := strings.Index(pattern, "{")
 	if open < 0 {
 		return []string{pattern}
@@ -290,7 +326,10 @@ func expandBraces(pattern string) []string {
 			}
 			var expanded []string
 			for _, option := range options {
-				expanded = append(expanded, expandBraces(pattern[:open]+option+pattern[index+1:])...)
+				if *budget < 0 {
+					break
+				}
+				expanded = append(expanded, expandBracesWithin(pattern[:open]+option+pattern[index+1:], budget)...)
 			}
 			return expanded
 		}
@@ -314,7 +353,8 @@ func matchSegments(pattern, path []string) bool {
 		if len(path) == 0 || strings.HasPrefix(path[0], ".") && !strings.HasPrefix(pattern[0], ".") {
 			return false
 		}
-		if matched, err := filepath.Match(pattern[0], path[0]); err != nil || !matched {
+		// Glob negates a class with "!", filepath.Match with "^".
+		if matched, err := filepath.Match(strings.ReplaceAll(pattern[0], "[!", "[^"), path[0]); err != nil || !matched {
 			return false
 		}
 		pattern, path = pattern[1:], path[1:]

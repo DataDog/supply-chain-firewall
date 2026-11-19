@@ -7,22 +7,17 @@ package npm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
-	"slices"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
-
-// npmInstallCommandAliases are all the tokens npm recognizes as the install
-// subcommand. https://docs.npmjs.com/cli/v10/commands/npm-install
-var npmInstallCommandAliases = []string{
-	"install", "add", "i", "in", "ins", "inst", "insta", "instal", "isnt", "isnta", "isntal", "isntall",
-}
 
 var npmDryRunSkipOptions = []string{"-h", "--help", "--dry-run", "--version"}
 
@@ -41,10 +36,13 @@ func resolveNpmVersion(ctx context.Context, executable string) (pm.Version, erro
 	return pm.ParseVersion(strings.TrimSpace(string(output)))
 }
 
-var NpmExecutableNames = []string{"npm"}
+var NpmExecutableNames = []string{"npm", "npx"}
 
 type Npm struct {
-	executable         string
+	executable string
+	// npx runs `npm exec`, whose command line ends where the command it runs
+	// begins; see npxOptionsEnd.
+	npx                bool
 	version            pm.Version
 	versionErr         error
 	resolvePublishDate func(context.Context, ecosystem.Ecosystem, string, string, string) (time.Time, error)
@@ -73,7 +71,7 @@ func NewNpm(ctx context.Context, name, executable string) (Npm, error) {
 	// actually need the version, not every use of this npm executable.
 	version, versionErr := resolveNpmVersion(ctx, executable)
 
-	return Npm{executable: executable, version: version, versionErr: versionErr, proxyState: &npmProxyState{}}, nil
+	return Npm{executable: executable, npx: filepath.Base(name) == "npx", version: version, versionErr: versionErr, proxyState: &npmProxyState{}}, nil
 }
 
 func (npm Npm) checkVersion() error {
@@ -102,9 +100,33 @@ func (npm Npm) RunCommand(ctx context.Context, command []string) error {
 	return child.Run()
 }
 
+var _ pm.ProxyCommandSelector = Npm{}
+
+// ProxyCommandSupported proxies every command except a script command: npm
+// downloads nothing for it, and the script's own traffic should not be forced
+// through the proxy. npx may download the package it runs.
+func (npm Npm) ProxyCommandSupported(command []string) bool {
+	if npm.npx {
+		return true
+	}
+	_, kind := parseNpmInvocation(command).command()
+	return kind != npmScript
+}
+
 func (npm Npm) ResolveInstallTargets(ctx context.Context, command []string) (*pm.Set[pm.Package], error) {
-	// Only the install subcommand (or one of its aliases) is supported for now.
-	if !slices.ContainsFunc(command, func(tok string) bool { return slices.Contains(npmInstallCommandAliases, tok) }) {
+	// Only the proxy sees what npx downloads; without it nothing would be
+	// evaluated, so refuse rather than run it unchecked.
+	if npm.npx {
+		return nil, errors.New("npx requires proxy mode (set SCFW_PROXY_ENABLED=1)")
+	}
+
+	// Only install can be resolved here. Another command that fetches packages
+	// would run unevaluated, so refuse it.
+	invocation := parseNpmInvocation(command)
+	switch name, kind := invocation.command(); {
+	case kind == npmFetch && !invocation.noop:
+		return nil, fmt.Errorf("npm %s requires proxy mode (set SCFW_PROXY_ENABLED=1)", name)
+	case kind != npmInstall:
 		return pm.NewSet[pm.Package](), nil
 	}
 
@@ -113,10 +135,8 @@ func (npm Npm) ResolveInstallTargets(ctx context.Context, command []string) (*pm
 	}
 
 	// The presence of these options prevents the command from actually running.
-	for _, opt := range npmDryRunSkipOptions {
-		if slices.Contains(command, opt) {
-			return pm.NewSet[pm.Package](), nil
-		}
+	if invocation.noop {
+		return pm.NewSet[pm.Package](), nil
 	}
 
 	proj, err := newNpmTempProject(ctx, npm.Executable())

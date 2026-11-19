@@ -124,7 +124,7 @@ When passing these values via shell variables, e.g. in scripts, prefer this `=` 
 
 This does two things:
 
-1. Adds shell aliases to your `.bashrc`, `.bash_profile`, `.zshrc`, and `.zprofile` (whichever already exist) so that `npm`, `pip`/`pip3`, and/or `poetry` transparently run through `scfw`. Restart your shell (or source the relevant rc file) for the aliases to take effect.
+1. Adds shell aliases to your `.bashrc`, `.bash_profile`, `.zshrc`, and `.zprofile` (whichever already exist) so that `npm`/`npx`, `pip`/`pip3`, `poetry`, `uv`/`uvx`, `yarn`, and/or `pnpm` transparently run through `scfw`. Restart your shell (or source the relevant rc file) for the aliases to take effect.
 2. Optionally, if provided, stores your Datadog API key and application key securely in your system's keychain, so credentials don't need to be kept in plaintext or supplied on every command.
 
 `scfw configure` is idempotent and may be re-run at any time to change your configuration. Alias options are additive, so aliases configured by an earlier invocation remain in place unless their corresponding `--remove-alias-*` option is passed. The command manages its own clearly indicated block of your shell rc files and never touches anything else you've added.
@@ -133,8 +133,8 @@ Available `configure` options:
 
 | Flag | Description |
 | --- | --- |
-| `--alias-npm` | Add a shell alias to run all npm commands through `scfw`. |
-| `--remove-alias-npm` | Remove the npm shell alias managed by `scfw`. |
+| `--alias-npm` | Add shell aliases to run npm and npx commands through `scfw`. |
+| `--remove-alias-npm` | Remove the npm and npx shell aliases managed by `scfw`. |
 | `--alias-pip` | Add shell aliases to run all pip/pip3 commands through `scfw`. |
 | `--remove-alias-pip` | Remove the pip/pip3 shell aliases managed by `scfw`. |
 | `--alias-uv` | Add shell aliases to run uv and uvx commands through `scfw`. Requires proxy mode for package operations. |
@@ -159,7 +159,8 @@ When inspecting package manager commands, Datadog credentials and the Datadog si
 
 |  Package manager  |   Supported versions  |        Inspected subcommands       |
 | :---------------: | :-------------------: | :--------------------------------: |
-| npm               | >= 7.0                | `install` (including aliases)      |
+| npm               | >= 7.0                | `install` (including aliases); in proxy mode every command except scripts |
+| npx (proxy mode)  | >= 7.0                | every invocation                   |
 | pip               | >= 22.2               | `install`                          |
 | poetry            | >= 2.0                | `add`, `install`, `sync`, `update` |
 | uv (proxy mode)   | 0.13.4 tested         | `pip install`, `pip sync`, `pip compile`, `add`, `remove`, `sync`, `lock`, `export`, `tree`, `build`, `tool install`, `tool upgrade`, `tool run`/`uvx`, version updates, `venv --seed` |
@@ -168,6 +169,8 @@ When inspecting package manager commands, Datadog credentials and the Datadog si
 | bun (proxy mode)  | 1.2+ (1.x)            | all commands, including `bunx`/`bun x`, `create`, and auto-install during `bun run`/`bun <file>` |
 
 With `SCFW_PROXY_ENABLED=1`, npm Git dependencies are evaluated whether npm fetches them over HTTPS, SSH, or a local path: SCFW reads the name and version from the checked-out `package.json` before npm uses the checkout or runs its `prepare` script, and reports the repository URL and commit as the source. Git HTTPS traffic uses a separate temporary proxy and CA that honor the user's Git proxy settings. A dependency selected from a repository subdirectory (`#path:`) is evaluated by the repository's root `package.json`. Git dependencies of Yarn, pnpm, and the Python package managers are not evaluated.
+
+Enable npm interception with `SCFW_PROXY_ENABLED=1`, then use `scfw run -- npm install react` or configure `--alias-npm`, which also covers `npx`. In proxy mode every npm command is proxied except `npm run`, `npm test`, `npm start`, `npm stop` and `npm restart`, which execute directly without SCFW proxy setup. Package commands that a script runs itself are not evaluated, so run those through `scfw run --` or the shell aliases. Unusual options before the command, such as `--prefix web run build`, keep a script proxied. `npx` and `npm exec` always run through the SCFW proxy, because they may download the package they run; the executed tool's own network traffic passes through the proxy as well. Without proxy mode only `npm install` is inspected, and `npm ci`, `npm update`, `npm exec` and the other package-fetching commands refuse to run.
 
 Enable uv interception with `SCFW_PROXY_ENABLED=1`, then use `scfw run -- uv pip install requests` or configure `--alias-uv`. Unrelated uv commands pass through unchanged. Proxy mode evaluates distributions requested over HTTP(S); packages already available in uv's cache, local paths, and Git source contents are not evaluated. Git HTTPS traffic still traverses the proxy and trusts its invocation CA.
 
@@ -216,7 +219,7 @@ Package some-evil-package-1.0.0:
 The command was blocked. No changes have been made.
 ```
 
-Note that, once shell aliases have been configured via `scfw configure --alias-npm`/`--alias-pip`/`--alias-poetry`, the explicit `scfw run --` prefix is no longer needed: commands for these package managers run through `scfw` automatically.
+Note that, once shell aliases have been configured via `scfw configure --alias-npm`/`--alias-pip`/`--alias-poetry`/`--alias-uv`/`--alias-yarn`/`--alias-pnpm`, the explicit `scfw run --` prefix is no longer needed: commands for these package managers run through `scfw` automatically.
 
 Set `SCFW_PROXY_ENABLED=1` to evaluate pip and Poetry packages as they are downloaded through an invocation-scoped proxy. For example, `SCFW_PROXY_ENABLED=1 scfw run -- poetry install` inspects downloads made by Poetry, including during `add`, `update`, and `lock`. Existing HTTP/HTTPS proxy URLs, native macOS proxy settings, and configured TLS trust are preserved for outbound connections.
 

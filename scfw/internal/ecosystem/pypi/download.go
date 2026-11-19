@@ -223,6 +223,17 @@ func (e ProxyHandler) evaluateDownloadedArchive(ctx context.Context, response pr
 	if err != nil {
 		return err
 	}
+	if selection.expected != nil {
+		// Unrecognized JSON passes Observe silently; only metadata may stand
+		// in for the expected distribution.
+		recognized, err := e.Metadata.observe(response.Request.URL, response.Header, response.Body)
+		if err != nil {
+			return err
+		}
+		if !recognized {
+			return errors.New("python download is neither its package nor registry metadata")
+		}
+	}
 	return hook.Handle(ctx, response)
 }
 

@@ -249,32 +249,39 @@ func (cache *MetadataCache) Discover(
 // Observe parses a complete JSON metadata response supplied by the proxy or an
 // independent refresh. HTML is ignored before any decoding or size checks.
 func (cache *MetadataCache) Observe(requestURL url.URL, header http.Header, encoded []byte) error {
+	_, err := cache.observe(requestURL, header, encoded)
+	return err
+}
+
+// observe is Observe that also reports whether the body was recognized as
+// registry metadata; unrecognized JSON is ignored without an error.
+func (cache *MetadataCache) observe(requestURL url.URL, header http.Header, encoded []byte) (bool, error) {
 	if isHTMLMetadataContentType(header) {
-		return nil
+		return false, nil
 	}
 	if header.Get("Content-Type") != "" && !IsMetadataContentType(header) {
-		return nil
+		return false, nil
 	}
 	if len(encoded) > MaxMetadataBytes {
 		logPyPIMetadataLimit(requestURL)
-		return errPyPIMetadataTooLarge
+		return false, errPyPIMetadataTooLarge
 	}
 	body, err := decodePyPIMetadata(encoded, header.Get("Content-Encoding"))
 	if err != nil {
 		if errors.Is(err, errPyPIMetadataTooLarge) {
 			logPyPIMetadataLimit(requestURL)
 		}
-		return err
+		return false, err
 	}
 	if header.Get("Content-Type") == "" && firstNonSpace(body) != '{' {
-		return nil
+		return false, nil
 	}
 	project, recognized, err := cache.observeJSON(body, &requestURL, cache.metadataProject(&requestURL))
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !recognized {
-		return nil
+		return false, nil
 	}
 	// A redirected endpoint can have a path naming a different project. Do
 	// not replace the original request's context with a guess from that path.
@@ -286,7 +293,7 @@ func (cache *MetadataCache) Observe(requestURL url.URL, header http.Header, enco
 		}
 	}
 	cache.markObserved(requestURL)
-	return nil
+	return true, nil
 }
 
 func logPyPIMetadataLimit(requestURL url.URL) {

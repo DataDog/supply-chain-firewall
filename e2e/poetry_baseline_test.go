@@ -9,10 +9,14 @@ package e2e_test
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
 	"fmt"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"text/template"
@@ -72,6 +76,111 @@ func TestHarnessPoetryArchive(t *testing.T) {
 	}
 }
 
+func TestHarnessPoetryLifecycleSummary(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture, err := os.ReadFile("testdata/poetry/baseline/lifecycle.py")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, spec := range suites["poetry-baseline"] {
+		if spec.Scenario != "LIFE-01" {
+			continue
+		}
+		for _, failSubsequent := range []bool{false, true} {
+			name := spec.Variant + "/subsequent-passes"
+			if failSubsequent {
+				name = spec.Variant + "/subsequent-fails"
+			}
+			t.Run(name, func(t *testing.T) {
+				root := t.TempDir()
+				env, err := isolatedEnvironment(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				bin := filepath.Join(root, "bin")
+				if err := os.MkdirAll(bin, 0700); err != nil {
+					t.Fatal(err)
+				}
+				for _, name := range []string{"python", "poetry", "git", "scfw"} {
+					if err := os.WriteFile(filepath.Join(bin, name), append([]byte("#!"+python+"\n"), fixture...), 0700); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if failSubsequent {
+					if err := os.WriteFile(filepath.Join(bin, "fail-subsequent"), nil, 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				r := &caseRun{Context: ctx, Spec: spec, Root: root, WorkDir: filepath.Join(root, "work"), Env: env,
+					Cell:      cell{Executable: filepath.Join(bin, "poetry"), Runtime: filepath.Join(bin, "python"), RuntimeVersion: "3.12.10", Git: filepath.Join(bin, "git")},
+					Candidate: candidate{Ecosystem: "PyPI", Project: "fixture", Version: "1.0", Artifacts: []artifact{{Name: "fixture.whl", SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("fixture wheel")))}}},
+					Binary:    filepath.Join(bin, "scfw"), Result: &result{Evidence: map[string]fileEvidence{}, Observations: map[string]any{}}}
+				err = spec.Run(r)
+				if (err != nil) != failSubsequent {
+					t.Fatalf("subsequent failure=%v, got %v", failSubsequent, err)
+				}
+				if failSubsequent && !strings.Contains(err.Error(), "exit status 23") {
+					t.Fatalf("unexpected failure: %v", err)
+				}
+				path := filepath.Join(root, "result.json")
+				if err := writeJSON(path, r.Result); err != nil {
+					t.Fatal(err)
+				}
+				var got result
+				if err := readJSON(path, &got); err != nil {
+					t.Fatal(err)
+				}
+				wantOutcome, wantExit := "ALLOW", 0
+				if spec.Variant == "proxy-blocked-cleanup" {
+					wantOutcome, wantExit = "BLOCK", 1
+				}
+				if got.PolicyOutcome != wantOutcome || got.ResolvedAction != wantOutcome || got.SCFWExit != wantExit || got.SCFWSignal != "" {
+					t.Fatalf("primary summary overwritten: policy=%s action=%s exit=%d signal=%q", got.PolicyOutcome, got.ResolvedAction, got.SCFWExit, got.SCFWSignal)
+				}
+				var exits []int
+				for _, command := range got.Commands {
+					if command.Argv[0] == r.Binary {
+						exits = append(exits, command.ExitCode)
+					}
+					for _, evidence := range []fileEvidence{command.Stdout, command.Stderr} {
+						actual, err := digestFile(evidence.Path)
+						if err != nil || actual != evidence {
+							t.Fatalf("missing command evidence: %+v, %v", evidence, err)
+						}
+					}
+				}
+				if !reflect.DeepEqual(exits, []int{wantExit, 0}) {
+					t.Fatalf("lost primary or subsequent command: %v", exits)
+				}
+				for _, run := range []string{filepath.Base(root), "subsequent"} {
+					policy, err := readPolicy(got.Evidence["policy-"+run].Path)
+					want := wantOutcome
+					if run == "subsequent" {
+						want = "ALLOW"
+					}
+					if err != nil || len(policy) != 1 || policy[0].Outcome != want {
+						t.Fatalf("lost %s policy evidence: %+v, %v", run, policy, err)
+					}
+					if run == "subsequent" && failSubsequent {
+						continue
+					}
+					if _, ok := got.Observations["installed-"+run]; !ok {
+						t.Fatalf("lost %s installed-state observation", run)
+					}
+					if _, ok := got.Evidence["cleanup-"+run]; !ok {
+						t.Fatalf("lost %s cleanup evidence", run)
+					}
+				}
+			})
+		}
+	}
+}
+
 type poetryOptions struct {
 	operation, proxy              string
 	block, errorOnBlock, explicit bool
@@ -114,6 +223,13 @@ func init() {
 			if err := runPoetryBaseline(r, poetryOptions{operation: "add", proxy: "1", block: blocked}); err != nil {
 				return err
 			}
+			// Preserve the primary summary while retaining both invocations' evidence,
+			// including evidence from a failed subsequent install.
+			primary := *r.Result
+			defer func() {
+				r.Result.PolicyOutcome, r.Result.ResolvedAction = primary.PolicyOutcome, primary.ResolvedAction
+				r.Result.SCFWExit, r.Result.SCFWSignal = primary.SCFWExit, primary.SCFWSignal
+			}()
 			next := *r
 			next.Root = filepath.Join(r.Root, "subsequent")
 			env, err := isolatedEnvironment(next.Root)

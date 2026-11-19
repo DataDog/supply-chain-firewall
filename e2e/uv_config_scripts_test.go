@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
+	"testing"
 	"text/template"
 	"time"
 
@@ -127,6 +129,7 @@ func runUVConfigScript(r *caseRun, options uvConfigCase) error {
 		return err
 	}
 	delete(r.Env, "UV_DEFAULT_INDEX")
+	delete(r.Env, "UV_NO_CONFIG")
 	r.Env["UV_NO_SYSTEM_CONFIG"] = "1"
 	original := map[string][]byte{}
 	var args []string
@@ -178,14 +181,9 @@ func runUVConfigScript(r *caseRun, options uvConfigCase) error {
 	if err := readJSON(statePath, &state); err != nil {
 		return err
 	}
-	if !slices.Equal(state.Argv, argv) || state.Exit != command.ExitCode {
-		return fmt.Errorf("observer did not preserve SCFW invocation/exit")
-	}
-	r.Result.SCFWExit = state.Exit
-	if err := r.Keep("process-observation", statePath); err != nil {
+	if err := recordUVObservation(r, state, statePath, argv, command); err != nil {
 		return err
 	}
-	r.Result.Observations["invocation"] = state
 	stderr, err := os.ReadFile(command.Stderr.Path)
 	if err != nil {
 		return err
@@ -491,4 +489,64 @@ func prepareUVConfiguration(r *caseRun, options uvConfigCase, original map[strin
 		}
 	}
 	return args, write(local, fixture, good)
+}
+
+func recordUVObservation(r *caseRun, state uvConfigState, statePath string, argv []string, command commandEvidence) error {
+	r.Result.SCFWExit, r.Result.SCFWSignal = state.Exit, ""
+	observerExit := state.Exit
+	if state.Exit < 0 {
+		// Python returns -signal for the child, then exits with 128+signal.
+		// Match the normal Go command evidence convention for SCFW itself.
+		r.Result.SCFWExit = -1
+		r.Result.SCFWSignal = syscall.Signal(-state.Exit).String()
+		observerExit = 128 - state.Exit
+	}
+	r.Result.Observations["invocation"] = state
+	if err := r.Keep("process-observation", statePath); err != nil {
+		return err
+	}
+	if !slices.Equal(state.Argv, argv) || observerExit != command.ExitCode {
+		return fmt.Errorf("observer did not preserve SCFW invocation/exit")
+	}
+	return nil
+}
+
+func TestHarnessUVObserverExit(t *testing.T) {
+	for _, test := range []struct {
+		name                         string
+		exit, observerExit, wantExit int
+		wantSignal                   string
+		mismatch                     bool
+	}{
+		{name: "success", exit: 0, observerExit: 0, wantExit: 0},
+		{name: "native-failure", exit: 2, observerExit: 2, wantExit: 2},
+		{name: "killed", exit: -int(syscall.SIGKILL), observerExit: 128 + int(syscall.SIGKILL), wantExit: -1, wantSignal: syscall.SIGKILL.String()},
+		{name: "terminated", exit: -int(syscall.SIGTERM), observerExit: 128 + int(syscall.SIGTERM), wantExit: -1, wantSignal: syscall.SIGTERM.String()},
+		{name: "corrupt-observer-exit", exit: -int(syscall.SIGKILL), observerExit: 0, wantExit: -1, wantSignal: syscall.SIGKILL.String(), mismatch: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			argv := []string{"/real/scfw", "run", "--", "uv", "lock"}
+			state := uvConfigState{Argv: argv, Exit: test.exit}
+			statePath := filepath.Join(root, "observed.json")
+			if err := writeJSON(statePath, state); err != nil {
+				t.Fatal(err)
+			}
+			r := &caseRun{Result: &result{SCFWSignal: "stale", Evidence: map[string]fileEvidence{}, Observations: map[string]any{}}}
+			err := recordUVObservation(r, state, statePath, argv, commandEvidence{ExitCode: test.observerExit})
+			if (err != nil) != test.mismatch {
+				t.Fatalf("unexpected observer assertion: %v", err)
+			}
+			if r.Result.SCFWExit != test.wantExit || r.Result.SCFWSignal != test.wantSignal {
+				t.Fatalf("SCFW exit=%d signal=%q; want %d %q", r.Result.SCFWExit, r.Result.SCFWSignal, test.wantExit, test.wantSignal)
+			}
+			if r.Result.Evidence["process-observation"].SHA256 == "" {
+				t.Fatal("missing observation evidence")
+			}
+			observation, ok := r.Result.Observations["invocation"].(uvConfigState)
+			if !ok || observation.Exit != test.exit {
+				t.Fatal("original SCFW observation was lost")
+			}
+		})
+	}
 }

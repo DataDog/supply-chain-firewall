@@ -1,0 +1,699 @@
+{
+  "hoisted peer and relocated child": {
+    "log": "npm silly placeDep ROOT has-peer@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/has-peer leaf@1.0.0 OK for: has-peer@1.0.0 want: file:/fixtures/leaf.tgz\nnpm silly placeDep node_modules/has-peer is-number@6.0.0 OK for: leaf@1.0.0 want: 6.0.0\nnpm silly ADD node_modules/has-peer\nnpm silly ADD node_modules/has-peer/node_modules/leaf\nnpm silly ADD node_modules/has-peer/node_modules/is-number\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/has-peer/-/has-peer-1.0.0.tgz",
+        "peerDependencies": {
+          "leaf": "file:/fixtures/leaf.tgz"
+        }
+      },
+      "node_modules/leaf": {
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/leaf.tgz",
+        "dependencies": {
+          "is-number": "6.0.0"
+        }
+      },
+      "node_modules/leaf/node_modules/is-number": {
+        "version": "6.0.0",
+        "resolved": "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz"
+      }
+    },
+    "want": {
+      "has-peer": "1.0.0",
+      "leaf": "1.0.0",
+      "is-number": "6.0.0"
+    }
+  },
+  "wrong peer version": {
+    "log": "npm silly placeDep ROOT has-peer@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/has-peer leaf@1.0.0 OK for: has-peer@1.0.0 want: file:/fixtures/leaf.tgz\nnpm silly placeDep node_modules/has-peer is-number@6.0.0 OK for: leaf@1.0.0 want: 6.0.0\nnpm silly ADD node_modules/has-peer\nnpm silly ADD node_modules/has-peer/node_modules/leaf\nnpm silly ADD node_modules/has-peer/node_modules/is-number\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/has-peer/-/has-peer-1.0.0.tgz",
+        "peerDependencies": {
+          "leaf": "file:/fixtures/leaf.tgz"
+        }
+      },
+      "node_modules/leaf": {
+        "version": "2.0.0",
+        "resolved": "file:/fixtures/leaf.tgz",
+        "dependencies": {
+          "is-number": "6.0.0"
+        }
+      },
+      "node_modules/leaf/node_modules/is-number": {
+        "version": "6.0.0",
+        "resolved": "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz"
+      }
+    },
+    "want": {
+      "has-peer": "1.0.0",
+      "leaf": "1.0.0",
+      "is-number": "6.0.0"
+    },
+    "error": true
+  },
+  "different peer source spec": {
+    "log": "npm silly placeDep ROOT has-peer@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/has-peer leaf@1.0.0 OK for: has-peer@1.0.0 want: file:/fixtures/leaf.tgz\nnpm silly placeDep node_modules/has-peer is-number@6.0.0 OK for: leaf@1.0.0 want: 6.0.0\nnpm silly ADD node_modules/has-peer\nnpm silly ADD node_modules/has-peer/node_modules/leaf\nnpm silly ADD node_modules/has-peer/node_modules/is-number\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/has-peer/-/has-peer-1.0.0.tgz",
+        "peerDependencies": {
+          "leaf": "file:/fixtures/other.tgz"
+        }
+      },
+      "node_modules/leaf": {
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/leaf.tgz",
+        "dependencies": {
+          "is-number": "6.0.0"
+        }
+      },
+      "node_modules/leaf/node_modules/is-number": {
+        "version": "6.0.0",
+        "resolved": "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz"
+      }
+    },
+    "want": {
+      "has-peer": "1.0.0",
+      "leaf": "1.0.0",
+      "is-number": "6.0.0"
+    },
+    "error": true
+  },
+  "existing conflicting handle is authoritative": {
+    "log": "npm silly placeDep ROOT has-peer@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/has-peer leaf@1.0.0 OK for: has-peer@1.0.0 want: file:/fixtures/leaf.tgz\nnpm silly placeDep node_modules/has-peer is-number@6.0.0 OK for: leaf@1.0.0 want: 6.0.0\nnpm silly ADD node_modules/has-peer\nnpm silly ADD node_modules/has-peer/node_modules/leaf\nnpm silly ADD node_modules/has-peer/node_modules/is-number\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/has-peer/-/has-peer-1.0.0.tgz",
+        "peerDependencies": {
+          "leaf": "file:/fixtures/leaf.tgz"
+        }
+      },
+      "node_modules/leaf": {
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/leaf.tgz",
+        "dependencies": {
+          "is-number": "6.0.0"
+        }
+      },
+      "node_modules/leaf/node_modules/is-number": {
+        "version": "6.0.0",
+        "resolved": "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz"
+      },
+      "node_modules/has-peer/node_modules/leaf": {
+        "version": "2.0.0",
+        "resolved": "file:/fixtures/conflict.tgz"
+      }
+    },
+    "want": {
+      "has-peer": "1.0.0",
+      "leaf": "1.0.0",
+      "is-number": "6.0.0"
+    },
+    "error": true
+  },
+  "unrelated same name is not a dependency": {
+    "log": "npm silly placeDep ROOT has-peer@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/has-peer leaf@1.0.0 OK for: has-peer@1.0.0 want: file:/fixtures/leaf.tgz\nnpm silly placeDep node_modules/has-peer is-number@6.0.0 OK for: leaf@1.0.0 want: 6.0.0\nnpm silly ADD node_modules/has-peer\nnpm silly ADD node_modules/has-peer/node_modules/leaf\nnpm silly ADD node_modules/has-peer/node_modules/is-number\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/has-peer/-/has-peer-1.0.0.tgz"
+      },
+      "node_modules/leaf": {
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/leaf.tgz",
+        "dependencies": {
+          "is-number": "6.0.0"
+        }
+      },
+      "node_modules/leaf/node_modules/is-number": {
+        "version": "6.0.0",
+        "resolved": "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz"
+      }
+    },
+    "want": {
+      "has-peer": "1.0.0",
+      "leaf": "1.0.0",
+      "is-number": "6.0.0"
+    },
+    "error": true
+  },
+  "ambiguous canonical source": {
+    "log": "npm silly placeDep ROOT has-peer@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/has-peer leaf@1.0.0 OK for: has-peer@1.0.0 want: file:/fixtures/leaf.tgz\nnpm silly placeDep node_modules/has-peer is-number@6.0.0 OK for: leaf@1.0.0 want: 6.0.0\nnpm silly ADD node_modules/has-peer\nnpm silly ADD node_modules/has-peer/node_modules/leaf\nnpm silly ADD node_modules/has-peer/node_modules/is-number\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/has-peer/-/has-peer-1.0.0.tgz",
+        "peerDependencies": {
+          "leaf": "file:/fixtures/leaf.tgz"
+        }
+      },
+      "node_modules/leaf": {
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/leaf.tgz",
+        "dependencies": {
+          "is-number": "6.0.0"
+        }
+      },
+      "node_modules/leaf/node_modules/is-number": {
+        "version": "6.0.0",
+        "resolved": "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz"
+      },
+      "node_modules/other/node_modules/has-peer": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/has-peer/-/has-peer-1.0.0.tgz",
+        "peerDependencies": {
+          "leaf": "file:/fixtures/leaf.tgz"
+        }
+      },
+      "node_modules/other/node_modules/leaf": {
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/different-source.tgz"
+      }
+    },
+    "want": {
+      "has-peer": "1.0.0",
+      "leaf": "1.0.0",
+      "is-number": "6.0.0"
+    },
+    "error": true
+  },
+  "alias peer keeps canonical identity": {
+    "log": "npm silly placeDep ROOT has-peer@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/has-peer peer-alias@1.0.0 OK for: has-peer@1.0.0 want: npm:leaf@1.0.0\nnpm silly placeDep node_modules/has-peer is-number@6.0.0 OK for: leaf@1.0.0 want: 6.0.0\nnpm silly ADD node_modules/has-peer\nnpm silly ADD node_modules/has-peer/node_modules/peer-alias\nnpm silly ADD node_modules/has-peer/node_modules/is-number\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/has-peer/-/has-peer-1.0.0.tgz",
+        "peerDependencies": {
+          "peer-alias": "npm:leaf@1.0.0"
+        }
+      },
+      "node_modules/peer-alias": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/leaf/-/leaf-1.0.0.tgz",
+        "dependencies": {
+          "is-number": "6.0.0"
+        },
+        "name": "leaf"
+      },
+      "node_modules/peer-alias/node_modules/is-number": {
+        "version": "6.0.0",
+        "resolved": "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz"
+      }
+    },
+    "want": {
+      "has-peer": "1.0.0",
+      "leaf": "1.0.0",
+      "is-number": "6.0.0"
+    }
+  },
+  "scoped peer and relocated child": {
+    "log": "npm silly placeDep ROOT has-peer@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/has-peer @scope/leaf@1.0.0 OK for: has-peer@1.0.0 want: file:/fixtures/leaf.tgz\nnpm silly placeDep node_modules/has-peer is-number@6.0.0 OK for: @scope/leaf@1.0.0 want: 6.0.0\nnpm silly ADD node_modules/has-peer\nnpm silly ADD node_modules/has-peer/node_modules/@scope/leaf\nnpm silly ADD node_modules/has-peer/node_modules/is-number\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/has-peer/-/has-peer-1.0.0.tgz",
+        "peerDependencies": {
+          "@scope/leaf": "file:/fixtures/leaf.tgz"
+        }
+      },
+      "node_modules/@scope/leaf": {
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/leaf.tgz",
+        "dependencies": {
+          "is-number": "6.0.0"
+        }
+      },
+      "node_modules/@scope/leaf/node_modules/is-number": {
+        "version": "6.0.0",
+        "resolved": "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz"
+      }
+    },
+    "want": {
+      "has-peer": "1.0.0",
+      "is-number": "6.0.0",
+      "@scope/leaf": "1.0.0"
+    }
+  },
+  "same-version exact handle has a different canonical alias": {
+    "log": "npm silly placeDep ROOT has-peer@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/has-peer aaa-child@1.0.0 OK for: has-peer@1.0.0 want: file:/fixtures/child.tgz\nnpm silly placeDep node_modules/has-peer clash@1.0.0 OK for: aaa-child@1.0.0 want: npm:is-number@1.0.0\nnpm silly ADD node_modules/has-peer\nnpm silly ADD node_modules/has-peer/node_modules/aaa-child\nnpm silly ADD node_modules/has-peer/node_modules/clash\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "1.0.0",
+        "dependencies": {
+          "aaa-child": "file:/fixtures/child.tgz",
+          "clash": "npm:is-buffer@1.0.0"
+        }
+      },
+      "node_modules/has-peer/node_modules/aaa-child": {
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/child.tgz",
+        "peerDependencies": {
+          "clash": "npm:is-number@1.0.0"
+        }
+      },
+      "node_modules/has-peer/node_modules/clash": {
+        "name": "is-buffer",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/is-buffer/-/is-buffer-1.0.0.tgz"
+      }
+    },
+    "error": true
+  },
+  "same-version relocated handle has a different canonical alias": {
+    "log": "npm silly placeDep ROOT has-peer@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/has-peer peer-alias@1.0.0 OK for: has-peer@1.0.0 want: npm:leaf@1.0.0\nnpm silly ADD node_modules/has-peer\nnpm silly ADD node_modules/has-peer/node_modules/peer-alias\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/has-peer/-/has-peer-1.0.0.tgz",
+        "peerDependencies": {
+          "peer-alias": "npm:leaf@1.0.0"
+        }
+      },
+      "node_modules/peer-alias": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/other-leaf/-/other-leaf-1.0.0.tgz",
+        "dependencies": {
+          "is-number": "6.0.0"
+        },
+        "name": "other-leaf"
+      }
+    },
+    "want": {
+      "has-peer": "1.0.0",
+      "leaf": "1.0.0",
+      "is-number": "6.0.0"
+    },
+    "error": true
+  },
+  "scoped alias with version": {
+    "log": "npm silly placeDep ROOT has-peer@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/has-peer peer-alias@1.0.0 OK for: has-peer@1.0.0 want: npm:@scope/leaf@1.0.0\nnpm silly placeDep node_modules/has-peer is-number@6.0.0 OK for: @scope/leaf@1.0.0 want: 6.0.0\nnpm silly ADD node_modules/has-peer\nnpm silly ADD node_modules/has-peer/node_modules/peer-alias\nnpm silly ADD node_modules/has-peer/node_modules/is-number\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/has-peer/-/has-peer-1.0.0.tgz",
+        "peerDependencies": {
+          "peer-alias": "npm:@scope/leaf@1.0.0"
+        }
+      },
+      "node_modules/peer-alias": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/leaf/-/leaf-1.0.0.tgz",
+        "dependencies": {
+          "is-number": "6.0.0"
+        },
+        "name": "@scope/leaf"
+      },
+      "node_modules/peer-alias/node_modules/is-number": {
+        "version": "6.0.0",
+        "resolved": "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz"
+      }
+    },
+    "want": {
+      "has-peer": "1.0.0",
+      "is-number": "6.0.0",
+      "@scope/leaf": "1.0.0"
+    }
+  },
+  "scoped alias without version": {
+    "log": "npm silly placeDep ROOT has-peer@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/has-peer peer-alias@1.0.0 OK for: has-peer@1.0.0 want: npm:@scope/leaf\nnpm silly placeDep node_modules/has-peer is-number@6.0.0 OK for: @scope/leaf@1.0.0 want: 6.0.0\nnpm silly ADD node_modules/has-peer\nnpm silly ADD node_modules/has-peer/node_modules/peer-alias\nnpm silly ADD node_modules/has-peer/node_modules/is-number\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/has-peer/-/has-peer-1.0.0.tgz",
+        "peerDependencies": {
+          "peer-alias": "npm:@scope/leaf"
+        }
+      },
+      "node_modules/peer-alias": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/leaf/-/leaf-1.0.0.tgz",
+        "dependencies": {
+          "is-number": "6.0.0"
+        },
+        "name": "@scope/leaf"
+      },
+      "node_modules/peer-alias/node_modules/is-number": {
+        "version": "6.0.0",
+        "resolved": "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz"
+      }
+    },
+    "want": {
+      "has-peer": "1.0.0",
+      "is-number": "6.0.0",
+      "@scope/leaf": "1.0.0"
+    }
+  },
+  "two global aliases collapse to the wrong canonical package": {
+    "log": "npm silly placeDep ROOT ordinary-root@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep ROOT peer-root@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/ordinary-root clash@1.0.0 OK for: ordinary-root@1.0.0 want: npm:is-buffer@1.0.0\nnpm silly placeDep node_modules/peer-root clash@1.0.0 OK for: peer-root@1.0.0 want: npm:is-number@1.0.0\nnpm silly ADD node_modules/ordinary-root\nnpm silly ADD node_modules/peer-root\nnpm silly ADD node_modules/ordinary-root/node_modules/clash\nnpm silly ADD node_modules/peer-root/node_modules/clash\n",
+    "packages": {
+      "node_modules/ordinary-root": {
+        "version": "1.0.0",
+        "dependencies": {
+          "clash": "npm:is-buffer@1.0.0"
+        }
+      },
+      "node_modules/peer-root": {
+        "version": "1.0.0",
+        "peerDependencies": {
+          "clash": "npm:is-number@1.0.0"
+        }
+      },
+      "node_modules/clash": {
+        "name": "is-number",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/is-number/-/is-number-1.0.0.tgz"
+      }
+    },
+    "error": true
+  },
+  "ordinary registry target collapses to a same-version alias": {
+    "log": "npm silly placeDep ROOT ordinary-root@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep ROOT peer-root@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/ordinary-root is-buffer@1.0.0 OK for: ordinary-root@1.0.0 want: 1.0.0\nnpm silly placeDep node_modules/peer-root is-buffer@1.0.0 OK for: peer-root@1.0.0 want: npm:is-number@1.0.0\nnpm silly ADD node_modules/ordinary-root\nnpm silly ADD node_modules/peer-root\nnpm silly ADD node_modules/ordinary-root/node_modules/is-buffer\nnpm silly ADD node_modules/peer-root/node_modules/is-buffer\n",
+    "packages": {
+      "node_modules/ordinary-root": {
+        "version": "1.0.0",
+        "dependencies": {
+          "is-buffer": "1.0.0"
+        }
+      },
+      "node_modules/peer-root": {
+        "version": "1.0.0",
+        "peerDependencies": {
+          "is-buffer": "npm:is-number@1.0.0"
+        }
+      },
+      "node_modules/is-buffer": {
+        "name": "is-number",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/is-number/-/is-number-1.0.0.tgz"
+      }
+    },
+    "error": true
+  },
+  "exact ordinary registry handle has a different canonical name": {
+    "log": "npm silly placeDep ROOT is-buffer@1.0.0 OK for:  want: 1.0.0\nnpm silly ADD node_modules/is-buffer\n",
+    "packages": {
+      "node_modules/is-buffer": {
+        "name": "different-package",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/different-package/-/different-package-1.0.0.tgz"
+      }
+    },
+    "want": {
+      "different-package": "1.0.0"
+    },
+    "error": true
+  },
+  "scoped registry handle has a different canonical name": {
+    "log": "npm silly placeDep ROOT @scope/leaf@1.0.0 OK for:  want: ^1.0.0\nnpm silly ADD node_modules/@scope/leaf\n",
+    "packages": {
+      "node_modules/@scope/leaf": {
+        "name": "different-package",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/different-package/-/different-package-1.0.0.tgz"
+      }
+    },
+    "want": {
+      "different-package": "1.0.0"
+    },
+    "error": true
+  },
+  "ordinary registry tag keeps its name": {
+    "log": "npm silly placeDep ROOT ordinary@1.0.0 OK for:  want: latest\nnpm silly ADD node_modules/ordinary\n",
+    "packages": {
+      "node_modules/ordinary": {
+        "name": "ordinary",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/ordinary/-/ordinary-1.0.0.tgz"
+      }
+    },
+    "want": {
+      "ordinary": "1.0.0"
+    }
+  },
+  "scoped registry range keeps its name": {
+    "log": "npm silly placeDep ROOT @scope/leaf@1.0.0 OK for:  want: >=1 <2\nnpm silly ADD node_modules/@scope/leaf\n",
+    "packages": {
+      "node_modules/@scope/leaf": {
+        "name": "@scope/leaf",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/@scope/leaf/-/leaf-1.0.0.tgz"
+      }
+    },
+    "want": {
+      "@scope/leaf": "1.0.0"
+    }
+  },
+  "file alias keeps source canonical name": {
+    "log": "npm silly placeDep ROOT source-alias@1.0.0 OK for:  want: file:/fixtures/local.tgz\nnpm silly ADD node_modules/source-alias\n",
+    "packages": {
+      "node_modules/source-alias": {
+        "name": "canonical-local",
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/local.tgz"
+      }
+    },
+    "want": {
+      "canonical-local": "1.0.0"
+    }
+  },
+  "URL alias keeps source canonical name": {
+    "log": "npm silly placeDep ROOT source-alias@1.0.0 OK for:  want: https://example.test/local.tgz\nnpm silly ADD node_modules/source-alias\n",
+    "packages": {
+      "node_modules/source-alias": {
+        "name": "canonical-local",
+        "version": "1.0.0",
+        "resolved": "https://example.test/local.tgz"
+      }
+    },
+    "want": {
+      "canonical-local": "1.0.0"
+    }
+  },
+  "Git alias keeps source canonical name": {
+    "log": "npm silly placeDep ROOT source-alias@1.0.0 OK for:  want: git+ssh://git@example.test/local.git\nnpm silly ADD node_modules/source-alias\n",
+    "packages": {
+      "node_modules/source-alias": {
+        "name": "canonical-local",
+        "version": "1.0.0",
+        "resolved": "git+ssh://git@example.test/local.git"
+      }
+    },
+    "want": {
+      "canonical-local": "1.0.0"
+    }
+  },
+  "hosted Git alias keeps source canonical name": {
+    "log": "npm silly placeDep ROOT source-alias@1.0.0 OK for:  want: owner/repository\nnpm silly ADD node_modules/source-alias\n",
+    "packages": {
+      "node_modules/source-alias": {
+        "name": "canonical-local",
+        "version": "1.0.0",
+        "resolved": "git+https://github.com/owner/repository.git"
+      }
+    },
+    "want": {
+      "canonical-local": "1.0.0"
+    }
+  },
+  "relative directory alias keeps source canonical name": {
+    "log": "npm silly placeDep ROOT source-alias@1.0.0 OK for:  want: ./local\nnpm silly ADD node_modules/source-alias\n",
+    "packages": {
+      "node_modules/source-alias": {
+        "name": "canonical-local",
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/local"
+      }
+    },
+    "want": {
+      "canonical-local": "1.0.0"
+    }
+  },
+  "bare archive alias keeps source canonical name": {
+    "log": "npm silly placeDep ROOT source-alias@1.0.0 OK for:  want: LOCAL.TGZ\nnpm silly ADD node_modules/source-alias\n",
+    "packages": {
+      "node_modules/source-alias": {
+        "name": "canonical-local",
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/LOCAL.TGZ"
+      }
+    },
+    "want": {
+      "canonical-local": "1.0.0"
+    }
+  },
+  "Windows file alias keeps source canonical name": {
+    "log": "npm silly placeDep ROOT source-alias@1.0.0 OK for:  want: C:\\fixtures\\local\nnpm silly ADD node_modules/source-alias\n",
+    "packages": {
+      "node_modules/source-alias": {
+        "name": "canonical-local",
+        "version": "1.0.0",
+        "resolved": "file:/fixtures/local"
+      }
+    },
+    "want": {
+      "canonical-local": "1.0.0"
+    }
+  },
+  "case-insensitive registry alias keeps its name": {
+    "log": "npm silly placeDep ROOT alias@1.0.0 OK for:  want: NPM:ordinary@1.0.0\nnpm silly ADD node_modules/alias\n",
+    "packages": {
+      "node_modules/alias": {
+        "name": "ordinary",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/ordinary/-/ordinary-1.0.0.tgz"
+      }
+    },
+    "want": {
+      "ordinary": "1.0.0"
+    }
+  },
+  "case-insensitive registry alias rejects a different name": {
+    "log": "npm silly placeDep ROOT alias@1.0.0 OK for:  want: NPM:ordinary@1.0.0\nnpm silly ADD node_modules/alias\n",
+    "packages": {
+      "node_modules/alias": {
+        "name": "different-package",
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/different-package/-/different-package-1.0.0.tgz"
+      }
+    },
+    "want": {
+      "different-package": "1.0.0"
+    },
+    "error": true
+  },
+  "replacement resolves the final version": {
+    "log": "npm silly placeDep ROOT has-peer@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/has-peer leaf@2.0.0 OK for: a@1.0.0 want: >=1\nnpm silly placeDep node_modules/has-peer leaf@1.0.0 REPLACE for: b@1.0.0 want: 1.0.0\nnpm silly ADD node_modules/has-peer\nnpm silly ADD node_modules/has-peer/node_modules/leaf\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "1.0.0"
+      },
+      "node_modules/has-peer/node_modules/leaf": {
+        "version": "1.0.0"
+      }
+    },
+    "want": {
+      "has-peer": "1.0.0",
+      "leaf": "1.0.0"
+    }
+  },
+  "bundled upgrade has no placement": {
+    "log": "npm silly placeDep ROOT has-peer@2.0.0 OK for:  want: 2.0.0\nnpm silly CHANGE node_modules/has-peer\nnpm silly CHANGE node_modules/has-peer/node_modules/leaf\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "2.0.0",
+        "bundleDependencies": [
+          "leaf"
+        ],
+        "dependencies": {
+          "leaf": "2.0.0"
+        }
+      },
+      "node_modules/has-peer/node_modules/leaf": {
+        "version": "2.0.0",
+        "inBundle": true
+      }
+    },
+    "want": {
+      "has-peer": "2.0.0",
+      "leaf": "2.0.0"
+    }
+  },
+  "unbundled upgrade still requires placement": {
+    "log": "npm silly placeDep ROOT has-peer@2.0.0 OK for:  want: 2.0.0\nnpm silly CHANGE node_modules/has-peer\nnpm silly CHANGE node_modules/has-peer/node_modules/leaf\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "2.0.0",
+        "bundleDependencies": [
+          "leaf"
+        ],
+        "dependencies": {
+          "leaf": "2.0.0"
+        }
+      },
+      "node_modules/has-peer/node_modules/leaf": {
+        "version": "2.0.0"
+      }
+    },
+    "want": {
+      "has-peer": "2.0.0",
+      "leaf": "2.0.0"
+    },
+    "error": true
+  },
+  "bundled upgrade retains canonical name": {
+    "log": "npm silly placeDep ROOT has-peer@2.0.0 OK for:  want: 2.0.0\nnpm silly CHANGE node_modules/has-peer\nnpm silly CHANGE node_modules/has-peer/node_modules/leaf\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "2.0.0",
+        "bundleDependencies": [
+          "leaf"
+        ],
+        "dependencies": {
+          "leaf": "2.0.0"
+        }
+      },
+      "node_modules/has-peer/node_modules/leaf": {
+        "version": "2.0.0",
+        "inBundle": true,
+        "name": "canonical-leaf"
+      }
+    },
+    "want": {
+      "has-peer": "2.0.0",
+      "canonical-leaf": "2.0.0"
+    }
+  },
+  "bundled upgrade rejects changed owner version": {
+    "log": "npm silly placeDep ROOT has-peer@2.0.0 OK for:  want: 2.0.0\nnpm silly CHANGE node_modules/has-peer\nnpm silly CHANGE node_modules/has-peer/node_modules/leaf\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "3.0.0",
+        "bundleDependencies": [
+          "leaf"
+        ],
+        "dependencies": {
+          "leaf": "2.0.0"
+        }
+      },
+      "node_modules/has-peer/node_modules/leaf": {
+        "version": "2.0.0",
+        "inBundle": true
+      }
+    },
+    "want": {
+      "has-peer": "2.0.0",
+      "leaf": "2.0.0"
+    },
+    "error": true
+  },
+  "bundled entry still validates an explicit placement": {
+    "log": "npm silly placeDep ROOT has-peer@2.0.0 OK for:  want: 2.0.0\nnpm silly placeDep node_modules/has-peer leaf@3.0.0 OK for: has-peer@2.0.0 want: 3.0.0\nnpm silly CHANGE node_modules/has-peer\nnpm silly CHANGE node_modules/has-peer/node_modules/leaf\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "2.0.0",
+        "bundleDependencies": [
+          "leaf"
+        ],
+        "dependencies": {
+          "leaf": "2.0.0"
+        }
+      },
+      "node_modules/has-peer/node_modules/leaf": {
+        "version": "2.0.0",
+        "inBundle": true
+      }
+    },
+    "want": {
+      "has-peer": "2.0.0",
+      "leaf": "2.0.0"
+    },
+    "error": true
+  }
+}

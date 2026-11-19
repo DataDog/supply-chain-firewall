@@ -98,6 +98,12 @@ func (e ProxyHandler) HandleRequest(requestContext context.Context, request prox
 	if err := e.EvaluateArtifact(requestContext, artifact); err != nil {
 		return nil, err
 	}
+	if !advertised && !e.Classifier.isKnownIndex(&request.URL) {
+		// An unknown host could serve another package under this filename.
+		return func(ctx context.Context, response proxy.Response) (*proxy.ResponseBodyHook, error) {
+			return e.verifyArtifactHeaders(ctx, response, artifact)
+		}, nil
+	}
 	return func(ctx context.Context, response proxy.Response) (*proxy.ResponseBodyHook, error) {
 		return e.observeArtifactHeaders(ctx, response, artifact.Filename)
 	}, nil

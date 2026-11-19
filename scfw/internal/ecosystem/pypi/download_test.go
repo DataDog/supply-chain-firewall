@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/internal/archive"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
@@ -437,5 +438,114 @@ func TestPartialArchiveSelectionUsesManagerVisibleHeaders(t *testing.T) {
 	}
 	if response.Header.Get("Content-Type") != "application/zip" || response.StatusCode != http.StatusPartialContent {
 		t.Fatal("mutated forwarded response metadata")
+	}
+}
+
+func TestProxyHandlerVerifiesDistributionIdentityOnUnknownHosts(t *testing.T) {
+	metadata := func(name, version string) string {
+		return "Metadata-Version: 2.1\nName: " + name + "\nVersion: " + version + "\n"
+	}
+	wheel := func(name, version string) []byte {
+		return packageArchive(t, "zip", []archiveTestEntry{{name: "project-1.0.dist-info/METADATA", body: metadata(name, version)}})
+	}
+	sdist := func(name, version string) []byte {
+		return packageArchive(t, "gzip", []archiveTestEntry{{name: "project-1.0/PKG-INFO", body: metadata(name, version)}})
+	}
+	bodies := map[string][]byte{
+		"wheel":         wheel("Project", "1.0.0"),
+		"wheel-name":    wheel("evil", "1.0"),
+		"sdist-version": sdist("project", "2.0"),
+		"text":          []byte("not an archive"),
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		variant := r.URL.Query().Get("v")
+		switch {
+		case variant == "redirect":
+			http.Redirect(w, r, "/blob?v=wheel-name", http.StatusFound)
+		case variant == "json":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(readPyPIJSONFixture(t, "metadata/artifact-endpoint-simple")))
+		case r.Header.Get("Range") != "":
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write(bodies[variant][:4])
+		case r.Header.Get("If-None-Match") != "":
+			w.WriteHeader(http.StatusNotModified)
+		default:
+			_, _ = w.Write(bodies[variant])
+		}
+	}))
+	defer upstream.Close()
+
+	for _, tc := range []struct {
+		name, file, variant, header string
+		status                      int
+	}{
+		{name: "matching wheel", file: "project-1.0-py3-none-any.whl", variant: "wheel", status: http.StatusOK},
+		{name: "wheel name mismatch", file: "project-1.0-py3-none-any.whl", variant: "wheel-name", status: http.StatusForbidden},
+		{name: "sdist version mismatch", file: "project-1.0.tar.gz", variant: "sdist-version", status: http.StatusForbidden},
+		{name: "not an archive", file: "project-1.0.tar.gz", variant: "text", status: http.StatusBadGateway},
+		{name: "metadata endpoint", file: "project-1.0-py3-none-any.whl", variant: "json", status: http.StatusOK},
+		{name: "redirect to mismatch", file: "project-1.0-py3-none-any.whl", variant: "redirect", status: http.StatusForbidden},
+		{name: "partial match", file: "project-1.0-py3-none-any.whl", variant: "wheel", header: "Range", status: http.StatusPartialContent},
+		{name: "partial mismatch", file: "project-1.0-py3-none-any.whl", variant: "wheel-name", header: "Range", status: http.StatusForbidden},
+		{name: "cached mismatch", file: "project-1.0.tar.gz", variant: "sdist-version", header: "If-None-Match", status: http.StatusForbidden},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := testProxyHook(t)
+			handler.Client = upstream.Client()
+			var evaluated []Artifact
+			handler.EvaluateArtifact = func(_ context.Context, artifact Artifact) error {
+				evaluated = append(evaluated, artifact)
+				return nil
+			}
+			server, err := proxy.Start(context.Background(), proxy.Options{RequestHooks: []proxy.RequestHook{handler.HandleRequest}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer server.Close()
+			proxyURL, _ := url.Parse(server.ClientConfig().URL)
+			transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+			defer transport.CloseIdleConnections()
+			client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+			request, err := http.NewRequest(http.MethodGet, upstream.URL+"/files/"+tc.file+"?v="+tc.variant, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.header != "" {
+				request.Header.Set(tc.header, "bytes=0-3")
+			}
+			response, err := client.Do(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = response.Body.Close()
+			if response.StatusCode != tc.status || len(evaluated) != 1 || evaluated[0].Name != "project" || evaluated[0].Version != "1.0" {
+				t.Fatalf("status=%d evaluations=%+v, want %d after evaluating only project 1.0", response.StatusCode, evaluated, tc.status)
+			}
+		})
+	}
+}
+
+func TestProxyHandlerStreamsKnownIndexDistributions(t *testing.T) {
+	handler, err := newProxyHook(context.Background(), ProxyHookOptions{
+		ClassifierOptions: RequestClassifierOptions{SimpleIndexURLs: []string{"https://index.example/simple/"}},
+		EvaluatePackage:   func(context.Context, pm.Package, error) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{
+		"https://files.pythonhosted.org/packages/ab/project-1.0-py3-none-any.whl",
+		"https://index.example/packages/project-1.0.tar.gz",
+	} {
+		request := proxy.Request{Method: http.MethodGet, URL: mustParseHookURL(t, raw)}
+		responseHook, err := handler.HandleRequest(context.Background(), request)
+		if err != nil || responseHook == nil {
+			t.Fatalf("%s: response hook=%v error=%v", raw, responseHook != nil, err)
+		}
+		header := http.Header{"Content-Type": {"application/octet-stream"}}
+		if bodyHook, err := responseHook(context.Background(), proxy.Response{Request: request, StatusCode: http.StatusOK, Header: header}); err != nil || bodyHook != nil {
+			t.Fatalf("%s: body hook=%v error=%v; want the download streamed", raw, bodyHook != nil, err)
+		}
 	}
 }

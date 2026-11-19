@@ -8,7 +8,9 @@ package pypi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
@@ -85,7 +87,7 @@ func (e ProxyHandler) observeOpaqueDownload(ctx context.Context, response proxy.
 		}
 		_, _, metadata := e.Metadata.ProjectForURL(&response.Request.URL)
 		if required || archiveURL || (e.Client != nil && (isDownloadMediaType(mediaType) || (!metadata && kind == RequestUnrelated))) {
-			download, err := e.inspectFullDownload(ctx, response, required)
+			download, err := e.inspectFullDownload(ctx, response, required, nil)
 			return nil, download, err
 		}
 	}
@@ -94,7 +96,7 @@ func (e ProxyHandler) observeOpaqueDownload(ctx context.Context, response proxy.
 	}
 	// Ordinary index and Git responses retain their streaming paths.
 	if response.StatusCode == http.StatusPartialContent {
-		download, err := e.inspectFullDownload(ctx, response, required)
+		download, err := e.inspectFullDownload(ctx, response, required, nil)
 		return nil, download, err
 	}
 	return &proxy.ResponseBodyHook{
@@ -115,7 +117,7 @@ func isDownloadMediaType(mediaType string) bool {
 	return false
 }
 
-func (e ProxyHandler) inspectFullDownload(ctx context.Context, original proxy.Response, required bool) (bool, error) {
+func (e ProxyHandler) inspectFullDownload(ctx context.Context, original proxy.Response, required bool, expected *Artifact) (bool, error) {
 	if e.Client == nil {
 		return true, errors.New("cannot identify partial or cached Python download")
 	}
@@ -142,7 +144,7 @@ func (e ProxyHandler) inspectFullDownload(ctx context.Context, original proxy.Re
 	if response.ContentLength > MaxArtifactBytes {
 		return true, errors.New("python download exceeds inspection limit")
 	}
-	selection := archiveInspection{header: original.Header}
+	selection := archiveInspection{header: original.Header, expected: expected}
 	if original.StatusCode == http.StatusNotModified {
 		// Pip's cache may contain older MIME/disposition headers. The adapter
 		// must reject competing interpretations when those headers are unknown.
@@ -157,6 +159,8 @@ func (e ProxyHandler) inspectFullDownload(ctx context.Context, original proxy.Re
 type archiveInspection struct {
 	header        http.Header
 	cachedHeaders bool
+	// expected, when set, is the evaluated identity the archive must declare.
+	expected *Artifact
 }
 
 func (e ProxyHandler) evaluateDownloadedArchive(ctx context.Context, response proxy.Response, body *io.SectionReader, required bool, selection archiveInspection) error {
@@ -177,6 +181,17 @@ func (e ProxyHandler) evaluateDownloadedArchive(ctx context.Context, response pr
 			return nil
 		}
 		foundPackage = true
+		if expected := selection.expected; expected != nil {
+			if NormalizeName(artifact.Name) != NormalizeName(expected.Name) || VersionIdentity(artifact.Version) != VersionIdentity(expected.Version) {
+				source := canonicalPyPIURL(nil, response.Request.URL.String())
+				// The 403 body hides the reason.
+				slog.Warn("Python download declares a different package than its filename", "url", source,
+					"expected", expected.Name+"=="+expected.Version, "declared", artifact.Name+"=="+artifact.Version)
+				return errors.Join(proxy.ErrResponseRejected, fmt.Errorf("python download declares %s==%s, not %s==%s",
+					artifact.Name, artifact.Version, expected.Name, expected.Version))
+			}
+			return nil
+		}
 		artifact.Filename = artifactFilename(response.Request.URL.String())
 		artifact.Source = canonicalPyPIURL(nil, response.Request.URL.String())
 		artifact.RequestKey = pyPIURLRequestKey(nil, response.Request.URL.String())
@@ -194,6 +209,9 @@ func (e ProxyHandler) evaluateDownloadedArchive(ctx context.Context, response pr
 	// A Simple/JSON endpoint may itself end in an archive suffix. Sniffing
 	// must not consume the metadata UV will use to select its actual download.
 	hook, err := e.ObserveMetadataHeaders(ctx, response)
+	if err == nil && (hook == nil || hook.Handle == nil) && selection.expected != nil {
+		return errors.New("python download has no usable package metadata")
+	}
 	if err != nil || hook == nil || hook.Handle == nil {
 		return err
 	}
@@ -287,6 +305,37 @@ func (e ProxyHandler) inspectDownloadArchive(ctx context.Context, response proxy
 		err = errors.New("python download has no usable package metadata")
 	}
 	return artifact, found, err
+}
+
+// verifyArtifactHeaders forwards a filename-recognized download only when its
+// archive declares the expected, already evaluated, distribution.
+func (e ProxyHandler) verifyArtifactHeaders(ctx context.Context, response proxy.Response, expected Artifact) (*proxy.ResponseBodyHook, error) {
+	switch status := response.StatusCode; {
+	case status == http.StatusPartialContent || status == http.StatusNotModified ||
+		(status >= 300 && status < 400 && response.Header.Get("Location") != ""):
+		// The full fetch follows a redirect the client is about to follow.
+		download, err := e.inspectFullDownload(ctx, response, false, &expected)
+		switch {
+		case err != nil:
+			return nil, err
+		case !download && status == http.StatusPartialContent:
+			return nil, errors.New("could not identify partial Python download")
+		case download && status != http.StatusNotModified && status != http.StatusPartialContent:
+			// A verified redirect still records its target for inspection.
+			return e.observeArtifactHeaders(ctx, response, expected.Filename)
+		case download:
+			return nil, nil
+		}
+		return e.observeArtifactHeaders(ctx, response, expected.Filename)
+	case status < 200 || status == http.StatusNoContent || status >= 300:
+		return e.observeArtifactHeaders(ctx, response, expected.Filename)
+	}
+	return &proxy.ResponseBodyHook{
+		MaxBytes: MaxArtifactBytes,
+		HandleFile: func(ctx context.Context, response proxy.Response, body *io.SectionReader) error {
+			return e.evaluateDownloadedArchive(ctx, response, body, false, archiveInspection{header: response.Header, expected: &expected})
+		},
+	}, nil
 }
 
 func (e ProxyHandler) observeArtifactHeaders(ctx context.Context, response proxy.Response, filename string) (*proxy.ResponseBodyHook, error) {

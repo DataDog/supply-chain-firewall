@@ -447,10 +447,13 @@ func TestProxyHandlerVerifiesTarballIdentityOnUnknownHosts(t *testing.T) {
 
 func TestProxyHandlerRefetchSendsNoReferer(t *testing.T) {
 	tarball := npmTarball(t, "gzip", tarEntry{name: "package/package.json", body: `{"name": "left-pad", "version": "1.3.0"}`})
-	var referers atomic.Int32
+	var referers, credentials atomic.Int32
 	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Referer") != "" {
 			referers.Add(1)
+		}
+		if r.Header.Get("X-Private-Token") != "" || r.Header.Get("X-Api-Key") != "" || r.Header.Get("Authorization") != "" {
+			credentials.Add(1)
 		}
 		_, _ = w.Write(tarball)
 	}))
@@ -471,12 +474,15 @@ func TestProxyHandlerRefetchSendsNoReferer(t *testing.T) {
 		t.Fatal(err)
 	}
 	request.Header.Set("Range", "bytes=0-9")
+	request.Header.Set("X-Private-Token", "secret")
+	request.Header.Set("X-Api-Key", "secret")
+	request.Header.Set("Authorization", "Bearer secret")
 	response, err := proxiedClient(t, handler.HandleRequest).Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = response.Body.Close()
-	if response.StatusCode != http.StatusPartialContent || referers.Load() != 0 {
-		t.Fatalf("status=%d requests with Referer=%d, want 206 and none", response.StatusCode, referers.Load())
+	if response.StatusCode != http.StatusPartialContent || referers.Load() != 0 || credentials.Load() != 0 {
+		t.Fatalf("status=%d requests with Referer=%d with credentials=%d, want 206 and none", response.StatusCode, referers.Load(), credentials.Load())
 	}
 }

@@ -459,18 +459,19 @@ func TestProxyHandlerVerifiesDistributionIdentityOnUnknownHosts(t *testing.T) {
 		"plain-name":    wheel("evil", "1.0"),
 		"html-wheel":    wheel("project", "1.0"),
 	}
-	contentTypes := map[string]string{"plain-name": "text/plain", "html-wheel": "text/html"}
+	bodies["empty-json"] = []byte("{}")
+	contentTypes := map[string]string{"plain-name": "text/plain", "html-wheel": "text/html", "empty-json": "application/json"}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		variant := r.URL.Query().Get("v")
 		switch {
 		case variant == "redirect":
 			http.Redirect(w, r, "/blob?v=wheel-name", http.StatusFound)
-		case variant == "json":
+		case variant == "json" || (variant == "json-cached" && r.Header.Get("If-None-Match") == ""):
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(readPyPIJSONFixture(t, "metadata/artifact-endpoint-simple")))
 		case r.Header.Get("Range") != "":
 			w.WriteHeader(http.StatusPartialContent)
-			_, _ = w.Write(bodies[variant][:4])
+			_, _ = w.Write(bodies[variant][:min(4, len(bodies[variant]))])
 		case r.Header.Get("If-None-Match") != "":
 			w.WriteHeader(http.StatusNotModified)
 		default:
@@ -496,6 +497,9 @@ func TestProxyHandlerVerifiesDistributionIdentityOnUnknownHosts(t *testing.T) {
 		{name: "partial mismatch", file: "project-1.0-py3-none-any.whl", variant: "wheel-name", header: "Range", status: http.StatusForbidden},
 		{name: "cached mismatch labeled text", file: "project-1.0-py3-none-any.whl", variant: "plain-name", header: "If-None-Match", status: http.StatusForbidden},
 		{name: "partial match labeled html", file: "project-1.0-py3-none-any.whl", variant: "html-wheel", header: "Range", status: http.StatusPartialContent},
+		{name: "cached unrecognized json", file: "project-1.0-py3-none-any.whl", variant: "empty-json", header: "If-None-Match", status: http.StatusBadGateway},
+		{name: "partial unrecognized json", file: "project-1.0-py3-none-any.whl", variant: "empty-json", header: "Range", status: http.StatusBadGateway},
+		{name: "cached metadata endpoint", file: "project-1.0-py3-none-any.whl", variant: "json-cached", header: "If-None-Match", status: http.StatusNotModified},
 		{name: "cached mismatch", file: "project-1.0.tar.gz", variant: "sdist-version", header: "If-None-Match", status: http.StatusForbidden},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

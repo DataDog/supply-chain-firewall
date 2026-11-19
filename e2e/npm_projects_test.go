@@ -42,9 +42,9 @@ func init() {
 		suites["npm-projects"] = append(suites["npm-projects"], scenario{Scenario: id, Variant: mode + "-" + variant + map[bool]string{false: "-allow", true: "-block"}[block], Manager: "npm", Mode: mode, Backend: "local", RegistryProfile: "public-npm", DiscoveryKey: key, Capabilities: []string{capability}, Timeout: 5 * time.Minute, Run: func(r *caseRun) error { return runNPMProject(r, npmProjectOptions{variant, block}) }})
 	}
 	for _, mode := range []string{"resolution", "proxy"} {
-		for _, variant := range []string{"manifest-no-lock", "manifest-lock", "dev", "production", "production-no-save", "dev-no-save", "prefix-separate-no-save", "prefix-equals-no-save", "global-production", "duplicates", "upgrade", "downgrade", "workspace", "local", "marker", "ci"} {
+		for _, variant := range []string{"manifest-no-lock", "manifest-lock", "dev", "production", "production-no-save", "dev-no-save", "prefix-separate-no-save", "prefix-equals-no-save", "global-production", "duplicates", "upgrade", "downgrade", "workspace", "workspace-unhoisted", "workspace-selected", "workspace-member", "workspace-member-disabled", "workspace-selected-production", "local", "marker", "ci"} {
 			id := "NPM-02"
-			if slices.Contains([]string{"workspace", "local", "marker"}, variant) {
+			if slices.Contains([]string{"workspace", "workspace-unhoisted", "workspace-selected", "workspace-member", "workspace-member-disabled", "workspace-selected-production", "local", "marker"}, variant) {
 				id = "NPM-03"
 			}
 			if variant == "ci" {
@@ -133,6 +133,12 @@ func npmProjectFiles(r *caseRun, variant string, direct, root candidate) (map[st
 		shape = "manifest"
 	case "production", "production-no-save", "dev-no-save", "prefix-separate-no-save", "prefix-equals-no-save":
 		shape = "dev"
+	case "workspace-selected", "workspace-member":
+		shape = "workspace-two"
+	case "workspace-member-disabled":
+		shape = "workspace-disabled"
+	case "workspace-selected-production":
+		shape = "workspace-production"
 	case "upgrade", "downgrade":
 		shape = "graph"
 	case "final-failure":
@@ -197,9 +203,9 @@ func prepareNPMProjectCase(r *caseRun, variant string, direct, initial candidate
 		return nil, nil, nil, err
 	}
 	args := []string{"install", "--ignore-scripts", "--loglevel=http"}
-	if prefixed || variant == "manifest-lock" || variant == "ci" || variant == "production-no-save" || variant == "dev-no-save" || variant == "upgrade" || variant == "downgrade" {
+	if prefixed || variant == "manifest-lock" || variant == "ci" || variant == "workspace-unhoisted" || variant == "workspace-member-disabled" || variant == "production-no-save" || variant == "dev-no-save" || variant == "upgrade" || variant == "downgrade" {
 		bootstrap := []string{r.Cell.Executable, "install", "--ignore-scripts"}
-		if prefixed || variant == "manifest-lock" || variant == "ci" || variant == "production-no-save" || variant == "dev-no-save" {
+		if prefixed || variant == "manifest-lock" || variant == "ci" || variant == "workspace-unhoisted" || variant == "workspace-member-disabled" || variant == "production-no-save" || variant == "dev-no-save" {
 			bootstrap = append(bootstrap, "--package-lock-only")
 		}
 		if _, err := r.Command("project-bootstrap", bootstrap...); err != nil {
@@ -208,6 +214,27 @@ func prepareNPMProjectCase(r *caseRun, variant string, direct, initial candidate
 	}
 	if npmGlobalVariant(variant) {
 		if err := prepareNPMGlobalState(r, variant, initial); err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	if variant == "workspace-member-disabled" {
+		var lock npmGraphLock
+		if err := readJSON(filepath.Join(r.WorkDir, "package-lock.json"), &lock); err != nil {
+			return nil, nil, nil, err
+		}
+		version := lock.Packages["node_modules/"+direct.Project].Version
+		if version == "" || version == direct.Version {
+			return nil, nil, nil, classified("PRECONDITION_UNAVAILABLE", fmt.Errorf("workspace root must lock a competing version of %s", direct.Project))
+		}
+	}
+	if variant == "workspace-unhoisted" {
+		path := filepath.Join(r.WorkDir, "packages/member/package.json")
+		var manifest map[string]any
+		if err := readJSON(path, &manifest); err != nil {
+			return nil, nil, nil, err
+		}
+		manifest["dependencies"].(map[string]any)[initial.Project] = ">=" + initial.Version + " <=" + direct.Version
+		if err := writeJSON(path, manifest); err != nil {
 			return nil, nil, nil, err
 		}
 	}
@@ -221,14 +248,21 @@ func prepareNPMProjectCase(r *caseRun, variant string, direct, initial candidate
 		}
 		args = append(args, initial.Project+"@"+initial.Version, saveType, "--no-save", "--omit=dev")
 	case "global-production":
+		globalTarget := direct
 		r.Env["NODE_ENV"] = "production"
 		r.Env["npm_config_prefix"] = filepath.Join(r.Root, "global-prefix")
 		if err := os.MkdirAll(filepath.Join(r.Env["npm_config_prefix"], "lib", "node_modules"), 0700); err != nil {
 			return nil, nil, nil, err
 		}
-		args = append(args, "-g", direct.Project+"@"+direct.Version)
+		args = append(args, "-g", globalTarget.Project+"@"+globalTarget.Version)
 	case "global-workspace-member", "global-self":
 		args = append(args, npmGlobalArgs(variant, initial)...)
+	case "workspace-member-disabled":
+		args = append(args, "--workspaces=false")
+	case "workspace-selected":
+		args = append(args, "--workspace=scfw-e2e-member")
+	case "workspace-selected-production":
+		args = append(args, "--workspace=scfw-e2e-member", "--production")
 	case "ci":
 		args[0] = "ci"
 	case "help":
@@ -250,7 +284,7 @@ func prepareNPMProjectCase(r *caseRun, variant string, direct, initial candidate
 		}
 	}
 	paths := []string{"package-lock.json", "final-install.marker"}
-	if variant == "global-workspace-member" {
+	if variant == "workspace-member" || variant == "workspace-member-disabled" || variant == "global-workspace-member" {
 		paths = append(paths, "packages/member/package-lock.json")
 	}
 	for path := range files {
@@ -292,6 +326,9 @@ func npmProjectState(r *caseRun, label string) ([]npmProjectPackage, error) {
 		directory = filepath.Join(prefix, "lib")
 	}
 	args := []string{r.Cell.Runtime, script, directory}
+	if strings.Contains(r.Spec.Variant, "-workspace-member-") || strings.Contains(r.Spec.Variant, "-workspace-unhoisted-") {
+		args = append(args, "packages/member")
+	}
 	if strings.Contains(r.Spec.Variant, "-global-self-") {
 		args = append(args, "node_modules/scfw-e2e-global-source")
 	}
@@ -306,6 +343,7 @@ func npmProjectState(r *caseRun, label string) ([]npmProjectPackage, error) {
 }
 
 func runNPMProject(r *caseRun, options npmProjectOptions) error {
+	production := options.variant == "production" || options.variant == "workspace-selected-production" || options.variant == "dev-no-save"
 	direct, initial, target := r.Candidate, r.Candidate, r.Candidate
 	var graph npmGraphSelection
 	var candidates []candidate
@@ -326,13 +364,16 @@ func runNPMProject(r *caseRun, options npmProjectOptions) error {
 		if options.variant == "downgrade" {
 			initial, target = graph.Roots[0], graph.Roots[1]
 		}
-		if options.variant == "dev" || options.variant == "production-no-save" || options.variant == "prefix-separate-no-save" || options.variant == "prefix-equals-no-save" || (options.variant == "production" || options.variant == "dev-no-save") && options.block {
+		if options.variant == "dev" || options.variant == "production-no-save" || options.variant == "prefix-separate-no-save" || options.variant == "prefix-equals-no-save" || production && options.block {
 			target = graph.Roots[0]
 		}
 		if options.variant == "duplicates" {
 			target = graph.Leaves[0]
 		}
 		if npmGlobalVariant(options.variant) {
+			initial, target = graph.Leaves[0], graph.Leaves[0]
+		}
+		if options.variant == "workspace-unhoisted" {
 			initial, target = graph.Leaves[0], graph.Leaves[0]
 		}
 	} else {
@@ -357,7 +398,7 @@ func runNPMProject(r *caseRun, options npmProjectOptions) error {
 		args = append(args, target.Project+"@"+target.Version)
 	}
 	nativeRoot := native.WorkDir
-	if options.variant == "global-workspace-member" {
+	if options.variant == "workspace-member" || options.variant == "workspace-member-disabled" || options.variant == "global-workspace-member" {
 		native.WorkDir = filepath.Join(nativeRoot, "packages/member")
 	}
 	nativeCommand, nativeErr := native.Command("native-command", append([]string{r.Cell.Executable}, args...)...)
@@ -384,6 +425,11 @@ func runNPMProject(r *caseRun, options npmProjectOptions) error {
 	if err != nil {
 		return err
 	}
+	if options.variant == "workspace-unhoisted" && !slices.ContainsFunc(expected, func(pkg npmProjectPackage) bool {
+		return pkg.Name == target.Project && pkg.Version == target.Version && strings.HasPrefix(pkg.Path, "packages/member/node_modules/")
+	}) {
+		return classified("PRECONDITION_UNAVAILABLE", fmt.Errorf("native npm did not preserve the unhoisted locked version"))
+	}
 	if err := npmProjectArtifacts(&native, expected, candidates); err != nil {
 		return err
 	}
@@ -406,7 +452,7 @@ func runNPMProject(r *caseRun, options npmProjectOptions) error {
 		r.Env["SCFW_PROXY_ENABLED"] = "1"
 	}
 	projectRoot := r.WorkDir
-	if options.variant == "global-workspace-member" {
+	if options.variant == "workspace-member" || options.variant == "workspace-member-disabled" || options.variant == "global-workspace-member" {
 		r.WorkDir = filepath.Join(projectRoot, "packages/member")
 	}
 	command, commandErr := r.Command("scfw", append([]string{r.Binary, "run", "--error-on-block", "--", "npm"}, args...)...)
@@ -469,8 +515,8 @@ func runNPMProject(r *caseRun, options npmProjectOptions) error {
 	if slices.Contains([]string{"global-production", "global-workspace-member", "global-self", "production-no-save", "dev-no-save", "prefix-separate-no-save", "prefix-equals-no-save"}, options.variant) && !reflect.DeepEqual(before, after) {
 		return fmt.Errorf("global/no-save install changed the local project")
 	}
-	blocked := options.block && options.variant != "production" && options.variant != "dev-no-save" && !(options.variant == "ci" && r.Spec.Mode == "resolution")
-	if (options.variant == "production" || options.variant == "dev-no-save") && options.block {
+	blocked := options.block && !production && !(options.variant == "ci" && r.Spec.Mode == "resolution")
+	if production && options.block {
 		r.Result.Observations["omitted_dev_finding"] = target.Project + "@" + target.Version
 	}
 	if blocked && command.ExitCode == 0 || !blocked && command.ExitCode != nativeCommand.ExitCode {
@@ -533,19 +579,38 @@ func npmProjectTargets(after, before []npmProjectPackage) []npmProjectPackage {
 	return targets
 }
 func npmProjectArtifacts(r *caseRun, state []npmProjectPackage, candidates []candidate) error {
-	if len(state) == 0 {
-		return nil
-	}
-	var lock npmGraphLock
+	locks := map[string]npmGraphLock{}
 	global := r.Env["npm_config_prefix"] != ""
-	if !global {
-		if err := readJSON(filepath.Join(r.WorkDir, "package-lock.json"), &lock); err != nil {
-			return err
-		}
-	}
 	for _, pkg := range state {
 		if pkg.Local {
 			continue
+		}
+		prefix, _, ok := strings.Cut(pkg.Path, "node_modules/")
+		if !ok {
+			return fmt.Errorf("installed package has no module path: %s", pkg.Path)
+		}
+		// Root workspace locks also own unhoisted member entries. Some npm
+		// versions instead write a standalone lock for member-directory installs.
+		if prefix != "" && !global {
+			var rootLock npmGraphLock
+			err := readJSON(filepath.Join(r.WorkDir, "package-lock.json"), &rootLock)
+			if err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			if rootLock.Packages[pkg.Path].Version != "" {
+				prefix = ""
+			}
+		}
+		lock, exists := locks[prefix]
+		if !exists && !global {
+			path := filepath.Join(r.WorkDir, filepath.FromSlash(prefix), "package-lock.json")
+			if err := readJSON(path, &lock); err != nil {
+				return err
+			}
+			locks[prefix] = lock
+			if err := r.Keep("installed-lock-"+filepath.Base(r.Root)+"-"+prefix, path); err != nil {
+				return err
+			}
 		}
 		found := false
 		for _, c := range candidates {
@@ -574,12 +639,11 @@ func npmProjectArtifacts(r *caseRun, state []npmProjectPackage, candidates []can
 				}
 				continue
 			}
-			// npm6 has lockfile v1; installed identity and retained registry artifact
-			// evidence still apply, while the v2/v3 path-specific check starts at npm7.
+			// npm6 has lockfile v1; path-specific artifact checks start at npm7.
 			if strings.HasPrefix(r.Cell.ManagerVersion, "6.") {
 				continue
 			}
-			entry := lock.Packages[pkg.Path]
+			entry := lock.Packages[strings.TrimPrefix(pkg.Path, prefix)]
 			if entry.Version != c.Version || entry.Resolved != c.Artifacts[0].URL || entry.Integrity != c.Artifacts[0].Integrity {
 				return fmt.Errorf("native/installed artifact mismatch at %s", pkg.Path)
 			}
@@ -590,9 +654,8 @@ func npmProjectArtifacts(r *caseRun, state []npmProjectPackage, candidates []can
 	}
 	if global {
 		r.Result.Observations["global_artifact_evidence"] = "native installed identity and public tarball URL in client download log; npm global installs have no project lock"
-		return nil
 	}
-	return r.Keep("installed-lock-"+filepath.Base(r.Root), filepath.Join(r.WorkDir, "package-lock.json"))
+	return nil
 }
 func npmProjectPolicy(r *caseRun, targets []npmProjectPackage, target candidate, blocked bool) error {
 	records, err := readPolicy(r.Env["SCFW_LOG_FILE"])

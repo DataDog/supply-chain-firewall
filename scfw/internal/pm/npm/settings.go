@@ -6,6 +6,7 @@
 package npm
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -220,26 +221,10 @@ func isDirectory(name string) bool {
 // exclude; and a workspace needs a package.json of its own. An unreadable
 // manifest declares none.
 func inWorkspaces(root, member string) bool {
-	data, err := os.ReadFile(filepath.Join(root, "package.json"))
-	if err != nil || !isRegularFile(filepath.Join(member, "package.json")) {
+	if !isRegularFile(filepath.Join(member, "package.json")) {
 		return false
 	}
-	var manifest struct {
-		Workspaces json.RawMessage `json:"workspaces"`
-	}
-	if json.Unmarshal(data, &manifest) != nil {
-		return false
-	}
-	var patterns []string
-	var object struct {
-		Packages []string `json:"packages"`
-	}
-	if json.Unmarshal(manifest.Workspaces, &patterns) != nil {
-		if json.Unmarshal(manifest.Workspaces, &object) != nil {
-			return false
-		}
-		patterns = object.Packages
-	}
+	patterns := npmWorkspacePatterns(root)
 	relative, err := filepath.Rel(root, member)
 	if err != nil {
 		return false
@@ -259,6 +244,30 @@ func inWorkspaces(root, member string) bool {
 		}
 	}
 	return included
+}
+
+func npmWorkspacePatterns(root string) []string {
+	data, err := os.ReadFile(filepath.Join(root, "package.json"))
+	if err != nil {
+		return nil
+	}
+	var manifest struct {
+		Workspaces json.RawMessage `json:"workspaces"`
+	}
+	if json.Unmarshal(bytes.TrimPrefix(data, []byte("\xef\xbb\xbf")), &manifest) != nil {
+		return nil
+	}
+	var patterns []string
+	var object struct {
+		Packages []string `json:"packages"`
+	}
+	if json.Unmarshal(manifest.Workspaces, &patterns) != nil {
+		if json.Unmarshal(manifest.Workspaces, &object) != nil {
+			return nil
+		}
+		patterns = object.Packages
+	}
+	return patterns
 }
 
 // expandBraces expands the first {a,b} group of a glob, recursively; a group

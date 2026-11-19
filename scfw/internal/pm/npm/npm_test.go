@@ -39,6 +39,9 @@ func runFakeNpm(fixtureDir string, args []string) int {
 	if os.Getenv("SCFW_TEST_NPM_GLOBAL_CONFIG") != "" {
 		return runNpmGlobalFixture(args)
 	}
+	if os.Getenv("SCFW_TEST_NPM_WORKSPACE") == "1" {
+		return runNpmWorkspaceFixture(args)
+	}
 	if os.Getenv("SCFW_TEST_NPM_PREFIX_PROJECT") != "" {
 		return runNpmPrefixFixture(args)
 	}

@@ -23,22 +23,22 @@ type ProxyHandler struct {
 
 // HandleRequest invokes the artifact callback before a registry tarball is
 // forwarded upstream. Opaque tarballs get a response hook that identifies them
-// from their package.json. Every other request passes untouched: packument
-// bodies are never inspected, so large packuments cannot fail the install.
+// from their package.json, as does any other GET whose response looks like a
+// download. Packument bodies are JSON and never inspected, so large packuments
+// cannot fail the install.
 func (h ProxyHandler) HandleRequest(requestContext context.Context, request proxy.Request) (proxy.ResponseHook, error) {
 	if request.Method != http.MethodGet {
 		return nil, nil
 	}
 	kind, artifact := h.Classifier.Classify(&request.URL)
-	if _, redirected := h.Classifier.opaqueRedirects.Load(urlKey(&request.URL)); redirected && kind != RequestTarball {
-		kind = RequestOpaqueTarball
-	}
 	switch kind {
 	case RequestTarball:
 		artifact.authorization = request.Header.Get("Authorization")
 		return nil, h.EvaluateArtifact(requestContext, artifact)
 	case RequestOpaqueTarball:
 		return h.observeOpaqueTarball, nil
+	case RequestRegistryAPI:
+		return nil, nil
 	}
-	return nil, nil
+	return h.observeDownload, nil
 }

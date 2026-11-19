@@ -1,0 +1,110 @@
+{
+  "old": {
+    "ecosystem": "pypi",
+    "project": "idna",
+    "version": "3.10",
+    "property": "old-wheel",
+    "module": "idna",
+    "observed_at": "2026-01-09T23:00:00Z",
+    "latest_valid_start": "2026-01-10T23:00:00Z",
+    "metadata": [
+      {
+        "url": "https://pypi.org/pypi/idna/json",
+        "fetched_at": "2026-01-09T23:00:00Z",
+        "body": {
+          "path": "retained.json",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    ],
+    "artifacts": [
+      {
+        "name": "idna-3.10-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/idna.whl",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "uploaded_at": "2025-01-01T00:00:00Z"
+      }
+    ]
+  },
+  "missing_hash": {
+    "ecosystem": "pypi",
+    "project": "idna",
+    "version": "3.10",
+    "property": "old-wheel",
+    "module": "idna",
+    "observed_at": "2026-01-09T23:00:00Z",
+    "latest_valid_start": "2026-01-10T23:00:00Z",
+    "metadata": [
+      {
+        "url": "https://pypi.org/pypi/idna/json",
+        "fetched_at": "2026-01-09T23:00:00Z",
+        "body": {
+          "path": "retained.json",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    ],
+    "artifacts": [
+      {
+        "name": "idna-3.10-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/idna.whl",
+        "sha256": "",
+        "uploaded_at": "2025-01-01T00:00:00Z"
+      }
+    ]
+  },
+  "future_fetch": {
+    "ecosystem": "pypi",
+    "project": "idna",
+    "version": "3.10",
+    "property": "old-wheel",
+    "module": "idna",
+    "observed_at": "2026-01-11T00:00:00Z",
+    "latest_valid_start": "2026-01-10T23:00:00Z",
+    "metadata": [
+      {
+        "url": "https://pypi.org/pypi/idna/json",
+        "fetched_at": "2026-01-09T23:00:00Z",
+        "body": {
+          "path": "retained.json",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    ],
+    "artifacts": [
+      {
+        "name": "idna-3.10-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/idna.whl",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "uploaded_at": "2025-01-01T00:00:00Z"
+      }
+    ]
+  },
+  "expired": {
+    "ecosystem": "pypi",
+    "project": "idna",
+    "version": "3.10",
+    "property": "old-wheel",
+    "module": "idna",
+    "observed_at": "2026-01-09T23:00:00Z",
+    "latest_valid_start": "2026-01-09T00:00:00Z",
+    "metadata": [
+      {
+        "url": "https://pypi.org/pypi/idna/json",
+        "fetched_at": "2026-01-09T23:00:00Z",
+        "body": {
+          "path": "retained.json",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    ],
+    "artifacts": [
+      {
+        "name": "idna-3.10-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/idna.whl",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "uploaded_at": "2025-01-01T00:00:00Z"
+      }
+    ]
+  }
+}

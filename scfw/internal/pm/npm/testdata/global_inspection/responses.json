@@ -49,5 +49,23 @@
   "missing version": {
     "log": "npm silly placeDep ROOT example@ OK for:  want: latest",
     "error": true
+  },
+  "replacement uses final placement": {
+    "log": "npm silly placeDep ROOT parent@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/parent leaf@2.0.0 OK for: a@1.0.0 want: >=1\nnpm silly placeDep node_modules/parent leaf@1.0.0 REPLACE for: b@1.0.0 want: 1.0.0\nnpm silly ADD node_modules/parent\nnpm silly ADD node_modules/parent/node_modules/leaf",
+    "roots": {
+      "parent": "1.0.0"
+    },
+    "versions": {
+      "node_modules/parent": "1.0.0",
+      "node_modules/parent/node_modules/leaf": "1.0.0"
+    },
+    "handles": [
+      "node_modules/parent",
+      "node_modules/parent/node_modules/leaf"
+    ]
+  },
+  "unknown placement result": {
+    "log": "npm silly placeDep ROOT example@1.0.0 UNKNOWN for:  want: latest",
+    "error": true
   }
 }

@@ -323,8 +323,7 @@ func (e ProxyHandler) inspectDownloadArchive(ctx context.Context, response proxy
 // archive declares the expected, already evaluated, distribution.
 func (e ProxyHandler) verifyArtifactHeaders(ctx context.Context, response proxy.Response, expected Artifact) (*proxy.ResponseBodyHook, error) {
 	switch status := response.StatusCode; {
-	case status == http.StatusPartialContent || status == http.StatusNotModified ||
-		(status >= 300 && status < 400 && response.Header.Get("Location") != ""):
+	case status == http.StatusPartialContent || status == http.StatusNotModified || isFollowedRedirect(response):
 		// The full fetch follows a redirect the client is about to follow.
 		download, err := e.inspectFullDownload(ctx, response, false, &expected)
 		switch {
@@ -339,15 +338,25 @@ func (e ProxyHandler) verifyArtifactHeaders(ctx context.Context, response proxy.
 			return nil, nil
 		}
 		return e.observeArtifactHeaders(ctx, response, expected.Filename)
-	case status < 200 || status == http.StatusNoContent || status >= 300:
+	case status < 200 || status == http.StatusNoContent || status >= 400:
 		return e.observeArtifactHeaders(ctx, response, expected.Filename)
 	}
+	// Clients install the body of any other status, including 300 and
+	// redirects they cannot follow.
 	return &proxy.ResponseBodyHook{
 		MaxBytes: MaxArtifactBytes,
 		HandleFile: func(ctx context.Context, response proxy.Response, body *io.SectionReader) error {
 			return e.evaluateDownloadedArchive(ctx, response, body, false, archiveInspection{header: response.Header, expected: &expected})
 		},
 	}, nil
+}
+
+func isFollowedRedirect(response proxy.Response) bool {
+	switch response.StatusCode {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+		return response.Header.Get("Location") != ""
+	}
+	return false
 }
 
 func (e ProxyHandler) observeArtifactHeaders(ctx context.Context, response proxy.Response, filename string) (*proxy.ResponseBodyHook, error) {

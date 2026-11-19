@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -466,6 +467,10 @@ func TestProxyHandlerVerifiesDistributionIdentityOnUnknownHosts(t *testing.T) {
 		switch {
 		case variant == "redirect":
 			http.Redirect(w, r, "/blob?v=wheel-name", http.StatusFound)
+		case r.URL.Query().Get("status") != "":
+			status, _ := strconv.Atoi(r.URL.Query().Get("status"))
+			w.WriteHeader(status)
+			_, _ = w.Write(bodies[variant])
 		case variant == "json" || (variant == "json-cached" && r.Header.Get("If-None-Match") == ""):
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(readPyPIJSONFixture(t, "metadata/artifact-endpoint-simple")))
@@ -485,8 +490,14 @@ func TestProxyHandlerVerifiesDistributionIdentityOnUnknownHosts(t *testing.T) {
 
 	for _, tc := range []struct {
 		name, file, variant, header string
-		status                      int
+		serve, status               int
 	}{
+		{name: "300 mismatch", file: "project-1.0-py3-none-any.whl", variant: "wheel-name", serve: 300, status: http.StatusForbidden},
+		{name: "302 without location mismatch", file: "project-1.0-py3-none-any.whl", variant: "wheel-name", serve: 302, status: http.StatusForbidden},
+		{name: "307 without location mismatch", file: "project-1.0-py3-none-any.whl", variant: "wheel-name", serve: 307, status: http.StatusForbidden},
+		{name: "300 match", file: "project-1.0-py3-none-any.whl", variant: "wheel", serve: 300, status: 300},
+		{name: "302 without location match", file: "project-1.0-py3-none-any.whl", variant: "wheel", serve: 302, status: 302},
+		{name: "307 without location match", file: "project-1.0-py3-none-any.whl", variant: "wheel", serve: 307, status: 307},
 		{name: "matching wheel", file: "project-1.0-py3-none-any.whl", variant: "wheel", status: http.StatusOK},
 		{name: "wheel name mismatch", file: "project-1.0-py3-none-any.whl", variant: "wheel-name", status: http.StatusForbidden},
 		{name: "sdist version mismatch", file: "project-1.0.tar.gz", variant: "sdist-version", status: http.StatusForbidden},
@@ -519,7 +530,11 @@ func TestProxyHandlerVerifiesDistributionIdentityOnUnknownHosts(t *testing.T) {
 			transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
 			defer transport.CloseIdleConnections()
 			client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-			request, err := http.NewRequest(http.MethodGet, upstream.URL+"/files/"+tc.file+"?v="+tc.variant, nil)
+			target := upstream.URL + "/files/" + tc.file + "?v=" + tc.variant
+			if tc.serve != 0 {
+				target += "&status=" + strconv.Itoa(tc.serve)
+			}
+			request, err := http.NewRequest(http.MethodGet, target, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

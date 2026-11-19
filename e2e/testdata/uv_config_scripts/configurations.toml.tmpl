@@ -1,0 +1,40 @@
+# Named complete-file fixtures; public PyPI remains the package source.
+[registry]
+index-url = "{{.Index}}"
+
+[proxy]
+index-url = "{{.Index}}"
+https-proxy = "http://127.0.0.1:9"
+no-proxy = ["pypi.org", "files.pythonhosted.org"]
+
+[project.project]
+name = "{{.Name}}"
+version = "1.0"
+requires-python = ">=3.12"
+dependencies = []
+[project.tool.uv]
+index-url = "{{.Index}}"
+
+[workspace.project]
+name = "root"
+version = "1.0"
+requires-python = ">=3.12"
+dependencies = []
+[workspace.tool.uv]
+index-url = "{{.Index}}"
+[workspace.tool.uv.workspace]
+members = ["packages/**/member"]
+
+[excluded.project]
+name = "root"
+version = "1.0"
+requires-python = ">=3.12"
+dependencies = []
+[excluded.tool.uv]
+index-url = "{{.Index}}"
+[excluded.tool.uv.workspace]
+members = ["packages/**"]
+exclude = ["packages/*member"]
+
+[empty]
+# Explicit empty config must override project and user files.

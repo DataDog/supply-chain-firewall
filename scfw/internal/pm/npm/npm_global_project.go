@@ -34,7 +34,7 @@ type npmGlobalDependency struct {
 	owner, wanted string
 }
 
-var npmGlobalPlacement = regexp.MustCompile(`^npm (?:sill|silly) placeDep (\S+) (\S+) OK for: (.*?) want: (.+)$`)
+var npmGlobalPlacement = regexp.MustCompile(`^npm (?:sill|silly) placeDep (\S+) (\S+) (?:OK|REPLACE) for: (.*?) want: (.+)$`)
 
 // Global dry runs retain npm's original cwd and destination. In particular,
 // npm synthesizes a current-directory package when no positional target remains.
@@ -101,14 +101,23 @@ func (p *npmTempProject) resolveGlobalInstallTargets(ctx context.Context, comman
 		if err != nil {
 			return nil, err
 		}
-		if version, ok := resolution.versions[handle]; !ok || version != pkg.Version {
+		version, placed := resolution.versions[handle]
+		entry, _ := dependencies[handle].(map[string]any)
+		bundled, _ := entry["inBundle"].(bool)
+		// npm loads bundled children from the parent archive without placeDep
+		// records, including CHANGE targets during an upgrade. Only an exact
+		// bundled lock entry can supply their identity without a placement.
+		if (placed && version != pkg.Version) || (!placed && !bundled) {
 			return nil, fmt.Errorf("npm global target %s disagrees with inspection lockfile", handle)
 		}
 		// Equal versions can denote different packages after npm moves peers
 		// between global and shallow layouts. Validate ordinary registry names
-		// as well as aliases, including when the exact handle exists.
-		if name := npmGlobalRegistryName(handle, resolution.placements[handle].wanted); name != "" && pkg.Name != name {
-			return nil, fmt.Errorf("npm global target %s resolves request for %s as different package %s", handle, name, pkg.Name)
+		// as well as aliases, including when the exact handle exists. Bundled
+		// entries without placements retain their archive's canonical name.
+		if placed {
+			if name := npmGlobalRegistryName(handle, resolution.placements[handle].wanted); name != "" && pkg.Name != name {
+				return nil, fmt.Errorf("npm global target %s resolves request for %s as different package %s", handle, name, pkg.Name)
+			}
 		}
 		publishDate, err := p.resolvePublishDate(ctx, pkg)
 		if err != nil {

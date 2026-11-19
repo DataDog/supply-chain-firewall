@@ -567,5 +567,133 @@
       "different-package": "1.0.0"
     },
     "error": true
+  },
+  "replacement resolves the final version": {
+    "log": "npm silly placeDep ROOT has-peer@1.0.0 OK for:  want: 1.0.0\nnpm silly placeDep node_modules/has-peer leaf@2.0.0 OK for: a@1.0.0 want: >=1\nnpm silly placeDep node_modules/has-peer leaf@1.0.0 REPLACE for: b@1.0.0 want: 1.0.0\nnpm silly ADD node_modules/has-peer\nnpm silly ADD node_modules/has-peer/node_modules/leaf\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "1.0.0"
+      },
+      "node_modules/has-peer/node_modules/leaf": {
+        "version": "1.0.0"
+      }
+    },
+    "want": {
+      "has-peer": "1.0.0",
+      "leaf": "1.0.0"
+    }
+  },
+  "bundled upgrade has no placement": {
+    "log": "npm silly placeDep ROOT has-peer@2.0.0 OK for:  want: 2.0.0\nnpm silly CHANGE node_modules/has-peer\nnpm silly CHANGE node_modules/has-peer/node_modules/leaf\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "2.0.0",
+        "bundleDependencies": [
+          "leaf"
+        ],
+        "dependencies": {
+          "leaf": "2.0.0"
+        }
+      },
+      "node_modules/has-peer/node_modules/leaf": {
+        "version": "2.0.0",
+        "inBundle": true
+      }
+    },
+    "want": {
+      "has-peer": "2.0.0",
+      "leaf": "2.0.0"
+    }
+  },
+  "unbundled upgrade still requires placement": {
+    "log": "npm silly placeDep ROOT has-peer@2.0.0 OK for:  want: 2.0.0\nnpm silly CHANGE node_modules/has-peer\nnpm silly CHANGE node_modules/has-peer/node_modules/leaf\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "2.0.0",
+        "bundleDependencies": [
+          "leaf"
+        ],
+        "dependencies": {
+          "leaf": "2.0.0"
+        }
+      },
+      "node_modules/has-peer/node_modules/leaf": {
+        "version": "2.0.0"
+      }
+    },
+    "want": {
+      "has-peer": "2.0.0",
+      "leaf": "2.0.0"
+    },
+    "error": true
+  },
+  "bundled upgrade retains canonical name": {
+    "log": "npm silly placeDep ROOT has-peer@2.0.0 OK for:  want: 2.0.0\nnpm silly CHANGE node_modules/has-peer\nnpm silly CHANGE node_modules/has-peer/node_modules/leaf\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "2.0.0",
+        "bundleDependencies": [
+          "leaf"
+        ],
+        "dependencies": {
+          "leaf": "2.0.0"
+        }
+      },
+      "node_modules/has-peer/node_modules/leaf": {
+        "version": "2.0.0",
+        "inBundle": true,
+        "name": "canonical-leaf"
+      }
+    },
+    "want": {
+      "has-peer": "2.0.0",
+      "canonical-leaf": "2.0.0"
+    }
+  },
+  "bundled upgrade rejects changed owner version": {
+    "log": "npm silly placeDep ROOT has-peer@2.0.0 OK for:  want: 2.0.0\nnpm silly CHANGE node_modules/has-peer\nnpm silly CHANGE node_modules/has-peer/node_modules/leaf\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "3.0.0",
+        "bundleDependencies": [
+          "leaf"
+        ],
+        "dependencies": {
+          "leaf": "2.0.0"
+        }
+      },
+      "node_modules/has-peer/node_modules/leaf": {
+        "version": "2.0.0",
+        "inBundle": true
+      }
+    },
+    "want": {
+      "has-peer": "2.0.0",
+      "leaf": "2.0.0"
+    },
+    "error": true
+  },
+  "bundled entry still validates an explicit placement": {
+    "log": "npm silly placeDep ROOT has-peer@2.0.0 OK for:  want: 2.0.0\nnpm silly placeDep node_modules/has-peer leaf@3.0.0 OK for: has-peer@2.0.0 want: 3.0.0\nnpm silly CHANGE node_modules/has-peer\nnpm silly CHANGE node_modules/has-peer/node_modules/leaf\n",
+    "packages": {
+      "node_modules/has-peer": {
+        "version": "2.0.0",
+        "bundleDependencies": [
+          "leaf"
+        ],
+        "dependencies": {
+          "leaf": "2.0.0"
+        }
+      },
+      "node_modules/has-peer/node_modules/leaf": {
+        "version": "2.0.0",
+        "inBundle": true
+      }
+    },
+    "want": {
+      "has-peer": "2.0.0",
+      "leaf": "2.0.0"
+    },
+    "error": true
   }
 }

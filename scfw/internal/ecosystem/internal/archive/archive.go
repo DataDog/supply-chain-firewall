@@ -14,7 +14,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
@@ -125,6 +127,36 @@ func WalkTAR(ctx context.Context, reader io.Reader, visit func(*tar.Header, io.R
 			return err
 		}
 	}
+}
+
+// IsDownload reports whether a response, judged from its headers alone, may
+// carry a package archive: a binary or archive media type, or none at all.
+// Untyped bodies need a declared length, so only bounded ones are buffered,
+// and a declared length over MaxArtifactBytes passes untouched rather than
+// failing a download nothing else identified as a package.
+func IsDownload(header http.Header) bool {
+	length := int64(-1)
+	if value := header.Get("Content-Length"); value != "" {
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || parsed > MaxArtifactBytes {
+			return false
+		}
+		length = parsed
+	}
+	value := header.Get("Content-Type")
+	if value == "" {
+		return length >= 0
+	}
+	mediaType, _, err := mime.ParseMediaType(value)
+	if err != nil {
+		return false
+	}
+	switch mediaType {
+	case "application/octet-stream", "binary/octet-stream", "application/gzip", "application/x-gzip", "application/x-tgz",
+		"application/x-tar", "application/x-gtar", "application/x-compressed", "application/zstd":
+		return true
+	}
+	return false
 }
 
 // FullDownloadHeaders keeps representation selection and origin credentials

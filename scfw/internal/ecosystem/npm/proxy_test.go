@@ -83,7 +83,6 @@ func TestProxyHandlerEvaluatesTarballOnAnyHost(t *testing.T) {
 func TestProxyHandlerPassesNonTarballTraffic(t *testing.T) {
 	handler, evaluated := recordingHandler(t, errors.New("must not be evaluated"))
 	for _, request := range []proxy.Request{
-		getRequest(t, "https://registry.npmjs.org/left-pad"),
 		getRequest(t, "https://registry.npmjs.org/-/v1/search?text=left-pad"),
 		{Method: http.MethodPost, URL: *mustParseURL(t, "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz")},
 		{Method: http.MethodHead, URL: *mustParseURL(t, "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz")},

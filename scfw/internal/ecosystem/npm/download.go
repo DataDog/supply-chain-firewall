@@ -10,29 +10,23 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"net/url"
-	"strings"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/internal/archive"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
-// urlKey identifies a URL the way Node's WHATWG URL parser normalizes it
-// before requesting, so a redirect target recorded from a Location matches the
-// request the client makes: no credentials or fragment, a lowercase scheme and
-// host without a default port, and a normalized path. Backslashes, literal or
-// escaped, count as slashes; over-matching only inspects more downloads.
-func urlKey(value *url.URL) string {
-	scheme, host := strings.ToLower(value.Scheme), strings.ToLower(value.Host)
-	if (scheme == "http" && strings.HasSuffix(host, ":80")) || (scheme == "https" && strings.HasSuffix(host, ":443")) {
-		host = host[:strings.LastIndex(host, ":")]
+// observeDownload inspects responses whose URL no tarball pattern matches,
+// such as redirect targets (GitHub's api.github.com tarball redirects to a
+// codeload legacy.tar.gz), when the response alone looks like a download.
+// The archive signature and root package.json then confirm the package.
+func (h ProxyHandler) observeDownload(ctx context.Context, response proxy.Response) (*proxy.ResponseBodyHook, error) {
+	switch response.StatusCode {
+	case http.StatusOK, http.StatusPartialContent, http.StatusNotModified:
+		if archive.IsDownload(response.Header) {
+			return h.observeOpaqueTarball(ctx, response)
+		}
 	}
-	escapedPath := strings.NewReplacer("\\", "/", "%5C", "/", "%5c", "/").Replace(value.EscapedPath())
-	key := scheme + "://" + host + normalizeEscapedPath(escapedPath)
-	if value.RawQuery != "" {
-		key += "?" + value.RawQuery
-	}
-	return key
+	return nil, nil
 }
 
 func (h ProxyHandler) observeOpaqueTarball(ctx context.Context, response proxy.Response) (*proxy.ResponseBodyHook, error) {
@@ -44,20 +38,6 @@ func (h ProxyHandler) observeOpaqueTarball(ctx context.Context, response proxy.R
 	case status < 200 || status == http.StatusNoContent || status >= 400:
 		// No body, or one npm rejects.
 		return nil, nil
-	}
-	// Redirect tracking is best-effort: it matches only when Go and Node resolve
-	// the Location to the same URL. Unusual spellings (IDN or non-canonical IP
-	// hosts, ports such as :080, unencoded query characters, //-prefixed
-	// references) can miss; K9CODESEC-9784 tracks a complete fix.
-	if location := response.Header.Get("Location"); location != "" && response.StatusCode >= 300 {
-		// WHATWG strips surrounding spaces and tabs or newlines anywhere, and
-		// reads backslashes as slashes in http(s) URLs.
-		location = strings.NewReplacer("\t", "", "\n", "", "\r", "", "\\", "/").Replace(strings.TrimSpace(location))
-		if target, err := response.Request.URL.Parse(location); err == nil {
-			if scheme := strings.ToLower(target.Scheme); scheme == "http" || scheme == "https" {
-				h.Classifier.opaqueRedirects.Store(urlKey(target), struct{}{})
-			}
-		}
 	}
 	// npm unpacks the body of any other status it does not follow, including
 	// 205 and 300; a followed redirect's body is not an archive and passes.

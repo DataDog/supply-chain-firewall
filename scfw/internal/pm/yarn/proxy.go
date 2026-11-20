@@ -7,6 +7,7 @@ package yarn
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"net/url"
 	"os"
@@ -57,29 +58,46 @@ func (yarn Yarn) ProxyOptions(command []string) (proxy.Options, error) {
 		}
 		caFile, strictSSL = settings.CAFile, settings.StrictSSL
 		options.ProxyForURL = yarnProxyForURL(upstream, settings.NoProxyHTTP, settings.NoProxyHTTPS)
-		for _, ca := range settings.CA {
-			pems = append(pems, []byte(ca))
+		// Yarn keeps ca only when it cannot read cafile.
+		if _, err := os.ReadFile(caFile); err != nil {
+			caFile = ""
+			for _, ca := range settings.CA {
+				if ca != "" {
+					pems = append(pems, []byte(ca))
+				}
+			}
 		}
 	} else {
 		settings, err := yarn.berrySettings(command)
 		if err != nil {
 			return proxy.Options{}, err
 		}
-		caFile, strictSSL = settings.CAFile, settings.StrictSSL
-	}
-	options.TrustURL = yarnTrustURL(strictSSL)
-	// Yarn and Node ignore a CA file they cannot read; Git requires
-	// GIT_SSL_CAINFO, so a missing bundle fails.
-	var paths []string
-	for _, path := range []string{caFile, os.Getenv("NODE_EXTRA_CA_CERTS")} {
-		if _, err := os.Stat(path); path != "" && err == nil {
-			paths = append(paths, path)
+		strictSSL = settings.StrictSSL
+		// httpsCaFilePath replaces the roots from Yarn 4.9.2, and at any
+		// version without an httpsProxy; an earlier proxied Yarn keeps
+		// Node's roots.
+		if settings.HTTPS == "" || !yarn.version.LessThan(pm.Version{Major: 4, Minor: 9, Patch: 2}) {
+			caFile = settings.CAFile
 		}
 	}
-	options.UpstreamTLS, err = proxy.NewTLSConfig(proxy.TLSConfigOptions{
-		CABundlePaths: append(paths, os.Getenv("GIT_SSL_CAINFO")),
-		CABundlePEM:   pems,
-	})
+	options.TrustURL = yarnTrustURL(strictSSL)
+	// A CA file or inline ca replaces the roots, as in the running Yarn, and
+	// Node then ignores NODE_EXTRA_CA_CERTS. Git requires GIT_SSL_CAINFO, so
+	// a missing bundle fails, and it is always added.
+	tlsOptions := proxy.TLSConfigOptions{CABundlePaths: []string{os.Getenv("GIT_SSL_CAINFO")}}
+	if caFile != "" {
+		tlsOptions.RootCAs = x509.NewCertPool()
+		tlsOptions.CABundlePaths = append(tlsOptions.CABundlePaths, caFile)
+	} else if len(pems) > 0 {
+		tlsOptions.RootCAs = x509.NewCertPool()
+		tlsOptions.CABundlePEM = pems
+	} else if extra := os.Getenv("NODE_EXTRA_CA_CERTS"); extra != "" {
+		// Node ignores an unreadable bundle.
+		if _, err := os.Stat(extra); err == nil {
+			tlsOptions.CABundlePaths = append(tlsOptions.CABundlePaths, extra)
+		}
+	}
+	options.UpstreamTLS, err = proxy.NewTLSConfig(tlsOptions)
 	return options, err
 }
 

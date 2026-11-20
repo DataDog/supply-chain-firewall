@@ -8,10 +8,13 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -479,6 +482,126 @@ func TestYarnBerryChainsToAuthenticatedUpstream(t *testing.T) {
 		}
 	}
 	assertProxyCleaned(t, run.config)
+}
+
+// The child environment reruns this test as a child process: Go caches the
+// system pool per process, so only a fresh process can make the test
+// registry's CA its sole system root through SSL_CERT_FILE (Linux only).
+const (
+	yarnCAChildEnv      = "SCFW_TEST_YARN_CA_CHILD"    // the SCFW_TEST_YARN_* variable to use
+	yarnCAChildRegistry = "SCFW_TEST_YARN_CA_REGISTRY" // the parent's registry URL
+	yarnCAChildCAFile   = "SCFW_TEST_YARN_CA_FILE"     // an unrelated CA, empty for the control
+	yarnCAChildResult   = "SCFW_TEST_YARN_CA_RESULT"   // where the child writes its result
+)
+
+// TestYarnCAFileRejectsSystemRootUpstream shows registry traffic trusts
+// exactly the running Yarn's certificates: with a CA file configured, an
+// upstream signed only by a system root is rejected.
+func TestYarnCAFileRejectsSystemRootUpstream(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("SSL_CERT_FILE feeds x509.SystemCertPool only on Linux")
+	}
+	if os.Getenv(yarnCAChildEnv) != "" {
+		yarnCAChildRun(t)
+		return
+	}
+	for _, test := range []struct {
+		name        string
+		variable    string
+		caFile      bool // the Yarn CA file holds an unrelated CA
+		yarnFailed  bool
+		hits, calls int32
+	}{
+		{name: "classic system-root upstream", variable: "SCFW_TEST_YARN_CLASSIC", hits: 1, calls: 1},
+		{name: "classic cafile rejects system-root upstream", variable: "SCFW_TEST_YARN_CLASSIC", caFile: true, yarnFailed: true},
+		{name: "berry system-root upstream", variable: "SCFW_TEST_YARN_BERRY", hits: 1, calls: 1},
+		{name: "berry httpsCaFilePath rejects system-root upstream", variable: "SCFW_TEST_YARN_BERRY", caFile: true, yarnFailed: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			yarnTestExecutable(t, test.variable)
+			registry := startNpmRegistry(t)
+			caFile := ""
+			if test.caFile {
+				_, unrelatedCA, _ := proxyTLSIdentity(t)
+				caFile = writeProxyTLSFile(t, unrelatedCA)
+			}
+			resultPath := filepath.Join(t.TempDir(), "result.json")
+			child := exec.Command(os.Args[0], "-test.run=^TestYarnCAFileRejectsSystemRootUpstream$")
+			child.Env = append(os.Environ(),
+				yarnCAChildEnv+"="+test.variable,
+				yarnCAChildRegistry+"="+registry.URL,
+				yarnCAChildCAFile+"="+caFile,
+				yarnCAChildResult+"="+resultPath,
+				// The child's system roots are exactly the registry's CA.
+				"SSL_CERT_FILE="+registry.CAPath,
+				"SSL_CERT_DIR="+t.TempDir(),
+			)
+			output, err := child.CombinedOutput()
+			if err != nil {
+				t.Fatalf("child test failed: %v\n%s", err, output)
+			}
+			var result struct {
+				SetupFailed   bool `json:"setupFailed"`
+				CommandFailed bool `json:"commandFailed"`
+				Evaluations   int  `json:"evaluations"`
+			}
+			if data, readErr := os.ReadFile(resultPath); readErr != nil {
+				t.Fatalf("child wrote no result: %v\n%s", readErr, output)
+			} else if jsonErr := json.Unmarshal(data, &result); jsonErr != nil {
+				t.Fatalf("child result: %v", jsonErr)
+			}
+			if result.SetupFailed {
+				t.Fatal("proxy setup failed")
+			}
+			if result.CommandFailed != test.yarnFailed {
+				t.Fatalf("yarn failed = %v, want %v", result.CommandFailed, test.yarnFailed)
+			}
+			if int32(result.Evaluations) != test.calls {
+				t.Fatalf("evaluations = %d, want %d", result.Evaluations, test.calls)
+			}
+			if hits := registry.TarballHits.Load(); hits != test.hits {
+				t.Fatalf("tarball downloads = %d, want %d", hits, test.hits)
+			}
+		})
+	}
+}
+
+// yarnCAChildRun installs lab-pkg from the parent's registry with the system
+// roots it set through SSL_CERT_FILE, and reports how Yarn fared. The Yarn CA
+// file, when configured, holds an unrelated CA, so its replacing the roots
+// must reject the registry the system roots would accept.
+func yarnCAChildRun(t *testing.T) {
+	registryURL, caFile := os.Getenv(yarnCAChildRegistry), os.Getenv(yarnCAChildCAFile)
+	variable := os.Getenv(yarnCAChildEnv)
+	executable := yarnTestExecutable(t, variable)
+	if variable == "SCFW_TEST_YARN_CLASSIC" {
+		rc := "registry \"" + registryURL + "/\"\n"
+		if caFile != "" {
+			rc += "cafile \"" + caFile + "\"\n"
+		}
+		newYarnTestProject(t, ".yarnrc", rc+"disable-self-update-check true\n")
+	} else {
+		rc := "npmRegistryServer: \"" + registryURL + "\"\n"
+		if caFile != "" {
+			rc += "httpsCaFilePath: \"" + caFile + "\"\n"
+		}
+		newBerryTestProject(t, rc+"enableTelemetry: false\nenableGlobalCache: false\nnodeLinker: node-modules\n")
+	}
+	run := runYarnThroughProxy(t, executable, []string{"add", "lab-pkg"}, evaluation.OutcomeAllow)
+	if run.setupErr == nil {
+		assertProxyCleaned(t, run.config)
+	}
+	result, err := json.Marshal(struct {
+		SetupFailed   bool `json:"setupFailed"`
+		CommandFailed bool `json:"commandFailed"`
+		Evaluations   int  `json:"evaluations"`
+	}{run.setupErr != nil, run.commandErr != nil, int(run.calls)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(os.Getenv(yarnCAChildResult), result, 0600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // A global Yarn Classic hands off to the project's checked-in Yarn 4 release.

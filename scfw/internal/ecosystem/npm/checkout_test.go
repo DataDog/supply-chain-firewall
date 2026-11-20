@@ -73,3 +73,39 @@ func TestCheckoutPackage(t *testing.T) {
 		})
 	}
 }
+
+func TestYarnCheckoutPackage(t *testing.T) {
+	widget := pm.Package{Ecosystem: common.NPM, Name: "@acme/widget", Version: "1.2.3", Source: "https://host/r.git#abc"}
+	for _, test := range []struct {
+		name, base, head, manifest string
+		want                       pm.Package
+		found, wantErr             bool
+	}{
+		{name: "detached commit", base: "xfs-0a1b2c3d", head: "abc\n", manifest: "manifest/widget.json", want: widget, found: true},
+		{name: "no-version", base: "xfs-0a1b2c3d", head: "abc\n", manifest: "manifest/no-version.json",
+			want: pm.Package{Ecosystem: common.NPM, Name: "widget", Source: "https://host/r.git#abc"}, found: true},
+		// Yarn 4 never uses the default branch it clones before checking out the commit.
+		{name: "branch checkout", base: "xfs-0a1b2c3d", head: "ref: refs/heads/main\n", manifest: "manifest/widget.json"},
+		{name: "not a Yarn clone", base: "xfs-project", head: "abc\n", manifest: "manifest/widget.json"},
+		{name: "no HEAD", base: "xfs-0a1b2c3d", manifest: "manifest/widget.json", wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), test.base)
+			if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(readNpmFixture(t, test.manifest)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if test.head != "" {
+				if err := os.WriteFile(filepath.Join(dir, ".git", "HEAD"), []byte(test.head), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, found, err := YarnCheckoutPackage(dir, "https://u:tok@host/r.git", "abc")
+			if (err != nil) != test.wantErr || found != test.found || got != test.want {
+				t.Fatalf("YarnCheckoutPackage() = %+v, %v, %v; want %+v, %v, error %v", got, found, err, test.want, test.found, test.wantErr)
+			}
+		})
+	}
+}

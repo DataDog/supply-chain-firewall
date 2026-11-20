@@ -22,17 +22,29 @@ type gitCheckoutPolicy func(evaluate func(context.Context, pm.Package, error) er
 func npmGitCheckoutPolicy(evaluate func(context.Context, pm.Package, error) error) githook.Decide {
 	return func(ctx context.Context, checkout githook.Checkout) error {
 		pkg, found, err := npmregistry.CheckoutPackage(checkout.Dir, checkout.Origin, checkout.SHA)
-		if err != nil {
-			return fmt.Errorf("supply chain firewall could not read the git checkout: %w", err)
-		}
-		if !found {
-			return nil
-		}
-		if err := evaluate(ctx, pkg, nil); err != nil {
-			return fmt.Errorf("%w (%s)", err, pkg.Source)
-		}
+		return evaluateCheckout(ctx, evaluate, pkg, found, err)
+	}
+}
+
+// yarnGitCheckoutPolicy evaluates Yarn 4 git dependencies from their checkout.
+func yarnGitCheckoutPolicy(evaluate func(context.Context, pm.Package, error) error) githook.Decide {
+	return func(ctx context.Context, checkout githook.Checkout) error {
+		pkg, found, err := npmregistry.YarnCheckoutPackage(checkout.Dir, checkout.Origin, checkout.SHA)
+		return evaluateCheckout(ctx, evaluate, pkg, found, err)
+	}
+}
+
+func evaluateCheckout(ctx context.Context, evaluate func(context.Context, pm.Package, error) error, pkg pm.Package, found bool, err error) error {
+	if err != nil {
+		return fmt.Errorf("supply chain firewall could not read the git checkout: %w", err)
+	}
+	if !found {
 		return nil
 	}
+	if err := evaluate(ctx, pkg, nil); err != nil {
+		return fmt.Errorf("%w (%s)", err, pkg.Source)
+	}
+	return nil
 }
 
 // gitHookRunner gives the proxied command git hooks that ask decide about

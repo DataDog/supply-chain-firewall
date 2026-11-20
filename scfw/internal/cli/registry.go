@@ -55,8 +55,9 @@ var packageManagerFactories = []PackageManagerFactory{
 		},
 	},
 	{
-		Names:      yarn.ExecutableNames,
-		ProxyHooks: []proxyHookFactory{newNpmProxyHook},
+		Names:        yarn.ExecutableNames,
+		ProxyHooks:   []proxyHookFactory{newNpmProxyHook},
+		GitCheckouts: yarnGitCheckoutPolicy,
 		New: func(ctx context.Context, name, executable string) (pm.PackageManager, error) {
 			return yarn.NewYarn(ctx, name, executable)
 		},

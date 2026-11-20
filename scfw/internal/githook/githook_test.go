@@ -138,8 +138,8 @@ func TestCloneAllowedReportsCheckout(t *testing.T) {
 		t.Fatalf("checkouts = %+v, want one", checkouts)
 	}
 	got := checkouts[0]
-	if resolved(t, got.Dir) != resolved(t, destination) || got.Origin != "file://"+source || got.SHA != sha {
-		t.Fatalf("checkout = %+v, want dir %s, origin file://%s, sha %s", got, destination, source, sha)
+	if resolved(t, got.Dir) != resolved(t, destination) || got.Origin != "file://"+source || got.SHA != sha || got.Previous != strings.Repeat("0", 40) {
+		t.Fatalf("checkout = %+v, want dir %s, origin file://%s, sha %s, previous all zeros", got, destination, source, sha)
 	}
 }
 

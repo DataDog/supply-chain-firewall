@@ -32,7 +32,7 @@ func npmGitCheckoutPolicy(evaluate func(context.Context, pm.Package, error) erro
 func yarnGitCheckoutPolicy(evaluate func(context.Context, pm.Package, error) error) githook.Decide {
 	return func(ctx context.Context, checkout githook.Checkout) error {
 		if !checkout.Archive {
-			pkg, found, err := npmregistry.YarnCheckoutPackage(checkout.Dir, checkout.Origin, checkout.SHA)
+			pkg, found, err := npmregistry.YarnCheckoutPackage(checkout.Dir, checkout.Origin, checkout.Previous, checkout.SHA)
 			return evaluateCheckout(ctx, evaluate, pkg, found, err)
 		}
 		// Yarn Classic reads a dependency from a host that supports remote

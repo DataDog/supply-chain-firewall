@@ -26,13 +26,14 @@ import (
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
-// Checkout is a working tree Git has just checked out. With Archive set, it is
-// instead a git archive about to be written: of commit SHA from the repository
-// in Dir, or of a tree-ish from Remote when that is set.
+// Checkout is a working tree Git has just checked out at SHA, from the commit
+// Previous, which is all zeros for a clone. With Archive set, it is instead a
+// git archive about to be written: of commit SHA from the repository in Dir, or
+// of a tree-ish from Remote when that is set.
 type Checkout struct {
-	Dir, Origin, SHA string
-	Archive          bool
-	Remote           string
+	Dir, Origin, Previous, SHA string
+	Archive                    bool
+	Remote                     string
 }
 
 // Decide rules on a checkout. A non-nil error blocks it, and its text is shown
@@ -62,11 +63,12 @@ type Hooks struct {
 }
 
 type request struct {
-	Dir     string `json:"dir"`
-	Origin  string `json:"origin"`
-	SHA     string `json:"sha"`
-	Archive bool   `json:"archive,omitempty"`
-	Remote  string `json:"remote,omitempty"`
+	Dir      string `json:"dir"`
+	Origin   string `json:"origin"`
+	Previous string `json:"previous,omitempty"`
+	SHA      string `json:"sha"`
+	Archive  bool   `json:"archive,omitempty"`
+	Remote   string `json:"remote,omitempty"`
 }
 
 type response struct {

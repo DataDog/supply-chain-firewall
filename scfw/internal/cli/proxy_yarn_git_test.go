@@ -176,6 +176,38 @@ func TestYarnGitDependencies(t *testing.T) {
 	}
 }
 
+// A default branch named after its commit keeps Yarn 4's checkout of that
+// commit on the branch; the checkout must still be evaluated and blocked. Yarn
+// Classic cannot read the ambiguous commit's manifest and fails by itself.
+func TestYarnGitDependencyOnBranchNamedAfterCommit(t *testing.T) {
+	for _, generation := range []string{"classic", "berry"} {
+		t.Run(generation, func(t *testing.T) {
+			executable := yarnTestExecutable(t, map[string]string{"classic": "SCFW_TEST_YARN_CLASSIC", "berry": "SCFW_TEST_YARN_BERRY"}[generation])
+			dependency, remote, sha, marker, _ := yarnGitRemote(t, "ssh", "yarn/git-package/package.json")
+			bare := strings.TrimPrefix(remote, "ssh://localhost")
+			if output, err := exec.Command("git", "-C", bare, "branch", "-m", sha).CombinedOutput(); err != nil {
+				t.Fatalf("git fixture: %v %s", err, output)
+			}
+			dir, _, _ := newYarnGitProject(t, generation)
+			run := runYarnGitThroughProxy(t, executable, []string{"add", "lab-git-pkg@" + dependency}, evaluation.OutcomeBlock)
+			assertYarnFailed(t, run)
+			want := []string{remote + "#" + sha}
+			if generation == "classic" {
+				want = nil
+			}
+			if !slices.Equal(run.sources, want) {
+				t.Fatalf("sources = %v, want %v", run.sources, want)
+			}
+			if _, err := os.Stat(marker); err == nil {
+				t.Fatal("blocked git dependency's scripts ran")
+			}
+			if _, err := os.Stat(filepath.Join(dir, "node_modules", "lab-git-pkg")); err == nil {
+				t.Fatal("blocked git dependency was installed")
+			}
+		})
+	}
+}
+
 // The user's Git proxy and CA apply to Yarn's Git traffic, which SCFW still
 // evaluates, and GIT_SSL_NO_VERIFY does not reach the Git that Yarn runs.
 func TestYarnGitDependencyHonorsUserGitSettings(t *testing.T) {

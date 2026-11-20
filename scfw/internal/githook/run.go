@@ -33,7 +33,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	// Flag 1 marks a branch checkout, which covers clones and "checkout <sha>".
 	if name == "post-checkout" && len(gitArgs) == 3 && gitArgs[2] == "1" && !inSubmodule(ctx) {
-		if status := ask(ctx, socket, gitArgs[1], stderr); status != 0 {
+		if status := ask(ctx, socket, gitArgs[0], gitArgs[1], stderr); status != 0 {
 			return status
 		}
 	}
@@ -41,13 +41,13 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 }
 
 // ask fails closed: a checkout the parent cannot rule on is blocked.
-func ask(ctx context.Context, socket, sha string, stderr io.Writer) int {
+func ask(ctx context.Context, socket, previous, sha string, stderr io.Writer) int {
 	dir, err := os.Getwd()
 	if err != nil {
 		return unreachable(stderr, err)
 	}
 	origin, _ := gitOutput(ctx, "config", "--get", "remote.origin.url")
-	return send(ctx, socket, request{Dir: dir, Origin: origin, SHA: sha}, stderr)
+	return send(ctx, socket, request{Dir: dir, Origin: origin, Previous: previous, SHA: sha}, stderr)
 }
 
 func send(ctx context.Context, socket string, checkout request, stderr io.Writer) int {

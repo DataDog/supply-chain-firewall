@@ -111,6 +111,7 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 			http.Redirect(w, r, "/blob/abc", http.StatusFound)
 		case "/cached.tgz":
 			if r.Header.Get("If-None-Match") != "" {
+				w.Header().Set("ETag", `"cached"`)
 				w.WriteHeader(http.StatusNotModified)
 				return
 			}
@@ -239,6 +240,11 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 		if response.StatusCode != http.StatusNotModified || len(evaluated()) != 1 || fetches.Load()-before != 2 {
 			t.Fatalf("status=%d evaluations=%d fetches=%d, want 304 after one full re-fetch evaluated once",
 				response.StatusCode, len(evaluated()), fetches.Load()-before)
+		}
+		// The forwarded 304 must keep its own bodyless headers: the complete
+		// copy's Content-Length would promise bytes that never arrive.
+		if response.Header.Get("ETag") != `"cached"` || response.Header.Get("Content-Length") != "" {
+			t.Fatalf("forwarded 304 headers = %v, want the original's validators without a body claim", response.Header)
 		}
 	})
 }

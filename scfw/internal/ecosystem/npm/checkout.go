@@ -49,12 +49,30 @@ func CheckoutPackage(dir, origin, sha string) (pm.Package, bool, error) {
 // YarnCheckoutPackage identifies the package in a Yarn 4 git dependency
 // checkout like CheckoutPackage. Yarn 4 clones the default branch and then
 // checks out the dependency's commit; it never uses the clone's own checkout,
-// whose previous HEAD is all zeros, so only the later checkout is a package.
+// so only the later checkout is a package.
 func YarnCheckoutPackage(dir, origin, previous, sha string) (pm.Package, bool, error) {
-	if !yarnCloneName.MatchString(filepath.Base(dir)) || strings.Trim(previous, "0") == "" {
+	if !yarnCloneName.MatchString(filepath.Base(dir)) || strings.Trim(previous, "0") == "" && clonedHead(dir) {
 		return pm.Package{}, false, nil
 	}
 	return checkoutPackage(dir, origin, sha)
+}
+
+// clonedHead reports whether git clone made the latest change to HEAD. A
+// checkout from an unborn HEAD, as after cloning a remote whose HEAD names a
+// missing branch, also has an all-zero previous HEAD but is not the clone's.
+func clonedHead(dir string) bool {
+	file, err := os.Open(filepath.Join(dir, ".git", "logs", "HEAD"))
+	if err != nil {
+		return false
+	}
+	defer func() { _ = file.Close() }()
+	reflog, err := io.ReadAll(io.LimitReader(file, archive.MaxMetadataBytes+1))
+	if err != nil || int64(len(reflog)) > archive.MaxMetadataBytes {
+		return false
+	}
+	lines := strings.Split(strings.TrimRight(string(reflog), "\n"), "\n")
+	_, message, _ := strings.Cut(lines[len(lines)-1], "\t")
+	return strings.HasPrefix(message, "clone: from ")
 }
 
 // YarnClassicArchivePackage identifies the package Yarn Classic archives at

@@ -76,12 +76,15 @@ func TestCheckoutPackage(t *testing.T) {
 	}
 }
 
+// cloneReflog is the HEAD reflog git clone writes.
+const cloneReflog = "0000000000000000000000000000000000000000 abc A <a@b> 1700000000 +0000\tclone: from ssh://host/r.git\n"
+
 func TestYarnCheckoutPackage(t *testing.T) {
 	widget := pm.Package{Ecosystem: common.NPM, Name: "@acme/widget", Version: "1.2.3", Source: "https://host/r.git#abc"}
 	for _, test := range []struct {
-		name, base, previous, manifest string
-		want                           pm.Package
-		found                          bool
+		name, base, previous, reflog, manifest string
+		want                                   pm.Package
+		found                                  bool
 	}{
 		{name: "commit checkout", base: "xfs-0a1b2c3d", previous: "def", manifest: "manifest/widget.json", want: widget, found: true},
 		// Checking out the commit the clone is already on still runs the hook,
@@ -90,8 +93,14 @@ func TestYarnCheckoutPackage(t *testing.T) {
 		{name: "no-version", base: "xfs-0a1b2c3d", previous: "def", manifest: "manifest/no-version.json",
 			want: pm.Package{Ecosystem: common.NPM, Name: "widget", Source: "https://host/r.git#abc"}, found: true},
 		// Yarn 4 never uses the default branch it clones before checking out the commit.
-		{name: "clone checkout", base: "xfs-0a1b2c3d", previous: "0000000000000000000000000000000000000000", manifest: "manifest/widget.json"},
-		{name: "SHA-256 clone checkout", base: "xfs-0a1b2c3d", previous: "0000000000000000000000000000000000000000000000000000000000000000", manifest: "manifest/widget.json"},
+		{name: "clone checkout", base: "xfs-0a1b2c3d", previous: "0000000000000000000000000000000000000000", reflog: cloneReflog, manifest: "manifest/widget.json"},
+		{name: "SHA-256 clone checkout", base: "xfs-0a1b2c3d", previous: "0000000000000000000000000000000000000000000000000000000000000000", reflog: cloneReflog, manifest: "manifest/widget.json"},
+		// A clone of a remote whose HEAD names a missing branch checks nothing out,
+		// so Yarn's checkout of the commit starts from an unborn HEAD.
+		{name: "checkout from unborn HEAD", base: "xfs-0a1b2c3d", previous: "0000000000000000000000000000000000000000",
+			reflog:   cloneReflog + "0000000000000000000000000000000000000000 abc A <a@b> 1700000000 +0000\tcheckout: moving from missing to abc\n",
+			manifest: "manifest/widget.json", want: widget, found: true},
+		{name: "zero previous without reflog", base: "xfs-0a1b2c3d", previous: "0000000000000000000000000000000000000000", manifest: "manifest/widget.json", want: widget, found: true},
 		{name: "not a Yarn clone", base: "xfs-project", previous: "def", manifest: "manifest/widget.json"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -101,6 +110,14 @@ func TestYarnCheckoutPackage(t *testing.T) {
 			}
 			if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(readNpmFixture(t, test.manifest)), 0o600); err != nil {
 				t.Fatal(err)
+			}
+			if test.reflog != "" {
+				if err := os.MkdirAll(filepath.Join(dir, ".git", "logs"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, ".git", "logs", "HEAD"), []byte(test.reflog), 0o600); err != nil {
+					t.Fatal(err)
+				}
 			}
 			got, found, err := YarnCheckoutPackage(dir, "https://u:tok@host/r.git", test.previous, "abc")
 			if err != nil || found != test.found || got != test.want {

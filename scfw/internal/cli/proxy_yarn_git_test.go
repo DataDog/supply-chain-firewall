@@ -176,36 +176,62 @@ func TestYarnGitDependencies(t *testing.T) {
 	}
 }
 
-// A default branch named after its commit keeps Yarn 4's checkout of that
-// commit on the branch; the checkout must still be evaluated and blocked. Yarn
-// Classic cannot read the ambiguous commit's manifest and fails by itself.
-func TestYarnGitDependencyOnBranchNamedAfterCommit(t *testing.T) {
-	for _, generation := range []string{"classic", "berry"} {
-		t.Run(generation, func(t *testing.T) {
-			executable := yarnTestExecutable(t, map[string]string{"classic": "SCFW_TEST_YARN_CLASSIC", "berry": "SCFW_TEST_YARN_BERRY"}[generation])
-			dependency, remote, sha, marker, _ := yarnGitRemote(t, "ssh", "yarn/git-package/package.json")
-			bare := strings.TrimPrefix(remote, "ssh://localhost")
-			if output, err := exec.Command("git", "-C", bare, "branch", "-m", sha).CombinedOutput(); err != nil {
-				t.Fatalf("git fixture: %v %s", err, output)
-			}
-			dir, _, _ := newYarnGitProject(t, generation)
-			run := runYarnGitThroughProxy(t, executable, []string{"add", "lab-git-pkg@" + dependency}, evaluation.OutcomeBlock)
-			assertYarnFailed(t, run)
-			want := []string{remote + "#" + sha}
-			if generation == "classic" {
-				want = nil
-			}
-			if !slices.Equal(run.sources, want) {
-				t.Fatalf("sources = %v, want %v", run.sources, want)
-			}
-			if _, err := os.Stat(marker); err == nil {
-				t.Fatal("blocked git dependency's scripts ran")
-			}
-			if _, err := os.Stat(filepath.Join(dir, "node_modules", "lab-git-pkg")); err == nil {
-				t.Fatal("blocked git dependency was installed")
-			}
-		})
+// Repositories whose shape changes Yarn 4's checkouts must still be
+// evaluated and blocked. A default branch named after its commit keeps the
+// checkout of that commit on the branch; a remote HEAD naming a missing branch
+// leaves the clone without a checkout, so the commit's checkout starts from an
+// unborn HEAD. On the clone path SCFW forces, Yarn Classic fails by itself on
+// both: it cannot read the ambiguous commit's manifest, and its git pull fails
+// in a clone without a checkout.
+func TestYarnGitDependencyRepositoryShapes(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		// reshape changes the bare repository and returns the dependency's selector.
+		reshape func(t *testing.T, bare, sha string) string
+	}{
+		{name: "branch-named-after-commit", reshape: func(t *testing.T, bare, sha string) string {
+			yarnGitFixture(t, "-C", bare, "branch", "-m", sha)
+			return ""
+		}},
+		{name: "unborn-remote-head", reshape: func(t *testing.T, bare, _ string) string {
+			branch := strings.TrimPrefix(yarnGitFixture(t, "-C", bare, "symbolic-ref", "HEAD"), "refs/heads/")
+			yarnGitFixture(t, "-C", bare, "symbolic-ref", "HEAD", "refs/heads/missing")
+			return "#" + branch
+		}},
+	} {
+		for _, generation := range []string{"classic", "berry"} {
+			t.Run(test.name+"/"+generation, func(t *testing.T) {
+				executable := yarnTestExecutable(t, map[string]string{"classic": "SCFW_TEST_YARN_CLASSIC", "berry": "SCFW_TEST_YARN_BERRY"}[generation])
+				dependency, remote, sha, marker, _ := yarnGitRemote(t, "ssh", "yarn/git-package/package.json")
+				dependency += test.reshape(t, strings.TrimPrefix(remote, "ssh://localhost"), sha)
+				dir, _, _ := newYarnGitProject(t, generation)
+				run := runYarnGitThroughProxy(t, executable, []string{"add", "lab-git-pkg@" + dependency}, evaluation.OutcomeBlock)
+				assertYarnFailed(t, run)
+				want := []string{remote + "#" + sha}
+				if generation == "classic" {
+					want = nil
+				}
+				if !slices.Equal(run.sources, want) {
+					t.Fatalf("sources = %v, want %v", run.sources, want)
+				}
+				if _, err := os.Stat(marker); err == nil {
+					t.Fatal("blocked git dependency's scripts ran")
+				}
+				if _, err := os.Stat(filepath.Join(dir, "node_modules", "lab-git-pkg")); err == nil {
+					t.Fatal("blocked git dependency was installed")
+				}
+			})
+		}
 	}
+}
+
+func yarnGitFixture(t *testing.T, args ...string) string {
+	t.Helper()
+	output, err := exec.Command("git", args...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git fixture: %v %s", err, output)
+	}
+	return strings.TrimSpace(string(output))
 }
 
 // The user's Git proxy and CA apply to Yarn's Git traffic, which SCFW still

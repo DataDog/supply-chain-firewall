@@ -25,8 +25,13 @@ import (
 // pacote clones every git dependency into a temporary directory of npm's cache.
 const gitCloneMarker = "/_cacache/tmp/git-clone"
 
-// Yarn 4 clones every git dependency into a new xfs temporary directory.
-var yarnCloneName = regexp.MustCompile(`^xfs-[0-9a-f]{8}$`)
+// Yarn 4 clones every git dependency into a new xfs temporary directory. Yarn
+// Classic archives it from a clone in its cache's temporary folder, named after
+// the MD5 hash of the repository URL.
+var (
+	yarnCloneName    = regexp.MustCompile(`^xfs-[0-9a-f]{8}$`)
+	yarnClassicClone = regexp.MustCompile(`/\.tmp/[0-9a-f]{32}$`)
+)
 
 // CheckoutPackage identifies the npm package in a git dependency checkout from
 // its root package.json. Checkouts outside npm's temporary clone directories
@@ -57,6 +62,27 @@ func YarnCheckoutPackage(dir, origin, sha string) (pm.Package, bool, error) {
 		return pm.Package{}, false, nil
 	}
 	return checkoutPackage(dir, origin, sha)
+}
+
+// YarnClassicArchivePackage identifies the package Yarn Classic archives at
+// commit sha from its clone in dir, like CheckoutPackage. readManifest returns
+// at most limit bytes of the commit's root package.json, or an fs.ErrNotExist
+// error without one.
+func YarnClassicArchivePackage(dir, origin, sha string, readManifest func(limit int64) ([]byte, error)) (pm.Package, bool, error) {
+	if !yarnClassicClone.MatchString(filepath.ToSlash(dir)) {
+		return pm.Package{}, false, nil
+	}
+	if sha == "" {
+		return pm.Package{}, false, errors.New("the archived commit could not be resolved")
+	}
+	manifest, err := readManifest(archive.MaxMetadataBytes + 1)
+	if errors.Is(err, fs.ErrNotExist) {
+		return pm.Package{}, false, nil
+	}
+	if err != nil {
+		return pm.Package{}, false, err
+	}
+	return manifestPackage(manifest, origin, sha)
 }
 
 func checkoutPackage(dir, origin, sha string) (pm.Package, bool, error) {

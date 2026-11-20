@@ -172,7 +172,7 @@ func runFirewall(cmd *cobra.Command, args []string) error {
 				if err != nil {
 					return fmt.Errorf("scfw run: %w", err)
 				}
-				hooked = &gitHookRunner{ProxyRunner: runner, executable: executable, decide: &decide}
+				hooked = &gitHookRunner{ProxyRunner: runner, executable: executable, decide: &decide, archives: packageManagerFactory.GitArchives}
 				runner = hooked
 			}
 			commandErr, err := runThroughProxy(cmd.Context(), runner, cmdArgs[1:], configure)

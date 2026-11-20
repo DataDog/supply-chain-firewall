@@ -6,6 +6,8 @@
 package npm
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,6 +107,42 @@ func TestYarnCheckoutPackage(t *testing.T) {
 			got, found, err := YarnCheckoutPackage(dir, "https://u:tok@host/r.git", "abc")
 			if (err != nil) != test.wantErr || found != test.found || got != test.want {
 				t.Fatalf("YarnCheckoutPackage() = %+v, %v, %v; want %+v, %v, error %v", got, found, err, test.want, test.found, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestYarnClassicArchivePackage(t *testing.T) {
+	clone := "/cache/v6/.tmp/0123456789abcdef0123456789abcdef"
+	for _, test := range []struct {
+		name, dir, sha string
+		manifest       string
+		readErr        error
+		want           pm.Package
+		found, wantErr bool
+	}{
+		{name: "clone", dir: clone, manifest: "manifest/widget.json",
+			want: pm.Package{Ecosystem: common.NPM, Name: "@acme/widget", Version: "1.2.3", Source: "https://host/r.git#abc"}, found: true},
+		{name: "not a Yarn clone", dir: "/project", manifest: "manifest/widget.json"},
+		// Yarn Classic fails on a commit without a manifest by itself.
+		{name: "no package.json", dir: clone, readErr: fs.ErrNotExist},
+		{name: "unreadable", dir: clone, readErr: errors.New("git failed"), wantErr: true},
+		{name: "unresolved commit", dir: clone, sha: "-", manifest: "manifest/widget.json", wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			sha := "abc"
+			if test.sha == "-" {
+				sha = ""
+			}
+			read := func(int64) ([]byte, error) {
+				if test.readErr != nil {
+					return nil, test.readErr
+				}
+				return []byte(readNpmFixture(t, test.manifest)), nil
+			}
+			got, found, err := YarnClassicArchivePackage(test.dir, "https://u:tok@host/r.git", sha, read)
+			if (err != nil) != test.wantErr || found != test.found || got != test.want {
+				t.Fatalf("YarnClassicArchivePackage() = %+v, %v, %v; want %+v, %v, error %v", got, found, err, test.want, test.found, test.wantErr)
 			}
 		})
 	}

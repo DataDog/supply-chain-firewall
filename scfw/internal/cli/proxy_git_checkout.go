@@ -7,6 +7,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	npmregistry "github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/npm"
@@ -26,10 +27,24 @@ func npmGitCheckoutPolicy(evaluate func(context.Context, pm.Package, error) erro
 	}
 }
 
-// yarnGitCheckoutPolicy evaluates Yarn 4 git dependencies from their checkout.
+// yarnGitCheckoutPolicy evaluates Yarn 4 git dependencies from their checkout
+// and Yarn Classic ones from the commit it archives from its clone.
 func yarnGitCheckoutPolicy(evaluate func(context.Context, pm.Package, error) error) githook.Decide {
 	return func(ctx context.Context, checkout githook.Checkout) error {
-		pkg, found, err := npmregistry.YarnCheckoutPackage(checkout.Dir, checkout.Origin, checkout.SHA)
+		if !checkout.Archive {
+			pkg, found, err := npmregistry.YarnCheckoutPackage(checkout.Dir, checkout.Origin, checkout.SHA)
+			return evaluateCheckout(ctx, evaluate, pkg, found, err)
+		}
+		// Yarn Classic reads a dependency from a host that supports remote
+		// archives without cloning it. Failing its capability probe makes it
+		// clone the repository and archive the commit locally instead.
+		if checkout.Remote != "" {
+			return errors.New("supply chain firewall does not allow remote git archives during yarn commands")
+		}
+		read := func(limit int64) ([]byte, error) {
+			return githook.ReadBlob(ctx, checkout.Dir, checkout.SHA+":package.json", limit)
+		}
+		pkg, found, err := npmregistry.YarnClassicArchivePackage(checkout.Dir, checkout.Origin, checkout.SHA, read)
 		return evaluateCheckout(ctx, evaluate, pkg, found, err)
 	}
 }
@@ -54,7 +69,9 @@ type gitHookRunner struct {
 	pm.ProxyRunner
 	executable string
 	decide     *githook.Decide
-	hooks      *githook.Hooks
+	// archives also asks about git archives, see githook.ApplyArchives.
+	archives bool
+	hooks    *githook.Hooks
 }
 
 func (r *gitHookRunner) ProxyOptions(command []string) (proxy.Options, error) {
@@ -75,6 +92,11 @@ func (r *gitHookRunner) ProxyCommand(ctx context.Context, command []string, conf
 		return proxy.CommandSpec{}, err
 	}
 	r.hooks.Apply(&spec)
+	if r.archives {
+		if err := r.hooks.ApplyArchives(&spec); err != nil {
+			return proxy.CommandSpec{}, err
+		}
+	}
 	return spec, nil
 }
 

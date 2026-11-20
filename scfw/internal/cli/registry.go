@@ -29,6 +29,8 @@ type PackageManagerFactory struct {
 	ProxyHooks []proxyHookFactory
 	// GitCheckouts evaluates the git dependencies the manager checks out.
 	GitCheckouts gitCheckoutPolicy
+	// GitArchives also sends GitCheckouts the git archives the manager writes.
+	GitArchives bool
 }
 
 var packageManagerFactories = []PackageManagerFactory{
@@ -55,8 +57,10 @@ var packageManagerFactories = []PackageManagerFactory{
 		},
 	},
 	{
-		Names:      yarn.ExecutableNames,
-		ProxyHooks: []proxyHookFactory{newNpmProxyHook},
+		Names:        yarn.ExecutableNames,
+		ProxyHooks:   []proxyHookFactory{newNpmProxyHook},
+		GitCheckouts: yarnGitCheckoutPolicy,
+		GitArchives:  true,
 		New: func(ctx context.Context, name, executable string) (pm.PackageManager, error) {
 			return yarn.NewYarn(ctx, name, executable)
 		},

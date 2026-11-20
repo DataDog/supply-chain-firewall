@@ -10,11 +10,14 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
+	"sync"
 
 	"golang.org/x/net/http/httpproxy"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/gitproxy"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
@@ -80,7 +83,16 @@ func (yarn Yarn) ProxyOptions(command []string) (proxy.Options, error) {
 		CABundlePaths: append(paths, os.Getenv("GIT_SSL_CAINFO")),
 		CABundlePEM:   pems,
 	})
-	return options, err
+	if err != nil {
+		return proxy.Options{}, err
+	}
+	git, err := yarn.gitSettings(command)
+	if err != nil {
+		return proxy.Options{}, err
+	}
+	options.AdditionalClients = git.AdditionalClients()
+	options.AdditionalClients["git"] = proxy.Options{RouteForRequest: git.Route}
+	return options, nil
 }
 
 var _ pm.ProxyOptionsProvider = Yarn{}
@@ -132,14 +144,59 @@ func (yarn Yarn) ProxyCommand(_ context.Context, command []string, config proxy.
 	if err != nil {
 		return proxy.CommandSpec{}, errors.New("read proxy CA certificate")
 	}
+	var spec proxy.CommandSpec
 	if gen == classic {
-		return classicProxyCommand(yarn.executable, command, config, pem)
+		spec, err = classicProxyCommand(yarn.executable, command, config, pem)
+	} else if _, err = yarn.berrySettings(command); err == nil {
+		// Refuse before Yarn starts when its settings would route around SCFW.
+		spec, err = berryProxyCommand(yarn.executable, command, config, pem)
 	}
-	// Refuse before Yarn starts when its settings would route around SCFW.
-	if _, err := yarn.berrySettings(command); err != nil {
+	if err != nil {
 		return proxy.CommandSpec{}, err
 	}
-	return berryProxyCommand(yarn.executable, command, config, pem)
+	gitConfig := config
+	if git, exists := config.AdditionalClients["git"]; exists {
+		gitConfig = git
+		gitConfig.AdditionalClients = config.AdditionalClients
+	}
+	git, err := yarn.gitSettings(command)
+	if err != nil {
+		return proxy.CommandSpec{}, err
+	}
+	if err := git.ChildOverrides(spec.EnvOverrides, gitConfig); err != nil {
+		return proxy.CommandSpec{}, err
+	}
+	spec.EnvRemovals = append(spec.EnvRemovals, "GIT_SSL_NO_VERIFY")
+	return spec, nil
+}
+
+// The same snapshot configures outbound Git requests and the child process.
+type yarnProxyState struct {
+	mutex   sync.Mutex
+	command []string
+	git     *gitproxy.Settings
+}
+
+func (yarn Yarn) gitSettings(command []string) (*gitproxy.Settings, error) {
+	if yarn.proxyState != nil {
+		yarn.proxyState.mutex.Lock()
+		defer yarn.proxyState.mutex.Unlock()
+		if yarn.proxyState.git != nil && slices.Equal(command, yarn.proxyState.command) {
+			return yarn.proxyState.git, nil
+		}
+	}
+	directory, err := yarn.ProjectDirectory(command)
+	if err != nil {
+		return nil, err
+	}
+	settings, err := gitproxy.Read(directory)
+	if err != nil {
+		return nil, err
+	}
+	if yarn.proxyState != nil {
+		yarn.proxyState.command, yarn.proxyState.git = slices.Clone(command), settings
+	}
+	return settings, nil
 }
 
 var _ pm.ProxyRunner = Yarn{}

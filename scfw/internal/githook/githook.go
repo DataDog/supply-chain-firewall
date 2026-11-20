@@ -12,8 +12,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -23,9 +26,14 @@ import (
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
-// Checkout is a working tree Git has just checked out.
+// Checkout is a working tree Git has just checked out at SHA, from the commit
+// Previous, which is all zeros for a clone. With Archive set, it is instead a
+// git archive about to be written: of commit SHA from the repository in Dir, or
+// of a tree-ish from Remote when that is set.
 type Checkout struct {
-	Dir, Origin, SHA string
+	Dir, Origin, Previous, SHA string
+	Archive                    bool
+	Remote                     string
 }
 
 // Decide rules on a checkout. A non-nil error blocks it, and its text is shown
@@ -47,16 +55,20 @@ const maxSocketPath = 104
 
 // Hooks serves checkout decisions for one invocation until it is closed.
 type Hooks struct {
-	dir      string
-	listener net.Listener
-	cancel   context.CancelFunc
-	group    sync.WaitGroup
+	dir        string
+	executable string
+	listener   net.Listener
+	cancel     context.CancelFunc
+	group      sync.WaitGroup
 }
 
 type request struct {
-	Dir    string `json:"dir"`
-	Origin string `json:"origin"`
-	SHA    string `json:"sha"`
+	Dir      string `json:"dir"`
+	Origin   string `json:"origin"`
+	Previous string `json:"previous,omitempty"`
+	SHA      string `json:"sha"`
+	Archive  bool   `json:"archive,omitempty"`
+	Remote   string `json:"remote,omitempty"`
 }
 
 type response struct {
@@ -104,7 +116,7 @@ func start(ctx context.Context, dir, executable string, decide Decide) (*Hooks, 
 		return nil, fmt.Errorf("listen for git hooks: %w", err)
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	hooks := &Hooks{dir: dir, listener: listener, cancel: cancel}
+	hooks := &Hooks{dir: dir, executable: executable, listener: listener, cancel: cancel}
 	hooks.group.Go(func() { hooks.serve(ctx, decide) })
 	return hooks, nil
 }
@@ -147,6 +159,65 @@ func (h *Hooks) Apply(spec *proxy.CommandSpec) {
 	spec.EnvOverrides["GIT_CONFIG_KEY_"+strconv.Itoa(index)] = "core.hooksPath"
 	spec.EnvOverrides["GIT_CONFIG_VALUE_"+strconv.Itoa(index)] = filepath.Join(h.dir, "hooks")
 	spec.EnvOverrides["GIT_CONFIG_COUNT"] = strconv.Itoa(index + 1)
+}
+
+// ApplyArchives also makes the command's git ask about each git archive before
+// writing it, for clients that read packages with git archive, which runs no
+// hook. A git executable first on the command's PATH runs the real one, so
+// only clients that find Git on PATH are covered. Without Git there is nothing
+// to run.
+func (h *Hooks) ApplyArchives(spec *proxy.CommandSpec) error {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		return nil
+	}
+	bin := filepath.Join(h.dir, "bin")
+	if err := os.Mkdir(bin, 0o700); err != nil {
+		return errors.New("could not create git hooks directory")
+	}
+	script := fmt.Sprintf("#!/bin/sh\nexec %s git-hook %s git %s \"$@\"\n", shellQuoted(h.executable), shellQuoted(filepath.Join(h.dir, "s")), shellQuoted(git))
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o700); err != nil {
+		return errors.New("could not write git hook")
+	}
+	if spec.EnvOverrides == nil {
+		spec.EnvOverrides = map[string]string{}
+	}
+	path, found := spec.EnvOverrides["PATH"]
+	if !found {
+		path = os.Getenv("PATH")
+	}
+	spec.EnvOverrides["PATH"] = bin + string(os.PathListSeparator) + path
+	return nil
+}
+
+// ReadBlob returns at most limit bytes of the blob object names in the
+// repository at dir, or an fs.ErrNotExist error when object names nothing.
+func ReadBlob(ctx context.Context, dir, object string, limit int64) ([]byte, error) {
+	id, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--verify", "--quiet", "--end-of-options", object).Output()
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return nil, fs.ErrNotExist
+	}
+	if err != nil {
+		return nil, err
+	}
+	child := exec.CommandContext(ctx, "git", "-C", dir, "cat-file", "blob", strings.TrimSpace(string(id)))
+	stdout, err := child.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := child.Start(); err != nil {
+		return nil, err
+	}
+	data, err := io.ReadAll(io.LimitReader(stdout, limit))
+	truncated := int64(len(data)) == limit
+	if truncated {
+		_ = child.Process.Kill()
+	}
+	if waitErr := child.Wait(); err == nil && !truncated {
+		err = waitErr
+	}
+	return data, err
 }
 
 // Close stops serving, ends pending decisions, and removes the hooks.

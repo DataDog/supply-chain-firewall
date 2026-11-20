@@ -1,0 +1,1 @@
+{"name":"lab-git-pkg","scripts":{"prepare":"node -e \"require('fs').writeFileSync(process.env.SCFW_TEST_PREPARE_MARKER,'ran')\"","prepack":"node -e \"require('fs').writeFileSync(process.env.SCFW_TEST_PREPARE_MARKER,'ran')\""}}

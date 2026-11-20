@@ -90,6 +90,7 @@ type yarnProxyRun struct {
 	calls                int32
 	details              string
 	config               proxy.ClientConfig
+	sources              []string
 }
 
 func runYarnThroughProxy(t *testing.T, executable string, args []string, outcome evaluation.Outcome) yarnProxyRun {

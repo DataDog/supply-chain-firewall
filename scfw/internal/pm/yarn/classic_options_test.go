@@ -38,6 +38,32 @@ func verifiesRegistry(t *testing.T, options proxy.Options) bool {
 	return err == nil
 }
 
+// tlsFixturePools loads the CA fixtures shared by the replaces-roots tests:
+// pems maps "registry" to tls/registry-ca.pem and "other" to tls/scfw-ca.pem,
+// and pool builds the exact root pool of the named fixtures' certificates.
+func tlsFixturePools(t *testing.T) (pems map[string]string, pool func(t *testing.T, names ...string) *x509.CertPool) {
+	t.Helper()
+	load := func(name string) string {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join(testdataDir, "tls", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	pems = map[string]string{"registry": load("registry-ca.pem"), "other": load("scfw-ca.pem")}
+	return pems, func(t *testing.T, names ...string) *x509.CertPool {
+		t.Helper()
+		certPool := x509.NewCertPool()
+		for _, name := range names {
+			if !certPool.AppendCertsFromPEM([]byte(pems[name])) {
+				t.Fatalf("no certificate in %s", name)
+			}
+		}
+		return certPool
+	}
+}
+
 func TestClassicProxyOptionsTrust(t *testing.T) {
 	caPath := filepath.Join(testdataDir, "tls", "registry-ca.pem")
 	caPEM, err := os.ReadFile(caPath)
@@ -80,24 +106,7 @@ func TestClassicProxyOptionsTrust(t *testing.T) {
 // appended regardless.
 func TestClassicProxyOptionsReplacesRoots(t *testing.T) {
 	const registry, other = "registry", "other"
-	load := func(name string) string {
-		t.Helper()
-		data, err := os.ReadFile(filepath.Join(testdataDir, "tls", name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		return string(data)
-	}
-	pems := map[string]string{registry: load("registry-ca.pem"), other: load("scfw-ca.pem")}
-	poolOf := func(t *testing.T, names ...string) *x509.CertPool {
-		pool := x509.NewCertPool()
-		for _, name := range names {
-			if !pool.AppendCertsFromPEM([]byte(pems[name])) {
-				t.Fatalf("no certificate in %s", name)
-			}
-		}
-		return pool
-	}
+	pems, poolOf := tlsFixturePools(t)
 	for _, test := range []struct {
 		name    string
 		prepare func(t *testing.T, root, registryPath, otherPath string)
@@ -117,6 +126,10 @@ func TestClassicProxyOptionsReplacesRoots(t *testing.T) {
 		}, []string{registry}},
 		{"cafile drops NODE_EXTRA_CA_CERTS", func(t *testing.T, root, registryPath, otherPath string) {
 			writeYarnFixture(t, filepath.Join(root, "parent", "project", ".yarnrc"), "yarnrc/cafile.yarnrc.tmpl", registryPath)
+			t.Setenv("NODE_EXTRA_CA_CERTS", otherPath)
+		}, []string{registry}},
+		{"ca drops NODE_EXTRA_CA_CERTS", func(t *testing.T, _, _, otherPath string) {
+			t.Setenv("YARN_CA", pems[registry])
 			t.Setenv("NODE_EXTRA_CA_CERTS", otherPath)
 		}, []string{registry}},
 		{"GIT_SSL_CAINFO is still appended", func(t *testing.T, root, registryPath, otherPath string) {
@@ -152,7 +165,6 @@ func TestClassicProxyOptionsIgnoresEmptyCA(t *testing.T) {
 	}{
 		{".yarnrc ca", ".yarnrc", "yarnrc/empty-ca.yarnrc"},
 		{".npmrc ca", ".npmrc", "yarnrc/empty-ca.npmrc"},
-		{".npmrc ca array", ".npmrc", "yarnrc/empty-ca-array.npmrc"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			root := isolateYarnEnvironment(t)

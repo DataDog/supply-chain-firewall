@@ -6,9 +6,7 @@
 package yarn
 
 import (
-	"crypto/x509"
 	"net/url"
-	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -52,24 +50,7 @@ func TestBerryProxyOptionsTrust(t *testing.T) {
 // request keeps Node's roots, where NODE_EXTRA_CA_CERTS still applies.
 func TestBerryProxyOptionsReplacesRoots(t *testing.T) {
 	const registry, other = "registry", "other"
-	load := func(name string) string {
-		t.Helper()
-		data, err := os.ReadFile(filepath.Join(testdataDir, "tls", name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		return string(data)
-	}
-	pems := map[string]string{registry: load("registry-ca.pem"), other: load("scfw-ca.pem")}
-	poolOf := func(t *testing.T, names ...string) *x509.CertPool {
-		pool := x509.NewCertPool()
-		for _, name := range names {
-			if !pool.AppendCertsFromPEM([]byte(pems[name])) {
-				t.Fatalf("no certificate in %s", name)
-			}
-		}
-		return pool
-	}
+	_, poolOf := tlsFixturePools(t)
 	replaces := func(t *testing.T, registryPath, otherPath string) {
 		t.Helper()
 		t.Setenv("YARN_HTTPS_CA_FILE_PATH", registryPath)

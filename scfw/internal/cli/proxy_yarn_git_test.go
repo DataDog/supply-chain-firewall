@@ -209,7 +209,7 @@ func TestYarnGitDependencyOnBranchNamedAfterCommit(t *testing.T) {
 }
 
 // The user's Git proxy and CA apply to Yarn's Git traffic, which SCFW still
-// evaluates, and GIT_SSL_NO_VERIFY does not reach the Git that Yarn runs.
+// evaluates.
 func TestYarnGitDependencyHonorsUserGitSettings(t *testing.T) {
 	executable := yarnTestExecutable(t, "SCFW_TEST_YARN_BERRY")
 	dependency, remote, sha, _, ca := yarnGitRemote(t, "https", "yarn/git-package/package.json")
@@ -222,7 +222,6 @@ func TestYarnGitDependencyHonorsUserGitSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("GIT_CONFIG_GLOBAL", gitConfig)
-	t.Setenv("GIT_SSL_NO_VERIFY", "1")
 	run := runYarnGitThroughProxy(t, executable, []string{"add", "lab-git-pkg@" + dependency}, evaluation.OutcomeAllow)
 	assertYarnSucceeded(t, run)
 	if hits.Load() == 0 {

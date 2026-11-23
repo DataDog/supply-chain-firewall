@@ -1,0 +1,169 @@
+{
+  "warning-block": [
+    {
+      "timestamp": "2026-11-23T12:00:00Z",
+      "command": "pip install package==1.0",
+      "package_manager": "pip",
+      "executable": "/pip",
+      "outcome": "BLOCK",
+      "packages": [
+        {
+          "ecosystem": "PyPI",
+          "package_name": "package",
+          "package_version": "1.0",
+          "outcome": "WARN",
+          "findings": [
+            {
+              "verifier": "FindingsListVerifier",
+              "severity": "WARNING",
+              "text": "SCFW E2E exact-warning"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "allowed-action": [
+    {
+      "timestamp": "2026-11-23T12:00:00Z",
+      "command": "pip install package==1.0",
+      "package_manager": "pip",
+      "executable": "/pip",
+      "outcome": "ALLOW",
+      "packages": [
+        {
+          "ecosystem": "PyPI",
+          "package_name": "package",
+          "package_version": "1.0",
+          "outcome": "WARN",
+          "findings": [
+            {
+              "verifier": "FindingsListVerifier",
+              "severity": "WARNING",
+              "text": "SCFW E2E exact-warning"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "wrong-version": [
+    {
+      "timestamp": "2026-11-23T12:00:00Z",
+      "command": "pip install package==1.0",
+      "package_manager": "pip",
+      "executable": "/pip",
+      "outcome": "BLOCK",
+      "packages": [
+        {
+          "ecosystem": "PyPI",
+          "package_name": "package",
+          "package_version": "2.0",
+          "outcome": "WARN",
+          "findings": [
+            {
+              "verifier": "FindingsListVerifier",
+              "severity": "WARNING",
+              "text": "SCFW E2E exact-warning"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "missing-list": [
+    {
+      "timestamp": "2026-11-23T12:00:00Z",
+      "command": "pip install package==1.0",
+      "package_manager": "pip",
+      "executable": "/pip",
+      "outcome": "BLOCK",
+      "packages": [
+        {
+          "ecosystem": "PyPI",
+          "package_name": "package",
+          "package_version": "1.0",
+          "outcome": "WARN",
+          "findings": []
+        }
+      ]
+    }
+  ],
+  "wrong-severity": [
+    {
+      "timestamp": "2026-11-23T12:00:00Z",
+      "command": "pip install package==1.0",
+      "package_manager": "pip",
+      "executable": "/pip",
+      "outcome": "BLOCK",
+      "packages": [
+        {
+          "ecosystem": "PyPI",
+          "package_name": "package",
+          "package_version": "1.0",
+          "outcome": "WARN",
+          "findings": [
+            {
+              "verifier": "FindingsListVerifier",
+              "severity": "CRITICAL",
+              "text": "SCFW E2E exact-warning"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "extra-list": [
+    {
+      "timestamp": "2026-11-23T12:00:00Z",
+      "command": "pip install package==1.0",
+      "package_manager": "pip",
+      "executable": "/pip",
+      "outcome": "BLOCK",
+      "packages": [
+        {
+          "ecosystem": "PyPI",
+          "package_name": "package",
+          "package_version": "1.0",
+          "outcome": "WARN",
+          "findings": [
+            {
+              "verifier": "FindingsListVerifier",
+              "severity": "WARNING",
+              "text": "SCFW E2E exact-warning"
+            },
+            {
+              "verifier": "FindingsListVerifier",
+              "severity": "WARNING",
+              "text": "unexpected"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "wrong-manager": [
+    {
+      "timestamp": "2026-11-23T12:00:00Z",
+      "command": "pip install package==1.0",
+      "package_manager": "poetry",
+      "executable": "/pip",
+      "outcome": "BLOCK",
+      "packages": [
+        {
+          "ecosystem": "PyPI",
+          "package_name": "package",
+          "package_version": "1.0",
+          "outcome": "WARN",
+          "findings": [
+            {
+              "verifier": "FindingsListVerifier",
+              "severity": "WARNING",
+              "text": "SCFW E2E exact-warning"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

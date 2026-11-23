@@ -1,0 +1,71 @@
+{{define "exact-critical"}}
+findings:
+  - severity: CRITICAL
+    finding: "SCFW E2E exact-critical"
+    packages:
+      - ecosystem: {{printf "%q" .Ecosystem}}
+        name: {{printf "%q" .Project}}
+        versions: [{{printf "%q" .Version}}]
+{{end}}
+{{define "exact-warning"}}
+findings:
+  - severity: WARNING
+    finding: "SCFW E2E exact-warning"
+    packages:
+      - ecosystem: {{printf "%q" .Ecosystem}}
+        name: {{printf "%q" .Project}}
+        versions: [{{printf "%q" .Version}}]
+{{end}}
+{{define "wildcard"}}
+findings:
+  - severity: CRITICAL
+    finding: "SCFW E2E wildcard"
+    packages:
+      - ecosystem: {{printf "%q" .Ecosystem}}
+        name: {{printf "%q" .Project}}
+        versions: ["*"]
+{{end}}
+{{define "mismatch"}}
+findings:
+  - severity: CRITICAL
+    finding: "SCFW E2E mismatch"
+    packages:
+      - ecosystem: {{printf "%q" .Ecosystem}}
+        name: {{printf "%q" .Project}}
+        versions: ["0.0.0-scfw-e2e-does-not-exist"]
+{{end}}
+{{define "empty-versions"}}
+findings:
+  - severity: CRITICAL
+    finding: "SCFW E2E empty-versions"
+    packages:
+      - ecosystem: {{printf "%q" .Ecosystem}}
+        name: {{printf "%q" .Project}}
+        versions: []
+{{end}}
+{{define "invalid-severity"}}
+findings:
+  - severity: NOT_A_SEVERITY
+    finding: "SCFW E2E invalid-severity"
+    packages:
+      - ecosystem: {{printf "%q" .Ecosystem}}
+        name: {{printf "%q" .Project}}
+        versions: [{{printf "%q" .Version}}]
+{{end}}
+{{define "case-insensitive"}}
+findings:
+  - severity: critical
+    finding: "SCFW E2E case-insensitive"
+    packages:
+      - ecosystem: {{printf "%q" .Ecosystem}}
+        name: {{printf "%q" .Project}}
+        versions: [{{printf "%q" .Version}}]
+{{end}}
+{{define "all-versions"}}
+findings:
+  - severity: CRITICAL
+    finding: "SCFW E2E all-versions"
+    packages:
+      - ecosystem: {{printf "%q" .Ecosystem}}
+        name: {{printf "%q" .Project}}
+{{end}}

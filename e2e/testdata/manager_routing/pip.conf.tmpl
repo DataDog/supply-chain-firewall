@@ -1,0 +1,5 @@
+[global]
+{{if .Global}}proxy = {{.Global}}{{end}}
+{{if .NoProxy}}no-proxy-env = true{{end}}
+[install]
+{{if .Install}}proxy = {{.Install}}{{end}}

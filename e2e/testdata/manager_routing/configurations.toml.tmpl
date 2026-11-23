@@ -1,0 +1,12 @@
+[https]
+index-url = "https://pypi.org/simple"
+https-proxy = "{{.Proxy}}"
+
+[http]
+index-url = "https://pypi.org/simple"
+http-proxy = "{{.Proxy}}"
+
+[bypass]
+index-url = "https://pypi.org/simple"
+https-proxy = "{{.Proxy}}"
+no-proxy = ["pypi.org", "files.pythonhosted.org"]

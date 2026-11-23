@@ -127,7 +127,7 @@ func TestNewProxyHookEvaluatesWhenPublicationLookupFails(t *testing.T) {
 	registry := &fakePackumentClient{status: http.StatusNotFound}
 	handle, calls := recordingHook(t, context.Background(), registry.client(), nil)
 
-	if err := handle(context.Background(), "https://evil.example/left-pad/-/left-pad-1.3.0.tgz"); err != nil {
+	if err := handle(context.Background(), "https://registry.yarnpkg.com/left-pad/-/left-pad-1.3.0.tgz"); err != nil {
 		t.Fatalf("hook error = %v, want the policy's nil", err)
 	}
 	got := calls()

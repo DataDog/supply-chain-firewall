@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -389,7 +390,7 @@ func TestDefaultHTTPSPortBypassDiagnostic(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unrelated setup rejected: %v", err)
 			}
-			_, err = pipHTTPSBypassHook(settings)(context.Background(), proxy.Request{URL: url.URL{Scheme: "https", Host: "files.example"}})
+			_, err = pipHTTPSBypassHook(settings)(context.Background(), proxy.Request{URL: url.URL{Scheme: "https", Host: "files.example"}, Header: http.Header{"User-Agent": {"pip/26.2"}}})
 			if (err != nil) != test.reject {
 				t.Fatalf("reject=%v, error=%v", test.reject, err)
 			}
@@ -420,7 +421,7 @@ func TestDefaultHTTPSPortBypassEquivalentProxyEndpoints(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unrelated setup rejected: %v", err)
 		}
-		_, err = pipHTTPSBypassHook(settings)(context.Background(), proxy.Request{URL: url.URL{Scheme: "https", Host: "files.example"}})
+		_, err = pipHTTPSBypassHook(settings)(context.Background(), proxy.Request{URL: url.URL{Scheme: "https", Host: "files.example"}, Header: http.Header{"User-Agent": {"pip/26.2"}}})
 		if (err != nil) != test.reject {
 			t.Fatalf("%s versus %s reject=%v: %v", test.explicit, test.environment, test.reject, err)
 		}

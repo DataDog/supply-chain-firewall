@@ -19,7 +19,14 @@ func pipHTTPSBypassHook(settings pipDiscoveryResult) proxy.RequestHook {
 	var diagnostic sync.Once
 	route := pipProxyForURL(settings)
 	return func(_ context.Context, request proxy.Request) (proxy.ResponseHook, error) {
-		if strings.HasPrefix(request.ClientIdentity, "client:") || pipNativeGitRequest(request) {
+		if strings.HasPrefix(request.ClientIdentity, "client:") {
+			return nil, nil
+		}
+		// PipSession always sends pip/<version>; user data only extends its suffix.
+		// Other child clients (including custom-agent Git) do not use this
+		// Requests routing model. Policy hooks still inspect their traffic.
+		agent := request.Header.Get("User-Agent")
+		if !strings.HasPrefix(agent, "pip/") && !strings.HasPrefix(agent, "python-requests/") {
 			return nil, nil
 		}
 		err := pythonproxy.ValidateHTTPSRoute(&request.URL, route)
@@ -28,14 +35,4 @@ func pipHTTPSBypassHook(settings pipDiscoveryResult) proxy.RequestHook {
 		}
 		return nil, err
 	}
-}
-
-// Git subprocesses share pip's listener but use libcurl's bypass semantics.
-// Recognizable pip/Requests traffic must retain the guard even on Git-shaped URLs.
-func pipNativeGitRequest(request proxy.Request) bool {
-	agent := request.Header.Get("User-Agent")
-	if strings.HasPrefix(agent, "pip/") || strings.HasPrefix(agent, "python-requests/") {
-		return false
-	}
-	return strings.HasPrefix(agent, "git/") || request.URL.Query().Get("service") == "git-upload-pack" || strings.HasSuffix(request.URL.Path, "/git-upload-pack")
 }

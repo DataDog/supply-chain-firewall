@@ -37,7 +37,7 @@ func TestHTTPSBypassNativeRequestVectors(t *testing.T) {
 				t.Fatal(err)
 			}
 			hook := pipHTTPSBypassHook(pipDiscoveryResult{HTTPS: "http://gateway.example", RequestsNoProxy: test.Requests, NoProxy: test.Urllib, LooseNoProxy: test.Loose})
-			_, err = hook(context.Background(), proxy.Request{URL: *target})
+			_, err = hook(context.Background(), proxy.Request{URL: *target, Header: http.Header{"User-Agent": {"pip/26.2"}}})
 			if errors.Is(err, pythonproxy.ErrAmbiguousHTTPSBypass) != test.Ambiguous {
 				t.Fatalf("ambiguous=%v: %v", test.Ambiguous, err)
 			}
@@ -54,6 +54,8 @@ func TestHTTPSBypassNativeGitRequests(t *testing.T) {
 		{"native-dumb-http", "/repo.git/HEAD", "git/2.55.0", false},
 		{"configured-agent-refs", "/repo.git/info/refs?service=git-upload-pack", "custom-git", false},
 		{"configured-agent-upload", "/repo.git/git-upload-pack", "custom-git", false},
+		{"configured-agent-dumb-head", "/repo.git/HEAD", "custom-git", false},
+		{"configured-agent-dumb-refs", "/repo.git/info/refs", "custom-git", false},
 		{"pip-is-not-git", "/repo.git/info/refs?service=git-upload-pack", "pip/26.2", true},
 		{"requests-is-not-git", "/repo.git/git-upload-pack", "python-requests/2.34.2", true},
 	} {

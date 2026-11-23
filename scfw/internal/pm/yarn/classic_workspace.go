@@ -32,7 +32,10 @@ func classicTarget(dir string, command []string, env map[string]string) (process
 // Yarn Classic resolves it. It returns "" where Yarn fails, which leaves the
 // command for Yarn to report, and an error where SCFW cannot tell.
 func classicWorkspace(process classicProcess) (string, error) {
-	root, patterns, unsupported := classicWorkspaceRoot(process.project)
+	root, patterns, unsupported, err := classicWorkspaceRoot(process.project)
+	if err != nil {
+		return "", err
+	}
 	if root == "" {
 		if unsupported {
 			return "", unsupportedWorkspacePattern(process.cmd.workspace)
@@ -57,28 +60,30 @@ func classicWorkspace(process classicProcess) (string, error) {
 // must be that root or match its patterns, where "!" patterns exclude. It
 // returns "" where Yarn has no root or refuses it: a malformed manifest, or
 // packages without "private".
-func classicWorkspaceRoot(project string) (root string, patterns []string, unsupported bool) {
+func classicWorkspaceRoot(project string) (root string, patterns []string, unsupported bool, err error) {
 	for current := project; ; current = filepath.Dir(current) {
-		manifest, found, err := readWorkspaceManifest(current)
+		manifest, found, err := readWorkspaceManifest(current, classicManifests...)
 		if found && err != nil {
-			return "", nil, false
+			return "", nil, false, nil
 		}
 		if patterns, declared := workspacePatterns(manifest.Workspaces); found && declared {
 			relative, err := filepath.Rel(current, project)
 			if err != nil {
-				return "", nil, false
+				return "", nil, false, nil
 			}
 			member, unsupported := relative == ".", false
 			if !member {
-				member, unsupported = classicMember(filepath.ToSlash(relative), patterns)
+				if member, unsupported, err = classicMember(filepath.ToSlash(relative), patterns); err != nil {
+					return "", nil, false, err
+				}
 			}
 			if !member || len(patterns) > 0 && !truthy(manifest.Private) {
-				return "", nil, unsupported
+				return "", nil, unsupported, nil
 			}
-			return current, patterns, false
+			return current, patterns, false, nil
 		}
 		if filepath.Dir(current) == current {
-			return "", nil, false
+			return "", nil, false, nil
 		}
 	}
 }
@@ -86,19 +91,24 @@ func classicWorkspaceRoot(project string) (root string, patterns []string, unsup
 // classicMember matches a relative path against workspace patterns as
 // micromatch does for a list: braces expand, "!" patterns exclude, and names
 // compare case-sensitively.
-func classicMember(relative string, patterns []string) (member, unsupported bool) {
+func classicMember(relative string, patterns []string) (member, unsupported bool, err error) {
+	glob := newWorkspaceGlob(false)
 	path := patternSegments(relative)
 	included, excluded := false, false
 	for _, pattern := range patterns {
 		pattern, negated := strings.CutPrefix(pattern, "!")
 		for _, expanded := range nodeproxy.ExpandBraces(pattern) {
 			unsupported = unsupported || unsupportedGlob(expanded)
-			if matchPath(patternSegments(expanded), path) {
+			matched, err := glob.matchPath(patternSegments(expanded), path)
+			if err != nil {
+				return false, false, err
+			}
+			if matched {
 				excluded, included = excluded || negated, included || !negated
 			}
 		}
 	}
-	return included && !excluded, unsupported
+	return included && !excluded, unsupported, nil
 }
 
 // classicWorkspaces mirrors resolveWorkspaces: the directories the root's
@@ -123,7 +133,7 @@ func classicWorkspaces(root string, patterns []string) (members map[string]strin
 				seen[match] = true
 				// Yarn joins even an absolute match to the root.
 				location := filepath.Join(root, filepath.FromSlash(match))
-				manifest, found, err := readWorkspaceManifest(location)
+				manifest, found, err := readWorkspaceManifest(location, classicManifests...)
 				if err := glob.charge(1); err != nil {
 					return nil, false, err
 				}

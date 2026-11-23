@@ -360,6 +360,12 @@ func TestClassicWorkspaceResolution(t *testing.T) {
 			writeYarnFixture(t, filepath.Join(project, "packages", "v", "package.json"), "workspaces/member-without-version.json.tmpl", "v")
 			writeYarnFixture(t, filepath.Join(project, "packages", "v", ".yarnrc"), "yarnrc/https-proxy.yarnrc.tmpl", "http://v:1")
 		}, "workspace v add x", "", nil},
+		// A member without package.json is a project only from the root, so its
+		// rc-args show where Yarn runs.
+		{"a member with only yarn.json", `["packages/*"]`, nil, func(t *testing.T, project string) {
+			writeYarnFixture(t, filepath.Join(project, "packages", "y", "yarn.json"), "workspaces/member.json.tmpl", "y")
+			writeYarnFixture(t, filepath.Join(project, "packages", "y", ".yarnrc"), "yarnrc/rc-arg.yarnrc.tmpl", "http://y:1")
+		}, "workspace y add x", "y", nil},
 		{"a duplicate name fails in Yarn", `["packages/*"]`, map[string]string{"packages/a": "a"}, func(t *testing.T, project string) {
 			writeYarnFixture(t, filepath.Join(project, "packages", "b", "package.json"), "workspaces/member.json.tmpl", "a")
 		}, "workspace a add x", "", nil},

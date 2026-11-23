@@ -66,7 +66,7 @@ func berryWorkspaces(project string) (names map[string]string, directories []str
 			continue
 		}
 		seen[cwd] = true
-		manifest, found, err := readWorkspaceManifest(cwd)
+		manifest, found, err := readWorkspaceManifest(cwd, "package.json")
 		if err := glob.charge(1); err != nil {
 			return nil, nil, false, err
 		}
@@ -99,9 +99,16 @@ func berryWorkspaces(project string) (names map[string]string, directories []str
 			}
 		}
 		slices.Sort(candidates)
+	candidates:
 		for _, match := range candidates {
-			if slices.ContainsFunc(excluded, func(pattern []string) bool { return matchPath(pattern, patternSegments(match)) }) {
-				continue
+			for _, pattern := range excluded {
+				matched, err := glob.matchPath(pattern, patternSegments(match))
+				if err != nil {
+					return nil, nil, false, err
+				}
+				if matched {
+					continue candidates
+				}
 			}
 			location := glob.location(cwd, match)
 			_, err := os.Stat(filepath.Join(location, "package.json"))

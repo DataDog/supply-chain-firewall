@@ -178,23 +178,52 @@ func (glob *workspaceGlob) match(root, spelled string, matches *[]string) error 
 		spelled = "."
 	}
 	path := glob.location(root, spelled)
-	if !glob.berry {
-		path = filepath.Join(path, "package.json")
+	if glob.berry {
+		info, err := os.Stat(path)
+		if err == nil && info.IsDir() {
+			*matches = append(*matches, spelled)
+		}
+		return glob.charge(1)
 	}
-	info, err := os.Stat(path)
-	if err == nil && (glob.berry && info.IsDir() || !glob.berry && info.Mode().IsRegular()) {
-		*matches = append(*matches, spelled)
+	for _, name := range classicManifests {
+		info, err := os.Stat(filepath.Join(path, name))
+		if err := glob.charge(1); err != nil {
+			return err
+		}
+		if err == nil && info.Mode().IsRegular() {
+			*matches = append(*matches, spelled)
+			return nil
+		}
 	}
-	return glob.charge(1)
+	return nil
 }
 
+// readDirBatch is how many entries readDir reads at a time.
+const readDirBatch = 256
+
+// readDir reads a directory's entries in batches, charging each before the
+// next, so it never reads more than one entry past the bound.
 func (glob *workspaceGlob) readDir(dir string) ([]fs.DirEntry, error) {
-	entries, err := os.ReadDir(dir)
+	if err := glob.charge(1); err != nil {
+		return nil, err
+	}
+	directory, err := os.Open(dir)
 	if err != nil {
 		// Both globs skip directories they cannot read.
-		entries = nil
+		return nil, nil
 	}
-	return entries, glob.charge(len(entries) + 1)
+	defer func() { _ = directory.Close() }()
+	var entries []fs.DirEntry
+	for {
+		batch, err := directory.ReadDir(min(readDirBatch, glob.remaining+1))
+		if err := glob.charge(len(batch)); err != nil {
+			return nil, err
+		}
+		entries = append(entries, batch...)
+		if err != nil {
+			return entries, nil
+		}
+	}
 }
 
 func (glob *workspaceGlob) isDirectory(path string) (bool, error) {
@@ -215,25 +244,28 @@ func patternSegments(pattern string) []string {
 }
 
 // matchPath matches pattern segments against path segments as micromatch
-// does: "**" spans any number of segments that do not start with a dot.
-func matchPath(pattern, path []string) bool {
-	for len(pattern) > 0 {
-		if pattern[0] == "**" {
-			for skipped := 0; ; skipped++ {
-				if matchPath(pattern[1:], path[skipped:]) {
-					return true
-				}
-				if skipped == len(path) || strings.HasPrefix(path[skipped], ".") {
-					return false
-				}
+// does: "**" spans any number of segments that do not start with a dot. It
+// compares every pattern segment with every path segment once, charging that
+// work before it starts, so repeated "**" cannot backtrack.
+func (glob *workspaceGlob) matchPath(pattern, path []string) (bool, error) {
+	if err := glob.charge(len(pattern) * (len(path) + 1)); err != nil {
+		return false, err
+	}
+	// next[j] reports whether the pattern after the current segment matches path[j:].
+	next := make([]bool, len(path)+1)
+	next[len(path)] = true
+	for index := len(pattern) - 1; index >= 0; index-- {
+		current := make([]bool, len(path)+1)
+		for position := len(path); position >= 0; position-- {
+			if pattern[index] == "**" {
+				current[position] = next[position] || position < len(path) && !strings.HasPrefix(path[position], ".") && current[position+1]
+			} else {
+				current[position] = position < len(path) && nodeproxy.MatchSegment(pattern[index], path[position]) && next[position+1]
 			}
 		}
-		if len(path) == 0 || !nodeproxy.MatchSegment(pattern[0], path[0]) {
-			return false
-		}
-		pattern, path = pattern[1:], path[1:]
+		next = current
 	}
-	return len(path) == 0
+	return next[0], nil
 }
 
 type workspaceManifest struct {
@@ -243,17 +275,24 @@ type workspaceManifest struct {
 	Workspaces json.RawMessage `json:"workspaces"`
 }
 
-// readWorkspaceManifest reads dir's package.json; found is false when there is
-// none, and an unreadable or malformed one is an error.
-func readWorkspaceManifest(dir string) (manifest workspaceManifest, found bool, err error) {
-	data, err := nodeproxy.ReadConfigFile(filepath.Join(dir, "package.json"))
-	if os.IsNotExist(err) {
-		return manifest, false, nil
+// classicManifests are the manifests Yarn Classic looks for, in order: its npm
+// registry's package.json and its own registry's yarn.json.
+var classicManifests = []string{"package.json", "yarn.json"}
+
+// readWorkspaceManifest reads the first of names in dir; found is false when
+// there is none, and an unreadable or malformed one is an error.
+func readWorkspaceManifest(dir string, names ...string) (manifest workspaceManifest, found bool, err error) {
+	for _, name := range names {
+		data, err := nodeproxy.ReadConfigFile(filepath.Join(dir, name))
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err == nil {
+			err = json.Unmarshal(data, &manifest)
+		}
+		return manifest, true, err
 	}
-	if err == nil {
-		err = json.Unmarshal(data, &manifest)
-	}
-	return manifest, true, err
+	return manifest, false, nil
 }
 
 // workspacePatterns reads a "workspaces" field: an array of patterns, or an

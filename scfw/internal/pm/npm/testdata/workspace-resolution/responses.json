@@ -1,0 +1,61 @@
+{
+  "package.json": {
+    "name": "workspace-root",
+    "version": "1.0.0",
+    "private": true,
+    "workspaces": [
+      "packages/*"
+    ],
+    "dependencies": {
+      "member": "file:packages/member"
+    }
+  },
+  "packages/member/package.json": {
+    "name": "member",
+    "version": "1.0.0",
+    "dependencies": {
+      "shared": "file:../shared",
+      "production": "1.0.0"
+    },
+    "devDependencies": {
+      "development": "1.0.0"
+    }
+  },
+  "packages/shared/package.json": {
+    "name": "shared",
+    "version": "1.0.0"
+  },
+  "package-lock.json": {
+    "lockfileVersion": 3,
+    "packages": {
+      "": {
+        "workspaces": [
+          "packages/*"
+        ]
+      },
+      "packages/member": {
+        "name": "member",
+        "version": "1.0.0",
+        "dependencies": {
+          "shared": "file:../shared"
+        }
+      },
+      "packages/shared": {
+        "name": "shared",
+        "version": "1.0.0"
+      },
+      "node_modules/member": {
+        "link": true,
+        "resolved": "packages/member"
+      },
+      "node_modules/shared": {
+        "link": true,
+        "resolved": "packages/shared"
+      },
+      "packages/member/node_modules/production": {
+        "version": "1.0.0",
+        "resolved": "https://registry.npmjs.org/production/-/production-1.0.0.tgz"
+      }
+    }
+  }
+}

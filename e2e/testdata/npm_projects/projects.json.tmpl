@@ -8,6 +8,23 @@
     "package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "workspaces":["packages/*"]},
     "packages/member/package.json": {"name":"scfw-e2e-member", "version":"1.0.0", "private":true, "dependencies":{"{{.Direct.Project}}":"{{.Direct.Version}}"}}
   },
+  "workspace-unhoisted": {
+    "package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "workspaces":["packages/*"], "dependencies":{"{{.Direct.Project}}":"{{.Direct.Version}}"}},
+    "packages/member/package.json": {"name":"scfw-e2e-member", "version":"1.0.0", "private":true, "dependencies":{"{{.Root.Project}}":"{{.Root.Version}}"}}
+  },
+  "workspace-disabled": {
+    "package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "workspaces":["packages/*"], "dependencies":{"{{.Root.Project}}":"{{.Root.Version}}"}},
+    "packages/member/package.json": {"name":"scfw-e2e-member", "version":"1.0.0", "private":true, "dependencies":{"{{.Direct.Project}}":"{{.Direct.Version}}"}}
+  },
+  "workspace-two": {
+    "package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "workspaces":["packages/*"]},
+    "packages/member/package.json": {"name":"scfw-e2e-member", "version":"1.0.0", "private":true, "dependencies":{"{{.Direct.Project}}":"{{.Direct.Version}}"}},
+    "packages/other/package.json": {"name":"scfw-e2e-other", "version":"1.0.0", "private":true, "dependencies":{"{{.Root.Project}}":"{{.Root.Version}}"}}
+  },
+  "workspace-production": {
+    "package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "workspaces":["packages/*"]},
+    "packages/member/package.json": {"name":"scfw-e2e-member", "version":"1.0.0", "private":true, "dependencies":{"{{.Direct.Project}}":"{{.Direct.Version}}"}, "devDependencies":{"{{.Root.Project}}":"{{.Root.Version}}"}}
+  },
   "local": {
     "package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "dependencies":{"scfw-e2e-local":"file:./local", "{{.Direct.Project}}":"{{.Direct.Version}}"}},
     "local/package.json": {"name":"scfw-e2e-local", "version":"1.0.0", "private":true}

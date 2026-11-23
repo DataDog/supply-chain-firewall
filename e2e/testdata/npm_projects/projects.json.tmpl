@@ -2,6 +2,7 @@
   "manifest": {"package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "dependencies":{"{{.Direct.Project}}":"{{.Direct.Version}}"}}},
   "graph": {"package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "dependencies":{"{{.Root.Project}}":"{{.Root.Version}}"}}},
   "dev": {"package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "dependencies":{"{{.Direct.Project}}":"{{.Direct.Version}}"}, "devDependencies":{"{{.Root.Project}}":"{{.Root.Version}}"}}},
+  "global-production": {"package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "devDependencies":{"{{.Direct.Project}}":"{{.Direct.Version}}"}}},
   "duplicates": {"package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "dependencies":{"{{.Direct.Project}}":"{{.Direct.Version}}", "{{.Root.Project}}":"{{.Root.Version}}"}}},
   "workspace": {
     "package.json": {"name":"scfw-e2e-project", "version":"1.0.0", "private":true, "workspaces":["packages/*"]},

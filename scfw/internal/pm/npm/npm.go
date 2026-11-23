@@ -139,7 +139,7 @@ func (npm Npm) ResolveInstallTargets(ctx context.Context, command []string) (*pm
 		return pm.NewSet[pm.Package](), nil
 	}
 
-	proj, err := newNpmTempProject(ctx, npm.Executable())
+	proj, err := newNpmTempProject(ctx, npm.Executable(), command)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve npm installation targets: %w", err)
 	}

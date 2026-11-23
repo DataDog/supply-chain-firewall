@@ -91,42 +91,132 @@ func parseYarnCommand(gen generation, command []string) (cmd yarnCommand, help b
 	return cmd, help, cwd
 }
 
-// ProxyCommandSupported selects commands that resolve, fetch, or install
-// packages. Everything else, such as scripts, runs directly without the proxy. An
-// unknown generation is proxied so that the proxy path reports the version error.
+// yarnKind is what a Yarn command needs from SCFW.
+type yarnKind int
+
+const (
+	yarnDirect yarnKind = iota // runs a script or prints help: no proxy
+	yarnOther                  // proxied, but not inspected without the proxy
+	yarnFetch                  // fetches packages or Yarn code that only the proxy sees
+)
+
+// ProxyCommandSupported proxies every command except a script command: the
+// script's own traffic should not be forced through the proxy.
 func (yarn Yarn) ProxyCommandSupported(command []string) bool {
+	return yarn.commandKind(command) != yarnDirect
+}
+
+// commandKind classifies a command line. An unknown generation is proxied so
+// that the proxy path reports the version error.
+func (yarn Yarn) commandKind(command []string) yarnKind {
 	gen, err := yarn.generation()
 	if err != nil {
-		return true
+		return yarnFetch
 	}
 	cmd, help, _ := parseYarnCommand(gen, command)
 	if help {
-		return false
+		return yarnDirect
 	}
-	return installCommand(gen, cmd)
+	return classifyCommand(gen, cmd)
 }
 
-func installCommand(gen generation, cmd yarnCommand) bool {
+// classifyCommand follows Yarn's dispatch: a name that is not a built-in
+// command runs a package script or binary. The built-in commands are those of
+// Yarn 1.22 and of Yarn 4 with its bundled plugins.
+func classifyCommand(gen generation, cmd yarnCommand) yarnKind {
 	if cmd.name == "workspace" && len(cmd.args) > 1 {
 		inner, _, _ := parseYarnCommand(gen, cmd.args[1:])
-		return installCommand(gen, inner)
+		return classifyCommand(gen, inner)
 	}
 	if gen == classic {
 		switch cmd.name {
-		case "", "install", "add", "remove", "upgrade", "upgrade-interactive", "upgradeInteractive", "create", "licenses", "import":
-			return true
+		case "run", "exec", "node":
+			return yarnDirect
+		case "", "install", "add", "remove", "upgrade", "upgrade-interactive", "upgradeInteractive", "create", "import", "licenses", "unplug":
+			return yarnFetch
 		case "global":
-			return slices.Contains([]string{"add", "remove", "upgrade", "upgrade-interactive", "upgradeInteractive"}, cmd.sub)
+			if slices.Contains([]string{"add", "remove", "upgrade", "upgrade-interactive", "upgradeInteractive"}, cmd.sub) {
+				return yarnFetch
+			}
+		case "policies":
+			// set-version downloads a Yarn release.
+			if cmd.sub == "set-version" {
+				return yarnFetch
+			}
+		case "init":
+			// -2 and --install run policies set-version.
+			for _, argument := range cmd.args {
+				if name, _, _ := strings.Cut(argument, "="); name == "-2" || name == "-i" || name == "--install" {
+					return yarnFetch
+				}
+			}
+		case "workspaces":
+			// workspaces run starts `yarn run` in every workspace.
+			if cmd.sub == "run" {
+				return yarnDirect
+			}
+		case "access", "audit", "autoclean", "bin", "cache", "check", "config", "dedupe", "generate-lock-entry", "generateLockEntry",
+			"help", "info", "link", "list", "lockfile", "login", "logout", "outdated", "owner", "pack", "prune", "publish", "tag",
+			"team", "unlink", "version", "versions", "why", "workspace":
+		default:
+			return yarnDirect
 		}
-		return false
+		return yarnOther
 	}
 	switch cmd.name {
-	case "", "install", "add", "remove", "up", "upgrade-interactive", "dedupe", "dlx", "create", "link", "unlink", "unplug", "patch", "rebuild", "constraints":
-		return true
-	case "workspaces":
-		return cmd.sub == "focus" || cmd.sub == "foreach"
+	case "run", "exec", "node":
+		return yarnDirect
+	case "", "install", "add", "remove", "up", "upgrade-interactive", "search", "dedupe", "dlx", "create", "init", "link", "unlink",
+		"unplug", "patch", "rebuild":
+		return yarnFetch
 	case "set":
-		return cmd.sub == "resolution"
+		// set version downloads a Yarn release.
+		if cmd.sub == "resolution" || cmd.sub == "version" {
+			return yarnFetch
+		}
+	case "plugin":
+		// plugin import downloads a plugin bundle.
+		if cmd.sub == "import" {
+			return yarnFetch
+		}
+	case "workspaces":
+		switch cmd.sub {
+		case "focus":
+			return yarnFetch
+		case "foreach":
+			return classifyCommand(gen, foreachCommand(cmd.args))
+		}
+	case "version":
+		// Applying a version installs.
+		if cmd.sub != "check" {
+			return yarnFetch
+		}
+	case "bin", "cache", "config", "constraints", "explain", "help", "info", "npm", "pack", "patch-commit", "stage", "why", "workspace":
+	default:
+		return yarnDirect
 	}
-	return false
+	return yarnOther
+}
+
+// foreachValueOptions are the `workspaces foreach` options that take a value.
+var foreachValueOptions = []string{"--from", "-j", "--jobs", "--include", "--exclude"}
+
+// foreachCommand returns the command `workspaces foreach` runs, given the
+// arguments after `workspaces`.
+func foreachCommand(args []string) yarnCommand {
+	args = args[slices.Index(args, "foreach")+1:]
+	for index := 0; index < len(args); index++ {
+		argument := args[index]
+		if !strings.HasPrefix(argument, "-") {
+			inner, _, _ := parseYarnCommand(berry, args[index:])
+			return inner
+		}
+		// A bundle of short options such as -pj takes the value of its last one.
+		name, _, assigned := strings.Cut(argument, "=")
+		bundle := !strings.HasPrefix(name, "--") && strings.HasSuffix(name, "j")
+		if !assigned && (bundle || slices.Contains(foreachValueOptions, name)) {
+			index++
+		}
+	}
+	return yarnCommand{}
 }

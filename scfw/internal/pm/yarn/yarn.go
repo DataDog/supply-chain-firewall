@@ -79,7 +79,7 @@ func (yarn Yarn) RunCommand(ctx context.Context, command []string) error {
 }
 
 func (yarn Yarn) ResolveInstallTargets(_ context.Context, command []string) (*pm.Set[pm.Package], error) {
-	if yarn.ProxyCommandSupported(command) {
+	if yarn.commandKind(command) == yarnFetch {
 		return nil, errors.New("yarn package operations require proxy mode (set SCFW_PROXY_ENABLED=1)")
 	}
 	return pm.NewSet[pm.Package](), nil

@@ -9,11 +9,12 @@ import (
 	"context"
 	"net"
 	"net/url"
-	"os"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/gitproxy"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 	"golang.org/x/net/http/httpproxy"
 )
@@ -44,10 +45,19 @@ func (pip Pip) ProxyOptions(command []string) (proxy.Options, error) {
 	}
 	options := proxy.Options{Upstream: upstreamSettings(settings), TrustURL: pipTrustURL(settings.TrustedHosts), ProxyForURL: pipProxyForURL(settings), RequestHooks: []proxy.RequestHook{pipHTTPSBypassHook(settings)}}
 	options.UpstreamTLS, err = proxy.NewTLSConfig(proxy.TLSConfigOptions{
-		CABundlePaths:         []string{expandPipPath(settings.Cert), os.Getenv("GIT_SSL_CAINFO")},
+		CABundlePaths:         []string{expandPipPath(settings.Cert)},
 		ClientCertificatePath: expandPipPath(settings.ClientCert),
 	})
-	return options, err
+	if err != nil {
+		return proxy.Options{}, err
+	}
+	git, err := pip.gitSettings(command)
+	if err != nil {
+		return proxy.Options{}, err
+	}
+	options.AdditionalClients = git.AdditionalClients()
+	options.AdditionalClients["git"] = proxy.Options{RouteForRequest: git.Route}
+	return options, nil
 }
 
 // ProxyCommand supplies pip-specific arguments and environment overrides. The
@@ -60,7 +70,49 @@ func (pip Pip) ProxyCommand(_ context.Context, command []string, config proxy.Cl
 		index = len(args)
 	}
 	args = slices.Insert(args, index, "--proxy", config.URL, "--cert", config.CACertificatePath)
-	return proxy.CommandSpec{Executable: pip.Executable(), Args: args, EnvOverrides: proxyEnvironmentOverrides(config)}, nil
+	overrides := proxyEnvironmentOverrides(config)
+	gitConfig := config
+	if git, exists := config.AdditionalClients["git"]; exists {
+		gitConfig = git
+		gitConfig.AdditionalClients = config.AdditionalClients
+	}
+	git, err := pip.gitSettings(command)
+	if err != nil {
+		return proxy.CommandSpec{}, err
+	}
+	if err := git.ChildOverrides(overrides, gitConfig); err != nil {
+		return proxy.CommandSpec{}, err
+	}
+	return proxy.CommandSpec{Executable: pip.Executable(), Args: args, EnvOverrides: overrides, EnvRemovals: []string{"GIT_SSL_NO_VERIFY"}}, nil
+}
+
+// The same invocation snapshot configures native Git routes and its child overrides.
+type pipProxyState struct {
+	mutex   sync.Mutex
+	command []string
+	git     *gitproxy.Settings
+}
+
+func (pip Pip) gitSettings(command []string) (*gitproxy.Settings, error) {
+	if pip.proxyState != nil {
+		pip.proxyState.mutex.Lock()
+		defer pip.proxyState.mutex.Unlock()
+		if pip.proxyState.git != nil && slices.Equal(command, pip.proxyState.command) {
+			return pip.proxyState.git, nil
+		}
+	}
+	directory, err := pip.ProjectDirectory(command)
+	if err != nil {
+		return nil, err
+	}
+	settings, err := gitproxy.Read(directory)
+	if err != nil {
+		return nil, err
+	}
+	if pip.proxyState != nil {
+		pip.proxyState.command, pip.proxyState.git = slices.Clone(command), settings
+	}
+	return settings, nil
 }
 
 func proxyEnvironmentOverrides(config proxy.ClientConfig) map[string]string {

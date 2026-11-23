@@ -61,6 +61,7 @@ type pipInstallReportEntry struct {
 var PipExecutableNames = []string{"pip", "pip3"}
 
 type Pip struct {
+	proxyState         *pipProxyState
 	executable         string
 	version            pm.Version
 	versionErr         error
@@ -91,7 +92,7 @@ func NewPip(ctx context.Context, name, executable string) (Pip, error) {
 	version, versionErr := resolvePipVersion(ctx, executable)
 
 	return Pip{
-		executable: executable, version: version, versionErr: versionErr,
+		executable: executable, version: version, versionErr: versionErr, proxyState: &pipProxyState{},
 		resolveInterpreter: sync.OnceValues(func() (string, error) {
 			return discoverPipInterpreter(executable)
 		}),

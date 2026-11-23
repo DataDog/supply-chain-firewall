@@ -111,6 +111,7 @@ func TestProxyOptionsExpandsCertificatePaths(t *testing.T) {
 
 func realPip(t *testing.T) Pip {
 	t.Helper()
+	isolatePipGit(t)
 	executable, err := exec.LookPath("pip3")
 	if err != nil {
 		t.Skip("pip3 required for pip integration tests")
@@ -189,7 +190,7 @@ func TestProxyCommandPreservesArgumentsAndSuppliesOverrides(t *testing.T) {
 	manager := realPip(t)
 	command := []string{"--isolated", "download", "--proxy", "http://original.example", "project==1.0"}
 	original := slices.Clone(command)
-	config := proxy.ClientConfig{URL: "http://127.0.0.1:1234", CACertificatePath: "/private/ca.pem"}
+	config := proxy.ClientConfig{URL: "http://127.0.0.1:1234", CACertificatePath: filepath.Join(t.TempDir(), "ca.pem")}
 	spec, err := manager.ProxyCommand(context.Background(), command, config)
 	if err != nil {
 		t.Fatal(err)

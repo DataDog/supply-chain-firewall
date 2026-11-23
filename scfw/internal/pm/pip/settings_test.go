@@ -210,13 +210,17 @@ func TestGoDiscoveryConfigFileAndIsolation(t *testing.T) {
 
 func TestGoDiscoveryProxyAndCertificatePrecedenceByVersion(t *testing.T) {
 	for _, test := range []struct {
-		version  pm.Version
-		want     string
-		fallback bool
+		version       pm.Version
+		want          string
+		environmentCA bool
 	}{
-		{pm.Version{Major: 22, Minor: 2, Patch: 2}, "http://standard.example", true},
-		{pm.Version{Major: 25, Minor: 3}, "http://standard.example", true},
-		{pm.Version{Major: 26, Minor: 1}, "http://standard.example", true},
+		{pm.Version{Major: 22, Patch: 4}, "http://standard.example", true},
+		{pm.Version{Major: 22, Minor: 1}, "http://explicit.example", true},
+		{pm.Version{Major: 22, Minor: 2}, "http://explicit.example", true},
+		{pm.Version{Major: 24}, "http://explicit.example", true},
+		{pm.Version{Major: 24, Minor: 1}, "http://explicit.example", false},
+		{pm.Version{Major: 25, Minor: 3}, "http://explicit.example", false},
+		{pm.Version{Major: 26, Minor: 1}, "http://explicit.example", false},
 		{pm.Version{Major: 26, Minor: 2}, "http://explicit.example", false},
 	} {
 		t.Run(test.version.String(), func(t *testing.T) {
@@ -232,7 +236,7 @@ func TestGoDiscoveryProxyAndCertificatePrecedenceByVersion(t *testing.T) {
 				t.Fatal(err)
 			}
 			cert := "/pip.pem"
-			if test.fallback {
+			if test.environmentCA {
 				cert = "/requests.pem"
 			}
 			if got.HTTPS != test.want || got.Cert != cert {
@@ -425,5 +429,28 @@ func TestDefaultHTTPSPortBypassEquivalentProxyEndpoints(t *testing.T) {
 		if (err != nil) != test.reject {
 			t.Fatalf("%s versus %s reject=%v: %v", test.explicit, test.environment, test.reject, err)
 		}
+	}
+}
+
+func TestGoDiscoveryEmptyProxyPrecedenceByVersion(t *testing.T) {
+	for _, version := range []pm.Version{{Major: 24}, {Major: 24, Minor: 1}, {Major: 26, Minor: 1}, {Major: 26, Minor: 2}} {
+		t.Run(version.String(), func(t *testing.T) {
+			manager := goDiscoveryPip(t)
+			manager.version = version
+			t.Setenv("HTTPS_PROXY", "http://standard.example")
+			t.Setenv("PIP_PROXY", "")
+			t.Setenv("PIP_NO_PROXY_ENV", "true")
+			got, err := manager.settings([]string{"download", "project"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "http://standard.example"
+			if !version.LessThan(pm.Version{Major: 26, Minor: 2}) {
+				want = ""
+			}
+			if got.HTTPS != want {
+				t.Fatalf("HTTPS proxy=%q, want %q", got.HTTPS, want)
+			}
+		})
 	}
 }

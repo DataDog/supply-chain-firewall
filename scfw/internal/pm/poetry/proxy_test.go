@@ -430,6 +430,7 @@ func TestDefaultHTTPSPortBypassDiagnostic(t *testing.T) {
 		{"IP-port-is-not-a-domain-match", "127.0.0.1:443", "http://gateway.example", "NO_PROXY", false},
 		{"no-upstream", "files.example:443", "", "NO_PROXY", false},
 		{"urllib-only-port-is-ignored", "files.example:443", "http://gateway.example", "No_Proxy", false},
+		{"urllib-covers-port", "files.example:443", "http://gateway.example", "NO_PROXY", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			for _, item := range os.Environ() {
@@ -443,6 +444,9 @@ func TestDefaultHTTPSPortBypassDiagnostic(t *testing.T) {
 			}
 			t.Setenv("HTTPS_PROXY", test.upstream)
 			t.Setenv(test.key, test.bypass)
+			if test.name == "urllib-covers-port" {
+				t.Setenv("No_Proxy", "files.example")
+			}
 			_, _, err := discoverPoetryProxies(func() (pythonproxy.Settings, error) { return pythonproxy.Settings{}, nil })
 			if (err != nil) != test.reject {
 				t.Fatalf("reject=%v, error=%v", test.reject, err)

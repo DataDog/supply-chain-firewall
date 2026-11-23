@@ -147,3 +147,27 @@ func pipBypassesEnvironment(target *url.URL, noProxy string, loose bool) bool {
 	}
 	return false
 }
+
+// samePipProxyEndpoint ignores URL spelling differences that do not change an
+// HTTPS CONNECT route, while retaining proxy TLS and authentication differences.
+func samePipProxyEndpoint(first, second string) bool {
+	if first == second {
+		return true
+	}
+	a, aErr := proxy.ParseUpstreamProxyURL(first)
+	b, bErr := proxy.ParseUpstreamProxyURL(second)
+	if aErr != nil || bErr != nil || a == nil || b == nil {
+		return false
+	}
+	port := func(u *url.URL) string {
+		if value := u.Port(); value != "" {
+			return value
+		}
+		if u.Scheme == "https" {
+			return "443"
+		}
+		return "80"
+	}
+	return a.Scheme == b.Scheme && strings.EqualFold(a.Hostname(), b.Hostname()) &&
+		port(a) == port(b) && a.User.String() == b.User.String()
+}

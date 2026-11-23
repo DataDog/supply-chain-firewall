@@ -363,6 +363,7 @@ func TestDefaultHTTPSPortBypassDiagnostic(t *testing.T) {
 		{"no-upstream", "files.example:443", "", "", false},
 		{"explicit-ignores-bypass", "files.example:443", "http://gateway.example", "http://explicit.example", false},
 		{"mixed-case-urllib-only", "files.example:443", "http://gateway.example", "", false},
+		{"mixed-case-urllib-covers-port", "files.example:443", "http://gateway.example", "", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			manager := goDiscoveryPip(t)
@@ -372,6 +373,9 @@ func TestDefaultHTTPSPortBypassDiagnostic(t *testing.T) {
 				key = "No_Proxy"
 			}
 			t.Setenv(key, test.bypass)
+			if test.name == "mixed-case-urllib-covers-port" {
+				t.Setenv("No_Proxy", "files.example")
+			}
 			if test.explicit != "" {
 				t.Setenv("PIP_PROXY", test.explicit)
 			}
@@ -383,5 +387,28 @@ func TestDefaultHTTPSPortBypassDiagnostic(t *testing.T) {
 				t.Fatalf("missing precise compatibility diagnostic: %v", err)
 			}
 		})
+	}
+}
+
+func TestDefaultHTTPSPortBypassEquivalentProxyEndpoints(t *testing.T) {
+	for _, test := range []struct {
+		explicit, environment string
+		reject                bool
+	}{
+		{"http://gateway.example", "http://gateway.example:80", false},
+		{"gateway.example", "http://GATEWAY.example:80", false},
+		{"https://gateway.example", "https://gateway.example:443", false},
+		{"http://user:one@gateway.example", "http://user:two@gateway.example:80", true},
+		{"http://gateway.example", "http://gateway.example:8080", true},
+	} {
+		manager := goDiscoveryPip(t)
+		manager.version = pm.Version{Major: 22, Patch: 4}
+		t.Setenv("PIP_PROXY", test.explicit)
+		t.Setenv("HTTPS_PROXY", test.environment)
+		t.Setenv("NO_PROXY", "files.example:443")
+		_, err := manager.settings([]string{"download", "project"})
+		if (err != nil) != test.reject {
+			t.Fatalf("%s versus %s reject=%v: %v", test.explicit, test.environment, test.reject, err)
+		}
 	}
 }

@@ -147,13 +147,13 @@ func (pip Pip) settings(args []string) (pipDiscoveryResult, error) {
 	} else if explicit == "" {
 		result.FallbackHTTP, result.FallbackHTTPS = "", ""
 	}
-	if result.HTTPS != result.FallbackHTTPS {
+	if !samePipProxyEndpoint(result.HTTPS, result.FallbackHTTPS) {
 		// Requests selects only these two spellings before urllib's hostname fallback.
 		bypass := os.Getenv("no_proxy")
 		if bypass == "" {
 			bypass = os.Getenv("NO_PROXY")
 		}
-		if err := pythonproxy.ValidateHTTPSBypass(bypass, result.LooseNoProxy); err != nil {
+		if err := pythonproxy.ValidateHTTPSBypass(bypass, result.NoProxy, result.LooseNoProxy); err != nil {
 			return pipDiscoveryResult{}, err
 		}
 	}

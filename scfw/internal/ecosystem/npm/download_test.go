@@ -395,6 +395,11 @@ func TestProxyHandlerVerifiesTarballIdentityOnUnknownHosts(t *testing.T) {
 			_, _ = w.Write(otherName)
 		case variant == "blob-store":
 			http.Redirect(w, r, "/npm/blobs/sha256:abc", http.StatusFound)
+		case variant == "blob-store-match":
+			http.Redirect(w, r, "/npm/blobs/sha256:match", http.StatusFound)
+		case r.URL.Path == "/npm/blobs/sha256:match":
+			w.Header().Set("Content-Type", "application/octet-stream")
+			_, _ = w.Write(matching)
 		case r.URL.Path == "/npm/blobs/sha256:abc":
 			w.Header().Set("Content-Type", "application/octet-stream")
 			_, _ = w.Write(otherName)
@@ -434,6 +439,7 @@ func TestProxyHandlerVerifiesTarballIdentityOnUnknownHosts(t *testing.T) {
 		{name: "oversized", variant: "huge", status: http.StatusBadGateway},
 		{name: "redirect to other package", variant: "redirect", client: true, status: http.StatusForbidden},
 		{name: "redirect to blob store with other package", variant: "blob-store", client: true, follow: true, status: http.StatusForbidden},
+		{name: "redirect to blob store with same package", variant: "blob-store-match", client: true, follow: true, status: http.StatusOK},
 		{name: "partial match", variant: "match", header: "Range", client: true, status: http.StatusPartialContent},
 		{name: "partial mismatch", variant: "name", header: "Range", client: true, status: http.StatusForbidden},
 		{name: "partial without client", variant: "match", header: "Range", status: http.StatusBadGateway},

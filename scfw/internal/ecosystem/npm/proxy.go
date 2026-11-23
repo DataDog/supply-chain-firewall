@@ -32,6 +32,9 @@ func (h ProxyHandler) HandleRequest(requestContext context.Context, request prox
 		return nil, nil
 	}
 	kind, artifact := h.Classifier.Classify(&request.URL)
+	if expected, verified := h.Classifier.verifiedTargets.LoadAndDelete(redactURL(&request.URL)); verified && kind != RequestTarball {
+		return h.verifyTarball(expected.(Artifact)), nil
+	}
 	switch kind {
 	case RequestTarball:
 		artifact.authorization = request.Header.Get("Authorization")

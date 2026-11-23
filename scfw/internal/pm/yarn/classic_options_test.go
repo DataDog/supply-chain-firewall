@@ -103,8 +103,8 @@ func TestClassicProxyOptionsTrust(t *testing.T) {
 }
 
 // Yarn reads cafile relative to its own process directory, which for
-// `yarn workspace` is the workspace SCFW launches the command in, and only
-// .npmrc files expand a leading ~/.
+// `yarn workspace` is the workspace SCFW launches the command in, and a
+// leading ~/ is the home directory in every configuration file.
 func TestClassicCAFileResolvesInTheYarnProcess(t *testing.T) {
 	for _, test := range []struct {
 		name    string
@@ -114,10 +114,16 @@ func TestClassicCAFileResolvesInTheYarnProcess(t *testing.T) {
 	}{
 		{"relative to the workspace", map[string]string{"parent/project/a/.yarnrc": "yarnrc/cafile.yarnrc.tmpl", "parent/project/a/ca.pem": ""},
 			[]string{"workspace", "a", "add", "x"}, true},
-		{"--cwd does not move the base", map[string]string{"parent/project/sub/.yarnrc": "yarnrc/cafile.yarnrc.tmpl", "parent/project/sub/ca.pem": ""},
-			[]string{"--cwd", "sub", "add", "x"}, false},
-		{".yarnrc keeps ~/ literal", map[string]string{"parent/project/.yarnrc": "yarnrc/cafile.yarnrc.tmpl", "home/ca.pem": ""},
-			[]string{"add", "x"}, false},
+		// sub is the project, so its .yarnrc applies, but the path is not
+		// relative to it.
+		{"--cwd does not move the base", map[string]string{
+			"parent/project/sub/package.json": "workspaces/empty.json", "parent/project/sub/.yarnrc": "yarnrc/cafile.yarnrc.tmpl", "parent/project/sub/ca.pem": "",
+		}, []string{"--cwd", "sub", "add", "x"}, false},
+		{"--cwd reads the project's .yarnrc", map[string]string{
+			"parent/project/sub/package.json": "workspaces/empty.json", "parent/project/sub/.yarnrc": "yarnrc/cafile.yarnrc.tmpl", "parent/project/ca.pem": "",
+		}, []string{"--cwd", "sub", "add", "x"}, true},
+		{".yarnrc expands ~/", map[string]string{"parent/project/.yarnrc": "yarnrc/cafile.yarnrc.tmpl", "home/ca.pem": ""},
+			[]string{"add", "x"}, true},
 		{".npmrc expands ~/", map[string]string{"parent/project/.npmrc": "yarnrc/cafile.npmrc.tmpl", "home/ca.pem": ""},
 			[]string{"add", "x"}, true},
 	} {

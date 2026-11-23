@@ -50,27 +50,17 @@ func (config classicConfig) get(key string) string {
 }
 
 func (config classicConfig) values(key string) []string {
-	values, _ := config.source(key)
-	return values
-}
-
-// source returns a key's values and whether they come from an .npmrc file.
-func (config classicConfig) source(key string) ([]string, bool) {
 	for _, layer := range config.options {
 		if nodeproxy.LastValue(layer[key]) != "" {
-			return layer[key], false
+			return layer[key]
 		}
 	}
-	if values, found := firstLayer(config.yarn, key); found {
-		return values, false
-	}
-	// The first npm layer holds the npm_config_ variables.
-	for index, layer := range config.npm {
-		if values, found := layer[key]; found {
-			return values, index > 0
+	for _, layers := range [][]nodeproxy.Config{config.yarn, config.npm} {
+		if values, found := firstLayer(layers, key); found {
+			return values
 		}
 	}
-	return nil, false
+	return nil
 }
 
 func firstLayer(layers []nodeproxy.Config, key string) ([]string, bool) {
@@ -127,8 +117,7 @@ func (yarn Yarn) classicSettings(command []string) (classicSettings, error) {
 		}
 	}
 
-	cafile, npmrc := config.source("cafile")
-	settings.CAFile = classicCAFile(nodeproxy.LastValue(cafile), npmrc, env["HOME"], config.dir)
+	settings.CAFile = classicCAFile(config.get("cafile"), env["HOME"], config.dir)
 	settings.CA = config.values("ca")
 	// Yarn's default strict-ssl shadows npm's, so only Yarn layers count.
 	yarnOnly := classicConfig{options: config.options, yarn: config.yarn}
@@ -158,14 +147,14 @@ func (yarn Yarn) classicSettings(command []string) (classicSettings, error) {
 	return settings, nil
 }
 
-// classicCAFile resolves cafile as Yarn does: relative to the Yarn process
-// directory, which is not --cwd, and with a leading ~/ for the home directory
-// only in .npmrc files, which Yarn normalizes as npm path options.
-func classicCAFile(value string, npmrc bool, home, dir string) string {
+// classicCAFile resolves cafile as Yarn's resolveWithHome does: a leading ~/
+// is the home directory, and other relative paths are relative to the Yarn
+// process directory, which is not --cwd.
+func classicCAFile(value, home, dir string) string {
 	if value == "" {
 		return ""
 	}
-	if rest, found := strings.CutPrefix(value, "~/"); npmrc && found {
+	if rest, found := strings.CutPrefix(value, "~/"); found {
 		return filepath.Join(home, rest)
 	}
 	return resolvePath(dir, value)

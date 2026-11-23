@@ -71,6 +71,8 @@ type candidate struct {
 	LatestValidStart time.Time          `json:"latest_valid_start"`
 	Constraints      []string           `json:"constraints"`
 	Evidence         []string           `json:"evidence"`
+
+	Related map[string]candidate `json:"related,omitempty"`
 }
 type discovery struct {
 	SchemaVersion int                  `json:"schema_version"`

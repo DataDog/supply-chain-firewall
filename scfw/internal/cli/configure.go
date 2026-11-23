@@ -205,14 +205,14 @@ func buildManagedBlock(existingConfig managedConfiguration, scfwHomeChanged, ddS
 		configuredScfwHome = scfwHome
 	}
 	if configuredScfwHome != "" {
-		fmt.Fprintf(&b, "export SCFW_HOME=%q\n", configuredScfwHome)
+		fmt.Fprintf(&b, "export SCFW_HOME=%s\n", quoteConfigValue(configuredScfwHome))
 	}
 	configuredDdSite := existingConfig.ddSite
 	if ddSiteChanged || ddSite != "" {
 		configuredDdSite = ddSite
 	}
 	if configuredDdSite != "" {
-		fmt.Fprintf(&b, "export DD_SITE=%q\n", configuredDdSite)
+		fmt.Fprintf(&b, "export DD_SITE=%s\n", quoteConfigValue(configuredDdSite))
 	}
 	return b.String()
 }
@@ -310,8 +310,24 @@ func readManagedBlock(path string) (map[string]string, error) {
 	return config.aliases, err
 }
 
+// quoteConfigValue emits one physical line using ANSI-C quoting, supported by
+// both configured shells (bash and zsh). Unlike Go's double-quoted spelling,
+// this prevents parameter/command expansion and decodes control characters.
+func quoteConfigValue(value string) string {
+	quoted := strconv.Quote(value)
+	return "$'" + strings.ReplaceAll(quoted[1:len(quoted)-1], "'", `\'`) + "'"
+}
+
 func unquoteConfigValue(value string) string {
 	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "$'") && strings.HasSuffix(value, "'") {
+		// Undo only the additional apostrophe escaping introduced by our writer;
+		// strconv handles the remaining Go/ANSI-C escapes without executing a shell.
+		encoded := strings.ReplaceAll(value[2:len(value)-1], `\'`, "'")
+		if unquoted, err := strconv.Unquote(`"` + encoded + `"`); err == nil {
+			return unquoted
+		}
+	}
 	if unquoted, err := strconv.Unquote(value); err == nil {
 		return unquoted
 	}

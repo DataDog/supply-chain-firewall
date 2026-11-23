@@ -262,7 +262,7 @@ func TestBuildManagedBlock_IncludesDdSite(t *testing.T) {
 	withAliasPip(t, true)
 	withDdSite(t, "datadoghq.eu")
 
-	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n" + `export DD_SITE="datadoghq.eu"` + "\n"
+	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n" + `export DD_SITE=$'datadoghq.eu'` + "\n"
 	if got := buildManagedBlock(managedConfiguration{}, false, false); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
@@ -281,7 +281,7 @@ func TestBuildManagedBlock_IncludesScfwHome(t *testing.T) {
 	withAliasPip(t, true)
 	withScfwHome(t, "/tmp/scfw-home")
 
-	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n" + `export SCFW_HOME="/tmp/scfw-home"` + "\n"
+	want := `alias pip="scfw run -- pip"` + "\n" + `alias pip3="scfw run -- pip3"` + "\n" + `export SCFW_HOME=$'/tmp/scfw-home'` + "\n"
 	if got := buildManagedBlock(managedConfiguration{}, false, false); got != want {
 		t.Fatalf("buildManagedBlock() = %q, want %q", got, want)
 	}
@@ -535,7 +535,7 @@ func TestRunConfigure_WritesDdSiteExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read %q: %v", path, err)
 	}
-	if !strings.Contains(string(got), `export DD_SITE="datadoghq.eu"`) {
+	if !strings.Contains(string(got), `export DD_SITE=$'datadoghq.eu'`) {
 		t.Fatalf(".bashrc = %q, want it to contain the DD_SITE export", got)
 	}
 }
@@ -564,7 +564,7 @@ func TestRunConfigure_WritesScfwHomeExportWithoutCreatingDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read %q: %v", path, err)
 	}
-	if !strings.Contains(string(got), fmt.Sprintf("export SCFW_HOME=%q", scfwHomeDir)) {
+	if !strings.Contains(string(got), fmt.Sprintf("export SCFW_HOME=$'%s'", scfwHomeDir)) {
 		t.Fatalf(".bashrc = %q, want it to contain the SCFW_HOME export", got)
 	}
 }
@@ -606,8 +606,8 @@ func TestRunConfigure_RemovesOnlyRequestedAlias(t *testing.T) {
 		`alias pip="scfw run -- pip"` + "\n" +
 		`alias pip3="scfw run -- pip3"` + "\n" +
 		`alias poetry="scfw run -- poetry"` + "\n" +
-		`export SCFW_HOME="/tmp/scfw-home"` + "\n" +
-		`export DD_SITE="datadoghq.eu"` + "\n" +
+		`export SCFW_HOME=$'/tmp/scfw-home'` + "\n" +
+		`export DD_SITE=$'datadoghq.eu'` + "\n" +
 		blockEnd + "\n"
 	if err := os.WriteFile(path, []byte(seeded), 0o644); err != nil {
 		t.Fatalf("failed to seed %q: %v", path, err)
@@ -630,7 +630,7 @@ func TestRunConfigure_RemovesOnlyRequestedAlias(t *testing.T) {
 			t.Fatalf(".bashrc = %q, want it to preserve %q", got, want)
 		}
 	}
-	for _, want := range []string{`export SCFW_HOME="/tmp/scfw-home"`, `export DD_SITE="datadoghq.eu"`} {
+	for _, want := range []string{`export SCFW_HOME=$'/tmp/scfw-home'`, `export DD_SITE=$'datadoghq.eu'`} {
 		if !strings.Contains(string(got), want) {
 			t.Fatalf(".bashrc = %q, want it to preserve %q", got, want)
 		}
@@ -647,14 +647,14 @@ func TestConfigureCmd_ExplicitEmptyExportRemovesExistingValue(t *testing.T) {
 		{
 			name:          "scfw home",
 			flag:          "--scfw-home=",
-			removedExport: `export SCFW_HOME="/tmp/scfw-home"`,
-			keptExport:    `export DD_SITE="datadoghq.eu"`,
+			removedExport: `export SCFW_HOME=$'/tmp/scfw-home'`,
+			keptExport:    `export DD_SITE=$'datadoghq.eu'`,
 		},
 		{
 			name:          "Datadog site",
 			flag:          "--dd-site=",
-			removedExport: `export DD_SITE="datadoghq.eu"`,
-			keptExport:    `export SCFW_HOME="/tmp/scfw-home"`,
+			removedExport: `export DD_SITE=$'datadoghq.eu'`,
+			keptExport:    `export SCFW_HOME=$'/tmp/scfw-home'`,
 		},
 	}
 
@@ -667,8 +667,8 @@ func TestConfigureCmd_ExplicitEmptyExportRemovesExistingValue(t *testing.T) {
 			path := filepath.Join(home, ".bashrc")
 			seeded := blockStart + "\n" +
 				`alias npm="scfw run -- npm"` + "\n" +
-				`export SCFW_HOME="/tmp/scfw-home"` + "\n" +
-				`export DD_SITE="datadoghq.eu"` + "\n" +
+				`export SCFW_HOME=$'/tmp/scfw-home'` + "\n" +
+				`export DD_SITE=$'datadoghq.eu'` + "\n" +
 				blockEnd + "\n"
 			if err := os.WriteFile(path, []byte(seeded), 0o644); err != nil {
 				t.Fatalf("failed to seed %q: %v", path, err)

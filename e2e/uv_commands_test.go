@@ -418,6 +418,19 @@ func runUVCommand(r *caseRun, options uvCommandCase) error {
 		if !blocked && !reflect.DeepEqual(nativeState, state) {
 			return fmt.Errorf("SCFW output differs from independent native control: native=%+v SCFW=%+v", nativeState, state)
 		}
+		if options.Operation == "version-read" || options.Operation == "version-dry-run" {
+			nativeOutput, err := os.ReadFile(native.Stdout.Path)
+			if err != nil {
+				return err
+			}
+			protectedOutput, err := os.ReadFile(command.Stdout.Path)
+			if err != nil {
+				return err
+			}
+			if err := assertUVCommandVersionOutput(nativeOutput, protectedOutput); err != nil {
+				return err
+			}
+		}
 		stderr, err := os.ReadFile(command.Stderr.Path)
 		if err != nil {
 			return err
@@ -487,5 +500,32 @@ func TestHarnessUVCommandsBlockedOutput(t *testing.T) {
 		if (err == nil) != (name == "blocked") {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+}
+
+// Read-only selectors must preserve visible output as well as unchanged files.
+// Otherwise a dropped command can look identical to a successful invocation.
+func assertUVCommandVersionOutput(native, protected []byte) error {
+	if len(bytes.TrimSpace(native)) == 0 || !bytes.Equal(native, protected) {
+		return fmt.Errorf("read-only version output differs from nonempty native stdout: native=%q SCFW=%q", native, protected)
+	}
+	return nil
+}
+
+func TestHarnessUVCommandVersionOutput(t *testing.T) {
+	var cases map[string]struct {
+		Native, Protected string
+		Valid             bool
+	}
+	if err := readJSON(filepath.Join(uvCommandFixtures, "responses.json"), &cases); err != nil {
+		t.Fatal(err)
+	}
+	for name, item := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := assertUVCommandVersionOutput([]byte(item.Native), []byte(item.Protected))
+			if (err == nil) != item.Valid {
+				t.Fatalf("stdout validation: %v; want valid=%t", err, item.Valid)
+			}
+		})
 	}
 }

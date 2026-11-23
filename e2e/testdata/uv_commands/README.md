@@ -10,8 +10,8 @@ The 39 registered variants are:
 
 | Scenario | Variants |
 | --- | --- |
-| UV-01 | pip sync and compile: ALLOW and required-artifact BLOCK |
-| UV-02 | add/remove/sync/lock/export/tree/build: ALLOW and required-artifact BLOCK; compile/lock/export/tree ordinary-index metadata-only boundaries |
+| UV-01 | pip sync and compile: ALLOW and required-artifact BLOCK; compile ordinary-index metadata-only boundary |
+| UV-02 | add/remove/sync/lock/export/tree/build: ALLOW and required-artifact BLOCK; lock/export/tree ordinary-index metadata-only boundaries |
 | UV-04 | version bump, explicit value, no-sync, seeded venv flag/environment: ALLOW and required-artifact BLOCK; version read/dry-run/frozen flag/environment and unseeded venv direct boundaries |
 | CORE-14 | native invalid-argument rejection before downloads; native build-backend failure after allowed backend download |
 
@@ -19,7 +19,7 @@ Every variant runs an independent native uv command first with a fresh home,
 cache and project, then runs the same command through SCFW in a second isolated
 environment. The suite checks manifest versions, exact lock identities and
 artifact hashes, compiled/exported requirements, installed distribution metadata,
-built wheel metadata, native error exit/diagnostics, policy records and proxy
+built wheel metadata, nonempty native-equivalent read/dry-run stdout, native error exit/diagnostics, policy records and proxy
 cleanup. It records state after a blocked command without promising rollback of
 uv's preliminary manifest changes.
 

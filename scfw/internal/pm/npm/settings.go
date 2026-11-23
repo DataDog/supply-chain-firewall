@@ -256,7 +256,7 @@ func inWorkspaces(root, member string) bool {
 	included := false
 	for _, pattern := range patterns {
 		pattern, excluded := strings.CutPrefix(pattern, "!")
-		for _, expanded := range expandBraces(pattern) {
+		for _, expanded := range nodeproxy.ExpandBraces(pattern) {
 			expanded = strings.Trim(strings.TrimPrefix(expanded, "./"), "/")
 			if globIgnoresCase {
 				expanded = strings.ToLower(expanded)
@@ -281,62 +281,6 @@ func inWorkspaces(root, member string) bool {
 // globIgnoresCase is true where npm's glob matches workspaces case-insensitively.
 var globIgnoresCase = runtime.GOOS == "darwin" || runtime.GOOS == "windows"
 
-// maxBraceExpansions bounds the work of expanding a pattern, which comes from a
-// project's package.json and multiplies with every group.
-const maxBraceExpansions = 10000
-
-// expandBraces expands the first {a,b} group of a glob, recursively; a group
-// without a comma, or an unbalanced one, stays literal. A pattern that would
-// take more than maxBraceExpansions steps stays literal as a whole.
-func expandBraces(pattern string) []string {
-	budget := maxBraceExpansions
-	if expanded := expandBracesWithin(pattern, &budget); budget >= 0 {
-		return expanded
-	}
-	return []string{pattern}
-}
-
-func expandBracesWithin(pattern string, budget *int) []string {
-	if *budget--; *budget < 0 {
-		return nil
-	}
-	open := strings.Index(pattern, "{")
-	if open < 0 {
-		return []string{pattern}
-	}
-	depth, start := 0, open+1
-	var options []string
-	for index := open; index < len(pattern); index++ {
-		switch pattern[index] {
-		case '{':
-			depth++
-		case ',':
-			if depth == 1 {
-				options = append(options, pattern[start:index])
-				start = index + 1
-			}
-		case '}':
-			depth--
-			if depth > 0 {
-				continue
-			}
-			options = append(options, pattern[start:index])
-			if len(options) < 2 {
-				return []string{pattern}
-			}
-			var expanded []string
-			for _, option := range options {
-				if *budget < 0 {
-					break
-				}
-				expanded = append(expanded, expandBracesWithin(pattern[:open]+option+pattern[index+1:], budget)...)
-			}
-			return expanded
-		}
-	}
-	return []string{pattern}
-}
-
 // matchSegments matches glob segments against path segments: "**" spans any
 // number of segments, and, as in glob, other wildcards skip dot directories
 // unless the pattern segment starts with a dot.
@@ -350,11 +294,7 @@ func matchSegments(pattern, path []string) bool {
 			}
 			return false
 		}
-		if len(path) == 0 || strings.HasPrefix(path[0], ".") && !strings.HasPrefix(pattern[0], ".") {
-			return false
-		}
-		// Glob negates a class with "!", filepath.Match with "^".
-		if matched, err := filepath.Match(strings.ReplaceAll(pattern[0], "[!", "[^"), path[0]); err != nil || !matched {
+		if len(path) == 0 || !nodeproxy.MatchSegment(pattern[0], path[0]) {
 			return false
 		}
 		pattern, path = pattern[1:], path[1:]

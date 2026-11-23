@@ -1,0 +1,11 @@
+# Configure, doctor and CLI usage
+
+Select `cli-usage` for the common invalid-command table across npm, pip, Poetry and uv cells. It tests each supported inspection mode. The loopback endpoint is a no-package-request tripwire for invalid input, not a replacement package registry. A verifier dataset connection may occur while a nonexistent executable is rejected; that observed request is retained separately.
+
+Select `configure-doctor` once per native OS with a representative npm cell in resolution mode, not for every manager version. Declare `bash`, `zsh`, and `disposable-credentials` capabilities after provisioning them. Seventeen scenarios cover startup-file idempotence, additive and selective aliases, full removal, real public-registry npm ALLOW/BLOCK through both shells, literal exported values, malformed blocks, conflicting/missing flags, file permissions, and doctor health/source diagnostics. Doctor checks every currently supported alias, including managers not installed in this cell.
+
+Linux invocations that can access credentials run under a fresh `dbus-run-session` using `dbus.conf`. This configuration has no activation directories, inherited configuration, or secret service. Therefore `configure --remove` must report the unavailable keychain while still removing the managed shell blocks. This suite does not claim successful credential deletion; that belongs to the disposable-keychain tests. Run the permission case as an unprivileged user.
+
+On macOS, provision a genuinely disposable account and its keychain and set `SCFW_E2E_DISPOSABLE_USER` to that account's exact username. The harness refuses keychain-capable commands without this explicit attestation. An isolated HOME alone is insufficient. Native macOS execution must be supplied separately; Linux results do not establish it.
+
+Use the standard `TestPlan`, `TestDiscover`, `TestE2E` sequence with a release-built `SCFW_E2E_BINARY`, exact matrix paths/version pins and fresh evidence output. Only alias install variants need `npm-old` real-registry discovery. The other variants have no package input. Shell scripts contain executable fixture source, the D-Bus XML defines credential isolation, and the Go recipes perform assertions and save commands/startup snapshots/policy/install evidence.

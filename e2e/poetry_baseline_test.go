@@ -121,6 +121,10 @@ func TestHarnessPoetryLifecycleSummary(t *testing.T) {
 					Candidate: candidate{Ecosystem: "PyPI", Project: "fixture", Version: "1.0", Artifacts: []artifact{{Name: "fixture.whl", SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("fixture wheel")))}}},
 					Binary:    filepath.Join(bin, "scfw"), Result: &result{Evidence: map[string]fileEvidence{}, Observations: map[string]any{}}}
 				err = spec.Run(r)
+				manifest, readErr := os.ReadFile(filepath.Join(r.WorkDir, "pyproject.toml"))
+				if readErr != nil || !strings.Contains(string(manifest), `python = "`+r.Cell.RuntimeVersion+`"`) {
+					t.Fatalf("project must constrain the exact provisioned Python runtime: %s, %v", manifest, readErr)
+				}
 				if (err != nil) != failSubsequent {
 					t.Fatalf("subsequent failure=%v, got %v", failSubsequent, err)
 				}
@@ -271,7 +275,7 @@ func preparePoetry(r *caseRun, operation string) (string, error) {
 	if len(parts) < 2 {
 		return "", fmt.Errorf("invalid pinned Python version")
 	}
-	values := map[string]string{"Python": parts[0] + "." + parts[1] + ".*", "Project": "", "Version": ""}
+	values := map[string]string{"Python": r.Cell.RuntimeVersion, "Project": "", "Version": ""}
 	if operation == "install" {
 		values["Project"], values["Version"] = r.Candidate.Project, r.Candidate.Version
 	}

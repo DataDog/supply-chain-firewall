@@ -393,6 +393,11 @@ func TestProxyHandlerVerifiesTarballIdentityOnUnknownHosts(t *testing.T) {
 			http.Redirect(w, r, "/blob", http.StatusFound)
 		case r.URL.Path == "/blob":
 			_, _ = w.Write(otherName)
+		case variant == "blob-store":
+			http.Redirect(w, r, "/npm/blobs/sha256:abc", http.StatusFound)
+		case r.URL.Path == "/npm/blobs/sha256:abc":
+			w.Header().Set("Content-Type", "application/octet-stream")
+			_, _ = w.Write(otherName)
 		case variant == "text":
 			_, _ = w.Write([]byte("not a tarball"))
 		case variant == "huge":
@@ -411,7 +416,7 @@ func TestProxyHandlerVerifiesTarballIdentityOnUnknownHosts(t *testing.T) {
 
 	for _, tc := range []struct {
 		name, variant, header string
-		client                bool
+		client, follow        bool
 		serve, status         int
 	}{
 		{name: "300 mismatch", variant: "name", serve: 300, status: http.StatusForbidden},
@@ -428,6 +433,7 @@ func TestProxyHandlerVerifiesTarballIdentityOnUnknownHosts(t *testing.T) {
 		{name: "not an archive", variant: "text", status: http.StatusBadGateway},
 		{name: "oversized", variant: "huge", status: http.StatusBadGateway},
 		{name: "redirect to other package", variant: "redirect", client: true, status: http.StatusForbidden},
+		{name: "redirect to blob store with other package", variant: "blob-store", client: true, follow: true, status: http.StatusForbidden},
 		{name: "partial match", variant: "match", header: "Range", client: true, status: http.StatusPartialContent},
 		{name: "partial mismatch", variant: "name", header: "Range", client: true, status: http.StatusForbidden},
 		{name: "partial without client", variant: "match", header: "Range", status: http.StatusBadGateway},
@@ -440,7 +446,9 @@ func TestProxyHandlerVerifiesTarballIdentityOnUnknownHosts(t *testing.T) {
 				handler.Client = upstream.Client()
 			}
 			client := proxiedClient(t, handler.HandleRequest)
-			client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+			if !tc.follow {
+				client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+			}
 			request, err := http.NewRequest(http.MethodGet, upstream.URL+"/left-pad/-/left-pad-1.3.0.tgz?v="+tc.variant+"&status="+map[bool]string{true: strconv.Itoa(tc.serve)}[tc.serve != 0], nil)
 			if err != nil {
 				t.Fatal(err)

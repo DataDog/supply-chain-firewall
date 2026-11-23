@@ -3,7 +3,7 @@ module github.com/DataDog/supply-chain-firewall
 go 1.26.5
 
 require (
-	github.com/andybalholm/brotli v1.2.7
+	github.com/andybalholm/brotli v1.3.0
 	github.com/elazarl/goproxy v1.9.2
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/klauspost/compress v1.20.3

@@ -352,7 +352,7 @@ func TestE2E(t *testing.T) {
 		t.Error(err)
 	}
 }
-func executeCase(ctx context.Context, in inputs, spec plannedCase, d discovery, result *result) error {
+func executeCase(ctx context.Context, in inputs, spec plannedCase, d discovery, result *result) (caseErr error) {
 	root := filepath.Join(in.Output, "cases", filepath.FromSlash(spec.ID))
 	if _, err := os.Stat(root); !os.IsNotExist(err) {
 		return classified("INFRASTRUCTURE_FAILURE", fmt.Errorf("case output already exists: %s", root))
@@ -361,6 +361,25 @@ func executeCase(ctx context.Context, in inputs, spec plannedCase, d discovery, 
 	if err != nil {
 		return classified("INFRASTRUCTURE_FAILURE", err)
 	}
+	// Keep Unix socket names short even when evidence lives beneath long case
+	// identities. Only the private alias lives in /tmp; all bytes stay in root.
+	// Both supported operating systems provide /tmp. Using the caller's TMPDIR
+	// here could repeat the same long-path problem.
+	alias, err := os.MkdirTemp("/tmp", "scfw-e2e-")
+	if err != nil {
+		return classified("INFRASTRUCTURE_FAILURE", err)
+	}
+	defer func() {
+		if err := os.RemoveAll(alias); err != nil {
+			caseErr = errors.Join(caseErr, classified("INFRASTRUCTURE_FAILURE", fmt.Errorf("remove temporary alias: %w", err)))
+		}
+	}()
+	if err := os.Symlink(root, filepath.Join(alias, "case")); err != nil {
+		return classified("INFRASTRUCTURE_FAILURE", err)
+	}
+	// The final component is a directory, so WalkDir cleanup assertions still
+	// traverse its contents instead of stopping at a root symlink.
+	env["TMPDIR"] = filepath.Join(alias, "case", "tmp")
 	ctx, cancel := context.WithTimeout(ctx, spec.Timeout)
 	defer cancel()
 	c := d.Candidates[spec.DiscoveryKey]

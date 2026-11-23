@@ -314,16 +314,20 @@ func TestYarnClassicWithoutUpstreamConnectsDirectly(t *testing.T) {
 // A workspace's own .yarnrc can set a proxy rc-arg. `yarn workspace` runs its
 // command in a second Yarn that would obey it over SCFW, so SCFW must run the
 // command in the workspace itself, evaluate the download, and chain to that proxy.
+// The command may also follow a "--".
 func TestYarnClassicWorkspaceWithRcArgProxyIsStillEvaluated(t *testing.T) {
 	executable := yarnTestExecutable(t, "SCFW_TEST_YARN_CLASSIC")
 	for _, test := range []struct {
 		name    string
+		args    []string
 		outcome evaluation.Outcome
 		hits    int32
 		failed  bool
 	}{
-		{"allow", evaluation.OutcomeAllow, 1, false},
-		{"block", evaluation.OutcomeBlock, 0, true},
+		{"allow", []string{"workspace", "a", "add", "lab-pkg"}, evaluation.OutcomeAllow, 1, false},
+		{"block", []string{"workspace", "a", "add", "lab-pkg"}, evaluation.OutcomeBlock, 0, true},
+		{"allow after a separator", []string{"workspace", "a", "--", "add", "lab-pkg"}, evaluation.OutcomeAllow, 1, false},
+		{"block after a separator", []string{"workspace", "a", "--", "add", "lab-pkg"}, evaluation.OutcomeBlock, 0, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			registry := startNpmRegistry(t)
@@ -342,7 +346,7 @@ func TestYarnClassicWorkspaceWithRcArgProxyIsStillEvaluated(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			run := runYarnThroughProxy(t, executable, []string{"workspace", "a", "add", "lab-pkg"}, test.outcome)
+			run := runYarnThroughProxy(t, executable, test.args, test.outcome)
 			if test.failed {
 				assertYarnFailed(t, run)
 			} else {

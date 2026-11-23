@@ -184,7 +184,7 @@ func readClassicConfig(command, environ []string, env map[string]string) (classi
 	}
 	// `yarn workspace` runs its command in the workspace, which is where the
 	// configuration that applies is read from.
-	if workspace, rest, found := classicWorkspace(dir, cmd, command); found {
+	if workspace, rest, found := classicWorkspace(dir, cmd); found {
 		dir = workspace
 		cmd, _, _ = parseYarnCommand(classic, rest)
 	}

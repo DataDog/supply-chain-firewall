@@ -20,12 +20,13 @@ import (
 // receives none of the outer process's options. It returns the workspace
 // directory and the arguments of <command...>; an unknown name is left for
 // Yarn to report.
-func classicWorkspace(start string, cmd yarnCommand, command []string) (directory string, rest []string, found bool) {
-	if cmd.name != "workspace" || len(cmd.args) < 2 {
+func classicWorkspace(start string, cmd yarnCommand) (directory string, rest []string, found bool) {
+	name, rest, found := cmd.workspaceCommand()
+	if !found {
 		return "", nil, false
 	}
-	directory, found = workspaceDirectories(start)[cmd.args[0]]
-	return directory, command[cmd.index+2:], found
+	directory, found = workspaceDirectories(start)[name]
+	return directory, rest, found
 }
 
 // workspaceDirectories maps workspace names to their directories, using the

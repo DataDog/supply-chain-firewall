@@ -23,8 +23,6 @@ var classicOptionalValueOptions = []string{"--emoji", "--prod", "--production", 
 
 type yarnCommand struct {
 	name, sub string
-	// index is the position of the command name in the arguments.
-	index int
 	// args follow the command name, before any "--".
 	args []string
 	// tail follows the command name, including any "--" and what follows it.
@@ -47,7 +45,7 @@ func parseYarnCommand(gen generation, command []string) (cmd yarnCommand, help b
 	for index := 0; index < len(command); index++ {
 		argument := command[index]
 		if !strings.HasPrefix(argument, "-") {
-			cmd.name, cmd.index, cmd.args, cmd.tail = argument, index, command[index+1:], full[index+1:]
+			cmd.name, cmd.args, cmd.tail = argument, command[index+1:], full[index+1:]
 			break
 		}
 		if slices.Contains([]string{"-h", "--help", "-v", "--version"}, argument) {
@@ -123,16 +121,24 @@ func (yarn Yarn) commandKind(command []string) yarnKind {
 	return classifyCommand(gen, cmd)
 }
 
+// workspaceCommand returns the workspace name and the command that
+// `yarn workspace <name> [--] <command...>` runs. The command keeps its own "--".
+func (cmd yarnCommand) workspaceCommand() (name string, rest []string, found bool) {
+	if cmd.name != "workspace" || len(cmd.tail) < 2 {
+		return "", nil, false
+	}
+	rest = cmd.tail[1:]
+	if rest[0] == "--" {
+		rest = rest[1:]
+	}
+	return cmd.tail[0], rest, len(rest) > 0
+}
+
 // classifyCommand follows Yarn's dispatch: a name that is not a built-in
 // command runs a package script or binary. The built-in commands are those of
 // Yarn 1.22 and of Yarn 4 with its bundled plugins.
 func classifyCommand(gen generation, cmd yarnCommand) yarnKind {
-	if cmd.name == "workspace" && len(cmd.tail) > 1 {
-		// The command keeps its own "--", and may follow one.
-		rest := cmd.tail[1:]
-		if rest[0] == "--" {
-			rest = rest[1:]
-		}
+	if _, rest, found := cmd.workspaceCommand(); found {
 		inner, _, _ := parseYarnCommand(gen, rest)
 		return classifyCommand(gen, inner)
 	}

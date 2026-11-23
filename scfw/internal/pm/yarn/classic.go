@@ -27,7 +27,7 @@ func classicProxyCommand(executable string, command []string, config proxy.Clien
 	if err != nil {
 		return proxy.CommandSpec{}, err
 	}
-	if workspace, rest, found := classicWorkspace(start, cmd, command); found {
+	if workspace, rest, found := classicWorkspace(start, cmd); found {
 		command = append([]string{"--cwd", workspace}, rest...)
 	}
 	args := []string{"--https-proxy=" + config.URL, "--proxy=" + config.URL}

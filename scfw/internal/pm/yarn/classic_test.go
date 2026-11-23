@@ -113,6 +113,8 @@ func TestClassicProxyCommandRunsWorkspaceCommandsInTheWorkspace(t *testing.T) {
 			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a"), "add", "x")},
 		{"arguments after the separator are kept", []string{"workspace", "a", "add", "x", "--", "--proxy", "y"},
 			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a"), "add", "x", "--", "--proxy", "y")},
+		{"command after a separator", []string{"workspace", "a", "--", "add", "x", "--", "--proxy", "y"},
+			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a"), "add", "x", "--", "--proxy", "y")},
 		{"unknown workspace is left for Yarn to report", []string{"workspace", "missing", "add", "x"},
 			append(slices.Clone(flags), "workspace", "missing", "add", "x")},
 	} {

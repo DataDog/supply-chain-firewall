@@ -361,17 +361,6 @@ func TestSettingsSkipsProjectNpmrcForGlobal(t *testing.T) {
 	})
 }
 
-// Groups multiply, and the pattern comes from a project's package.json.
-func TestExpandBracesIsBounded(t *testing.T) {
-	pattern := strings.Repeat("{a,b}", 20)
-	if got := expandBraces(pattern); !slices.Equal(got, []string{pattern}) {
-		t.Fatalf("expandBraces(%q) returned %d patterns", pattern, len(got))
-	}
-	if got := expandBraces(strings.Repeat("{a,b}", 3)); len(got) != 8 {
-		t.Fatalf("a small product expanded to %d patterns, want 8", len(got))
-	}
-}
-
 // writeNpmWorkspace lays out a root with the given package.json beside members
 // that each carry their own .npmrc, so the proxy read back names the directory
 // whose configuration was used.

@@ -23,6 +23,7 @@ import (
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/nodeproxy"
 )
 
 // npmFileURIPrefix is the URI scheme npm uses for local package dependencies.
@@ -167,7 +168,7 @@ func (p *npmTempProject) copyWorkspaceProjects() error {
 		if strings.HasPrefix(pattern, "!") {
 			continue
 		}
-		for _, expanded := range expandBraces(pattern) {
+		for _, expanded := range nodeproxy.ExpandBraces(pattern) {
 			expanded = strings.Trim(strings.TrimPrefix(expanded, "./"), "/")
 			if globIgnoresCase {
 				expanded = strings.ToLower(expanded)

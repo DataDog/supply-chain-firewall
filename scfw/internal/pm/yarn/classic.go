@@ -6,8 +6,10 @@
 package yarn
 
 import (
+	"errors"
 	"maps"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/nodeproxy"
@@ -19,30 +21,41 @@ import (
 // they cannot reach the arguments of `yarn run`; the user's own proxy options
 // are removed because Yarn applies the last occurrence.
 func classicProxyCommand(executable string, command []string, config proxy.ClientConfig, pem []byte) (proxy.CommandSpec, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return proxy.CommandSpec{}, errors.New("could not resolve yarn directory")
+	}
 	// `yarn workspace <name> <command>` only starts another Yarn in the
-	// workspace, without these options. Running that command there directly
+	// workspace, without these options. Running that command in the workspace
 	// is equivalent and puts the options on the process that downloads.
-	cmd, _, cwd := parseYarnCommand(classic, command)
-	start, err := startDirectory(cwd)
+	process, moved, err := classicTarget(dir, command, nodeproxy.LookupEnvironment(os.Environ()))
 	if err != nil {
 		return proxy.CommandSpec{}, err
 	}
-	if workspace, rest, found := classicWorkspace(start, cmd, command); found {
-		command = append([]string{"--cwd", workspace}, rest...)
+	var childDir string
+	if moved {
+		command, childDir = process.command, process.dir
+		// A relative executable would resolve against the workspace.
+		if executable, err = filepath.Abs(executable); err != nil {
+			return proxy.CommandSpec{}, err
+		}
 	}
+	// Only the arguments Yarn parses itself carry its options; the rest belong
+	// to the script or package a command runs.
+	cmd, _, _ := parseYarnCommand(classic, command)
 	args := []string{"--https-proxy=" + config.URL, "--proxy=" + config.URL}
 	for index := 0; index < len(command); index++ {
 		argument := command[index]
-		if argument == "--" {
+		if index >= cmd.end {
 			args = append(args, command[index:]...)
 			break
 		}
 		name, _, assigned := strings.Cut(argument, "=")
-		if name != "--proxy" && name != "--https-proxy" {
+		if index == cmd.index || name != "--proxy" && name != "--https-proxy" {
 			args = append(args, argument)
 			continue
 		}
-		if !assigned {
+		if !assigned && index+1 < cmd.end {
 			index++
 		}
 	}
@@ -59,5 +72,5 @@ func classicProxyCommand(executable string, command []string, config proxy.Clien
 		"npm_config_cafile": config.CACertificatePath, "npm_config_noproxy": "scfw.invalid",
 		"GIT_SSL_CAINFO": config.CACertificatePath, "NODE_EXTRA_CA_CERTS": extraCAs,
 	})
-	return proxy.CommandSpec{Executable: executable, Args: args, EnvOverrides: nodeproxy.OverrideVariants(os.Environ(), canonical)}, nil
+	return proxy.CommandSpec{Executable: executable, Args: args, EnvOverrides: nodeproxy.OverrideVariants(os.Environ(), canonical), Dir: childDir}, nil
 }

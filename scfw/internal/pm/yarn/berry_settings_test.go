@@ -6,7 +6,9 @@
 package yarn
 
 import (
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -64,6 +66,25 @@ func TestBerryUpstreamPrecedence(t *testing.T) {
 				t.Fatalf("config = %+v, want https %q http %q", config, test.https, test.http)
 			}
 		})
+	}
+}
+
+// Yarn 4 uses the first variable named YARN_RC_FILENAME in any case, even an
+// empty one, which makes it fail.
+func TestBerryRCFilenameFirstEntry(t *testing.T) {
+	root := isolateYarnEnvironment(t)
+	project := filepath.Join(root, "parent", "project")
+	writeYarnFixture(t, filepath.Join(project, ".first.yml"), "yarnrc-yml/https-proxy.yml.tmpl", "http://first:1")
+	writeYarnFixture(t, filepath.Join(project, ".second.yml"), "yarnrc-yml/https-proxy.yml.tmpl", "http://second:1")
+	t.Setenv("YARN_RC_FILENAME", ".first.yml")
+	t.Setenv("yarn_rc_filename", ".second.yml")
+	config, err := fakeYarn(t, "4.18.1").UpstreamProxy(nil)
+	if err != nil || config.HTTPSProxy != "http://first:1" {
+		t.Fatalf("HTTPSProxy = %q (error %v), want the first entry's", config.HTTPSProxy, err)
+	}
+	t.Setenv("YARN_RC_FILENAME", "")
+	if _, err := fakeYarn(t, "4.18.1").UpstreamProxy(nil); err == nil || !strings.Contains(err.Error(), "YARN_RC_FILENAME") {
+		t.Fatalf("an empty first entry must fail like Yarn: %v", err)
 	}
 }
 
@@ -130,6 +151,11 @@ func TestBerryUpstreamHonorsCwdOption(t *testing.T) {
 	if err != nil || config.HTTPSProxy != "http://pkg:1" {
 		t.Fatalf("trailing --cwd: HTTPSProxy = %q (error %v)", config.HTTPSProxy, err)
 	}
+	// Yarn 4 rejects a --cwd anywhere else.
+	config, err = fakeYarn(t, "4.18.1").UpstreamProxy([]string{"--immutable", "add", "x", "--cwd", "pkg"})
+	if err != nil || config.HTTPSProxy != "" {
+		t.Fatalf("misplaced --cwd: HTTPSProxy = %q (error %v)", config.HTTPSProxy, err)
+	}
 	writeYarnFixture(t, filepath.Join(root, "parent", "project", "pkg", ".yarnrc.yml"), "yarnrc-yml/network-proxy.yml")
 	if _, err := fakeYarn(t, "4.18.1").UpstreamProxy([]string{"add", "x", "--cwd", "pkg"}); err == nil || !strings.Contains(err.Error(), "networkSettings") {
 		t.Fatalf("trailing --cwd must still refuse networkSettings: %v", err)
@@ -142,5 +168,131 @@ func TestBerryUpstreamRejectsInvalidURLWithoutCredentials(t *testing.T) {
 	_, err := fakeYarn(t, "4.18.1").UpstreamProxy(nil)
 	if err == nil || strings.Contains(err.Error(), "s3cret") {
 		t.Fatalf("error = %v, want a credential-free error", err)
+	}
+}
+
+// writeBerryMembers writes each member's package.json and a .yarnrc.yml whose
+// proxy names it.
+func writeBerryMembers(t *testing.T, project string, members map[string]string) {
+	t.Helper()
+	for dir, name := range members {
+		writeYarnFixture(t, filepath.Join(project, dir, "package.json"), "workspaces/member.json.tmpl", name)
+		writeYarnFixture(t, filepath.Join(project, dir, ".yarnrc.yml"), "yarnrc-yml/https-proxy.yml.tmpl", "http://"+name+":1")
+	}
+}
+
+// Yarn 4 runs workspace commands in the workspace, which reads the rc files
+// from there up, and finds workspaces with fast-glob from its project.
+func TestBerryWorkspaceDiscoversFromTheWorkspace(t *testing.T) {
+	for _, test := range []struct {
+		name, patterns string
+		members        map[string]string
+		setup          func(t *testing.T, project string)
+		command        string
+		want           string
+	}{
+		{"named workspace", `["packages/*"]`, map[string]string{"packages/a": "a", "packages/b": "b"}, nil, "workspace a add x", "a"},
+		{"unknown name keeps the starting directory", `["packages/*"]`, map[string]string{"packages/a": "a"}, nil, "workspace z add x", ""},
+		{"nested workspaces", `["packages/*"]`, nil, func(t *testing.T, project string) {
+			writeYarnFixture(t, filepath.Join(project, "packages", "a", "package.json"), "workspaces/member-with-workspaces.json.tmpl", "a", `["nested/*"]`)
+			writeBerryMembers(t, project, map[string]string{"packages/a/nested/c": "c"})
+		}, "workspace c add x", "c"},
+		{"nested workspace commands", `["packages/*"]`, map[string]string{"packages/a": "a", "packages/b": "b"}, nil, "workspace a workspace b add x", "b"},
+		{"a negated pattern excludes", `["packages/*", "!packages/a"]`, map[string]string{"packages/a": "a"}, nil, "workspace a add x", ""},
+		{".yarn is ignored", `[".yarn/*"]`, map[string]string{".yarn/w": "w"}, nil, "workspace w add x", ""},
+		{"node_modules is ignored", `["packages/*"]`, map[string]string{"packages/node_modules": "nm"}, nil, "workspace nm add x", ""},
+		{"literal segments after a wildcard are case-sensitive", `["*/A"]`, map[string]string{"packages/a": "a"}, nil, "workspace a add x", ""},
+		{"the topmost package.json is the project", `[]`, nil, func(t *testing.T, project string) {
+			writeYarnFixture(t, filepath.Join(filepath.Dir(project), "package.json"), "workspaces/root.json.tmpl", `["project/packages/*"]`)
+			writeBerryMembers(t, project, map[string]string{"packages/a": "a"})
+		}, "workspace a add x", "a"},
+		{"a yarn.lock marks the project", `[]`, nil, func(t *testing.T, project string) {
+			writeYarnFixture(t, filepath.Join(filepath.Dir(project), "package.json"), "workspaces/root.json.tmpl", `["project/packages/*"]`)
+			writeBerryMembers(t, project, map[string]string{"packages/a": "a"})
+			writeYarnFixture(t, filepath.Join(project, "yarn.lock"), "workspaces/empty.json")
+		}, "workspace a add x", ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := isolateYarnEnvironment(t)
+			project := filepath.Join(root, "parent", "project")
+			writeYarnFixture(t, filepath.Join(project, "package.json"), "workspaces/root.json.tmpl", test.patterns)
+			writeBerryMembers(t, project, test.members)
+			if test.setup != nil {
+				test.setup(t, project)
+			}
+			config, err := fakeYarn(t, "4.18.1").UpstreamProxy(strings.Fields(test.command))
+			want := ""
+			if test.want != "" {
+				want = "http://" + test.want + ":1"
+			}
+			if err != nil || config.HTTPSProxy != want {
+				t.Fatalf("HTTPSProxy = %q (error %v), want %q", config.HTTPSProxy, err, want)
+			}
+		})
+	}
+}
+
+func TestBerryWorkspaceRefusesWhatSCFWCannotRoute(t *testing.T) {
+	for _, test := range []struct {
+		name, patterns, dir, manifest, fixture, command, want string
+	}{
+		{"networkSettings in the workspace", `["packages/*"]`, "packages/a", "workspaces/member.json.tmpl", "network-proxy.yml", "workspace a add x", "networkSettings"},
+		{"foreach over a workspace with another proxy", `["packages/*"]`, "packages/a", "workspaces/member.json.tmpl", "https-proxy.yml.tmpl", "workspaces foreach -A install", "different httpsProxy"},
+		{"foreach over a workspace with networkSettings", `["packages/*"]`, "packages/a", "workspaces/member.json.tmpl", "network-proxy.yml", "workspaces foreach -A install", "networkSettings"},
+		{"an unknown name with patterns SCFW cannot evaluate", `["packages/*", "@(x)"]`, "packages/a", "workspaces/member.json.tmpl", "", "workspace z add x", "brace ranges"},
+		// foreach also runs in workspaces SCFW cannot list, so it fails closed.
+		{"foreach over a workspace SCFW cannot match", `["packages/*", "+(other)"]`, "other", "workspaces/member.json.tmpl", "network-proxy.yml", "workspaces foreach -A install", "could not list every workspace"},
+		{"foreach over a malformed workspace", `["packages/*"]`, "packages/bad", "yarnrc-yml/invalid.yml", "https-proxy.yml.tmpl", "workspaces foreach -A install", "could not list every workspace"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := isolateYarnEnvironment(t)
+			project := filepath.Join(root, "parent", "project")
+			writeYarnFixture(t, filepath.Join(project, "package.json"), "workspaces/root.json.tmpl", test.patterns)
+			writeYarnFixture(t, filepath.Join(project, test.dir, "package.json"), test.manifest, "a")
+			if test.fixture != "" {
+				writeYarnFixture(t, filepath.Join(project, test.dir, ".yarnrc.yml"), "yarnrc-yml/"+test.fixture, "http://a:1")
+			}
+			if _, err := fakeYarn(t, "4.18.1").UpstreamProxy(strings.Fields(test.command)); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want one mentioning %q", err, test.want)
+			}
+		})
+	}
+}
+
+// fast-glob follows symlinked directories under "**" and the walk does not,
+// so a workspace reached only through one makes foreach fail closed.
+func TestBerryForeachRefusesWorkspacesBehindSymlinks(t *testing.T) {
+	root := isolateYarnEnvironment(t)
+	project := filepath.Join(root, "parent", "project")
+	writeYarnFixture(t, filepath.Join(project, "package.json"), "workspaces/root.json.tmpl", `["packages/**"]`)
+	writeYarnFixture(t, filepath.Join(project, "packages", "a", "package.json"), "workspaces/member.json.tmpl", "a")
+	writeYarnFixture(t, filepath.Join(root, "linked", "deep", "w", "package.json"), "workspaces/member.json.tmpl", "w")
+	writeYarnFixture(t, filepath.Join(root, "linked", "deep", "w", ".yarnrc.yml"), "yarnrc-yml/network-proxy.yml")
+	if _, err := fakeYarn(t, "4.18.1").UpstreamProxy([]string{"workspaces", "foreach", "-A", "install"}); err != nil {
+		t.Fatalf("without the symlink: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(root, "linked"), filepath.Join(project, "packages", "link")); err != nil {
+		t.Skip(err)
+	}
+	_, err := fakeYarn(t, "4.18.1").UpstreamProxy([]string{"workspaces", "foreach", "-A", "install"})
+	if err == nil || !strings.Contains(err.Error(), "could not list every workspace") {
+		t.Fatalf("error = %v, want foreach to fail closed", err)
+	}
+	// A workspace the walk finds still resolves.
+	if _, err := fakeYarn(t, "4.18.1").UpstreamProxy([]string{"workspace", "a", "add", "x"}); err != nil {
+		t.Fatalf("workspace a: %v", err)
+	}
+}
+
+// foreach downloads from every workspace's registries.
+func TestBerryForeachMergesRegistries(t *testing.T) {
+	root := isolateYarnEnvironment(t)
+	project := filepath.Join(root, "parent", "project")
+	writeYarnFixture(t, filepath.Join(project, "package.json"), "workspaces/root.json.tmpl", `["packages/*"]`)
+	writeYarnFixture(t, filepath.Join(project, "packages", "a", "package.json"), "workspaces/member.json.tmpl", "a")
+	writeYarnFixture(t, filepath.Join(project, "packages", "a", ".yarnrc.yml"), "yarnrc-yml/registries.yml")
+	options, err := fakeYarn(t, "4.18.1").NpmClassifierOptions([]string{"workspaces", "foreach", "-A", "install"})
+	if err != nil || !slices.Contains(options.RegistryURLs, "https://art.test/api/npm/corp/") || !slices.Contains(options.RegistryURLs, "https://registry.yarnpkg.com") {
+		t.Fatalf("registries = %q (error %v)", options.RegistryURLs, err)
 	}
 }

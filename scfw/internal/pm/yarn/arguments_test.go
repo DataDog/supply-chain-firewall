@@ -7,6 +7,7 @@ package yarn
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -24,10 +25,15 @@ func TestProxyCommandSupported(t *testing.T) {
 				{"--scripts-prepend-node-path", "true", "add", "x"},
 				{"remove", "x"}, {"upgradeInteractive"}, {"licenses", "list"}, {"import"},
 				{"global", "remove", "x"}, {"global", "upgradeInteractive"}, {"global", "--prefix", "/p", "add", "x"},
+				// Yarn parses options among the two arguments workspace keeps.
+				{"workspace", "--cwd", "x", "a", "add", "y"}, {"workspace", "a", "workspace", "b", "add", "y"},
+				// With "--" Yarn parses every option before it.
+				{"workspace", "--cwd", ".", "a", "add", "x", "--", "y"},
 			},
 			false: {
 				{"run", "build"}, {"build"}, {"test"}, {"exec", "tsc"}, {"node", "x.js"}, {"info", "x"}, {"audit"},
 				{"global", "list"}, {"--version"}, {"--help", "add", "x"}, {"workspace", "a", "run", "build"}, {"dlx", "x"},
+				{"workspace", "--cwd", "x", "a", "run", "add"}, {"workspace", "--cwd", ".", "a", "run", "x", "--", "add"},
 			},
 		},
 		"4.18.1": {
@@ -58,6 +64,19 @@ func TestProxyCommandSupported(t *testing.T) {
 					}
 				})
 			}
+		}
+	}
+}
+
+// Yarn 4 takes --cwd only as the first argument, or as the last two of a
+// command line that starts with add.
+func TestBerryCwd(t *testing.T) {
+	for command, want := range map[string]string{
+		"--cwd pkg add x": "pkg", "--cwd=pkg add x": "pkg", "add x --cwd pkg": "pkg", "--cwd pkg --cwd other add x": "pkg",
+		"--immutable --cwd pkg install": "", "install --cwd pkg": "", "--immutable add x --cwd pkg": "", "add --cwd pkg x": "",
+	} {
+		if _, _, got := parseYarnCommand(berry, strings.Fields(command)); got != want {
+			t.Errorf("%q: cwd = %q, want %q", command, got, want)
 		}
 	}
 }

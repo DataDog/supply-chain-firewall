@@ -1,0 +1,7 @@
+{
+ "blocked": {"installed": {}, "lock": {}, "wheels": {}},
+ "installed": {"installed": {"idna":"1"}},
+ "locked": {"lock": {"idna":"1"}},
+ "compiled": {"compiled": "idna==1"},
+ "built": {"wheels": {"scfw-uv-command":"0.1.0"}}
+}

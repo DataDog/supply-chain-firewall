@@ -77,6 +77,13 @@ const npmDirectTarballPath = "/downloads/lab-pkg.tgz"
 // git archive with a global PAX comment header.
 const npmGitArchivePath = "/downloads/lab-pkg-git.tar.gz"
 
+// npmRedirectingArchivePath redirects to npmRedirectTargetPath, as GitHub's
+// API tarball endpoint redirects to a codeload legacy.tar.gz no URL pattern matches.
+const (
+	npmRedirectingArchivePath = "/repos/acme/lab-pkg/tarball/v1"
+	npmRedirectTargetPath     = "/acme/lab-pkg/legacy.tar.gz/refs/tags/v1"
+)
+
 func npmGitArchive(t *testing.T) []byte {
 	t.Helper()
 	dir := t.TempDir()
@@ -116,7 +123,9 @@ func startNpmRegistryWith(t *testing.T, packageFixture, packumentFixture string)
 		case "/lab-pkg":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprintf(w, packument, registry.URL+"/lab-pkg/-/lab-pkg-1.0.0.tgz", integrity)
-		case npmGitArchivePath:
+		case npmRedirectingArchivePath:
+			http.Redirect(w, r, npmRedirectTargetPath, http.StatusFound)
+		case npmGitArchivePath, npmRedirectTargetPath:
 			registry.TarballHits.Add(1)
 			w.Header().Set("Content-Type", "application/x-gzip")
 			_, _ = w.Write(gitArchive)
@@ -287,7 +296,11 @@ func TestNpmProxyEndToEnd(t *testing.T) {
 		failed      bool
 		// direct expects the package evaluated with the direct tarball URL as its source.
 		direct bool
+		// source is the path the package must be evaluated from, when set.
+		source string
 	}{
+		{name: "redirected-archive-allow", args: redirectingArchiveArgs, outcome: evaluation.OutcomeAllow, hits: 2, calls: 1, source: npmRedirectTargetPath},
+		{name: "redirected-archive-block", args: redirectingArchiveArgs, outcome: evaluation.OutcomeBlock, hits: 1, calls: 1, failed: true, source: npmRedirectTargetPath},
 		// npm fetches a direct tarball once to read its manifest and again to unpack it.
 		{name: "url-allow", args: directTarballArgs, outcome: evaluation.OutcomeAllow, hits: 2, calls: 1, direct: true},
 		{name: "git-archive-allow", args: func(registry *npmTestRegistry, _ string) []string {
@@ -353,6 +366,9 @@ func TestNpmProxyEndToEnd(t *testing.T) {
 			if test.direct && !slices.Equal(run.sources, []string{registry.URL + npmDirectTarballPath}) {
 				t.Fatalf("evaluated sources = %v, want the direct tarball URL", run.sources)
 			}
+			if test.source != "" && !slices.Equal(run.sources, []string{registry.URL + test.source}) {
+				t.Fatalf("evaluated sources = %v, want %s", run.sources, test.source)
+			}
 			if test.failed {
 				if _, err := os.Stat(filepath.Join(dir, "node_modules", "lab-pkg")); err == nil {
 					t.Fatal("blocked package was installed")
@@ -375,6 +391,10 @@ func TestNpmProxyEndToEnd(t *testing.T) {
 			assertProxyCleaned(t, run.config)
 		})
 	}
+}
+
+func redirectingArchiveArgs(registry *npmTestRegistry, _ string) []string {
+	return []string{"install", registry.URL + npmRedirectingArchivePath}
 }
 
 func directTarballArgs(registry *npmTestRegistry, _ string) []string {

@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/internal/archive"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
 func TestProxyHandlerDefersOpaqueTarballsToResponse(t *testing.T) {
@@ -239,6 +240,132 @@ func TestProxyHandlerInspectsOpaqueTarballs(t *testing.T) {
 		if response.StatusCode != http.StatusNotModified || len(evaluated()) != 1 || fetches.Load()-before != 2 {
 			t.Fatalf("status=%d evaluations=%d fetches=%d, want 304 after one full re-fetch evaluated once",
 				response.StatusCode, len(evaluated()), fetches.Load()-before)
+		}
+	})
+}
+
+func TestProxyHandlerInspectsDownloadsFromResponse(t *testing.T) {
+	tarball := npmTarball(t, "gzip", tarEntry{name: "widget-0123abc/package.json", body: readNpmFixture(t, "manifest/widget.json")})
+	var fetches atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetches.Add(1)
+		switch r.URL.Path {
+		case "/octet":
+			w.Header().Set("Content-Type", "application/octet-stream")
+		case "/binary":
+			w.Header().Set("Content-Type", "binary/octet-stream")
+		case "/untyped":
+			w.Header()["Content-Type"] = nil
+		case "/untyped-unbounded":
+			w.Header()["Content-Type"] = nil
+			w.WriteHeader(http.StatusOK)
+			w.(http.Flusher).Flush()
+		case "/json":
+			w.Header().Set("Content-Type", "application/json")
+		case "/text":
+			w.Header().Set("Content-Type", "text/plain")
+		case "/repos/acme/widget/tarball/v1":
+			// GitHub's API tarball endpoint redirects to a codeload legacy.tar.gz.
+			http.Redirect(w, r, "/acme/widget/legacy.tar.gz/refs/tags/v1", http.StatusFound)
+			return
+		case "/acme/widget/legacy.tar.gz/refs/tags/v1":
+			w.Header().Set("Content-Type", "application/x-gzip")
+		case "/download/@acme/widget/1.2.3/abc":
+			// GitHub Packages redirects downloads to a blob store; its media
+			// type is assumed to be application/octet-stream.
+			http.Redirect(w, r, "/npm/blobs/sha256:abc", http.StatusFound)
+			return
+		case "/npm/blobs/sha256:abc":
+			w.Header().Set("Content-Type", "application/octet-stream")
+		case "/moved":
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Header().Set("Location", "/octet")
+			w.WriteHeader(http.StatusFound)
+		case "/partial":
+			w.Header().Set("Content-Type", "application/octet-stream")
+			if r.Header.Get("Range") != "" {
+				w.Header().Set("Content-Range", "bytes 0-9/"+strconv.Itoa(len(tarball)))
+				w.WriteHeader(http.StatusPartialContent)
+				_, _ = w.Write(tarball[:10])
+				return
+			}
+		}
+		_, _ = w.Write(tarball)
+	}))
+	defer upstream.Close()
+
+	for _, tc := range []struct {
+		path, source string
+		status       int
+		header       string
+		noFollow     bool
+		fetches      int32
+	}{
+		{path: "/octet", status: http.StatusForbidden},
+		{path: "/binary", status: http.StatusForbidden},
+		{path: "/untyped", status: http.StatusForbidden},
+		{path: "/untyped-unbounded", status: http.StatusOK},
+		{path: "/json", status: http.StatusOK},
+		{path: "/text", status: http.StatusOK},
+		{path: "/repos/acme/widget/tarball/v1", source: "/acme/widget/legacy.tar.gz/refs/tags/v1", status: http.StatusForbidden},
+		{path: "/download/@acme/widget/1.2.3/abc", source: "/npm/blobs/sha256:abc", status: http.StatusForbidden},
+		{path: "/moved", status: http.StatusFound, noFollow: true},
+		{path: "/partial", source: "/partial", status: http.StatusForbidden, header: "Range", fetches: 2},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			handler, evaluated := recordingHandler(t, errors.New("blocked by policy"))
+			handler.Client = upstream.Client()
+			client := proxiedClient(t, handler.HandleRequest)
+			if tc.noFollow {
+				client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+			}
+			request, _ := http.NewRequest(http.MethodGet, upstream.URL+tc.path, nil)
+			if tc.header != "" {
+				request.Header.Set(tc.header, "bytes=0-9")
+			}
+			before := fetches.Load()
+			response, err := client.Do(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _ = io.Copy(io.Discard, response.Body)
+			_ = response.Body.Close()
+			artifacts := evaluated()
+			wantEvaluations := 0
+			if tc.status == http.StatusForbidden {
+				wantEvaluations = 1
+			}
+			if response.StatusCode != tc.status || len(artifacts) != wantEvaluations {
+				t.Fatalf("status=%d evaluations=%d, want %d and %d", response.StatusCode, len(artifacts), tc.status, wantEvaluations)
+			}
+			if tc.source != "" && artifacts[0].Source != upstream.URL+tc.source {
+				t.Fatalf("source = %s, want %s", artifacts[0].Source, upstream.URL+tc.source)
+			}
+			if tc.fetches != 0 && fetches.Load()-before != tc.fetches {
+				t.Fatalf("fetches = %d, want %d", fetches.Load()-before, tc.fetches)
+			}
+		})
+	}
+
+	// Go's server drops Content-Type from a 304, so build the responses directly.
+	octet := http.Header{"Content-Type": {"application/octet-stream"}}
+	t.Run("not modified", func(t *testing.T) {
+		handler, evaluated := recordingHandler(t, errors.New("blocked by policy"))
+		handler.Client = upstream.Client()
+		request := getRequest(t, upstream.URL+"/octet")
+		request.Header.Set("If-None-Match", `"cached"`)
+		hook, err := handler.observeDownload(context.Background(), proxy.Response{Request: request, StatusCode: http.StatusNotModified, Header: octet})
+		if hook != nil || !errors.Is(err, proxy.ErrResponseRejected) || len(evaluated()) != 1 {
+			t.Fatalf("observeDownload() = %v, %v with %d evaluations; want the re-fetched archive rejected", hook != nil, err, len(evaluated()))
+		}
+	})
+	t.Run("declared length over limit", func(t *testing.T) {
+		handler, _ := recordingHandler(t, errors.New("must not be evaluated"))
+		header := octet.Clone()
+		header.Set("Content-Length", strconv.FormatInt(archive.MaxArtifactBytes+1, 10))
+		hook, err := handler.observeDownload(context.Background(), proxy.Response{Request: getRequest(t, upstream.URL+"/octet"), StatusCode: http.StatusOK, Header: header})
+		if hook != nil || err != nil {
+			t.Fatalf("observeDownload() = %v, %v; want the oversized download passed untouched", hook != nil, err)
 		}
 	})
 }

@@ -9,12 +9,14 @@ package e2e_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -168,8 +170,9 @@ func managerRoutingPhase(r *caseRun, options managerRouteCase, protected bool) (
 		commandArgs = append([]string{r.Binary, "run", "--executable", r.Cell.Executable, "--", r.Cell.Manager}, recipe.args...)
 	}
 	command, commandErr := managerRoutingCommand(r, recipe, protected, commandArgs)
-	if command.TimedOut {
-		return commandErr
+	wantFailure := (protected && options.block) || options.name == "malformed-proxy" || (protected && strings.HasPrefix(options.name, "port-default-"))
+	if err := managerRoutingExit(command, commandErr, wantFailure); err != nil {
+		return err
 	}
 	stderr, err := os.ReadFile(command.Stderr.Path)
 	if err != nil {
@@ -213,7 +216,7 @@ func managerRoutingPhase(r *caseRun, options managerRouteCase, protected bool) (
 		if err := assertUVNoPolicy(r); err != nil {
 			return err
 		}
-		if err := assertUVNoProxy(r, string(stderr)); err != nil {
+		if err := assertCleanup(r, string(stderr)); err != nil {
 			return err
 		}
 		if err := assertForwardRoute(selected.snapshot(), command, recipe.routeHost, false); err != nil {
@@ -222,13 +225,10 @@ func managerRoutingPhase(r *caseRun, options managerRouteCase, protected bool) (
 		if err := assertForwardRoute(competing.snapshot(), command, recipe.routeHost, false); err != nil {
 			return err
 		}
-		r.Result.ResolvedAction = "REJECTED"
+		r.Result.PolicyOutcome, r.Result.ResolvedAction = "NOT_OBSERVED", "COMPATIBILITY_ERROR"
 		return nil
 	}
 	blocked := protected && options.block
-	if (command.ExitCode != 0) != blocked || command.ExitCode < 0 {
-		return fmt.Errorf("exit %d, blocked=%v: %w", command.ExitCode, blocked, commandErr)
-	}
 	if err := assertManagerRoutingInstall(r, recipe, blocked); err != nil {
 		return err
 	}
@@ -614,7 +614,7 @@ func managerIPIndex(r *caseRun, domain bool) (string, func() error, error) {
 	contentType := "text/html"
 	if r.Cell.Manager == "npm" {
 		var err error
-		body, err = os.ReadFile(r.Candidate.Metadata[0].Body.Path)
+		body, err = managerNPMMetadata(r.Candidate)
 		if err != nil {
 			return "", nil, err
 		}
@@ -691,4 +691,71 @@ func TestHarnessManagerRoutingInventory(t *testing.T) {
 			t.Fatal("missing IP inspection case")
 		}
 	}
+}
+
+func TestHarnessManagerRoutingObservationFailure(t *testing.T) {
+	observation := errors.New("merged configuration did not preserve index")
+	for _, blocked := range []bool{false, true} {
+		exit := 0
+		if blocked {
+			exit = 1
+		}
+		if err := managerRoutingExit(commandEvidence{ExitCode: exit}, observation, blocked); !errors.Is(err, observation) {
+			t.Fatalf("expected exit hid observation error: %v", err)
+		}
+	}
+	processErr := exec.Command("/usr/bin/false").Run()
+	if err := managerRoutingExit(commandEvidence{ExitCode: 1}, processErr, true); err != nil {
+		t.Fatalf("expected BLOCK process failure: %v", err)
+	}
+	if err := managerRoutingExit(commandEvidence{ExitCode: 0}, nil, false); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHarnessManagerRoutingSelectedMetadata(t *testing.T) {
+	var responses map[string]json.RawMessage
+	if err := readJSON("testdata/manager_routing/responses.json", &responses); err != nil {
+		t.Fatal(err)
+	}
+	c := candidate{Project: "selected-package"}
+	for _, name := range []string{"rejected-package", "selected-package"} {
+		path := filepath.Join(t.TempDir(), "metadata.json")
+		if err := os.WriteFile(path, responses[name], 0600); err != nil {
+			t.Fatal(err)
+		}
+		c.Metadata = append(c.Metadata, metadataEvidence{URL: npmMetadataURL(name), Body: fileEvidence{Path: path}})
+	}
+	body, err := managerNPMMetadata(c)
+	if err != nil || !bytes.Equal(body, responses[c.Project]) {
+		t.Fatalf("selected metadata: %s %v", body, err)
+	}
+	c.Metadata = c.Metadata[:1]
+	if _, err := managerNPMMetadata(c); err == nil {
+		t.Fatal("missing selected metadata accepted")
+	}
+}
+
+// Process exit failures can be the expected policy result. Observation failures
+// always fail the case, even when the child exits with the expected status.
+func managerRoutingExit(command commandEvidence, commandErr error, wantFailure bool) error {
+	if commandErr != nil {
+		var exitError *exec.ExitError
+		if !errors.As(commandErr, &exitError) {
+			return commandErr
+		}
+	}
+	if command.TimedOut || command.ExitCode < 0 || (command.ExitCode != 0) != wantFailure {
+		return fmt.Errorf("exit %d, expected failure=%v: %w", command.ExitCode, wantFailure, commandErr)
+	}
+	return nil
+}
+
+func managerNPMMetadata(c candidate) ([]byte, error) {
+	for _, metadata := range c.Metadata {
+		if metadata.URL == npmMetadataURL(c.Project) {
+			return os.ReadFile(metadata.Body.Path)
+		}
+	}
+	return nil, fmt.Errorf("discovery has no metadata for selected npm project %s", c.Project)
 }

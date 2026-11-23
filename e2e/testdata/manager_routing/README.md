@@ -32,9 +32,11 @@ Routing assertions use artifact-host traffic, which distinguishes manager
 transfers from independent policy metadata lookups. BLOCK prevents that transfer;
 its oracle is exact policy identity plus absent installed state. Address cases assert
 index routing for both ALLOW and BLOCK. Python default-443 bypass rules reject
-before manager execution because explicit and implicit :443 become identical on
-the intercepted wire. Both native forms are exercised; diagnostics require no
-policy record, installed artifact, or artifact-host traffic. Nondefault ports
+before forwarding the affected request because explicit and implicit :443 become
+identical on the intercepted wire. Both native forms are exercised; diagnostics require no
+policy record, installed artifact, or artifact-host traffic. The recorded policy
+outcome is `NOT_OBSERVED` and the separate action is `COMPATIBILITY_ERROR`;
+this is not a policy BLOCK. Nondefault ports
 retain positive ALLOW/BLOCK coverage. All phases retain both upstream logs and
 separate native command/state evidence, even after failure. Original manager
 configuration bytes must remain unchanged. uv's real invocation is observed to

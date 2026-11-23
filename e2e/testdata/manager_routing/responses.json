@@ -1,0 +1,4 @@
+{
+  "rejected-package": {"name": "rejected-package", "versions": {}},
+  "selected-package": {"name": "selected-package", "versions": {"1.0.0": {"version": "1.0.0"}}}
+}

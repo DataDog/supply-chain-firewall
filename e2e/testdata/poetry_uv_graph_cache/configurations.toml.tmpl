@@ -1,0 +1,5 @@
+[project]
+name = "scfw-graph-cache"
+version = "0.1.0"
+requires-python = {{printf "%q" (printf "==%s.*" .Python)}}
+dependencies = [{{if .Project}}{{printf "%q" (printf "%s==%s" .Project .Version)}}{{end}}]

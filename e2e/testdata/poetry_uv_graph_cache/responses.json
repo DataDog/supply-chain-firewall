@@ -1,0 +1,102 @@
+{
+  "required": [
+    {
+      "Name": "root",
+      "Version": "1",
+      "Files": {
+        "root.whl": "root-hash"
+      },
+      "Required": true
+    },
+    {
+      "Name": "leaf",
+      "Version": "2",
+      "Files": {
+        "leaf.whl": "leaf-hash"
+      },
+      "Required": false
+    }
+  ],
+  "missing_leaf": [
+    {
+      "Name": "root",
+      "Version": "1",
+      "Files": {
+        "root.whl": "root-hash"
+      },
+      "Required": true
+    }
+  ],
+  "optional_leaf": [
+    {
+      "Name": "root",
+      "Version": "1",
+      "Files": {
+        "root.whl": "root-hash"
+      },
+      "Required": false
+    },
+    {
+      "Name": "leaf",
+      "Version": "2",
+      "Files": {
+        "leaf.whl": "leaf-hash"
+      },
+      "Required": false
+    }
+  ],
+  "wrong_version": [
+    {
+      "Name": "root",
+      "Version": "1",
+      "Files": {
+        "root.whl": "root-hash"
+      },
+      "Required": true
+    },
+    {
+      "Name": "leaf",
+      "Version": "3",
+      "Files": {
+        "leaf.whl": "leaf-hash"
+      },
+      "Required": false
+    }
+  ],
+  "wrong_hash": [
+    {
+      "Name": "root",
+      "Version": "1",
+      "Files": {
+        "root.whl": "root-hash"
+      },
+      "Required": true
+    },
+    {
+      "Name": "leaf",
+      "Version": "2",
+      "Files": {
+        "leaf.whl": "wrong"
+      },
+      "Required": false
+    }
+  ],
+  "duplicate": [
+    {
+      "Name": "root",
+      "Version": "1",
+      "Files": {
+        "root.whl": "root-hash"
+      },
+      "Required": true
+    },
+    {
+      "Name": "root",
+      "Version": "1",
+      "Files": {
+        "root.whl": "root-hash"
+      },
+      "Required": true
+    }
+  ]
+}

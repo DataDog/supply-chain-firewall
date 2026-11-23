@@ -1,0 +1,10 @@
+[tool.poetry]
+name = "scfw-graph-cache"
+version = "0.1.0"
+description = "Real public dependency graph"
+authors = ["SCFW <scfw@example.invalid>"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = {{printf "%q" (printf "%s.*" .Python)}}
+{{if .Project}}{{printf "%q" .Project}} = {{printf "%q" (printf "==%s" .Version)}}{{end}}

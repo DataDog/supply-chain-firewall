@@ -7,6 +7,7 @@ package pip
 
 import (
 	"context"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -156,7 +157,7 @@ func TestProxyOptionsIndexAliasPreservesDiscovery(t *testing.T) {
 
 func TestProxyOptionsPreserveRouting(t *testing.T) {
 	manager := goDiscoveryPip(t)
-	config := proxy.ClientConfig{URL: "http://127.0.0.1:1234", CACertificatePath: "/run/ca.pem"}
+	config := proxy.ClientConfig{URL: "http://127.0.0.1:1234", CACertificatePath: filepath.Join(t.TempDir(), "ca.pem")}
 	const original = "http://original.example"
 	const environment = "http://environment.example"
 	t.Setenv("PIP_PROXY", environment)

@@ -93,6 +93,7 @@ type yarnProxyRun struct {
 	calls                int32
 	details              string
 	config               proxy.ClientConfig
+	sources              []string
 }
 
 func runYarnThroughProxy(t *testing.T, executable string, args []string, outcome evaluation.Outcome) yarnProxyRun {
@@ -104,10 +105,13 @@ func runYarnThroughProxy(t *testing.T, executable string, args []string, outcome
 	var run yarnProxyRun
 	var calls atomic.Int32
 	var details bytes.Buffer
-	evaluator := proxyEvaluatorFunc(func(_ context.Context, interactive bool, _ *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
+	evaluator := proxyEvaluatorFunc(func(_ context.Context, interactive bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 		calls.Add(1)
 		if interactive {
 			t.Error("proxy evaluation must not prompt")
+		}
+		for target := range targets.Items() {
+			run.sources = append(run.sources, target.Source)
 		}
 		return evaluation.ScfwPolicyEvaluationReport{Outcome: outcome}, nil
 	})
@@ -137,12 +141,16 @@ func assertYarnFailed(t *testing.T, run yarnProxyRun) {
 	assertNpmFailed(t, run.commandErr)
 }
 
-// seedYarnLockfile installs lab-pkg once, then leaves only the manifest and
-// lockfile, with an empty cache, so the next command downloads it again.
+// seedYarnLockfile installs the package named by the add command (`add
+// lab-pkg` by default) once, then leaves only the manifest and lockfile,
+// with an empty cache, so the next command downloads it again.
 // Yarn 4 also mirrors archives in its global folder.
-func seedYarnLockfile(t *testing.T, executable, dir string) {
+func seedYarnLockfile(t *testing.T, executable, dir string, add ...string) {
 	t.Helper()
-	assertYarnSucceeded(t, runYarnThroughProxy(t, executable, []string{"add", "lab-pkg"}, evaluation.OutcomeAllow))
+	if len(add) == 0 {
+		add = []string{"add", "lab-pkg"}
+	}
+	assertYarnSucceeded(t, runYarnThroughProxy(t, executable, add, evaluation.OutcomeAllow))
 	if err := os.RemoveAll(filepath.Join(dir, "node_modules")); err != nil {
 		t.Fatal(err)
 	}

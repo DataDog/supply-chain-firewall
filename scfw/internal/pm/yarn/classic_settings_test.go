@@ -21,7 +21,7 @@ func isolateYarnEnvironment(t *testing.T) string {
 		key, _, _ := strings.Cut(item, "=")
 		lower := strings.ToLower(key)
 		if strings.HasPrefix(lower, "npm_config_") || strings.HasPrefix(lower, "yarn_") || strings.HasSuffix(lower, "_proxy") ||
-			lower == "proxy" || key == "NODE_EXTRA_CA_CERTS" || key == "GIT_SSL_CAINFO" || key == "PREFIX" || key == "DESTDIR" {
+			lower == "proxy" || key == "NODE_EXTRA_CA_CERTS" || strings.HasPrefix(key, "GIT_CONFIG") || strings.HasPrefix(key, "GIT_SSL_") || key == "PREFIX" || key == "DESTDIR" {
 			t.Setenv(key, "")
 			if err := os.Unsetenv(key); err != nil {
 				t.Fatal(err)
@@ -29,6 +29,7 @@ func isolateYarnEnvironment(t *testing.T) string {
 		}
 	}
 	root := t.TempDir()
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("HOME", filepath.Join(root, "home"))
 	t.Setenv("PREFIX", filepath.Join(root, "prefix"))
 	project := filepath.Join(root, "parent", "project")

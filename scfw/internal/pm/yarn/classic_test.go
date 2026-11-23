@@ -65,7 +65,7 @@ func TestClassicProxyCommandEnvironment(t *testing.T) {
 		"YARN_PROXY": config.URL, "YARN_HTTPS_PROXY": config.URL, "YARN_CAFILE": ca,
 		"npm_config_proxy": config.URL, "npm_config_https_proxy": config.URL, "npm_config_cafile": ca,
 		"npm_config_noproxy": "scfw.invalid", "HTTPS_PROXY": config.URL, "http_proxy": config.URL,
-		"NO_PROXY": "", "no_proxy": "", "GIT_SSL_CAINFO": ca, "NODE_EXTRA_CA_CERTS": ca,
+		"NO_PROXY": "", "no_proxy": "", "NODE_EXTRA_CA_CERTS": ca,
 		"yarn_https_proxy": config.URL, "NPM_CONFIG-PROXY": config.URL,
 	} {
 		if actual, found := spec.EnvOverrides[key]; !found || actual != value {

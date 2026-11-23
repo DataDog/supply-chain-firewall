@@ -39,7 +39,7 @@ func TestBerryProxyCommandEnvironment(t *testing.T) {
 	for key, value := range map[string]string{
 		"YARN_HTTPS_PROXY": config.URL, "YARN_HTTP_PROXY": config.URL, "YARN_HTTPS_CA_FILE_PATH": ca,
 		"yarn_https_proxy": config.URL, "HTTPS_PROXY": config.URL, "NO_PROXY": "",
-		"GIT_SSL_CAINFO": ca, "NODE_EXTRA_CA_CERTS": ca,
+		"NODE_EXTRA_CA_CERTS": ca,
 	} {
 		if actual, found := spec.EnvOverrides[key]; !found || actual != value {
 			t.Errorf("%s = %q (present %v), want %q", key, actual, found, value)

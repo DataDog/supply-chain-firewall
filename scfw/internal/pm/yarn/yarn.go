@@ -29,6 +29,7 @@ type Yarn struct {
 	executable string
 	version    pm.Version
 	versionErr error
+	proxyState *yarnProxyState
 }
 
 // NewYarn records the version that will actually run here: a global Classic
@@ -42,7 +43,7 @@ func NewYarn(ctx context.Context, name, executable string) (Yarn, error) {
 			return Yarn{}, err
 		}
 	}
-	yarn := Yarn{executable: executable}
+	yarn := Yarn{executable: executable, proxyState: &yarnProxyState{}}
 	output, err := exec.CommandContext(ctx, executable, "--version").Output()
 	if err == nil {
 		yarn.version, err = pm.ParseVersion(strings.TrimSpace(string(output)))

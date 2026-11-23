@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/ecosystem/common"
@@ -23,6 +24,14 @@ import (
 
 // pacote clones every git dependency into a temporary directory of npm's cache.
 const gitCloneMarker = "/_cacache/tmp/git-clone"
+
+// Yarn 4 clones every git dependency into a new xfs temporary directory. Yarn
+// Classic archives it from a clone in its cache's temporary folder, named after
+// the MD5 hash of the repository URL.
+var (
+	yarnCloneName    = regexp.MustCompile(`^xfs-[0-9a-f]{8}$`)
+	yarnClassicClone = regexp.MustCompile(`/\.tmp/[0-9a-f]{32}$`)
+)
 
 // CheckoutPackage identifies the npm package in a git dependency checkout from
 // its root package.json. Checkouts outside npm's temporary clone directories
@@ -34,6 +43,68 @@ func CheckoutPackage(dir, origin, sha string) (pm.Package, bool, error) {
 	if !strings.Contains(filepath.ToSlash(dir), gitCloneMarker) {
 		return pm.Package{}, false, nil
 	}
+	return checkoutPackage(dir, origin, sha)
+}
+
+// YarnCheckoutPackage identifies the package in a Yarn 4 git dependency
+// checkout like CheckoutPackage. Yarn 4 clones the default branch and then
+// checks out the dependency's commit; it never uses the clone's own checkout,
+// so only the later checkout is a package. Yarn 4 prepares a repository
+// configured for npm with npm, so npm's checkouts are identified as well.
+// Unlike CheckoutPackage, a checkout without a valid root package.json is an
+// error: Yarn 4 installs a cwd= subdirectory of a repository that has none.
+func YarnCheckoutPackage(dir, origin, previous, sha string) (pm.Package, bool, error) {
+	if !strings.Contains(filepath.ToSlash(dir), gitCloneMarker) &&
+		(!yarnCloneName.MatchString(filepath.Base(dir)) || strings.Trim(previous, "0") == "" && clonedHead(dir)) {
+		return pm.Package{}, false, nil
+	}
+	pkg, found, err := checkoutPackage(dir, origin, sha)
+	if err == nil && !found {
+		return pm.Package{}, false, errors.New("the checkout has no valid root package.json to identify the package by")
+	}
+	return pkg, found, err
+}
+
+// clonedHead reports whether git clone made the latest change to HEAD. A
+// checkout from an unborn HEAD, as after cloning a remote whose HEAD names a
+// missing branch, also has an all-zero previous HEAD but is not the clone's.
+func clonedHead(dir string) bool {
+	file, err := os.Open(filepath.Join(dir, ".git", "logs", "HEAD"))
+	if err != nil {
+		return false
+	}
+	defer func() { _ = file.Close() }()
+	reflog, err := io.ReadAll(io.LimitReader(file, archive.MaxMetadataBytes+1))
+	if err != nil || int64(len(reflog)) > archive.MaxMetadataBytes {
+		return false
+	}
+	lines := strings.Split(strings.TrimRight(string(reflog), "\n"), "\n")
+	_, message, _ := strings.Cut(lines[len(lines)-1], "\t")
+	return strings.HasPrefix(message, "clone: from ")
+}
+
+// YarnClassicArchivePackage identifies the package Yarn Classic archives at
+// commit sha from its clone in dir, like CheckoutPackage. readManifest returns
+// at most limit bytes of the commit's root package.json, or an fs.ErrNotExist
+// error without one.
+func YarnClassicArchivePackage(dir, origin, sha string, readManifest func(limit int64) ([]byte, error)) (pm.Package, bool, error) {
+	if !yarnClassicClone.MatchString(filepath.ToSlash(dir)) {
+		return pm.Package{}, false, nil
+	}
+	if sha == "" {
+		return pm.Package{}, false, errors.New("the archived commit could not be resolved")
+	}
+	manifest, err := readManifest(archive.MaxMetadataBytes + 1)
+	if errors.Is(err, fs.ErrNotExist) {
+		return pm.Package{}, false, nil
+	}
+	if err != nil {
+		return pm.Package{}, false, err
+	}
+	return manifestPackage(manifest, origin, sha)
+}
+
+func checkoutPackage(dir, origin, sha string) (pm.Package, bool, error) {
 	file, err := os.Open(filepath.Join(dir, "package.json"))
 	if errors.Is(err, fs.ErrNotExist) {
 		return pm.Package{}, false, nil
@@ -46,6 +117,10 @@ func CheckoutPackage(dir, origin, sha string) (pm.Package, bool, error) {
 	if err != nil {
 		return pm.Package{}, false, err
 	}
+	return manifestPackage(manifest, origin, sha)
+}
+
+func manifestPackage(manifest []byte, origin, sha string) (pm.Package, bool, error) {
 	// npm has no size limit, so a manifest that cannot be read in full is not
 	// allowed unevaluated.
 	if int64(len(manifest)) > archive.MaxMetadataBytes {

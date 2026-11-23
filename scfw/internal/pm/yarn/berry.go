@@ -28,8 +28,7 @@ func berryProxyCommand(executable string, command []string, config proxy.ClientC
 	canonical := config.EnvironmentOverrides()
 	maps.Copy(canonical, map[string]string{
 		"YARN_HTTPS_PROXY": config.URL, "YARN_HTTP_PROXY": config.URL,
-		"YARN_HTTPS_CA_FILE_PATH": config.CACertificatePath,
-		"GIT_SSL_CAINFO":          config.CACertificatePath, "NODE_EXTRA_CA_CERTS": extraCAs,
+		"YARN_HTTPS_CA_FILE_PATH": config.CACertificatePath, "NODE_EXTRA_CA_CERTS": extraCAs,
 	})
 	return proxy.CommandSpec{Executable: executable, Args: slices.Clone(command), EnvOverrides: nodeproxy.OverrideVariants(os.Environ(), canonical)}, nil
 }

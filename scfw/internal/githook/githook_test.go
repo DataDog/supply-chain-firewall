@@ -8,6 +8,7 @@ package githook
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -137,8 +138,8 @@ func TestCloneAllowedReportsCheckout(t *testing.T) {
 		t.Fatalf("checkouts = %+v, want one", checkouts)
 	}
 	got := checkouts[0]
-	if resolved(t, got.Dir) != resolved(t, destination) || got.Origin != "file://"+source || got.SHA != sha {
-		t.Fatalf("checkout = %+v, want dir %s, origin file://%s, sha %s", got, destination, source, sha)
+	if resolved(t, got.Dir) != resolved(t, destination) || got.Origin != "file://"+source || got.SHA != sha || got.Previous != strings.Repeat("0", 40) {
+		t.Fatalf("checkout = %+v, want dir %s, origin file://%s, sha %s, previous all zeros", got, destination, source, sha)
 	}
 }
 
@@ -406,5 +407,109 @@ func TestFileCheckoutIsNotEvaluated(t *testing.T) {
 	mustGit(t, destination, env, "checkout", "--", "package.json")
 	if checkouts := decisions.recorded(); len(checkouts) != 1 {
 		t.Fatalf("checkouts = %+v, want only the clone", checkouts)
+	}
+}
+
+// shimGit runs the git that ApplyArchives puts first on the command's PATH.
+func shimGit(t *testing.T, decide Decide, dir string, args ...string) (string, string, error) {
+	t.Helper()
+	hooks, err := Start(context.Background(), os.Args[0], decide)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = hooks.Close() })
+	spec := &proxy.CommandSpec{}
+	if err := hooks.ApplyArchives(spec); err != nil {
+		t.Fatal(err)
+	}
+	bin, _, _ := strings.Cut(spec.EnvOverrides["PATH"], string(os.PathListSeparator))
+	child := exec.Command(filepath.Join(bin, "git"), args...)
+	child.Dir = dir
+	child.Env = append(os.Environ(), "PATH="+spec.EnvOverrides["PATH"])
+	var stdout, stderr strings.Builder
+	child.Stdout, child.Stderr = &stdout, &stderr
+	err = child.Run()
+	return stdout.String(), stderr.String(), err
+}
+
+func TestArchiveAskedBeforeWriting(t *testing.T) {
+	gitEnvironment(t)
+	source, sha := sourceRepository(t)
+	mustGit(t, source, nil, "remote", "add", "origin", "https://host/r.git")
+	decisions := &recorder{}
+	stdout, stderr, err := shimGit(t, decisions.decide, source, "archive", "--format=tar", sha)
+	if err != nil || !strings.Contains(stdout, "package.json") {
+		t.Fatalf("archive: %v, stdout %d bytes\n%s", err, len(stdout), stderr)
+	}
+	checkouts := decisions.recorded()
+	if len(checkouts) != 1 || !checkouts[0].Archive || checkouts[0].SHA != sha ||
+		checkouts[0].Origin != "https://host/r.git" || resolved(t, checkouts[0].Dir) != resolved(t, source) {
+		t.Fatalf("checkouts = %+v, want one archive of %s", checkouts, sha)
+	}
+
+	message := "supply chain firewall blocked w 1.0.0"
+	stdout, stderr, err = shimGit(t, (&recorder{err: errors.New(message)}).decide, source, "archive", "HEAD")
+	if err == nil || stdout != "" || !strings.Contains(stderr, message) {
+		t.Fatalf("blocked archive: %v, stdout %d bytes, stderr %q", err, len(stdout), stderr)
+	}
+}
+
+func TestRemoteArchiveAsksWithRemote(t *testing.T) {
+	gitEnvironment(t)
+	source, _ := sourceRepository(t)
+	decisions := &recorder{err: errors.New("remote archives are refused")}
+	_, stderr, err := shimGit(t, decisions.decide, t.TempDir(), "archive", "--remote=file://"+source, "HEAD", "1700000000")
+	checkouts := decisions.recorded()
+	if err == nil || !strings.Contains(stderr, "remote archives are refused") ||
+		len(checkouts) != 1 || checkouts[0].Remote != "file://"+source || checkouts[0].SHA != "" {
+		t.Fatalf("remote archive: %v, %q, checkouts %+v", err, stderr, checkouts)
+	}
+}
+
+func TestShimRunsOtherCommandsUnchanged(t *testing.T) {
+	gitEnvironment(t)
+	source, sha := sourceRepository(t)
+	decisions := &recorder{err: errors.New("unexpected")}
+	stdout, stderr, err := shimGit(t, decisions.decide, source, "rev-parse", "HEAD")
+	if err != nil || strings.TrimSpace(stdout) != sha || len(decisions.recorded()) != 0 {
+		t.Fatalf("rev-parse: %v, %q, %q, checkouts %+v", err, stdout, stderr, decisions.recorded())
+	}
+}
+
+func TestArchiveArguments(t *testing.T) {
+	for _, test := range []struct {
+		args            []string
+		remote, treeish string
+	}{
+		{[]string{"abc"}, "", "abc"},
+		{[]string{"--remote=ssh://h/r", "HEAD", "123"}, "ssh://h/r", "HEAD"},
+		{[]string{"--remote", "ssh://h/r", "refs/heads/main", "package.json"}, "ssh://h/r", "refs/heads/main"},
+		{[]string{"--format", "tar", "-o", "out.tar", "--prefix=p/", "-9", "abc", "path"}, "", "abc"},
+		{[]string{"-v", "--", "abc"}, "", "abc"},
+		{[]string{"--list"}, "", ""},
+	} {
+		remote, treeish := archiveArguments(test.args)
+		if remote != test.remote || treeish != test.treeish {
+			t.Errorf("archiveArguments(%q) = %q, %q; want %q, %q", test.args, remote, treeish, test.remote, test.treeish)
+		}
+	}
+}
+
+func TestReadBlob(t *testing.T) {
+	gitEnvironment(t)
+	source, sha := sourceRepository(t)
+	ctx := context.Background()
+	data, err := ReadBlob(ctx, source, sha+":package.json", 1024)
+	if err != nil || string(data) != `{"name":"w","version":"1.0.0"}` {
+		t.Fatalf("ReadBlob() = %q, %v", data, err)
+	}
+	if data, err := ReadBlob(ctx, source, sha+":package.json", 4); err != nil || string(data) != `{"na` {
+		t.Fatalf("limited ReadBlob() = %q, %v", data, err)
+	}
+	if _, err := ReadBlob(ctx, source, sha+":missing.json", 1024); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("missing ReadBlob() error = %v, want fs.ErrNotExist", err)
+	}
+	if _, err := ReadBlob(ctx, source, sha, 1024); err == nil || errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("commit ReadBlob() error = %v, want a read error", err)
 	}
 }

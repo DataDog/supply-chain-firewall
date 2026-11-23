@@ -57,7 +57,7 @@ func classicProxyCommand(executable string, command []string, config proxy.Clien
 		"YARN_PROXY": config.URL, "YARN_HTTPS_PROXY": config.URL, "YARN_CAFILE": config.CACertificatePath,
 		"npm_config_proxy": config.URL, "npm_config_https_proxy": config.URL,
 		"npm_config_cafile": config.CACertificatePath, "npm_config_noproxy": "scfw.invalid",
-		"GIT_SSL_CAINFO": config.CACertificatePath, "NODE_EXTRA_CA_CERTS": extraCAs,
+		"NODE_EXTRA_CA_CERTS": extraCAs,
 	})
 	return proxy.CommandSpec{Executable: executable, Args: args, EnvOverrides: nodeproxy.OverrideVariants(os.Environ(), canonical)}, nil
 }

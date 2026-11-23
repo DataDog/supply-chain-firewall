@@ -50,6 +50,17 @@ func TestClassicProxyCommandDropsUserProxyFlags(t *testing.T) {
 	}
 }
 
+// Yarn Classic hands the arguments after create's package to that package.
+func TestClassicProxyCommandKeepsPackageArguments(t *testing.T) {
+	isolateYarnEnvironment(t)
+	config := testClientConfig(t)
+	spec, err := fakeYarn(t, "1.22.22").ProxyCommand(context.Background(), []string{"--proxy", "http://p:1", "create", "foo", "--proxy", "http://q:1"}, config)
+	want := []string{"--https-proxy=" + config.URL, "--proxy=" + config.URL, "create", "foo", "--proxy", "http://q:1"}
+	if err != nil || !slices.Equal(spec.Args, want) {
+		t.Fatalf("args = %q (error %v), want %q", spec.Args, err, want)
+	}
+}
+
 func TestClassicProxyCommandEnvironment(t *testing.T) {
 	isolateYarnEnvironment(t)
 	config := testClientConfig(t)
@@ -96,6 +107,9 @@ func TestClassicProxyCommandRunsWorkspaceCommandsInTheWorkspace(t *testing.T) {
 	project := filepath.Join(root, "parent", "project")
 	writeYarnFixture(t, filepath.Join(project, "package.json"), "workspaces/root-array.json")
 	writeYarnFixture(t, filepath.Join(project, "a", "package.json"), "workspaces/member.json.tmpl", "a")
+	writeYarnFixture(t, filepath.Join(project, "packages", "b", "package.json"), "workspaces/member.json.tmpl", "b")
+	writeYarnFixture(t, filepath.Join(project, "packages", "b", ".yarnrc"), "yarnrc/rc-arg-cwd.yarnrc.tmpl", "sub")
+	writeYarnFixture(t, filepath.Join(project, "packages", "b", "sub", "package.json"), "workspaces/empty.json")
 	directory, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -115,6 +129,16 @@ func TestClassicProxyCommandRunsWorkspaceCommandsInTheWorkspace(t *testing.T) {
 			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a"), "add", "x", "--", "--proxy", "y")},
 		{"unknown workspace is left for Yarn to report", []string{"workspace", "missing", "add", "x"},
 			append(slices.Clone(flags), "workspace", "missing", "add", "x")},
+		{"options among the kept arguments stay with the outer Yarn", []string{"workspace", "--cwd", ".", "a", "add", "x"},
+			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a"), "add", "x")},
+		{"the inner --cwd is relative to the workspace", []string{"workspace", "a", "add", "x", "--cwd", "sub"},
+			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a", "sub"), "add", "x", "--cwd", filepath.Join(directory, "a", "sub"))},
+		{"an inner --cwd= keeps the rc-args of the workspace", []string{"workspace", "a", "add", "x", "--cwd=sub"},
+			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a"), "add", "x", "--cwd="+filepath.Join(directory, "a", "sub"))},
+		{"the workspace's rc-arg --cwd is restated", []string{"workspace", "b", "add", "x"},
+			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "packages", "b"), "--cwd="+filepath.Join(directory, "packages", "b", "sub"), "add", "x")},
+		{"nested workspace commands", []string{"workspace", "a", "workspace", "b", "add", "x"},
+			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "packages", "b"), "--cwd="+filepath.Join(directory, "packages", "b", "sub"), "add", "x")},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			spec, err := fakeYarn(t, "1.22.22").ProxyCommand(context.Background(), test.command, config)

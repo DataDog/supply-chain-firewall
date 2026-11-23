@@ -84,7 +84,7 @@ func TestYarnCheckoutPackage(t *testing.T) {
 	for _, test := range []struct {
 		name, base, previous, reflog, manifest string
 		want                                   pm.Package
-		found                                  bool
+		found, wantErr                         bool
 	}{
 		{name: "commit checkout", base: "xfs-0a1b2c3d", previous: "def", manifest: "manifest/widget.json", want: widget, found: true},
 		// Checking out the commit the clone is already on still runs the hook,
@@ -106,14 +106,22 @@ func TestYarnCheckoutPackage(t *testing.T) {
 		// dependencies itself; each of its checkouts is evaluated.
 		{name: "npm clone", base: filepath.Join("_cacache", "tmp", "git-cloneX"), previous: "0000000000000000000000000000000000000000", reflog: cloneReflog,
 			manifest: "manifest/widget.json", want: widget, found: true},
+		// Yarn 4 installs a cwd= subdirectory of a repository without a root
+		// manifest, so a checkout SCFW cannot identify is refused.
+		{name: "no package.json", base: "xfs-0a1b2c3d", previous: "def", wantErr: true},
+		{name: "invalid manifest", base: "xfs-0a1b2c3d", previous: "def", manifest: "manifest/invalid.json", wantErr: true},
+		{name: "npm clone without package.json", base: filepath.Join("_cacache", "tmp", "git-cloneX"), previous: "def", wantErr: true},
+		{name: "clone checkout without package.json", base: "xfs-0a1b2c3d", previous: "0000000000000000000000000000000000000000", reflog: cloneReflog},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), test.base)
 			if err := os.MkdirAll(dir, 0o700); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(readNpmFixture(t, test.manifest)), 0o600); err != nil {
-				t.Fatal(err)
+			if test.manifest != "" {
+				if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(readNpmFixture(t, test.manifest)), 0o600); err != nil {
+					t.Fatal(err)
+				}
 			}
 			if test.reflog != "" {
 				if err := os.MkdirAll(filepath.Join(dir, ".git", "logs"), 0o700); err != nil {
@@ -124,8 +132,8 @@ func TestYarnCheckoutPackage(t *testing.T) {
 				}
 			}
 			got, found, err := YarnCheckoutPackage(dir, "https://u:tok@host/r.git", test.previous, "abc")
-			if err != nil || found != test.found || got != test.want {
-				t.Fatalf("YarnCheckoutPackage() = %+v, %v, %v; want %+v, %v", got, found, err, test.want, test.found)
+			if (err != nil) != test.wantErr || found != test.found || got != test.want {
+				t.Fatalf("YarnCheckoutPackage() = %+v, %v, %v; want %+v, %v, error %v", got, found, err, test.want, test.found, test.wantErr)
 			}
 		})
 	}

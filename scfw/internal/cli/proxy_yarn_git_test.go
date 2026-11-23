@@ -241,24 +241,10 @@ func TestYarnGitDependencyPreparedWithNpm(t *testing.T) {
 		t.Skip("npm required for Yarn 4 npm preparation")
 	}
 	inner, innerRemote, innerSHA, marker, _ := yarnGitRemote(t, "ssh", "npm/git-package/package.json")
-	outer := filepath.Join(t.TempDir(), "outer")
-	if err := os.MkdirAll(outer, 0700); err != nil {
-		t.Fatal(err)
-	}
-	for name, content := range map[string]string{
+	bare := yarnGitRepository(t, map[string]string{
 		"package.json":      fmt.Sprintf(readProxyFixture(t, "yarn/git-package-npm/package.json.tmpl"), inner),
 		"package-lock.json": readProxyFixture(t, "yarn/git-package-npm/package-lock.json"),
-	} {
-		if err := os.WriteFile(filepath.Join(outer, name), []byte(content), 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	yarnGitFixture(t, "-C", outer, "init", "-q")
-	yarnGitFixture(t, "-C", outer, "add", ".")
-	yarnGitFixture(t, "-C", outer, "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "-c", "user.name=SCFW Test",
-		"-c", "user.email=scfw@example.invalid", "commit", "-q", "-m", "fixture")
-	bare := outer + ".git"
-	yarnGitFixture(t, "clone", "-q", "--bare", outer, bare)
+	})
 	dir, _, _ := newYarnGitProject(t, "berry")
 	t.Setenv("npm_config_audit", "false")
 	t.Setenv("npm_config_fund", "false")
@@ -278,6 +264,57 @@ func TestYarnGitDependencyPreparedWithNpm(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "node_modules", "lab-git-outer")); err == nil {
 		t.Fatal("git dependency with a blocked nested dependency was installed")
 	}
+}
+
+// Yarn 4 installs a cwd= subdirectory of a repository without a root
+// package.json; SCFW identifies git dependencies by the root manifest, so it
+// refuses the checkout before Yarn prepares it, whatever the policy.
+func TestYarnGitDependencyWithoutRootManifestIsRefused(t *testing.T) {
+	executable := yarnTestExecutable(t, "SCFW_TEST_YARN_BERRY")
+	marker := filepath.Join(t.TempDir(), "prepare-marker")
+	t.Setenv("SCFW_TEST_PREPARE_MARKER", marker)
+	bare := yarnGitRepository(t, map[string]string{"sub/package.json": readProxyFixture(t, "yarn/git-package/package.json")})
+	dir, _, _ := newYarnGitProject(t, "berry")
+	run := runYarnGitThroughProxy(t, executable, []string{"add", "lab-git-pkg@git+ssh://git@localhost" + bare + "#cwd=sub"}, evaluation.OutcomeAllow)
+	assertYarnFailed(t, run)
+	if run.calls != 0 {
+		t.Fatalf("evaluations = %d, want the checkout refused before evaluation", run.calls)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("unidentified git dependency's scripts ran")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "node_modules", "lab-git-pkg")); err == nil {
+		t.Fatal("unidentified git dependency was installed")
+	}
+}
+
+// yarnGitRepository commits files to a bare repository that the fake SSH
+// command serves, and returns its path.
+func yarnGitRepository(t *testing.T, files map[string]string) string {
+	t.Helper()
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	ssh, err := filepath.Abs(filepath.Join("testdata", "yarn", "fake-ssh.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_SSH_COMMAND", ssh)
+	source := filepath.Join(t.TempDir(), "source")
+	for name, content := range files {
+		path := filepath.Join(source, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	yarnGitFixture(t, "-C", source, "init", "-q")
+	yarnGitFixture(t, "-C", source, "add", ".")
+	yarnGitFixture(t, "-C", source, "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "-c", "user.name=SCFW Test",
+		"-c", "user.email=scfw@example.invalid", "commit", "-q", "-m", "fixture")
+	yarnGitFixture(t, "clone", "-q", "--bare", source, source+".git")
+	return source + ".git"
 }
 
 func yarnGitFixture(t *testing.T, args ...string) string {

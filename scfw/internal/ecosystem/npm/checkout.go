@@ -51,14 +51,18 @@ func CheckoutPackage(dir, origin, sha string) (pm.Package, bool, error) {
 // checks out the dependency's commit; it never uses the clone's own checkout,
 // so only the later checkout is a package. Yarn 4 prepares a repository
 // configured for npm with npm, so npm's checkouts are identified as well.
+// Unlike CheckoutPackage, a checkout without a valid root package.json is an
+// error: Yarn 4 installs a cwd= subdirectory of a repository that has none.
 func YarnCheckoutPackage(dir, origin, previous, sha string) (pm.Package, bool, error) {
-	if strings.Contains(filepath.ToSlash(dir), gitCloneMarker) {
-		return checkoutPackage(dir, origin, sha)
-	}
-	if !yarnCloneName.MatchString(filepath.Base(dir)) || strings.Trim(previous, "0") == "" && clonedHead(dir) {
+	if !strings.Contains(filepath.ToSlash(dir), gitCloneMarker) &&
+		(!yarnCloneName.MatchString(filepath.Base(dir)) || strings.Trim(previous, "0") == "" && clonedHead(dir)) {
 		return pm.Package{}, false, nil
 	}
-	return checkoutPackage(dir, origin, sha)
+	pkg, found, err := checkoutPackage(dir, origin, sha)
+	if err == nil && !found {
+		return pm.Package{}, false, errors.New("the checkout has no valid root package.json to identify the package by")
+	}
+	return pkg, found, err
 }
 
 // clonedHead reports whether git clone made the latest change to HEAD. A

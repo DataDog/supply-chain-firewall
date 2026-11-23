@@ -6,101 +6,140 @@
 package yarn
 
 import (
-	"encoding/json"
-	"io/fs"
-	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/nodeproxy"
 )
 
-// classicWorkspace resolves `yarn workspace <name> <command...>`. Yarn runs
-// <command...> in a second Yarn process started inside the workspace, which
-// receives none of the outer process's options. It returns the workspace
-// directory and the arguments of <command...>; an unknown name is left for
-// Yarn to report.
-func classicWorkspace(start string, cmd yarnCommand, command []string) (directory string, rest []string, found bool) {
-	if cmd.name != "workspace" || len(cmd.args) < 2 {
-		return "", nil, false
-	}
-	directory, found = workspaceDirectories(start)[cmd.args[0]]
-	return directory, command[cmd.index+2:], found
-}
-
-// workspaceDirectories maps workspace names to their directories, using the
-// nearest package.json above start that declares workspaces. Patterns support
-// the * and ** wildcards; node_modules and .git are never searched.
-func workspaceDirectories(start string) map[string]string {
-	directories := map[string]string{}
-	for root := start; ; root = filepath.Dir(root) {
-		var manifest struct {
-			Workspaces json.RawMessage `json:"workspaces"`
-		}
-		data, err := nodeproxy.ReadConfigFile(filepath.Join(root, "package.json"))
-		if err == nil && json.Unmarshal(data, &manifest) == nil && len(manifest.Workspaces) > 0 {
-			var patterns []string
-			var object struct {
-				Packages []string `json:"packages"`
-			}
-			if json.Unmarshal(manifest.Workspaces, &patterns) != nil && json.Unmarshal(manifest.Workspaces, &object) == nil {
-				patterns = object.Packages
-			}
-			collectWorkspaces(root, patterns, directories)
-			return directories
-		}
-		if filepath.Dir(root) == root {
-			return directories
-		}
-	}
-}
-
-func collectWorkspaces(root string, patterns []string, directories map[string]string) {
-	_ = filepath.WalkDir(root, func(directory string, entry fs.DirEntry, err error) error {
-		if err != nil || !entry.IsDir() {
-			return nil
-		}
-		if entry.Name() == "node_modules" || entry.Name() == ".git" {
-			return filepath.SkipDir
-		}
-		relative, err := filepath.Rel(root, directory)
-		if err != nil || relative == "." {
-			return nil
-		}
-		for _, pattern := range patterns {
-			if !matchSegments(strings.Split(strings.Trim(pattern, "/"), "/"), strings.Split(filepath.ToSlash(relative), "/")) {
-				continue
-			}
-			var manifest struct {
-				Name string `json:"name"`
-			}
-			data, err := nodeproxy.ReadConfigFile(filepath.Join(directory, "package.json"))
-			if err == nil && json.Unmarshal(data, &manifest) == nil && manifest.Name != "" {
-				directories[manifest.Name] = directory
-			}
+// classicTarget follows `yarn workspace <name> <command>`, which runs
+// <command> in a second Yarn started inside the workspace, to the process that
+// runs the command. moved reports whether it left dir.
+func classicTarget(dir string, command []string, env map[string]string) (process classicProcess, moved bool, err error) {
+	process, err = newClassicProcess(dir, command, env)
+	for err == nil && process.cmd.workspace != "" {
+		var workspace string
+		if workspace, err = classicWorkspace(process); err != nil || workspace == "" {
 			break
 		}
-		return nil
-	})
+		process, err = newClassicProcess(workspace, process.cmd.inner, env)
+		moved = true
+	}
+	return process, moved, err
 }
 
-// matchSegments matches a workspace pattern against a relative path, one path
-// segment at a time; "**" matches any number of segments.
-func matchSegments(pattern, parts []string) bool {
-	if len(pattern) == 0 {
-		return len(parts) == 0
+// classicWorkspace returns the directory of the workspace process names, as
+// Yarn Classic resolves it. It returns "" where Yarn fails, which leaves the
+// command for Yarn to report, and an error where SCFW cannot tell.
+func classicWorkspace(process classicProcess) (string, error) {
+	root, patterns, unsupported := classicWorkspaceRoot(process.project)
+	if root == "" {
+		if unsupported {
+			return "", unsupportedWorkspacePattern(process.cmd.workspace)
+		}
+		return "", nil
 	}
-	if pattern[0] == "**" {
-		for skipped := 0; skipped <= len(parts); skipped++ {
-			if matchSegments(pattern[1:], parts[skipped:]) {
-				return true
+	members, unsupported, err := classicWorkspaces(root, patterns)
+	if err != nil || members == nil {
+		return "", err
+	}
+	if directory, found := members[process.cmd.workspace]; found {
+		return directory, nil
+	}
+	if unsupported {
+		return "", unsupportedWorkspacePattern(process.cmd.workspace)
+	}
+	return "", nil
+}
+
+// classicWorkspaceRoot mirrors findWorkspaceRoot: the nearest manifest at or
+// above project whose workspaces declare packages is the root, and project
+// must be that root or match its patterns, where "!" patterns exclude. It
+// returns "" where Yarn has no root or refuses it: a malformed manifest, or
+// packages without "private".
+func classicWorkspaceRoot(project string) (root string, patterns []string, unsupported bool) {
+	for current := project; ; current = filepath.Dir(current) {
+		manifest, found, err := readWorkspaceManifest(current)
+		if found && err != nil {
+			return "", nil, false
+		}
+		if patterns, declared := workspacePatterns(manifest.Workspaces); found && declared {
+			relative, err := filepath.Rel(current, project)
+			if err != nil {
+				return "", nil, false
+			}
+			member, unsupported := relative == ".", false
+			if !member {
+				member, unsupported = classicMember(filepath.ToSlash(relative), patterns)
+			}
+			if !member || len(patterns) > 0 && !truthy(manifest.Private) {
+				return "", nil, unsupported
+			}
+			return current, patterns, false
+		}
+		if filepath.Dir(current) == current {
+			return "", nil, false
+		}
+	}
+}
+
+// classicMember matches a relative path against workspace patterns as
+// micromatch does for a list: braces expand, "!" patterns exclude, and names
+// compare case-sensitively.
+func classicMember(relative string, patterns []string) (member, unsupported bool) {
+	path := patternSegments(relative)
+	included, excluded := false, false
+	for _, pattern := range patterns {
+		pattern, negated := strings.CutPrefix(pattern, "!")
+		for _, expanded := range nodeproxy.ExpandBraces(pattern) {
+			unsupported = unsupported || unsupportedGlob(expanded)
+			if matchPath(patternSegments(expanded), path) {
+				excluded, included = excluded || negated, included || !negated
 			}
 		}
-		return false
 	}
-	if len(parts) == 0 {
-		return false
+	return included && !excluded, unsupported
+}
+
+// classicWorkspaces mirrors resolveWorkspaces: the directories the root's
+// patterns select, where a leading "!" is literal, by the name in their
+// manifest. A member needs a name and a version. members is nil where Yarn
+// fails: a malformed manifest or a duplicate name.
+func classicWorkspaces(root string, patterns []string) (members map[string]string, unsupported bool, err error) {
+	glob := newWorkspaceGlob(false)
+	members = map[string]string{}
+	seen := map[string]bool{}
+	for _, pattern := range patterns {
+		for _, expanded := range nodeproxy.ExpandBraces(pattern) {
+			unsupported = unsupported || unsupportedGlob(expanded)
+			matches, err := glob.directories(root, expanded)
+			if err != nil {
+				return nil, false, err
+			}
+			for _, match := range matches {
+				if seen[match] {
+					continue
+				}
+				seen[match] = true
+				// Yarn joins even an absolute match to the root.
+				location := filepath.Join(root, filepath.FromSlash(match))
+				manifest, found, err := readWorkspaceManifest(location)
+				if err := glob.charge(1); err != nil {
+					return nil, false, err
+				}
+				if found && err != nil {
+					return nil, false, nil
+				}
+				name, _ := manifest.Name.(string)
+				if !found || name == "" || !truthy(manifest.Version) {
+					continue
+				}
+				if _, duplicate := members[name]; duplicate {
+					return nil, false, nil
+				}
+				members[name] = location
+			}
+		}
 	}
-	matched, err := path.Match(pattern[0], parts[0])
-	return err == nil && matched && matchSegments(pattern[1:], parts[1:])
+	return members, unsupported, nil
 }

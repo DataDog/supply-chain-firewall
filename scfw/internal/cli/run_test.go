@@ -40,9 +40,13 @@ func TestDiscoverGitMetadataUsesPackageManagerProjectDirectory(t *testing.T) {
 	}
 
 	t.Chdir(callerRepositoryDir)
-	metadata := discoverGitMetadata(poetry.Poetry{}, []string{"install", "--directory", projectRepositoryDir})
-	if want := "https://example.com/acme/project.git"; metadata.RepositoryURL != want {
-		t.Fatalf("discoverGitMetadata().RepositoryURL = %q, want %q", metadata.RepositoryURL, want)
+	for _, flag := range []string{"--directory", "-C", "--project", "-P"} {
+		t.Run(flag, func(t *testing.T) {
+			metadata := discoverGitMetadata(poetry.Poetry{}, []string{"install", flag, projectRepositoryDir})
+			if want := "https://example.com/acme/project.git"; metadata.RepositoryURL != want {
+				t.Fatalf("discoverGitMetadata().RepositoryURL=%q, want %q", metadata.RepositoryURL, want)
+			}
+		})
 	}
 }
 

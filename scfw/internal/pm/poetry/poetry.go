@@ -104,7 +104,7 @@ func (poetry Poetry) Executable() string {
 }
 
 func (poetry Poetry) ProjectDirectory(command []string) (string, error) {
-	return resolvePoetryProjectDir(command)
+	return poetryProjectRoot(command)
 }
 
 func (poetry Poetry) RunCommand(ctx context.Context, command []string) error {

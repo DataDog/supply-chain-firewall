@@ -65,6 +65,32 @@ func poetryProjectDirectory(command []string) (string, error) {
 	return directory, nil
 }
 
+// poetryProjectRoot locates the same containing manifest as Poetry, then resolves
+// its physical directory before creating a sibling temporary project. Keep the
+// logical spelling during the search so symlink/.. traversal retains its meaning.
+func poetryProjectRoot(command []string) (string, error) {
+	directory, err := poetryProjectDirectory(command)
+	if err != nil {
+		return "", err
+	}
+	initial := directory
+	if info, err := os.Stat(directory); err != nil || !info.IsDir() {
+		return directory, nil // Preserve native rejection instead of selecting a parent.
+	}
+	for {
+		if _, err := os.Stat(directory + string(filepath.Separator) + "pyproject.toml"); err == nil {
+			return filepath.EvalSymlinks(directory)
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := poetryParentDirectory(directory)
+		if parent == directory {
+			return initial, nil
+		}
+		directory = parent
+	}
+}
+
 // poetryParentDirectory follows pathlib's lexical parents without cleaning '..'
 // across symlinks. Project search paths are absolute on the supported platforms.
 func poetryParentDirectory(directory string) string {

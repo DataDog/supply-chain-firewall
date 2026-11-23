@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,6 +37,40 @@ func TestMain(m *testing.M) {
 }
 
 func runFakePoetry(fixtureDir string, args []string) int {
+	// Model native project selection separately from production discovery. --project
+	// changes the manifest location without changing the command working directory.
+	working, project := "", ""
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		value := ""
+		switch {
+		case arg == "--directory" || arg == "-C" || arg == "--project" || arg == "-P":
+			if i+1 < len(args) {
+				i++
+				value = args[i]
+			}
+		case strings.HasPrefix(arg, "--directory=") || strings.HasPrefix(arg, "--project="):
+			_, value, _ = strings.Cut(arg, "=")
+		case strings.HasPrefix(arg, "-C") || strings.HasPrefix(arg, "-P"):
+			value = strings.TrimPrefix(arg[2:], "=")
+		}
+		if strings.HasPrefix(arg, "--directory") || strings.HasPrefix(arg, "-C") {
+			working = value
+		}
+		if strings.HasPrefix(arg, "--project") || strings.HasPrefix(arg, "-P") {
+			project = value
+		}
+	}
+	if working != "" {
+		if err := os.Chdir(working); err != nil {
+			return 1
+		}
+	}
+	if project != "" {
+		if err := os.Chdir(project); err != nil {
+			return 1
+		}
+	}
 	if slices.Contains(args, "--version") {
 		fmt.Println("Poetry (version 2.1.3)")
 		return 0

@@ -6,8 +6,11 @@
 package poetry
 
 import (
+	"bytes"
+	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -197,43 +200,90 @@ func TestPoetryProjectDirectory_NoFlagFallsBackToCwd(t *testing.T) {
 	}
 }
 
-func TestStripPoetryDirectoryFlag_AllFlagForms(t *testing.T) {
-	tests := []struct {
-		name    string
-		command []string
-	}{
-		{name: "space-separated long form", command: []string{"update", "--directory", "/tmp/proj", "--lock"}},
-		{name: "equals long form", command: []string{"update", "--directory=/tmp/proj", "--lock"}},
-		{name: "space-separated short form", command: []string{"update", "-C", "/tmp/proj", "--lock"}},
-		{name: "attached short form", command: []string{"update", "-C/tmp/proj", "--lock"}},
-		{name: "equals short form", command: []string{"update", "-C=/tmp/proj", "--lock"}},
-	}
-
-	want := []string{"update", "--lock"}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := stripPoetryDirectoryFlag(tc.command)
-			if len(got) != len(want) {
-				t.Fatalf("stripPoetryDirectoryFlag(%v) = %v, want %v", tc.command, got, want)
-			}
-			for i := range got {
-				if got[i] != want[i] {
-					t.Fatalf("stripPoetryDirectoryFlag(%v) = %v, want %v", tc.command, got, want)
+func TestPoetryResolutionKeepsSelectedProjectPrivate(t *testing.T) {
+	for _, form := range []string{"long", "long-equals", "short", "attached", "short-equals", "relative", "nested", "symlink-parent"} {
+		t.Run(form, func(t *testing.T) {
+			manager := fixturePoetry(t)
+			caller := fixturePoetryProject(t, "poetry-updated.lock")
+			selected := fixturePoetryProject(t, "poetry-current.lock")
+			t.Chdir(caller)
+			path := selected
+			if form == "nested" || form == "symlink-parent" {
+				nested := filepath.Join(selected, "nested")
+				if err := os.Mkdir(nested, 0700); err != nil {
+					t.Fatal(err)
 				}
+				path = nested
+				if form == "symlink-parent" {
+					link := filepath.Join(caller, "link")
+					if err := os.Symlink(nested, link); err != nil {
+						t.Fatal(err)
+					}
+					path = link + "/.."
+				}
+			}
+			var args []string
+			switch form {
+			case "long-equals":
+				args = []string{"--project=" + path}
+			case "short":
+				args = []string{"-P", path}
+			case "attached":
+				args = []string{"-P" + path}
+			case "short-equals":
+				args = []string{"-P=" + path}
+			case "relative":
+				args = []string{"--directory", filepath.Dir(selected), "--project", filepath.Base(selected)}
+			default:
+				args = []string{"--project", path}
+			}
+			args = append(args, "add", "six==1.16.0")
+			original := slices.Clone(args)
+			snapshots := map[string][]byte{}
+			for _, dir := range []string{caller, selected} {
+				for _, name := range []string{"pyproject.toml", "poetry.lock"} {
+					file := filepath.Join(dir, name)
+					data, err := os.ReadFile(file)
+					if err != nil {
+						t.Fatal(err)
+					}
+					snapshots[file] = data
+				}
+			}
+			targets, err := manager.ResolveInstallTargets(t.Context(), args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if targets.Len() != 2 {
+				t.Errorf("selected project upgrade targets=%v, want idna and six", targets)
+			}
+			for file, before := range snapshots {
+				after, err := os.ReadFile(file)
+				if err != nil || !bytes.Equal(before, after) {
+					t.Errorf("resolution changed live file %s: %v", file, err)
+				}
+			}
+			if !slices.Equal(args, original) {
+				t.Fatal("resolution changed original command")
+			}
+			got, err := manager.ProjectDirectory(args)
+			if err != nil || got != selected {
+				t.Errorf("selected project=%q want %q: %v", got, selected, err)
+			}
+			sources := getPoetrySourceMap(context.Background(), manager.Executable(), args)
+			if _, exists := sources[poetryPackageKey{name: "six", version: "1.16.0"}]; exists {
+				t.Error("read caller or regenerated lock instead of selected original lock")
 			}
 		})
 	}
 }
 
-func TestStripPoetryDirectoryFlag_NoFlagIsUnchanged(t *testing.T) {
-	command := []string{"update", "--lock"}
-	got := stripPoetryDirectoryFlag(command)
-	if len(got) != len(command) {
-		t.Fatalf("stripPoetryDirectoryFlag(%v) = %v, want unchanged %v", command, got, command)
-	}
-	for i := range got {
-		if got[i] != command[i] {
-			t.Fatalf("stripPoetryDirectoryFlag(%v) = %v, want unchanged %v", command, got, command)
-		}
+func TestPoetryResolutionRejectsMissingSelectedDirectory(t *testing.T) {
+	manager := fixturePoetry(t)
+	caller := fixturePoetryProject(t, "poetry-current.lock")
+	t.Chdir(caller)
+	targets, err := manager.ResolveInstallTargets(t.Context(), []string{"--project", filepath.Join(caller, "missing"), "add", "six==1.16.0"})
+	if err == nil {
+		t.Fatalf("missing project resolved caller targets: %v", targets)
 	}
 }

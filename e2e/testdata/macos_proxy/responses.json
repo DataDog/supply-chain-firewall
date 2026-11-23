@@ -18,5 +18,9 @@
   "policy-without-manager-denial": {
     "output": "Policy evaluation outcome: BLOCK\n",
     "denied": false
+  },
+  "pip-wheel-denied-with-install-context": {
+    "output": "ERROR: Could not install requirement fixture because of HTTP error 403 Client Error: Forbidden for url: https://files.pythonhosted.org/packages/fixture.whl for URL https://files.pythonhosted.org/packages/fixture.whl\n",
+    "denied": true
   }
 }

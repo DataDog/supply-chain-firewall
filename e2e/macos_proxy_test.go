@@ -265,7 +265,13 @@ func macOSArtifactDenial(output, artifactURL string) bool {
 		if !found {
 			continue
 		}
-		parsed, err := url.Parse(strings.TrimSpace(target))
+		// pip may append installation context after the URL; Poetry may add
+		// an integrity fragment. Registry URLs cannot contain literal spaces.
+		fields := strings.Fields(target)
+		if len(fields) == 0 {
+			continue
+		}
+		parsed, err := url.Parse(fields[0])
 		if err != nil {
 			continue
 		}

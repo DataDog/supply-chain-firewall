@@ -105,7 +105,7 @@ func (glob *workspaceGlob) walk(root, spelled string, segments []string, wild bo
 		return glob.walk(root, joinSpelled(spelled, segment), rest, wild, matches)
 	case glob.berry && ignoredByBerry(segment):
 		return nil
-	case !strings.ContainsAny(segment, "*?[") && !(glob.berry && wild):
+	case !strings.ContainsAny(segment, "*?[") && (!glob.berry || !wild):
 		next := joinSpelled(spelled, segment)
 		if found, err := glob.isDirectory(glob.location(root, next)); !found || err != nil {
 			return err

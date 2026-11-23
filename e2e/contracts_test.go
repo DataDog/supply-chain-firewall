@@ -66,6 +66,7 @@ type candidate struct {
 	Property         string             `json:"property"`
 	Module           string             `json:"module,omitempty"`
 	Metadata         []metadataEvidence `json:"metadata"`
+	Selection        *fileEvidence      `json:"selection,omitempty"`
 	Artifacts        []artifact         `json:"artifacts"`
 	ObservedAt       time.Time          `json:"observed_at"`
 	LatestValidStart time.Time          `json:"latest_valid_start"`

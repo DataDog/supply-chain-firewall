@@ -10,7 +10,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/nodeproxy"
@@ -27,14 +26,19 @@ func classicProxyCommand(executable string, command []string, config proxy.Clien
 		return proxy.CommandSpec{}, errors.New("could not resolve yarn directory")
 	}
 	// `yarn workspace <name> <command>` only starts another Yarn in the
-	// workspace, without these options. Running that command as if from the
-	// workspace is equivalent and puts the options on the process that downloads.
+	// workspace, without these options. Running that command in the workspace
+	// is equivalent and puts the options on the process that downloads.
 	process, moved, err := classicTarget(dir, command, nodeproxy.LookupEnvironment(os.Environ()))
 	if err != nil {
 		return proxy.CommandSpec{}, err
 	}
+	var childDir string
 	if moved {
-		command = process.relocated()
+		command, childDir = process.command, process.dir
+		// A relative executable would resolve against the workspace.
+		if executable, err = filepath.Abs(executable); err != nil {
+			return proxy.CommandSpec{}, err
+		}
 	}
 	// Only the arguments Yarn parses itself carry its options; the rest belong
 	// to the script or package a command runs.
@@ -68,36 +72,5 @@ func classicProxyCommand(executable string, command []string, config proxy.Clien
 		"npm_config_cafile": config.CACertificatePath, "npm_config_noproxy": "scfw.invalid",
 		"GIT_SSL_CAINFO": config.CACertificatePath, "NODE_EXTRA_CA_CERTS": extraCAs,
 	})
-	return proxy.CommandSpec{Executable: executable, Args: args, EnvOverrides: nodeproxy.OverrideVariants(os.Environ(), canonical)}, nil
-}
-
-// relocated returns the command of a process that runs in a workspace as one
-// run from the original directory. Its --cwd values are resolved against the
-// workspace, and a leading --cwd makes Yarn read rc-args from where the
-// process would: its first exact --cwd, else the workspace. Command-line
-// options beat rc-args, so a process without a --cwd of its own restates the
-// rc-arg --cwd it would use.
-func (process classicProcess) relocated() []string {
-	command := slices.Clone(process.command)
-	start, exact, cwd := process.dir, false, false
-	for index := 0; index < process.cmd.end; index++ {
-		switch argument := command[index]; {
-		case index == process.cmd.index:
-		case argument == "--cwd" && index+1 < process.cmd.end:
-			index++
-			command[index] = resolvePath(process.dir, command[index])
-			if !exact {
-				start, exact = command[index], true
-			}
-			cwd = true
-		case strings.HasPrefix(argument, "--cwd="):
-			command[index] = "--cwd=" + resolvePath(process.dir, strings.TrimPrefix(argument, "--cwd="))
-			cwd = true
-		}
-	}
-	prefix := []string{"--cwd", start}
-	if values := optionValues(process.rcArgs, "--cwd"); !cwd && len(values) > 0 {
-		prefix = append(prefix, "--cwd="+filepath.Clean(values[len(values)-1]))
-	}
-	return append(prefix, command...)
+	return proxy.CommandSpec{Executable: executable, Args: args, EnvOverrides: nodeproxy.OverrideVariants(os.Environ(), canonical), Dir: childDir}, nil
 }

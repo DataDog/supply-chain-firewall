@@ -114,19 +114,18 @@ func consumesValue(gen generation, arguments []string, index int) bool {
 }
 
 // workspaceArguments splits `yarn workspace` into the workspace name and its
-// command. Yarn Classic parses options among the two arguments it keeps, so
-// `yarn workspace --cwd dir a add x` runs `add x` in workspace a of dir.
-// With a "--" it parses the whole line; the separator is kept so the
-// arguments after it stay arguments.
+// command. Yarn Classic parses options among the arguments it keeps, so
+// `yarn workspace --cwd dir a add x` runs `add x` in workspace a of dir;
+// with a "--" it keeps every argument before it and passes the ones after it
+// to the inner Yarn without the separator.
 func workspaceArguments(gen generation, command []string, cmd yarnCommand) (string, []string) {
 	var arguments []string
-	switch {
-	case gen == berry || cmd.end < len(command) && command[cmd.end] == "--":
+	if gen == berry {
 		if len(cmd.args) < 2 {
 			return "", nil
 		}
 		arguments = command[cmd.index+1:]
-	default:
+	} else {
 		for index := 0; index < len(cmd.args); index++ {
 			switch {
 			case !strings.HasPrefix(cmd.args[index], "-"):
@@ -135,7 +134,11 @@ func workspaceArguments(gen generation, command []string, cmd yarnCommand) (stri
 				index++
 			}
 		}
-		arguments = append(arguments, command[cmd.end:]...)
+		rest := command[cmd.end:]
+		if len(rest) > 0 && rest[0] == "--" {
+			rest = rest[1:]
+		}
+		arguments = append(arguments, rest...)
 	}
 	if len(arguments) < 2 {
 		return "", nil

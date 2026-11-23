@@ -27,11 +27,13 @@ func TestProxyCommandSupported(t *testing.T) {
 				{"global", "remove", "x"}, {"global", "upgradeInteractive"}, {"global", "--prefix", "/p", "add", "x"},
 				// Yarn parses options among the two arguments workspace keeps.
 				{"workspace", "--cwd", "x", "a", "add", "y"}, {"workspace", "a", "workspace", "b", "add", "y"},
+				// With "--" Yarn parses every option before it.
+				{"workspace", "--cwd", ".", "a", "add", "x", "--", "y"},
 			},
 			false: {
 				{"run", "build"}, {"build"}, {"test"}, {"exec", "tsc"}, {"node", "x.js"}, {"info", "x"}, {"audit"},
 				{"global", "list"}, {"--version"}, {"--help", "add", "x"}, {"workspace", "a", "run", "build"}, {"dlx", "x"},
-				{"workspace", "--cwd", "x", "a", "run", "add"},
+				{"workspace", "--cwd", "x", "a", "run", "add"}, {"workspace", "--cwd", ".", "a", "run", "x", "--", "add"},
 			},
 		},
 		"4.18.1": {

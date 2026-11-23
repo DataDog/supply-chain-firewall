@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
@@ -101,49 +102,58 @@ func TestClassicProxyCommandRejectsUnreadableCA(t *testing.T) {
 }
 
 // `yarn workspace <name> <command>` starts a second Yarn in the workspace that
-// would not receive SCFW's options, so the command runs there directly.
+// would not receive SCFW's options, so the command runs there directly. The
+// launched command must select the configuration Yarn's inner process would.
 func TestClassicProxyCommandRunsWorkspaceCommandsInTheWorkspace(t *testing.T) {
 	root := isolateYarnEnvironment(t)
 	project := filepath.Join(root, "parent", "project")
 	writeYarnFixture(t, filepath.Join(project, "package.json"), "workspaces/root-array.json")
+	writeYarnFixture(t, filepath.Join(project, ".yarnrc"), "yarnrc/rc-arg.yarnrc.tmpl", "http://project-arg:1")
 	writeYarnFixture(t, filepath.Join(project, "a", "package.json"), "workspaces/member.json.tmpl", "a")
+	writeYarnFixture(t, filepath.Join(project, "a", "extra"), "yarnrc/rc-arg.yarnrc.tmpl", "http://extra:1")
 	writeYarnFixture(t, filepath.Join(project, "packages", "b", "package.json"), "workspaces/member.json.tmpl", "b")
-	writeYarnFixture(t, filepath.Join(project, "packages", "b", ".yarnrc"), "yarnrc/rc-arg-cwd.yarnrc.tmpl", "sub")
-	writeYarnFixture(t, filepath.Join(project, "packages", "b", "sub", "package.json"), "workspaces/empty.json")
 	directory, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
+	a, b := filepath.Join(directory, "a"), filepath.Join(directory, "packages", "b")
 	config := testClientConfig(t)
 	flags := []string{"--https-proxy=" + config.URL, "--proxy=" + config.URL}
 	for _, test := range []struct {
-		name    string
-		command []string
-		want    []string
+		name, command, dir, args, proxy string
 	}{
-		{"named workspace", []string{"workspace", "a", "add", "x", "--dev"},
-			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a"), "add", "x", "--dev")},
-		{"options before the command stay with the outer Yarn", []string{"--registry", "http://r:1", "--cwd", ".", "workspace", "a", "add", "x"},
-			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a"), "add", "x")},
-		{"arguments after the separator are kept", []string{"workspace", "a", "add", "x", "--", "--proxy", "y"},
-			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a"), "add", "x", "--", "--proxy", "y")},
-		{"unknown workspace is left for Yarn to report", []string{"workspace", "missing", "add", "x"},
-			append(slices.Clone(flags), "workspace", "missing", "add", "x")},
-		{"options among the kept arguments stay with the outer Yarn", []string{"workspace", "--cwd", ".", "a", "add", "x"},
-			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a"), "add", "x")},
-		{"the inner --cwd is relative to the workspace", []string{"workspace", "a", "add", "x", "--cwd", "sub"},
-			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a", "sub"), "add", "x", "--cwd", filepath.Join(directory, "a", "sub"))},
-		{"an inner --cwd= keeps the rc-args of the workspace", []string{"workspace", "a", "add", "x", "--cwd=sub"},
-			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "a"), "add", "x", "--cwd="+filepath.Join(directory, "a", "sub"))},
-		{"the workspace's rc-arg --cwd is restated", []string{"workspace", "b", "add", "x"},
-			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "packages", "b"), "--cwd="+filepath.Join(directory, "packages", "b", "sub"), "add", "x")},
-		{"nested workspace commands", []string{"workspace", "a", "workspace", "b", "add", "x"},
-			append(slices.Clone(flags), "--cwd", filepath.Join(directory, "packages", "b"), "--cwd="+filepath.Join(directory, "packages", "b", "sub"), "add", "x")},
+		{"named workspace", "workspace a add x --dev", a, "add x --dev", "http://project-arg:1"},
+		{"options before the command stay with the outer Yarn", "--registry http://r:1 --cwd . workspace a add x", a, "add x", "http://project-arg:1"},
+		{"options among the kept arguments stay with the outer Yarn", "workspace --cwd . a add x", a, "add x", "http://project-arg:1"},
+		// Yarn passes the arguments after "--" to the inner Yarn without it.
+		{"the separator is dropped", "workspace a add x -- --proxy http://y:1", a, "add x", "http://project-arg:1"},
+		{"outer options before the name with a separator", "workspace --cwd . a add x -- y", a, "add x y", "http://project-arg:1"},
+		// A relative --cwd walks rc files only up to the process directory.
+		{"the inner --cwd is relative to the workspace", "workspace a add x --cwd sub", a, "add x --cwd sub", ""},
+		{"the inner --use-yarnrc is relative to the workspace", "workspace a add x --use-yarnrc extra", a, "add x --use-yarnrc extra", "http://extra:1"},
+		{"nested workspace commands", "workspace a workspace b add x", b, "add x", "http://project-arg:1"},
+		{"unknown workspace is left for Yarn to report", "workspace missing add x", "", "workspace missing add x", "http://project-arg:1"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			spec, err := fakeYarn(t, "1.22.22").ProxyCommand(context.Background(), test.command, config)
-			if err != nil || !slices.Equal(spec.Args, test.want) {
-				t.Fatalf("args = %q (error %v), want %q", spec.Args, err, test.want)
+			manager := fakeYarn(t, "1.22.22")
+			command := strings.Fields(test.command)
+			spec, err := manager.ProxyCommand(context.Background(), command, config)
+			want := append(slices.Clone(flags), strings.Fields(test.args)...)
+			if err != nil || !slices.Equal(spec.Args, want) || spec.Dir != test.dir {
+				t.Fatalf("command = %q in %q (error %v), want %q in %q", spec.Args, spec.Dir, err, want, test.dir)
+			}
+			upstream, err := manager.UpstreamProxy(command)
+			if err != nil || upstream.HTTPSProxy != test.proxy {
+				t.Fatalf("HTTPSProxy = %q (error %v), want %q", upstream.HTTPSProxy, err, test.proxy)
+			}
+			// Without SCFW's options, the launched command in its directory
+			// selects the same configuration.
+			if spec.Dir != "" {
+				t.Chdir(spec.Dir)
+			}
+			launched, err := manager.UpstreamProxy(spec.Args[len(flags):])
+			if err != nil || launched.HTTPSProxy != test.proxy {
+				t.Fatalf("launched HTTPSProxy = %q (error %v), want %q", launched.HTTPSProxy, err, test.proxy)
 			}
 		})
 	}

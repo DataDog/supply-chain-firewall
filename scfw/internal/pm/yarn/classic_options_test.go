@@ -6,6 +6,7 @@
 package yarn
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/pem"
 	"net/url"
@@ -96,6 +97,61 @@ func TestClassicProxyOptionsTrust(t *testing.T) {
 			}
 			if got := verifiesRegistry(t, options); got != test.trusted {
 				t.Fatalf("trusted = %v, want %v", got, test.trusted)
+			}
+		})
+	}
+}
+
+// Yarn reads cafile relative to its own process directory, which for
+// `yarn workspace` is the workspace SCFW launches the command in, and only
+// .npmrc files expand a leading ~/.
+func TestClassicCAFileResolvesInTheYarnProcess(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		files   map[string]string
+		command []string
+		trusted bool
+	}{
+		{"relative to the workspace", map[string]string{"parent/project/a/.yarnrc": "yarnrc/cafile.yarnrc.tmpl", "parent/project/a/ca.pem": ""},
+			[]string{"workspace", "a", "add", "x"}, true},
+		{"--cwd does not move the base", map[string]string{"parent/project/sub/.yarnrc": "yarnrc/cafile.yarnrc.tmpl", "parent/project/sub/ca.pem": ""},
+			[]string{"--cwd", "sub", "add", "x"}, false},
+		{".yarnrc keeps ~/ literal", map[string]string{"parent/project/.yarnrc": "yarnrc/cafile.yarnrc.tmpl", "home/ca.pem": ""},
+			[]string{"add", "x"}, false},
+		{".npmrc expands ~/", map[string]string{"parent/project/.npmrc": "yarnrc/cafile.npmrc.tmpl", "home/ca.pem": ""},
+			[]string{"add", "x"}, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := isolateYarnEnvironment(t)
+			project := filepath.Join(root, "parent", "project")
+			writeYarnFixture(t, filepath.Join(project, "package.json"), "workspaces/root-array.json")
+			writeYarnFixture(t, filepath.Join(project, "a", "package.json"), "workspaces/member.json.tmpl", "a")
+			value := "ca.pem"
+			if _, home := test.files["home/ca.pem"]; home {
+				value = "~/ca.pem"
+			}
+			for path, fixture := range test.files {
+				if fixture == "" {
+					writeYarnFixture(t, filepath.Join(root, path), "tls/registry-ca.pem")
+				} else {
+					writeYarnFixture(t, filepath.Join(root, path), fixture, value)
+				}
+			}
+			manager := fakeYarn(t, "1.22.22")
+			options, err := manager.ProxyOptions(test.command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := verifiesRegistry(t, options); got != test.trusted {
+				t.Fatalf("trusted = %v, want %v", got, test.trusted)
+			}
+			// The launched Yarn reads the same file from its directory.
+			spec, err := manager.ProxyCommand(context.Background(), test.command, testClientConfig(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if dir := spec.Dir; test.command[0] == "workspace" && dir != filepath.Join(project, "a") {
+				t.Fatalf("Dir = %q, want the workspace", dir)
 			}
 		})
 	}

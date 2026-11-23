@@ -41,6 +41,8 @@ type classicSettings struct {
 // a key decides, and npm layers are read only when no Yarn layer sets it.
 type classicConfig struct {
 	options, yarn, npm []nodeproxy.Config
+	// dir is the Yarn process directory, which relative paths resolve against.
+	dir string
 }
 
 func (config classicConfig) get(key string) string {
@@ -48,17 +50,27 @@ func (config classicConfig) get(key string) string {
 }
 
 func (config classicConfig) values(key string) []string {
+	values, _ := config.source(key)
+	return values
+}
+
+// source returns a key's values and whether they come from an .npmrc file.
+func (config classicConfig) source(key string) ([]string, bool) {
 	for _, layer := range config.options {
 		if nodeproxy.LastValue(layer[key]) != "" {
-			return layer[key]
+			return layer[key], false
 		}
 	}
-	for _, layers := range [][]nodeproxy.Config{config.yarn, config.npm} {
-		if values, found := firstLayer(layers, key); found {
-			return values
+	if values, found := firstLayer(config.yarn, key); found {
+		return values, false
+	}
+	// The first npm layer holds the npm_config_ variables.
+	for index, layer := range config.npm {
+		if values, found := layer[key]; found {
+			return values, index > 0
 		}
 	}
-	return nil
+	return nil, false
 }
 
 func firstLayer(layers []nodeproxy.Config, key string) ([]string, bool) {
@@ -115,7 +127,8 @@ func (yarn Yarn) classicSettings(command []string) (classicSettings, error) {
 		}
 	}
 
-	settings.CAFile = expandHome(config.get("cafile"), env["HOME"])
+	cafile, npmrc := config.source("cafile")
+	settings.CAFile = classicCAFile(nodeproxy.LastValue(cafile), npmrc, env["HOME"], config.dir)
 	settings.CA = config.values("ca")
 	// Yarn's default strict-ssl shadows npm's, so only Yarn layers count.
 	yarnOnly := classicConfig{options: config.options, yarn: config.yarn}
@@ -145,19 +158,17 @@ func (yarn Yarn) classicSettings(command []string) (classicSettings, error) {
 	return settings, nil
 }
 
-// expandHome resolves a path setting like Yarn: a leading ~ is the home
-// directory and relative paths are relative to cwd.
-func expandHome(value, home string) string {
+// classicCAFile resolves cafile as Yarn does: relative to the Yarn process
+// directory, which is not --cwd, and with a leading ~/ for the home directory
+// only in .npmrc files, which Yarn normalizes as npm path options.
+func classicCAFile(value string, npmrc bool, home, dir string) string {
 	if value == "" {
 		return ""
 	}
-	if value == "~" || strings.HasPrefix(value, "~/") {
-		value = filepath.Join(home, strings.TrimPrefix(value, "~"))
+	if rest, found := strings.CutPrefix(value, "~/"); npmrc && found {
+		return filepath.Join(home, rest)
 	}
-	if absolute, err := filepath.Abs(value); err == nil {
-		return absolute
-	}
-	return value
+	return resolvePath(dir, value)
 }
 
 // resolvePath resolves path against dir, as Node's path.resolve does.
@@ -323,7 +334,7 @@ func readClassicConfig(command, environ []string, env map[string]string) (classi
 	for index := 0; index+1 < len(process.rcArgs); index += 2 {
 		rcArgs[strings.TrimPrefix(process.rcArgs[index], "--")] = []string{process.rcArgs[index+1]}
 	}
-	config := classicConfig{options: []nodeproxy.Config{classicOptions(process.own), rcArgs}}
+	config := classicConfig{options: []nodeproxy.Config{classicOptions(process.own), rcArgs}, dir: process.dir}
 	config.yarn = []nodeproxy.Config{yarnEnvironmentConfig(environ)}
 	// Yarn collects --use-yarnrc from rc-args and the command line; the last
 	// file wins.

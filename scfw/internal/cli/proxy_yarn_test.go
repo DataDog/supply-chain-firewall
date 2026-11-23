@@ -184,6 +184,16 @@ func TestYarnClassicProxyEndToEnd(t *testing.T) {
 				t.Fatal(err)
 			}
 			before := registry.TarballHits.Load()
+			block := test.outcome == evaluation.OutcomeBlock
+			var output *os.File
+			if block {
+				if output, err = os.CreateTemp(t.TempDir(), "output"); err != nil {
+					t.Fatal(err)
+				}
+				stdout, stderr := os.Stdout, os.Stderr
+				os.Stdout, os.Stderr = output, output
+				defer func() { os.Stdout, os.Stderr = stdout, stderr }()
+			}
 			started := time.Now()
 			run := runYarnThroughProxy(t, executable, test.args, test.outcome)
 			elapsed := time.Since(started)
@@ -192,10 +202,19 @@ func TestYarnClassicProxyEndToEnd(t *testing.T) {
 			} else {
 				assertYarnSucceeded(t, run)
 			}
-			// Classic's first offline retry waits 3s and they continue for about
-			// 12s, so any retry of the blocked tarball exceeds this bound.
-			if test.outcome == evaluation.OutcomeBlock && elapsed > 6*time.Second {
-				t.Fatalf("blocked install took %s, want it to fail without network retries", elapsed)
+			if block {
+				printed, err := os.ReadFile(output.Name())
+				if err != nil {
+					t.Fatal(err)
+				}
+				// A reset rejection makes Classic retry the tarball as a network
+				// error; the original retry loop kept the install alive for about 12s.
+				if strings.Contains(string(printed), "trouble with your network connection") || elapsed > 6*time.Second {
+					t.Fatalf("blocked install took %s and retried the tarball: %s", elapsed, printed)
+				}
+				if !strings.Contains(run.details, "Policy evaluation outcome: BLOCK") {
+					t.Fatalf("missing block outcome: %s", run.details)
+				}
 			}
 			if hits := registry.TarballHits.Load() - before; hits != test.hits {
 				t.Fatalf("tarball downloads = %d, want %d", hits, test.hits)

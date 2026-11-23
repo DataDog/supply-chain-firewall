@@ -64,8 +64,8 @@ type Response struct {
 
 // RequestHook observes a request before it is sent upstream. ctx is canceled
 // when the command is canceled or the proxy closes. Returning a non-nil error
-// rejects the request with HTTP 403 Forbidden and the error text
-// as body, without contacting upstream. A returned response hook belongs only
+// rejects the request with HTTP 403 Forbidden, with the error text as body
+// unless Options.RejectWithoutBody is set, without contacting upstream. A returned response hook belongs only
 // to this request and runs only if its upstream response arrives.
 type RequestHook func(ctx context.Context, request Request) (ResponseHook, error)
 
@@ -128,6 +128,12 @@ type Options struct {
 
 	// RequestHooks run, in order, for each request. The first rejection wins.
 	RequestHooks []RequestHook
+
+	// RejectWithoutBody sends SCFW-generated rejections with an empty body.
+	// Some clients (Yarn Classic) abort a non-2xx download at its headers and
+	// retry the resulting connection reset as a network error; an empty body
+	// completes together with the headers.
+	RejectWithoutBody bool
 
 	// upstreamRootCAs and dialContext let tests reach local upstream servers;
 	// nil means the system roots and the default dialer.
@@ -215,7 +221,7 @@ func Start(ctx context.Context, options Options) (*Server, error) {
 		return ca.identityCertificate(certificateDir, identity)
 	}
 	server.httpServer = &http.Server{
-		Handler:           server.newHandler(ca, options.RequestHooks, options.ClientIdentity),
+		Handler:           server.newHandler(ca, options.RequestHooks, options.ClientIdentity, options.RejectWithoutBody),
 		ReadHeaderTimeout: 30 * time.Second,
 		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelDebug),
 		ConnState:         server.trackConnection,
@@ -283,7 +289,19 @@ func (server *Server) newHandler(
 	ca *certificateAuthority,
 	requestHooks []RequestHook,
 	listenerIdentity string,
+	rejectWithoutBody bool,
 ) *goproxy.ProxyHttpServer {
+	reject := func(request *http.Request, status int, body string) *http.Response {
+		if !rejectWithoutBody {
+			return goproxy.NewResponse(request, goproxy.ContentTypeText, status, body)
+		}
+		response := goproxy.NewResponse(request, goproxy.ContentTypeText, status, "")
+		// goproxy rewrites any other empty MITM body as chunked, which sends a
+		// terminator after the head.
+		response.Body = http.NoBody
+		return response
+	}
+
 	handler := goproxy.NewProxyHttpServer()
 	handler.Logger = proxyLogger{}
 	handler.Tr = server.transport.secure
@@ -320,7 +338,7 @@ func (server *Server) newHandler(
 		responseHooks, err := runRequestHooks(request.Context(), requestHooks, observed)
 		if err != nil {
 			slog.Debug("proxy rejected request", "method", request.Method, "url", redactURL(request.URL), "reason", err)
-			return request, goproxy.NewResponse(request, goproxy.ContentTypeText, http.StatusForbidden, err.Error()+"\n")
+			return request, reject(request, http.StatusForbidden, err.Error()+"\n")
 		}
 		// Response hooks run on upstream responses only, so responses generated
 		// above never reach them.
@@ -336,11 +354,9 @@ func (server *Server) newHandler(
 				// Do not expose their contents in the response or diagnostics.
 				slog.Debug("proxy could not inspect upstream response", "url", redactURL(request.URL))
 				if errors.Is(err, ErrResponseRejected) {
-					return goproxy.NewResponse(request, goproxy.ContentTypeText, http.StatusForbidden,
-						"supply chain firewall rejected upstream response\n"), nil
+					return reject(request, http.StatusForbidden, "supply chain firewall rejected upstream response\n"), nil
 				}
-				return goproxy.NewResponse(request, goproxy.ContentTypeText, http.StatusBadGateway,
-					"supply chain firewall could not inspect upstream response\n"), nil
+				return reject(request, http.StatusBadGateway, "supply chain firewall could not inspect upstream response\n"), nil
 			}
 			// ErrAbortHandler must reach net/http's recovery handler. CONNECT
 			// requests use goproxy's own response writer and error handling.

@@ -212,6 +212,9 @@ func TestClassicProxyOptionsStrictSSL(t *testing.T) {
 			if got := options.TrustURL(target); got != test.trusted {
 				t.Fatalf("TrustURL = %v, want %v", got, test.trusted)
 			}
+			if !options.RejectWithoutBody {
+				t.Fatal("Classic rejections must have no body")
+			}
 		})
 	}
 }

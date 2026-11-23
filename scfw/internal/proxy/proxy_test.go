@@ -427,6 +427,40 @@ func TestRequestHookRejectsBeforeUpstream(t *testing.T) {
 	}
 }
 
+func TestRejectWithoutBodyCompletesWithHeaders(t *testing.T) {
+	registryURL, options := newTestRegistry(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "artifact bytes")
+	}), true)
+	options.RejectWithoutBody = true
+	options.RequestHooks = []RequestHook{
+		func(_ context.Context, request Request) (ResponseHook, error) {
+			if strings.HasSuffix(request.URL.Path, ".tgz") {
+				return nil, errors.New("package blocked by Supply Chain Firewall")
+			}
+			return func(context.Context, Response) (*ResponseBodyHook, error) {
+				return nil, fmt.Errorf("download blocked: %w", ErrResponseRejected)
+			}, nil
+		},
+	}
+	client := newProxyClient(t, startTestProxy(t, options))
+
+	for _, path := range []string{"/left-pad/-/left-pad-1.0.0.tgz", "/objects/opaque"} {
+		response, err := client.Get(registryURL + path)
+		if err != nil {
+			t.Fatalf("Get(%q) returned unexpected error: %v", path, err)
+		}
+		body, err := io.ReadAll(response.Body)
+		_ = response.Body.Close()
+		if err != nil {
+			t.Fatalf("reading %q returned unexpected error: %v", path, err)
+		}
+		if response.StatusCode != http.StatusForbidden || response.ContentLength != 0 || len(response.TransferEncoding) != 0 || len(body) != 0 {
+			t.Errorf("%s: status %d, length %d, transfer encoding %q, body %q; want 403 with Content-Length 0",
+				path, response.StatusCode, response.ContentLength, response.TransferEncoding, body)
+		}
+	}
+}
+
 func TestResponseBodyHookFinishesBeforeDeclaredLengthIsDelivered(t *testing.T) {
 	metadataFixture := readProxyFixture(t, "metadata.json")
 	metadataBody := metadataFixture

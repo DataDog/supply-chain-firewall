@@ -125,6 +125,9 @@ func TestBerryProxyOptionsStrictSSL(t *testing.T) {
 	if err != nil || options.TrustURL(target) {
 		t.Fatalf("default must verify certificates (error %v)", err)
 	}
+	if options.RejectWithoutBody {
+		t.Fatal("Yarn 4 rejections must keep their body")
+	}
 	writeYarnFixture(t, filepath.Join(root, "parent", "project", ".yarnrc.yml"), "yarnrc-yml/strict-ssl.yml")
 	options, err = fakeYarn(t, "4.18.1").ProxyOptions(nil)
 	if err != nil || !options.TrustURL(target) {

@@ -57,6 +57,8 @@ func (yarn Yarn) ProxyOptions(command []string) (proxy.Options, error) {
 			return proxy.Options{}, err
 		}
 		caFile, strictSSL = settings.CAFile, settings.StrictSSL
+		// Classic retries the reset from aborting a rejection's body for about 12s.
+		options.RejectWithoutBody = true
 		options.ProxyForURL = yarnProxyForURL(upstream, settings.NoProxyHTTP, settings.NoProxyHTTPS)
 		// Yarn keeps ca only when it cannot read cafile.
 		if _, err := os.ReadFile(caFile); err != nil {

@@ -100,6 +100,7 @@ type pnpmProxyRun struct {
 	commandErr, setupErr error
 	calls                int32
 	details              string
+	sources              []string
 	config               proxy.ClientConfig
 }
 
@@ -117,10 +118,13 @@ func runPnpmNamedThroughProxy(t *testing.T, name, executable string, args []stri
 	var run pnpmProxyRun
 	var calls atomic.Int32
 	var details bytes.Buffer
-	evaluator := proxyEvaluatorFunc(func(_ context.Context, interactive bool, _ *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
+	evaluator := proxyEvaluatorFunc(func(_ context.Context, interactive bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 		calls.Add(1)
 		if interactive {
 			t.Error("proxy evaluation must not prompt")
+		}
+		for target := range targets.Items() {
+			run.sources = append(run.sources, target.Source)
 		}
 		return evaluation.ScfwPolicyEvaluationReport{Outcome: outcome}, nil
 	})

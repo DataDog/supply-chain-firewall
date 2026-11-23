@@ -176,8 +176,9 @@ func fetchContextErr(runContext, fetchContext context.Context) error {
 	return nil
 }
 
-// sameOriginAuthorizationClient copies client so redirects keep Authorization
-// only within origin's scheme, host and port. net/http alone forwards it to
+// sameOriginAuthorizationClient copies client so redirects send no Referer and
+// keep request headers other than Accept only within origin's scheme, host and
+// port. net/http alone forwards it to
 // subdomains as well.
 func sameOriginAuthorizationClient(client *http.Client, origin *url.URL) *http.Client {
 	if client == nil {
@@ -186,8 +187,15 @@ func sameOriginAuthorizationClient(client *http.Client, origin *url.URL) *http.C
 	scoped := *client
 	checkRedirect := client.CheckRedirect
 	scoped.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+		// net/http sets the previous URL, query included, as Referer.
+		request.Header.Del("Referer")
 		if !strings.EqualFold(request.URL.Scheme, origin.Scheme) || !strings.EqualFold(request.URL.Host, origin.Host) {
-			request.Header.Del("Authorization")
+			// Any captured header may carry credentials, such as X-Api-Key.
+			accept := request.Header.Get("Accept")
+			request.Header = make(http.Header)
+			if accept != "" {
+				request.Header.Set("Accept", accept)
+			}
 		}
 		if checkRedirect != nil {
 			return checkRedirect(request, via)

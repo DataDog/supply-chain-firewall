@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
@@ -237,7 +238,13 @@ func TestProxyHandlerBlocksSlashTerminatedWheelsBeforeUpstream(t *testing.T) {
 }
 
 func TestProxyHandlerRetainsJSONDerivedContextAndRequestCredentials(t *testing.T) {
-	handler := testProxyHook(t)
+	handler, err := newProxyHook(context.Background(), ProxyHookOptions{
+		ClassifierOptions: RequestClassifierOptions{SimpleIndexURLs: []string{"https://index.example/simple/"}},
+		EvaluatePackage:   func(context.Context, pm.Package, error) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	endpoint := mustParseHookURL(t, "https://index.example/simple/decoy-1.0-py3-none-any.whl/?token=secret")
 	request := proxy.Request{Method: http.MethodGet, URL: endpoint, Header: http.Header{"Authorization": {"Bearer request-secret"}}}
 	handler.EvaluateArtifact = func(context.Context, Artifact) error { return nil }
@@ -272,7 +279,13 @@ func TestProxyHandlerRetainsJSONDerivedContextAndRequestCredentials(t *testing.T
 func TestProxyHandlerStreamsNonJSONArtifactsWithExistingMetadataContext(t *testing.T) {
 	for _, contentType := range []string{"", "application/octet-stream", "text/html"} {
 		t.Run(contentType, func(t *testing.T) {
-			handler := testProxyHook(t)
+			handler, err := newProxyHook(context.Background(), ProxyHookOptions{
+				ClassifierOptions: RequestClassifierOptions{SimpleIndexURLs: []string{"https://index.example/simple/"}},
+				EvaluatePackage:   func(context.Context, pm.Package, error) error { return nil },
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
 			endpoint := mustParseHookURL(t, "https://index.example/packages/project-1.0-py3-none-any.whl/")
 			handler.Metadata.RegisterProject(endpoint, "project", nil)
 			evaluations := 0

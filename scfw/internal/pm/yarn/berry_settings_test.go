@@ -233,20 +233,23 @@ func TestBerryWorkspaceDiscoversFromTheWorkspace(t *testing.T) {
 
 func TestBerryWorkspaceRefusesWhatSCFWCannotRoute(t *testing.T) {
 	for _, test := range []struct {
-		name, fixture, command, want string
+		name, patterns, dir, manifest, fixture, command, want string
 	}{
-		{"networkSettings in the workspace", "network-proxy.yml", "workspace a add x", "networkSettings"},
-		{"foreach over a workspace with another proxy", "https-proxy.yml.tmpl", "workspaces foreach -A install", "foreach"},
-		{"foreach over a workspace with networkSettings", "network-proxy.yml", "workspaces foreach -A install", "networkSettings"},
-		{"an unknown name with patterns SCFW cannot evaluate", "", "workspace z add x", "brace ranges"},
+		{"networkSettings in the workspace", `["packages/*"]`, "packages/a", "workspaces/member.json.tmpl", "network-proxy.yml", "workspace a add x", "networkSettings"},
+		{"foreach over a workspace with another proxy", `["packages/*"]`, "packages/a", "workspaces/member.json.tmpl", "https-proxy.yml.tmpl", "workspaces foreach -A install", "different httpsProxy"},
+		{"foreach over a workspace with networkSettings", `["packages/*"]`, "packages/a", "workspaces/member.json.tmpl", "network-proxy.yml", "workspaces foreach -A install", "networkSettings"},
+		{"an unknown name with patterns SCFW cannot evaluate", `["packages/*", "@(x)"]`, "packages/a", "workspaces/member.json.tmpl", "", "workspace z add x", "brace ranges"},
+		// foreach also runs in workspaces SCFW cannot list, so it fails closed.
+		{"foreach over a workspace SCFW cannot match", `["packages/*", "+(other)"]`, "other", "workspaces/member.json.tmpl", "network-proxy.yml", "workspaces foreach -A install", "could not list every workspace"},
+		{"foreach over a malformed workspace", `["packages/*"]`, "packages/bad", "yarnrc-yml/invalid.yml", "https-proxy.yml.tmpl", "workspaces foreach -A install", "could not list every workspace"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			root := isolateYarnEnvironment(t)
 			project := filepath.Join(root, "parent", "project")
-			writeYarnFixture(t, filepath.Join(project, "package.json"), "workspaces/root.json.tmpl", `["packages/*", "@(x)"]`)
-			writeYarnFixture(t, filepath.Join(project, "packages", "a", "package.json"), "workspaces/member.json.tmpl", "a")
+			writeYarnFixture(t, filepath.Join(project, "package.json"), "workspaces/root.json.tmpl", test.patterns)
+			writeYarnFixture(t, filepath.Join(project, test.dir, "package.json"), test.manifest, "a")
 			if test.fixture != "" {
-				writeYarnFixture(t, filepath.Join(project, "packages", "a", ".yarnrc.yml"), "yarnrc-yml/"+test.fixture, "http://a:1")
+				writeYarnFixture(t, filepath.Join(project, test.dir, ".yarnrc.yml"), "yarnrc-yml/"+test.fixture, "http://a:1")
 			}
 			if _, err := fakeYarn(t, "4.18.1").UpstreamProxy(strings.Fields(test.command)); err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want one mentioning %q", err, test.want)

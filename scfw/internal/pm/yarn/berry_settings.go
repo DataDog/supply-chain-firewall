@@ -69,9 +69,12 @@ func (yarn Yarn) berrySettings(command []string) (berrySettings, error) {
 	}
 	// `yarn workspaces foreach` runs its command in every selected workspace,
 	// each with its own rc files, and one run has one route and one trust.
-	_, directories, _, err := berryWorkspaces(berryProject(dir))
+	names, directories, unsupported, err := berryWorkspaces(berryProject(dir))
 	if err != nil {
 		return berrySettings{}, err
+	}
+	if names == nil || unsupported {
+		return berrySettings{}, errors.New("yarn workspaces foreach: SCFW could not list every workspace of the project, because a manifest is missing, malformed, or duplicated, or the workspaces patterns use brace ranges, extglobs, or POSIX classes; run the command in each workspace instead")
 	}
 	for _, directory := range directories {
 		other, err := readBerrySettings(directory, environ, env)

@@ -10,6 +10,7 @@ package e2e_test
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -185,7 +186,7 @@ func runPyPIAge(r *caseRun, options pypiAgeOptions) error {
 	if blocked {
 		expectedVersion = ""
 	}
-	if err := assertUVInstalled(r, python, expectedVersion, "installed"); err != nil {
+	if err := assertPyPIAgeInstalled(r, python, expectedVersion); err != nil {
 		return err
 	}
 	if r.Cell.Manager == "poetry" {
@@ -231,6 +232,70 @@ func runPyPIAge(r *caseRun, options pypiAgeOptions) error {
 		return fmt.Errorf("uv verbose output lacks discovered wheel identity %s", c.Artifacts[0].Name)
 	}
 	return assertCleanup(r, string(stderr))
+}
+
+// The trusted runtime reads metadata with site initialization disabled. Never
+// start the installed environment: RSS candidates may contain Python startup hooks.
+func assertPyPIAgeInstalled(r *caseRun, python, expected string) error {
+	parts := strings.Split(r.Cell.RuntimeVersion, ".")
+	if len(parts) < 2 {
+		return fmt.Errorf("invalid Python runtime pin")
+	}
+	target := filepath.Join(filepath.Dir(filepath.Dir(python)), "lib", "python"+strings.Join(parts[:2], "."), "site-packages")
+	script, err := filepath.Abs("testdata/age_pypi/inspect_install.py")
+	if err != nil {
+		return err
+	}
+	command, err := r.Command("installed-state", r.Cell.Runtime, "-I", "-S", script, target, r.Candidate.Project)
+	if err != nil {
+		return err
+	}
+	var installed struct {
+		Present bool   `json:"present"`
+		Version string `json:"version"`
+	}
+	if err := readJSON(command.Stdout.Path, &installed); err != nil {
+		return err
+	}
+	r.Result.Observations["installed"] = installed
+	if installed.Present != (expected != "") || installed.Version != expected {
+		return fmt.Errorf("installed state %+v; expected version %q", installed, expected)
+	}
+	return nil
+}
+
+func TestHarnessPyPIAgeIgnoresStartupHooks(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	env, err := isolatedEnvironment(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(root, "startup-executed")
+	env["SCFW_E2E_STARTUP_MARKER"] = marker
+	target := filepath.Join(root, "venv", "lib", "python3.11", "site-packages")
+	if err := os.MkdirAll(filepath.Join(target, "fixture_leaf-1.0.dist-info"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for fixture, destination := range map[string]string{"startup.pth": filepath.Join(target, "startup.pth"), "METADATA": filepath.Join(target, "fixture_leaf-1.0.dist-info", "METADATA")} {
+		contents, err := os.ReadFile(filepath.Join("testdata/age_pypi", fixture))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(destination, contents, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := &caseRun{Context: t.Context(), Cell: cell{Runtime: python, RuntimeVersion: "3.11.18"}, Root: root, WorkDir: filepath.Join(root, "work"), Env: env, Candidate: candidate{Project: "fixture-leaf"}, Result: &result{Observations: map[string]any{}}}
+	if err := assertPyPIAgeInstalled(r, filepath.Join(root, "venv", "bin", "python"), "1.0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("installed wheel startup hook executed: %v", err)
+	}
 }
 
 func assertPyPIAgePolicy(records []policyRecord, c candidate, current cell, outcome, action string) error {

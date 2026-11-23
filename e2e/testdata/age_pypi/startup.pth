@@ -1,0 +1,1 @@
+import os; open(os.environ["SCFW_E2E_STARTUP_MARKER"], "w").close()

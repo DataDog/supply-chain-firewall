@@ -25,7 +25,8 @@ fresh evidence is required. Never rediscover to conceal an SCFW assertion failur
 The tests use the unchanged release-built SCFW binary and public PyPI installs.
 No target findings list is created. Policy assertions require the exact age
 verifier, severity, threshold and package identity; unexpected live findings or
-verifier failures remain failures. Installed distribution metadata, pip's artifact
+verifier failures remain failures. Installed distribution metadata is inspected through the trusted runtime with
+site initialization disabled, so wheel startup hooks do not execute. Pip's artifact
 report, Poetry's downloaded-wheel digest and uv's verbose wheel identity supply
 installation evidence. They also retain cleanup checks and Poetry project snapshots.
 

@@ -95,13 +95,9 @@ func (h ProxyHandler) inspectFullTarball(ctx context.Context, original proxy.Res
 		return archive.ErrLimit
 	}
 	original.Header = response.Header
-	err = proxy.InspectReader(ctx, response.Body, archive.MaxArtifactBytes, func(body *io.SectionReader) error {
+	return proxy.InspectReader(ctx, response.Body, archive.MaxArtifactBytes, func(body *io.SectionReader) error {
 		return h.evaluateTarball(ctx, original, body, expected)
 	})
-	if err == nil && expected != nil && response.Request.URL.String() != original.Request.URL.String() {
-		h.Classifier.verifiedTargets.Store(redactURL(response.Request.URL), *expected)
-	}
-	return err
 }
 
 // evaluateTarball evaluates the package a tarball declares or, given expected,

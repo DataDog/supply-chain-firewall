@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 // RequestKind describes the role of an HTTP request in the npm registry
@@ -52,10 +51,6 @@ type ClassifierOptions struct {
 // Classifier classifies npm registry requests within one package-manager run.
 type Classifier struct {
 	registries []url.URL
-	// verifiedTargets maps redirect targets, by redactURL, to the identity
-	// their full fetch was just verified against, so the client's own request
-	// is checked against it instead of being evaluated a second time.
-	verifiedTargets sync.Map
 }
 
 // semverPattern is the regular expression recommended by https://semver.org.

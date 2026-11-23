@@ -44,17 +44,54 @@ var networkFields = []string{"httpsProxy", "httpProxy", "httpsCaFilePath", "http
 func (yarn Yarn) berrySettings(command []string) (berrySettings, error) {
 	environ := os.Environ()
 	env := nodeproxy.LookupEnvironment(environ)
-	_, _, cwd := parseYarnCommand(berry, command)
+	cmd, _, cwd := parseYarnCommand(berry, command)
 	dir, err := os.Getwd()
 	if err != nil {
 		return berrySettings{}, errors.New("could not resolve yarn directory")
 	}
-	if cwd != "" {
-		dir = filepath.Join(dir, cwd)
-		if filepath.IsAbs(cwd) {
-			dir = filepath.Clean(cwd)
+	dir = resolvePath(dir, cwd)
+	// `yarn workspace <name> <command>` runs <command> in the workspace, which
+	// reads the rc files from that directory up.
+	for cmd.workspace != "" {
+		workspace, err := berryWorkspace(dir, cmd.workspace)
+		if err != nil {
+			return berrySettings{}, err
+		}
+		if workspace == "" {
+			break
+		}
+		dir = workspace
+		cmd, _, _ = parseYarnCommand(berry, cmd.inner)
+	}
+	settings, err := readBerrySettings(dir, environ, env)
+	if err != nil || cmd.name != "workspaces" || cmd.sub != "foreach" {
+		return settings, err
+	}
+	// `yarn workspaces foreach` runs its command in every selected workspace,
+	// each with its own rc files, and one run has one route and one trust.
+	_, directories, _, err := berryWorkspaces(berryProject(dir))
+	if err != nil {
+		return berrySettings{}, err
+	}
+	for _, directory := range directories {
+		other, err := readBerrySettings(directory, environ, env)
+		if err != nil {
+			return berrySettings{}, err
+		}
+		if other.HTTPS != settings.HTTPS || other.HTTP != settings.HTTP || other.CAFile != settings.CAFile || other.StrictSSL != settings.StrictSSL {
+			return berrySettings{}, fmt.Errorf("yarn workspaces foreach: the workspace in %s sets a different httpsProxy, httpProxy, httpsCaFilePath, or enableStrictSsl, which SCFW cannot apply in one run; run the command in each workspace instead", directory)
+		}
+		for _, registry := range other.Registries {
+			if !slices.Contains(settings.Registries, registry) {
+				settings.Registries = append(settings.Registries, registry)
+			}
 		}
 	}
+	return settings, nil
+}
+
+// readBerrySettings reads the settings a Yarn 4 command running in dir uses.
+func readBerrySettings(dir string, environ []string, env map[string]string) (berrySettings, error) {
 	rcs, err := readBerryConfig(dir, environ, env)
 	if err != nil {
 		return berrySettings{}, err
@@ -137,14 +174,19 @@ func (yarn Yarn) berrySettings(command []string) (berrySettings, error) {
 
 // readBerryConfig returns Yarn 4's settings, highest precedence first: YARN_*
 // variables, then the rc files from dir up to the root, then ~/.yarnrc.yml.
-// YARN_RC_FILENAME renames the project files but not the home file.
+// YARN_RC_FILENAME renames the project files but not the home file; Yarn uses
+// the first variable whose name matches, and an empty one makes it fail.
 func readBerryConfig(dir string, environ []string, env map[string]string) ([]berryRC, error) {
 	rcs := []berryRC{{dir: dir, data: berryEnvironmentConfig(environ)}}
 	name := ".yarnrc.yml"
 	for _, item := range environ {
 		key, value, _ := strings.Cut(item, "=")
-		if strings.EqualFold(key, "YARN_RC_FILENAME") && value != "" {
+		if strings.EqualFold(key, "YARN_RC_FILENAME") {
+			if value == "" {
+				return nil, errors.New("YARN_RC_FILENAME is empty, so Yarn cannot read its configuration")
+			}
 			name = value
+			break
 		}
 	}
 	var paths []string

@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"net/url"
 	"os"
 	"testing"
@@ -39,6 +40,36 @@ func TestHTTPSBypassNativeRequestVectors(t *testing.T) {
 			_, err = hook(context.Background(), proxy.Request{URL: *target})
 			if errors.Is(err, pythonproxy.ErrAmbiguousHTTPSBypass) != test.Ambiguous {
 				t.Fatalf("ambiguous=%v: %v", test.Ambiguous, err)
+			}
+		})
+	}
+}
+
+func TestHTTPSBypassNativeGitRequests(t *testing.T) {
+	for _, test := range []struct {
+		name, path, agent string
+		ambiguous         bool
+	}{
+		{"native-agent", "/repo.git/info/refs?service=git-upload-pack", "git/2.55.0", false},
+		{"native-dumb-http", "/repo.git/HEAD", "git/2.55.0", false},
+		{"configured-agent-refs", "/repo.git/info/refs?service=git-upload-pack", "custom-git", false},
+		{"configured-agent-upload", "/repo.git/git-upload-pack", "custom-git", false},
+		{"pip-is-not-git", "/repo.git/info/refs?service=git-upload-pack", "pip/26.2", true},
+		{"requests-is-not-git", "/repo.git/git-upload-pack", "python-requests/2.34.2", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			target, err := url.Parse("https://files.example" + test.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			hook := pipHTTPSBypassHook(pipDiscoveryResult{HTTPS: "http://gateway.example", RequestsNoProxy: "files.example:443", NoProxy: "files.example:443"})
+			_, err = hook(context.Background(), proxy.Request{URL: *target, Header: http.Header{"User-Agent": {test.agent}}})
+			if test.ambiguous {
+				if !errors.Is(err, pythonproxy.ErrAmbiguousHTTPSBypass) {
+					t.Fatalf("Requests ambiguity lost: %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("native Git request rejected: %v", err)
 			}
 		})
 	}

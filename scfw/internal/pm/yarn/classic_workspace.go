@@ -6,6 +6,7 @@
 package yarn
 
 import (
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -114,7 +115,9 @@ func classicMember(relative string, patterns []string) (member, unsupported bool
 // classicWorkspaces mirrors resolveWorkspaces: the directories the root's
 // patterns select, where a leading "!" is literal, by the name in their
 // manifest. A member needs a name and a version. members is nil where Yarn
-// fails: a malformed manifest or a duplicate name.
+// fails: a malformed manifest or a duplicate name, which includes a member
+// holding both package.json and yarn.json, since Yarn reads the same
+// manifest for each.
 func classicWorkspaces(root string, patterns []string) (members map[string]string, unsupported bool, err error) {
 	glob := newWorkspaceGlob(false)
 	members = map[string]string{}
@@ -132,7 +135,7 @@ func classicWorkspaces(root string, patterns []string) (members map[string]strin
 				}
 				seen[match] = true
 				// Yarn joins even an absolute match to the root.
-				location := filepath.Join(root, filepath.FromSlash(match))
+				location := filepath.Join(root, filepath.FromSlash(path.Dir(match)))
 				manifest, found, err := readWorkspaceManifest(location, classicManifests...)
 				if err := glob.charge(1); err != nil {
 					return nil, false, err

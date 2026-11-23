@@ -61,7 +61,9 @@ func (glob *workspaceGlob) charge(count int) error {
 }
 
 // directories returns the directories pattern selects below root, spelled as
-// the pattern spells them: relative to root, or absolute.
+// the pattern spells them: relative to root, or absolute. In Yarn Classic each
+// match is a manifest in the directory, as glob returns it, so a directory
+// holding both manifests matches twice.
 func (glob *workspaceGlob) directories(root, pattern string) ([]string, error) {
 	spelled := ""
 	if strings.HasPrefix(pattern, "/") {
@@ -195,8 +197,7 @@ func (glob *workspaceGlob) match(root, spelled string, matches *[]string) error 
 			return err
 		}
 		if err == nil && info.Mode().IsRegular() {
-			*matches = append(*matches, spelled)
-			return nil
+			*matches = append(*matches, joinSpelled(spelled, name))
 		}
 	}
 	return nil

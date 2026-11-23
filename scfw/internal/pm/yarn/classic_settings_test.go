@@ -366,6 +366,11 @@ func TestClassicWorkspaceResolution(t *testing.T) {
 			writeYarnFixture(t, filepath.Join(project, "packages", "y", "yarn.json"), "workspaces/member.json.tmpl", "y")
 			writeYarnFixture(t, filepath.Join(project, "packages", "y", ".yarnrc"), "yarnrc/rc-arg.yarnrc.tmpl", "http://y:1")
 		}, "workspace y add x", "y", nil},
+		// Yarn reads package.json for both manifests, a duplicate that fails
+		// every workspace lookup, so the command is left for Yarn to report.
+		{"a member with both manifests fails in Yarn", `["packages/*"]`, map[string]string{"packages/a": "a", "packages/d": "d"}, func(t *testing.T, project string) {
+			writeYarnFixture(t, filepath.Join(project, "packages", "d", "yarn.json"), "workspaces/member.json.tmpl", "d")
+		}, "workspace a add x", "", nil},
 		{"a duplicate name fails in Yarn", `["packages/*"]`, map[string]string{"packages/a": "a"}, func(t *testing.T, project string) {
 			writeYarnFixture(t, filepath.Join(project, "packages", "b", "package.json"), "workspaces/member.json.tmpl", "a")
 		}, "workspace a add x", "", nil},

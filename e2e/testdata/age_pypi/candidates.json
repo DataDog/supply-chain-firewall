@@ -1,0 +1,10 @@
+[
+  "typing-extensions",
+  "platformdirs",
+  "packaging",
+  "fsspec",
+  "certifi",
+  "yt-dlp",
+  "idna",
+  "tzdata"
+]

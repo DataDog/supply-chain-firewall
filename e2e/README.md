@@ -35,3 +35,8 @@ Each case uses a fresh HOME, SCFW_HOME, cache, temporary directory, working dire
 The pip baseline suite registers 20 cases: CORE-01 ALLOW and CORE-02 exact-list BLOCK (both exit-flag variants) in resolution/proxy modes; CORE-10 unset/0/true/1 proxy selection; CORE-12 pip3 and explicit executables in paths with spaces; REPORT-01 local ALLOW/BLOCK identity and Git metadata; LIFE-01 allowed/blocked proxy cleanup followed by a fresh allowed invocation. Reports are policy observations; installation is independently verified. Cleanup checks retained temporary material and observed loopback listener closure.
 
 New manager suites register `scenario` callbacks in their own files, plus discovery/revalidation functions keyed by `DiscoveryKey`. An empty discovery key supports direct informational commands. `caseRun` exposes isolated paths/environment, the pinned cell, command execution and evidence retention; it does not embed manager dependency resolution. Add scenario variants to their owning suite, retaining the scenario IDs in `testdata/scenario_ids.json`.
+
+`pypi-recent` covers LOCAL-03 public PyPI age warnings and old/disabled controls
+with real pip, Poetry and uv installs. It shares an exact discovery manifest across
+compatible Python cells and checks default/explicit thresholds, warning actions,
+and invalid-value fallback. See [the suite inventory and invocation](testdata/age_pypi/README.md).

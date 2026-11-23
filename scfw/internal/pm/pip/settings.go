@@ -119,10 +119,18 @@ func (pip Pip) settings(args []string) (pipDiscoveryResult, error) {
 	// pip 26.2 vendors Requests 2.34, which changed NO_PROXY to domain-boundary matching.
 	result.LooseNoProxy = version.LessThan(pm.Version{Major: 26, Minor: 2})
 	explicit, hasProxy := values["proxy"]
-	trustEnvironment := version.LessThan(pm.Version{Major: 26, Minor: 2}) || (!hasProxy && !pipBoolean(values["no-proxy-env"]))
+	// pip 24.1 stopped consulting Requests environment settings when a nonempty
+	// explicit proxy is configured. Empty proxies and --no-proxy-env only gained
+	// their environment-disabling semantics in 26.2.
+	trustEnvironment := explicit == "" || version.LessThan(pm.Version{Major: 24, Minor: 1})
+	if !version.LessThan(pm.Version{Major: 26, Minor: 2}) {
+		trustEnvironment = !hasProxy && !pipBoolean(values["no-proxy-env"])
+	}
 	result.HTTP, result.HTTPS = explicit, explicit
 	result.FallbackHTTP, result.FallbackHTTPS = explicit, explicit
-	if trustEnvironment {
+	// Since pip 22.1, explicit proxies are passed as request arguments and win
+	// over environment routing even while environment CA bundles remain active.
+	if trustEnvironment && (explicit == "" || version.LessThan(pm.Version{Major: 22, Minor: 1})) {
 		discovery, err := pipProxies(readSystemProxies)
 		if err != nil {
 			return pipDiscoveryResult{}, err
@@ -144,6 +152,8 @@ func (pip Pip) settings(args []string) (pipDiscoveryResult, error) {
 		if result.RequestsNoProxy == "" {
 			result.RequestsNoProxy = os.Getenv("NO_PROXY")
 		}
+	}
+	if trustEnvironment {
 		if value := os.Getenv("REQUESTS_CA_BUNDLE"); value != "" {
 			result.Cert = value
 		} else if value := os.Getenv("CURL_CA_BUNDLE"); value != "" {

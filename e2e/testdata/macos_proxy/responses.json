@@ -1,0 +1,26 @@
+{
+  "pip-wheel-denied": {
+    "output": "ERROR: 403 Client Error: Forbidden for url: https://files.pythonhosted.org/packages/fixture.whl\n",
+    "denied": true
+  },
+  "poetry-wheel-denied-with-integrity": {
+    "output": "  403 Client Error: Forbidden for url: https://files.pythonhosted.org/packages/fixture.whl#sha256=abcdef\n",
+    "denied": true
+  },
+  "metadata-denied-is-not-wheel-denial": {
+    "output": "ERROR: 403 Client Error: Forbidden for url: https://files.pythonhosted.org/packages/fixture.whl.metadata\n",
+    "denied": false
+  },
+  "different-artifact-denied": {
+    "output": "403 Client Error: Forbidden for url: https://files.pythonhosted.org/packages/other.whl\n",
+    "denied": false
+  },
+  "policy-without-manager-denial": {
+    "output": "Policy evaluation outcome: BLOCK\n",
+    "denied": false
+  },
+  "pip-wheel-denied-with-install-context": {
+    "output": "ERROR: Could not install requirement fixture because of HTTP error 403 Client Error: Forbidden for url: https://files.pythonhosted.org/packages/fixture.whl for URL https://files.pythonhosted.org/packages/fixture.whl\n",
+    "denied": true
+  }
+}

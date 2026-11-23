@@ -6,9 +6,11 @@
 package yarn
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -171,12 +173,77 @@ func TestClassicUpstreamNoProxyOnlyForEnvironment(t *testing.T) {
 func TestClassicUpstreamHonorsCwdOption(t *testing.T) {
 	root := isolateYarnEnvironment(t)
 	writeYarnFixture(t, filepath.Join(root, "parent", "project", "pkg", ".yarnrc"), "yarnrc/https-proxy.yarnrc.tmpl", "http://pkg:1")
-	// Yarn Classic accepts --cwd anywhere before "--".
-	for _, command := range [][]string{{"--cwd", "pkg", "add", "x"}, {"add", "x", "--cwd", "pkg"}, {"add", "x", "--cwd=pkg"}} {
-		config, err := fakeYarn(t, "1.22.22").UpstreamProxy(command)
-		if err != nil || config.HTTPSProxy != "http://pkg:1" {
-			t.Fatalf("%q: HTTPSProxy = %q (error %v)", command, config.HTTPSProxy, err)
+	// Yarn Classic accepts --cwd anywhere among the arguments it parses itself;
+	// create hands the arguments after its package to that package.
+	for command, want := range map[string]string{
+		"--cwd pkg add x": "http://pkg:1", "add x --cwd pkg": "http://pkg:1", "add x --cwd=pkg": "http://pkg:1",
+		"create foo --cwd pkg": "", "create foo --cwd pkg -- y": "http://pkg:1",
+	} {
+		config, err := fakeYarn(t, "1.22.22").UpstreamProxy(strings.Fields(command))
+		if err != nil || config.HTTPSProxy != want {
+			t.Fatalf("%q: HTTPSProxy = %q (error %v), want %q", command, config.HTTPSProxy, err, want)
 		}
+	}
+}
+
+// Yarn reads rc-args from the first exact --cwd, following an rc-arg --cwd,
+// and its other configuration from the project root of the last --cwd.
+func TestClassicCwdSelectsConfiguration(t *testing.T) {
+	type file struct{ dir, name, fixture, value string }
+	for _, test := range []struct {
+		name    string
+		files   []file
+		command string
+		want    string
+		fails   bool
+	}{
+		{"rc-args come from the first --cwd", []file{
+			{"one", ".yarnrc", "yarnrc/rc-arg.yarnrc.tmpl", "http://one:1"}, {"two", ".yarnrc", "yarnrc/https-proxy.yarnrc.tmpl", "http://two:1"},
+		}, "--cwd one --cwd two add x", "http://one:1", false},
+		{"the = form does not choose the rc-args", []file{
+			{"one", ".yarnrc", "yarnrc/rc-arg.yarnrc.tmpl", "http://one:1"}, {"two", ".yarnrc", "yarnrc/https-proxy.yarnrc.tmpl", "http://two:1"},
+		}, "--cwd=one --cwd two add x", "http://two:1", false},
+		{"the last --cwd chooses the configuration files", []file{
+			{"one", ".yarnrc", "yarnrc/https-proxy.yarnrc.tmpl", "http://one:1"}, {"two", ".yarnrc", "yarnrc/https-proxy.yarnrc.tmpl", "http://two:1"},
+		}, "--cwd one add x --cwd=two", "http://two:1", false},
+		{"an rc-arg --cwd moves Yarn", []file{
+			{".", ".yarnrc", "yarnrc/rc-arg-cwd.yarnrc.tmpl", "two"}, {"two", ".yarnrc", "yarnrc/https-proxy.yarnrc.tmpl", "http://two:1"},
+		}, "add x", "http://two:1", false},
+		{"a command-line --cwd beats an rc-arg --cwd", []file{
+			{".", ".yarnrc", "yarnrc/rc-arg-cwd.yarnrc.tmpl", "two"}, {"two", ".yarnrc", "yarnrc/https-proxy.yarnrc.tmpl", "http://two:1"},
+		}, "add x --cwd=.", "", false},
+		{"recursive rc-arg --cwd fails", []file{
+			{"one", ".yarnrc", "yarnrc/rc-arg-cwd.yarnrc.tmpl", "../two"}, {"two", ".yarnrc", "yarnrc/rc-arg-cwd.yarnrc.tmpl", "../one"},
+		}, "--cwd one add x", "", true},
+		{"a folder without package.json is not the project", []file{
+			{".", "package.json", "workspaces/empty.json", ""}, {"sub", ".yarnrc", "yarnrc/https-proxy.yarnrc.tmpl", "http://sub:1"},
+		}, "--cwd sub add x", "", false},
+		{"--use-yarnrc adds the highest file", []file{
+			{".", ".yarnrc", "yarnrc/https-proxy.yarnrc.tmpl", "http://project:1"}, {"..", "extra", "yarnrc/https-proxy.yarnrc.tmpl", "http://extra:1"},
+		}, "--use-yarnrc ../extra add x", "http://extra:1", false},
+		{"--use-yarnrc rc-args apply", []file{{"..", "extra", "yarnrc/rc-arg.yarnrc.tmpl", "http://extra:1"}},
+			"add x --use-yarnrc ../extra", "http://extra:1", false},
+		{"--no-default-rc drops the default files", []file{
+			{".", ".yarnrc", "yarnrc/https-proxy.yarnrc.tmpl", "http://project:1"}, {"../../home", ".yarnrc", "yarnrc/rc-arg.yarnrc.tmpl", "http://home:1"},
+		}, "--no-default-rc add x", "", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := isolateYarnEnvironment(t)
+			project := filepath.Join(root, "parent", "project")
+			for _, file := range test.files {
+				writeYarnFixture(t, filepath.Join(project, file.dir, file.name), file.fixture, file.value)
+			}
+			config, err := fakeYarn(t, "1.22.22").UpstreamProxy(strings.Fields(test.command))
+			if test.fails {
+				if err == nil {
+					t.Fatal("want an error")
+				}
+				return
+			}
+			if err != nil || config.HTTPSProxy != test.want {
+				t.Fatalf("HTTPSProxy = %q (error %v), want %q", config.HTTPSProxy, err, test.want)
+			}
+		})
 	}
 }
 
@@ -224,6 +291,120 @@ func TestClassicWorkspaceDiscoversFromTheWorkspace(t *testing.T) {
 				t.Fatalf("HTTPSProxy = %q (error %v), want %q", config.HTTPSProxy, err, test.want)
 			}
 		})
+	}
+}
+
+// writeWorkspaceMembers writes each member's package.json and a .yarnrc whose
+// proxy names it, so the proxy read back names the workspace Yarn runs in.
+func writeWorkspaceMembers(t *testing.T, project string, members map[string]string) {
+	t.Helper()
+	for dir, name := range members {
+		writeYarnFixture(t, filepath.Join(project, dir, "package.json"), "workspaces/member.json.tmpl", name)
+		writeYarnFixture(t, filepath.Join(project, dir, ".yarnrc"), "yarnrc/https-proxy.yarnrc.tmpl", "http://"+name+":1")
+	}
+}
+
+// Yarn Classic finds the workspace root, its members, and their names with
+// its own glob and micromatch rules.
+func TestClassicWorkspaceResolution(t *testing.T) {
+	insensitive := runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+	for _, test := range []struct {
+		name, patterns string
+		members        map[string]string
+		setup          func(t *testing.T, project string)
+		command        string
+		// want names the workspace whose configuration is used.
+		want string
+		err  error
+	}{
+		{"a nohoist-only manifest is skipped", `["packages/*"]`, map[string]string{"packages/a": "a"},
+			func(t *testing.T, project string) {
+				writeYarnFixture(t, filepath.Join(project, "packages", "nh", "package.json"), "workspaces/nohoist.json")
+			}, "--cwd packages/nh workspace a add x", "a", nil},
+		{"a project outside the patterns has no root", `["packages/*"]`, map[string]string{"packages/a": "a", "other": "other"},
+			nil, "--cwd other workspace a add x", "other", nil},
+		{"a project is a member", `["packages/*"]`, map[string]string{"packages/a": "a", "packages/c": "c"},
+			nil, "--cwd packages/c workspace a add x", "a", nil},
+		{"a negated pattern excludes the project", `["packages/*", "!packages/c"]`, map[string]string{"packages/a": "a", "packages/c": "c"},
+			nil, "--cwd packages/c workspace a add x", "c", nil},
+		{"a root without private is refused", `["packages/*"]`, map[string]string{"packages/a": "a"},
+			func(t *testing.T, project string) {
+				writeYarnFixture(t, filepath.Join(project, "package.json"), "workspaces/root-not-private.json.tmpl", `["packages/*"]`)
+			}, "workspace a add x", "", nil},
+		{"a leading ! is literal in the members glob", `["packages/*", "!packages/a"]`, map[string]string{"packages/a": "a"},
+			nil, "workspace a add x", "a", nil},
+		{"braces expand", `["{apps,libs}/*"]`, map[string]string{"libs/b": "b"}, nil, "workspace b add x", "b", nil},
+		{"a negated class excludes", `["packages/[!x]"]`, map[string]string{"packages/b": "b", "packages/x": "x"},
+			nil, "workspace x add x", "", nil},
+		{"a negated class includes", `["packages/[!x]"]`, map[string]string{"packages/b": "b"}, nil, "workspace b add x", "b", nil},
+		{"wildcards skip dot directories", `["packages/*"]`, map[string]string{"packages/.h": "h"}, nil, "workspace h add x", "", nil},
+		{"a dot pattern matches dot directories", `["packages/.*"]`, map[string]string{"packages/.h": "h"}, nil, "workspace h add x", "h", nil},
+		{"a leading ./ and repeated slashes", `["./packages//*/"]`, map[string]string{"packages/b": "b"}, nil, "workspace b add x", "b", nil},
+		{"a symlinked directory matches", `["packages/*"]`, nil, func(t *testing.T, project string) {
+			writeWorkspaceMembers(t, filepath.Dir(project), map[string]string{"linked": "l"})
+			if err := os.MkdirAll(filepath.Join(project, "packages"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(filepath.Join(filepath.Dir(project), "linked"), filepath.Join(project, "packages", "link")); err != nil {
+				t.Skip(err)
+			}
+		}, "workspace l add x", "l", nil},
+		{"wildcard segments are case-sensitive", `["packages/B*"]`, map[string]string{"packages/b": "b"}, nil, "workspace b add x", "", nil},
+		{"literal segments compare as the filesystem does", `["Packages/*"]`, map[string]string{"packages/b": "b"},
+			nil, "workspace b add x", map[bool]string{true: "b"}[insensitive], nil},
+		{"globstar does not reach node_modules", `["packages/**"]`, map[string]string{"packages/node_modules/n": "n"},
+			nil, "workspace n add x", "", nil},
+		{"a wildcard matches node_modules", `["packages/*"]`, map[string]string{"packages/node_modules": "nm"},
+			nil, "workspace nm add x", "nm", nil},
+		{"a member needs a version", `["packages/*"]`, nil, func(t *testing.T, project string) {
+			writeYarnFixture(t, filepath.Join(project, "packages", "v", "package.json"), "workspaces/member-without-version.json.tmpl", "v")
+			writeYarnFixture(t, filepath.Join(project, "packages", "v", ".yarnrc"), "yarnrc/https-proxy.yarnrc.tmpl", "http://v:1")
+		}, "workspace v add x", "", nil},
+		{"a duplicate name fails in Yarn", `["packages/*"]`, map[string]string{"packages/a": "a"}, func(t *testing.T, project string) {
+			writeYarnFixture(t, filepath.Join(project, "packages", "b", "package.json"), "workspaces/member.json.tmpl", "a")
+		}, "workspace a add x", "", nil},
+		{"nested workspace commands", `["packages/*"]`, map[string]string{"packages/a": "a", "packages/b": "b"},
+			nil, "workspace a workspace b add x", "b", nil},
+		{"an unknown name with patterns SCFW cannot evaluate fails", `["packages/+(a|b)"]`, map[string]string{"packages/a": "a"},
+			nil, "workspace a add x", "", errors.New("brace ranges")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := isolateYarnEnvironment(t)
+			project := filepath.Join(root, "parent", "project")
+			writeYarnFixture(t, filepath.Join(project, "package.json"), "workspaces/root.json.tmpl", test.patterns)
+			writeWorkspaceMembers(t, project, test.members)
+			if test.setup != nil {
+				test.setup(t, project)
+			}
+			config, err := fakeYarn(t, "1.22.22").UpstreamProxy(strings.Fields(test.command))
+			if test.err != nil {
+				if err == nil || !strings.Contains(err.Error(), test.err.Error()) {
+					t.Fatalf("error = %v, want %v", err, test.err)
+				}
+				return
+			}
+			want := ""
+			if test.want != "" {
+				want = "http://" + test.want + ":1"
+			}
+			if err != nil || config.HTTPSProxy != want {
+				t.Fatalf("HTTPSProxy = %q (error %v), want %q", config.HTTPSProxy, err, want)
+			}
+		})
+	}
+}
+
+// The walk is bounded, and a project beyond the bound fails closed.
+func TestClassicWorkspaceWalkIsBounded(t *testing.T) {
+	root := isolateYarnEnvironment(t)
+	project := filepath.Join(root, "parent", "project")
+	writeYarnFixture(t, filepath.Join(project, "package.json"), "workspaces/root.json.tmpl", `["packages/**"]`)
+	writeWorkspaceMembers(t, project, map[string]string{"packages/a": "a", "packages/b": "b", "packages/c": "c"})
+	maximum := maxWorkspaceEntries
+	maxWorkspaceEntries = 5
+	t.Cleanup(func() { maxWorkspaceEntries = maximum })
+	if _, err := fakeYarn(t, "1.22.22").UpstreamProxy([]string{"workspace", "c", "add", "x"}); !errors.Is(err, errWorkspaceBound) {
+		t.Fatalf("error = %v, want the bound", err)
 	}
 }
 

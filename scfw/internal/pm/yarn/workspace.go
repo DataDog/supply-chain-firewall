@@ -19,7 +19,7 @@ import (
 
 // maxWorkspaceEntries bounds the directory entries and lookups one workspace
 // resolution inspects; the patterns come from the project's manifests.
-const maxWorkspaceEntries = 100000
+var maxWorkspaceEntries = 100000
 
 var errWorkspaceBound = errors.New("yarn workspace patterns cover more directories than SCFW inspects; run the command from the workspace directory instead")
 

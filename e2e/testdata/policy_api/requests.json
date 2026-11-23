@@ -1,0 +1,762 @@
+{
+  "valid": [
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/policy/evaluate",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-policy-evaluate-request",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "attributes": {
+            "packages": [
+              {
+                "ecosystem": "PyPI",
+                "package_name": "idna",
+                "package_version": "1.0",
+                "package_source": "https://files.pythonhosted.org/idna.whl",
+                "publish_date": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "is_interactive": false
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/report",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-report-request",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "attributes": {
+            "cwd": "/work",
+            "executable": "/pip",
+            "hostname": "FIXTURE_HOSTNAME",
+            "install_timestamp": "2026-01-10T00:00:00Z",
+            "package_manager": "pip",
+            "command": "pip install idna==1.0",
+            "repository": "https://example.invalid/scfw-e2e.git",
+            "outcome": "BLOCK",
+            "reports": [
+              {
+                "ecosystem": "PyPI",
+                "package": "idna",
+                "version": "1.0",
+                "package_artifact_source": "https://files.pythonhosted.org/idna.whl",
+                "warning": false,
+                "failures": [],
+                "matched_policies": [
+                  {
+                    "type": "org",
+                    "rule": "e2e-exact-version",
+                    "outcome": "BLOCK"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "source": [
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/policy/evaluate",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-policy-evaluate-request",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "attributes": {
+            "packages": [
+              {
+                "ecosystem": "PyPI",
+                "package_name": "idna",
+                "package_version": "1.0",
+                "package_source": "https://wrong.invalid/idna.whl",
+                "publish_date": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "is_interactive": false
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/report",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-report-request",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "attributes": {
+            "cwd": "/work",
+            "executable": "/pip",
+            "hostname": "FIXTURE_HOSTNAME",
+            "install_timestamp": "2026-01-10T00:00:00Z",
+            "package_manager": "pip",
+            "command": "pip install idna==1.0",
+            "repository": "https://example.invalid/scfw-e2e.git",
+            "outcome": "BLOCK",
+            "reports": [
+              {
+                "ecosystem": "PyPI",
+                "package": "idna",
+                "version": "1.0",
+                "package_artifact_source": "https://files.pythonhosted.org/idna.whl",
+                "warning": false,
+                "failures": [],
+                "matched_policies": [
+                  {
+                    "type": "org",
+                    "rule": "e2e-exact-version",
+                    "outcome": "BLOCK"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "interactive": [
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/policy/evaluate",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-policy-evaluate-request",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "attributes": {
+            "packages": [
+              {
+                "ecosystem": "PyPI",
+                "package_name": "idna",
+                "package_version": "1.0",
+                "package_source": "https://files.pythonhosted.org/idna.whl",
+                "publish_date": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "is_interactive": true
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/report",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-report-request",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "attributes": {
+            "cwd": "/work",
+            "executable": "/pip",
+            "hostname": "FIXTURE_HOSTNAME",
+            "install_timestamp": "2026-01-10T00:00:00Z",
+            "package_manager": "pip",
+            "command": "pip install idna==1.0",
+            "repository": "https://example.invalid/scfw-e2e.git",
+            "outcome": "BLOCK",
+            "reports": [
+              {
+                "ecosystem": "PyPI",
+                "package": "idna",
+                "version": "1.0",
+                "package_artifact_source": "https://files.pythonhosted.org/idna.whl",
+                "warning": false,
+                "failures": [],
+                "matched_policies": [
+                  {
+                    "type": "org",
+                    "rule": "e2e-exact-version",
+                    "outcome": "BLOCK"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "credentials": [
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/policy/evaluate",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": false,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-policy-evaluate-request",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "attributes": {
+            "packages": [
+              {
+                "ecosystem": "PyPI",
+                "package_name": "idna",
+                "package_version": "1.0",
+                "package_source": "https://files.pythonhosted.org/idna.whl",
+                "publish_date": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "is_interactive": false
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/report",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-report-request",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "attributes": {
+            "cwd": "/work",
+            "executable": "/pip",
+            "hostname": "FIXTURE_HOSTNAME",
+            "install_timestamp": "2026-01-10T00:00:00Z",
+            "package_manager": "pip",
+            "command": "pip install idna==1.0",
+            "repository": "https://example.invalid/scfw-e2e.git",
+            "outcome": "BLOCK",
+            "reports": [
+              {
+                "ecosystem": "PyPI",
+                "package": "idna",
+                "version": "1.0",
+                "package_artifact_source": "https://files.pythonhosted.org/idna.whl",
+                "warning": false,
+                "failures": [],
+                "matched_policies": [
+                  {
+                    "type": "org",
+                    "rule": "e2e-exact-version",
+                    "outcome": "BLOCK"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "timestamp": [
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/policy/evaluate",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-policy-evaluate-request",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "attributes": {
+            "packages": [
+              {
+                "ecosystem": "PyPI",
+                "package_name": "idna",
+                "package_version": "1.0",
+                "package_source": "https://files.pythonhosted.org/idna.whl",
+                "publish_date": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "is_interactive": false
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/report",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-report-request",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "attributes": {
+            "cwd": "/work",
+            "executable": "/pip",
+            "hostname": "FIXTURE_HOSTNAME",
+            "install_timestamp": "2025-01-01T00:00:00Z",
+            "package_manager": "pip",
+            "command": "pip install idna==1.0",
+            "repository": "https://example.invalid/scfw-e2e.git",
+            "outcome": "BLOCK",
+            "reports": [
+              {
+                "ecosystem": "PyPI",
+                "package": "idna",
+                "version": "1.0",
+                "package_artifact_source": "https://files.pythonhosted.org/idna.whl",
+                "warning": false,
+                "failures": [],
+                "matched_policies": [
+                  {
+                    "type": "org",
+                    "rule": "e2e-exact-version",
+                    "outcome": "BLOCK"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "repository": [
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/policy/evaluate",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-policy-evaluate-request",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "attributes": {
+            "packages": [
+              {
+                "ecosystem": "PyPI",
+                "package_name": "idna",
+                "package_version": "1.0",
+                "package_source": "https://files.pythonhosted.org/idna.whl",
+                "publish_date": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "is_interactive": false
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/report",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-report-request",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "attributes": {
+            "cwd": "/work",
+            "executable": "/pip",
+            "hostname": "FIXTURE_HOSTNAME",
+            "install_timestamp": "2026-01-10T00:00:00Z",
+            "package_manager": "pip",
+            "command": "pip install idna==1.0",
+            "repository": "https://user:password@example.invalid/scfw-e2e.git",
+            "outcome": "BLOCK",
+            "reports": [
+              {
+                "ecosystem": "PyPI",
+                "package": "idna",
+                "version": "1.0",
+                "package_artifact_source": "https://files.pythonhosted.org/idna.whl",
+                "warning": false,
+                "failures": [],
+                "matched_policies": [
+                  {
+                    "type": "org",
+                    "rule": "e2e-exact-version",
+                    "outcome": "BLOCK"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "outcome": [
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/policy/evaluate",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-policy-evaluate-request",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "attributes": {
+            "packages": [
+              {
+                "ecosystem": "PyPI",
+                "package_name": "idna",
+                "package_version": "1.0",
+                "package_source": "https://files.pythonhosted.org/idna.whl",
+                "publish_date": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "is_interactive": false
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/report",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-report-request",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "attributes": {
+            "cwd": "/work",
+            "executable": "/pip",
+            "hostname": "FIXTURE_HOSTNAME",
+            "install_timestamp": "2026-01-10T00:00:00Z",
+            "package_manager": "pip",
+            "command": "pip install idna==1.0",
+            "repository": "https://example.invalid/scfw-e2e.git",
+            "outcome": "ALLOW",
+            "reports": [
+              {
+                "ecosystem": "PyPI",
+                "package": "idna",
+                "version": "1.0",
+                "package_artifact_source": "https://files.pythonhosted.org/idna.whl",
+                "warning": false,
+                "failures": [],
+                "matched_policies": [
+                  {
+                    "type": "org",
+                    "rule": "e2e-exact-version",
+                    "outcome": "BLOCK"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "request-id": [
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/policy/evaluate",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-policy-evaluate-request",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "attributes": {
+            "packages": [
+              {
+                "ecosystem": "PyPI",
+                "package_name": "idna",
+                "package_version": "1.0",
+                "package_source": "https://files.pythonhosted.org/idna.whl",
+                "publish_date": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "is_interactive": false
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/report",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-report-request",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "attributes": {
+            "cwd": "/work",
+            "executable": "/pip",
+            "hostname": "FIXTURE_HOSTNAME",
+            "install_timestamp": "2026-01-10T00:00:00Z",
+            "package_manager": "pip",
+            "command": "pip install idna==1.0",
+            "repository": "https://example.invalid/scfw-e2e.git",
+            "outcome": "BLOCK",
+            "reports": [
+              {
+                "ecosystem": "PyPI",
+                "package": "idna",
+                "version": "1.0",
+                "package_artifact_source": "https://files.pythonhosted.org/idna.whl",
+                "warning": false,
+                "failures": [],
+                "matched_policies": [
+                  {
+                    "type": "org",
+                    "rule": "e2e-exact-version",
+                    "outcome": "BLOCK"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "missing-report": [
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/policy/evaluate",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-policy-evaluate-request",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "attributes": {
+            "packages": [
+              {
+                "ecosystem": "PyPI",
+                "package_name": "idna",
+                "package_version": "1.0",
+                "package_source": "https://files.pythonhosted.org/idna.whl",
+                "publish_date": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "is_interactive": false
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "policy": [
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/policy/evaluate",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-policy-evaluate-request",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "attributes": {
+            "packages": [
+              {
+                "ecosystem": "PyPI",
+                "package_name": "idna",
+                "package_version": "1.0",
+                "package_source": "https://files.pythonhosted.org/idna.whl",
+                "publish_date": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "is_interactive": false
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/report",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-report-request",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "attributes": {
+            "cwd": "/work",
+            "executable": "/pip",
+            "hostname": "FIXTURE_HOSTNAME",
+            "install_timestamp": "2026-01-10T00:00:00Z",
+            "package_manager": "pip",
+            "command": "pip install idna==1.0",
+            "repository": "https://example.invalid/scfw-e2e.git",
+            "outcome": "BLOCK",
+            "reports": [
+              {
+                "ecosystem": "PyPI",
+                "package": "idna",
+                "version": "1.0",
+                "package_artifact_source": "https://files.pythonhosted.org/idna.whl",
+                "warning": false,
+                "failures": [],
+                "matched_policies": [
+                  {
+                    "type": "org",
+                    "rule": "other",
+                    "outcome": "BLOCK"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "publication": [
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/policy/evaluate",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-policy-evaluate-request",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "attributes": {
+            "packages": [
+              {
+                "ecosystem": "PyPI",
+                "package_name": "idna",
+                "package_version": "1.0",
+                "package_source": "https://files.pythonhosted.org/idna.whl",
+                "publish_date": "2026-01-02T00:00:00Z"
+              }
+            ],
+            "is_interactive": false
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "path": "/api/v2/static-analysis-sca/scfw/report",
+      "method": "POST",
+      "host": "api.scfw.test",
+      "content_type": "application/json",
+      "authenticated": true,
+      "tls": true,
+      "at": "2026-01-10T00:00:01Z",
+      "request": {
+        "data": {
+          "type": "scfw-report-request",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "attributes": {
+            "cwd": "/work",
+            "executable": "/pip",
+            "hostname": "FIXTURE_HOSTNAME",
+            "install_timestamp": "2026-01-10T00:00:00Z",
+            "package_manager": "pip",
+            "command": "pip install idna==1.0",
+            "repository": "https://example.invalid/scfw-e2e.git",
+            "outcome": "BLOCK",
+            "reports": [
+              {
+                "ecosystem": "PyPI",
+                "package": "idna",
+                "version": "1.0",
+                "package_artifact_source": "https://files.pythonhosted.org/idna.whl",
+                "warning": false,
+                "failures": [],
+                "matched_policies": [
+                  {
+                    "type": "org",
+                    "rule": "e2e-exact-version",
+                    "outcome": "BLOCK"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "response": {}
+    }
+  ]
+}

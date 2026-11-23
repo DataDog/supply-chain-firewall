@@ -1,0 +1,46 @@
+{
+  "ALLOW": {
+    "data": {
+      "attributes": {
+        "outcome": "ALLOW",
+        "results": [
+          {
+            "ecosystem": {{printf "%q" .Ecosystem}},
+            "package_name": {{printf "%q" .Project}},
+            "package_version": {{printf "%q" .Version}},
+            "outcome": "ALLOW",
+            "matched_policy": [
+              {
+                "type": "org",
+                "rule": "e2e-exact-version",
+                "outcome": "ALLOW"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "BLOCK": {
+    "data": {
+      "attributes": {
+        "outcome": "BLOCK",
+        "results": [
+          {
+            "ecosystem": {{printf "%q" .Ecosystem}},
+            "package_name": {{printf "%q" .Project}},
+            "package_version": {{printf "%q" .Version}},
+            "outcome": "BLOCK",
+            "matched_policy": [
+              {
+                "type": "org",
+                "rule": "e2e-exact-version",
+                "outcome": "BLOCK"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

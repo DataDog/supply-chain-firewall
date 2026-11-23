@@ -1,0 +1,10 @@
+[req]
+distinguished_name = dn
+prompt = no
+[dn]
+CN = api.scfw.test
+[server]
+basicConstraints = critical,CA:false
+keyUsage = critical,digitalSignature,keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = DNS:api.scfw.test

@@ -1,0 +1,11 @@
+[req]
+distinguished_name = dn
+x509_extensions = ca
+prompt = no
+[dn]
+CN = SCFW disposable policy fixture
+[ca]
+basicConstraints = critical,CA:true
+keyUsage = critical,keyCertSign,cRLSign
+nameConstraints = critical,permitted;DNS:api.scfw.test
+subjectKeyIdentifier = hash

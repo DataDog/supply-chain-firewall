@@ -549,10 +549,13 @@ func TestYarnGitHubArchiveDependencies(t *testing.T) {
 					outcome = evaluation.OutcomeBlock
 				}
 				// Yarn 4 resolves the pinned commit with `git ls-remote`, which
-				// follows the https_proxy this invocation sets and trusts the
-				// interception certificate through GIT_SSL_CAINFO; whichever of
-				// this PR and #373 lands second must switch to #373's form
-				// (http.proxy = the chained upstream, sslCAInfo = the origin CA).
+				// SCFW's Git client forwards with the user's Git settings, so the
+				// chain and the origin's CA are configured as Git settings.
+				t.Setenv("GIT_CONFIG_COUNT", "2")
+				t.Setenv("GIT_CONFIG_KEY_0", "http.proxy")
+				t.Setenv("GIT_CONFIG_VALUE_0", tunnel)
+				t.Setenv("GIT_CONFIG_KEY_1", "http.sslCAInfo")
+				t.Setenv("GIT_CONFIG_VALUE_1", origin.registry.CAPath)
 				run := runYarnThroughProxy(t, executable, yarnAddDependency(generation.name, origin.ref), outcome)
 				if test.failed {
 					assertYarnFailed(t, run)

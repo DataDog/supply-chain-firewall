@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
@@ -46,9 +45,8 @@ func findPoetryDirectoryFlag(command []string) (start, end int, value string, ok
 	return 0, 0, "", false
 }
 
-// resolvePoetryProjectDir locates the project directory referenced by a
-// poetry command, via its --directory/-C flag if present, falling back to
-// the current working directory.
+// resolvePoetryProjectDir returns the working directory selected by --directory/-C,
+// falling back to the current working directory. --project/-P does not change it.
 func resolvePoetryProjectDir(command []string) (string, error) {
 	if _, _, value, ok := findPoetryDirectoryFlag(command); ok {
 		return value, nil
@@ -56,18 +54,35 @@ func resolvePoetryProjectDir(command []string) (string, error) {
 	return os.Getwd()
 }
 
-// stripPoetryDirectoryFlag removes any --directory/-C flag and its argument
-// from command, so it can be safely re-run in a different project directory
-// via exec.Cmd.Dir.
-func stripPoetryDirectoryFlag(command []string) []string {
-	start, end, _, ok := findPoetryDirectoryFlag(command)
-	if !ok {
-		return slices.Clone(command)
+// temporaryPoetryProjectArgs selects the private copy without changing Poetry's
+// working directory or relative command arguments. Original arguments are left
+// untouched for final execution after policy approval.
+func temporaryPoetryProjectArgs(command []string, directory string) []string {
+	own := poetryOwnArguments(command)
+	args := []string{"--project", directory}
+	for i := 0; i < len(command); i++ {
+		if i >= len(own) {
+			return append(args, command[i:]...)
+		}
+		arg := command[i]
+		switch {
+		case arg == "--directory" || arg == "-C":
+			args = append(args, arg)
+			if i+1 < len(command) {
+				i++
+				args = append(args, command[i])
+			}
+		case arg == "--project" || arg == "-P":
+			if i+1 < len(command) {
+				i++
+			}
+		case strings.HasPrefix(arg, "--project=") || strings.HasPrefix(arg, "-P"):
+			continue
+		default:
+			args = append(args, arg)
+		}
 	}
-	stripped := make([]string, 0, len(command)-(end-start))
-	stripped = append(stripped, command[:start]...)
-	stripped = append(stripped, command[end:]...)
-	return stripped
+	return args
 }
 
 // poetryTempProject prepares a temporary copy of a Poetry project's
@@ -199,8 +214,8 @@ func parsePoetryLockFile(lockPath string) (map[poetryPackageKey]string, error) {
 // getPoetrySourceMap returns a (name, version) source mapping for the
 // project referenced by command, run via executable.
 //
-// Locates the project directory via the --directory/-C flag in command,
-// falling back to the current working directory. If a poetry.lock already
+// Locates the selected project using --directory/-C and --project/-P,
+// including containing projects. If a poetry.lock already
 // exists there, it is parsed directly; otherwise one is generated from
 // scratch in a temporary copy of the project, which is never itself
 // modified.
@@ -208,7 +223,7 @@ func parsePoetryLockFile(lockPath string) (map[poetryPackageKey]string, error) {
 // Returns a nil map (and logs a warning) on any failure, so callers can
 // degrade gracefully to returning packages without source information.
 func getPoetrySourceMap(ctx context.Context, executable string, command []string) map[poetryPackageKey]string {
-	projectDir, err := resolvePoetryProjectDir(command)
+	projectDir, err := poetryProjectRoot(command)
 	if err != nil {
 		slog.Warn("could not determine package sources from poetry.lock", "error", err)
 		return nil
@@ -232,8 +247,11 @@ func getPoetrySourceMap(ctx context.Context, executable string, command []string
 	defer temp.cleanup(ctx, executable)
 
 	slog.Warn("no poetry.lock found; generating one in a temporary directory (this may be slow)")
-	lockCmd := exec.CommandContext(ctx, executable, "lock")
-	lockCmd.Dir = temp.dir
+	lockCmd := exec.CommandContext(ctx, executable, "--project", temp.dir, "lock")
+	lockCmd.Dir, err = resolvePoetryProjectDir(command)
+	if err != nil {
+		return nil
+	}
 	if output, err := lockCmd.CombinedOutput(); err != nil {
 		slog.Warn("failed to generate poetry.lock in temporary directory", "error", err, "output", string(output))
 	}
@@ -256,7 +274,7 @@ func getPoetrySourceMap(ctx context.Context, executable string, command []string
 // modified. A project with no existing lock has nothing to diff against, so
 // old is empty.
 func (poetry Poetry) regenerateLock(ctx context.Context, command []string) (old, updated map[poetryPackageKey]string, err error) {
-	projectDir, err := resolvePoetryProjectDir(command)
+	projectDir, err := poetryProjectRoot(command)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -276,9 +294,8 @@ func (poetry Poetry) regenerateLock(ctx context.Context, command []string) (old,
 		}
 	}
 
-	lockArgs := append(stripPoetryDirectoryFlag(command), "--lock")
+	lockArgs := append(temporaryPoetryProjectArgs(command, temp.dir), "--lock")
 	lockCmd := exec.CommandContext(ctx, poetry.Executable(), lockArgs...)
-	lockCmd.Dir = temp.dir
 	if _, err := lockCmd.CombinedOutput(); err != nil {
 		return nil, nil, err
 	}

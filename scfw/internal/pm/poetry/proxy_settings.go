@@ -52,6 +52,7 @@ type poetryProxySettings struct {
 	ambiguousIdentities map[int]bool
 	identityWarning     sync.Once
 	redirectWarning     sync.Once
+	bypassWarning       sync.Once
 	git                 *poetryGitSettings
 	modernPaths         bool
 	mutex               sync.Mutex
@@ -202,7 +203,7 @@ func (s *poetryProxySettings) route(request proxy.Request) (*proxy.OutboundRoute
 }
 
 func (s *poetryProxySettings) requestsRoute(request proxy.Request) (*proxy.OutboundRoute, error) {
-	upstream, err := s.upstreamProxy(&request.URL)
+	upstream, err := s.requestsProxy(request)
 	if err != nil {
 		return nil, err
 	}
@@ -226,15 +227,7 @@ func (s *poetryProxySettings) requestsRoute(request proxy.Request) (*proxy.Outbo
 			return nil, s.identityCompatibilityError()
 		}
 		source = index
-		// Requests retains an existing scheme proxy through rebuild_proxies,
-		// even when the redirected destination is covered by NO_PROXY.
-		initialProxy, err := s.sourceProxy(index, request.URL.Scheme)
-		if err != nil {
-			return nil, err
-		}
-		if initialProxy != nil {
-			upstream = initialProxy
-		}
+
 	} else if request.ClientIdentity == "poetry-default" && request.URL.Scheme == "https" {
 		// An unconfigured-origin Requests call retains cert=None and its
 		// default verify setting across redirects into configured repositories.
@@ -297,4 +290,30 @@ func (s *poetryProxySettings) upstreamProxy(target *url.URL) (*url.URL, error) {
 		upstream = nil
 	}
 	return upstream, err
+}
+
+// requestsProxy includes the initiating source's retained proxy mapping without
+// consulting destination TLS configuration, so route ambiguity checks are scoped
+// to routing and cannot introduce failures from an unused TLS configuration.
+func (s *poetryProxySettings) requestsProxy(request proxy.Request) (*url.URL, error) {
+	upstream, err := s.upstreamProxy(&request.URL)
+	if err != nil {
+		return nil, err
+	}
+	if identity, ok := strings.CutPrefix(request.ClientIdentity, "poetry-source-"); ok {
+		index, err := strconv.Atoi(identity)
+		if err != nil || index < 0 || index >= len(s.certificates) {
+			return nil, errors.New("invalid Poetry TLS client identity")
+		}
+		// Requests retains an existing scheme proxy through rebuild_proxies,
+		// even when the redirected destination is covered by NO_PROXY.
+		initialProxy, err := s.sourceProxy(index, request.URL.Scheme)
+		if err != nil {
+			return nil, err
+		}
+		if initialProxy != nil {
+			upstream = initialProxy
+		}
+	}
+	return upstream, nil
 }

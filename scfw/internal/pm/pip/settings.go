@@ -32,6 +32,7 @@ type pipDiscoveryResult struct {
 	Cert, ClientCert                                  string
 	TrustedHosts                                      []string
 	HTTP, HTTPS, FallbackHTTP, FallbackHTTPS, NoProxy string
+	RequestsNoProxy                                   string
 	LooseNoProxy                                      bool
 	SystemProxyBypass                                 func(*url.URL) bool
 	Indexes, Direct, Links                            []string
@@ -139,6 +140,10 @@ func (pip Pip) settings(args []string) (pipDiscoveryResult, error) {
 			result.HTTPS = value
 		}
 		result.NoProxy = proxies["no"]
+		result.RequestsNoProxy = os.Getenv("no_proxy")
+		if result.RequestsNoProxy == "" {
+			result.RequestsNoProxy = os.Getenv("NO_PROXY")
+		}
 		if value := os.Getenv("REQUESTS_CA_BUNDLE"); value != "" {
 			result.Cert = value
 		} else if value := os.Getenv("CURL_CA_BUNDLE"); value != "" {

@@ -6,8 +6,10 @@
 package pip
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -16,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
 // No interpreter exists in this fixture. Discovering settings must only read
@@ -348,6 +351,79 @@ func TestRequirementsFilesAreLeftToPip(t *testing.T) {
 		// A directory cannot be parsed as a requirements file; SCFW must leave it alone.
 		if _, err := manager.settings([]string{"download", option, t.TempDir()}); err != nil {
 			t.Fatalf("%s opened its file: %v", option, err)
+		}
+	}
+}
+
+func TestDefaultHTTPSPortBypassDiagnostic(t *testing.T) {
+	for _, test := range []struct {
+		name, bypass, upstream, explicit string
+		reject                           bool
+	}{
+		{"default-port", "files.example:443", "http://gateway.example", "", true},
+		{"empty-lowercase-upper", "files.example:443", "http://gateway.example", "", true},
+		{"nondefault-port", "files.example:8443", "http://gateway.example", "", false},
+		{"IP-port-is-not-a-domain-match", "127.0.0.1:443", "http://gateway.example", "", false},
+		{"no-upstream", "files.example:443", "", "", false},
+		{"explicit-ignores-bypass", "files.example:443", "http://gateway.example", "http://explicit.example", false},
+		{"mixed-case-urllib-only", "files.example:443", "http://gateway.example", "", false},
+		{"mixed-case-urllib-covers-port", "files.example:443", "http://gateway.example", "", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manager := goDiscoveryPip(t)
+			t.Setenv("HTTPS_PROXY", test.upstream)
+			key := "NO_PROXY"
+			if test.name == "mixed-case-urllib-only" {
+				key = "No_Proxy"
+			}
+			t.Setenv(key, test.bypass)
+			if test.name == "empty-lowercase-upper" {
+				t.Setenv("no_proxy", "")
+			}
+			if test.name == "mixed-case-urllib-covers-port" {
+				t.Setenv("No_Proxy", "files.example")
+			}
+			if test.explicit != "" {
+				t.Setenv("PIP_PROXY", test.explicit)
+			}
+			settings, err := manager.settings([]string{"download", "project"})
+			if err != nil {
+				t.Fatalf("unrelated setup rejected: %v", err)
+			}
+			_, err = pipHTTPSBypassHook(settings)(context.Background(), proxy.Request{URL: url.URL{Scheme: "https", Host: "files.example"}, Header: http.Header{"User-Agent": {"pip/26.2"}}})
+			if (err != nil) != test.reject {
+				t.Fatalf("reject=%v, error=%v", test.reject, err)
+			}
+			if err != nil && !strings.Contains(err.Error(), "explicit HTTPS port 443") {
+				t.Fatalf("missing precise compatibility diagnostic: %v", err)
+			}
+		})
+	}
+}
+
+func TestDefaultHTTPSPortBypassEquivalentProxyEndpoints(t *testing.T) {
+	for _, test := range []struct {
+		explicit, environment string
+		reject                bool
+	}{
+		{"http://gateway.example", "http://gateway.example:80", false},
+		{"gateway.example", "http://GATEWAY.example:80", false},
+		{"https://gateway.example", "https://gateway.example:443", false},
+		{"http://user:one@gateway.example", "http://user:two@gateway.example:80", true},
+		{"http://gateway.example", "http://gateway.example:8080", true},
+	} {
+		manager := goDiscoveryPip(t)
+		manager.version = pm.Version{Major: 22, Patch: 4}
+		t.Setenv("PIP_PROXY", test.explicit)
+		t.Setenv("HTTPS_PROXY", test.environment)
+		t.Setenv("NO_PROXY", "files.example:443")
+		settings, err := manager.settings([]string{"download", "project"})
+		if err != nil {
+			t.Fatalf("unrelated setup rejected: %v", err)
+		}
+		_, err = pipHTTPSBypassHook(settings)(context.Background(), proxy.Request{URL: url.URL{Scheme: "https", Host: "files.example"}, Header: http.Header{"User-Agent": {"pip/26.2"}}})
+		if (err != nil) != test.reject {
+			t.Fatalf("%s versus %s reject=%v: %v", test.explicit, test.environment, test.reject, err)
 		}
 	}
 }

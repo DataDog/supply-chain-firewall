@@ -307,7 +307,7 @@ func TestRequestsProxyBypass(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := pipBypassesEnvironment(target, test.pattern, false); got != test.bypass {
+		if got := pipBypassesEnvironment(target, test.pattern, test.pattern, false); got != test.bypass {
 			t.Fatalf("bypass(%s,%s)=%v", test.target, test.pattern, got)
 		}
 	}

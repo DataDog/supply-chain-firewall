@@ -223,6 +223,8 @@ Note that, once shell aliases have been configured via `scfw configure --alias-n
 
 Set `SCFW_PROXY_ENABLED=1` to evaluate pip and Poetry packages as they are downloaded through an invocation-scoped proxy. For example, `SCFW_PROXY_ENABLED=1 scfw run -- poetry install` inspects downloads made by Poetry, including during `add`, `update`, and `lock`. Existing HTTP/HTTPS proxy URLs, native macOS proxy settings, and configured TLS trust are preserved for outbound connections.
 
+For each intercepted pip or Poetry HTTPS request, SCFW compares the effective native routes with an explicit default `:443` and an omitted port. If a `NO_PROXY` rule such as `files.example:443` selects different routes, SCFW rejects that request before forwarding it and emits a compatibility diagnostic. Their native clients distinguish an explicit default `:443` from an omitted port, but HTTPS interception receives identical CONNECT and Host values for both. SCFW cannot preserve that distinction without changing the bypass scope. Use a hostname-only bypass or a nondefault port; nondefault host/port rules remain supported. Unrelated destinations and configurations that select the same route remain supported, including redundant hostname rules and an explicit pip proxy that ignores environment routing.
+
 `scfw run` supports the following options:
 
 | Flag | Description |

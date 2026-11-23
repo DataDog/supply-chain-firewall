@@ -111,6 +111,7 @@ func TestProxyOptionsExpandsCertificatePaths(t *testing.T) {
 
 func realPip(t *testing.T) Pip {
 	t.Helper()
+	isolatePipGit(t)
 	executable, err := exec.LookPath("pip3")
 	if err != nil {
 		t.Skip("pip3 required for pip integration tests")

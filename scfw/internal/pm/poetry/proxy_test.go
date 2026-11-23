@@ -419,3 +419,37 @@ func TestPoetrySourceRoutingAcross2x(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultHTTPSPortBypassDiagnostic(t *testing.T) {
+	for _, test := range []struct {
+		name, bypass, upstream, key string
+		reject                      bool
+	}{
+		{"default-port", "files.example:443", "http://gateway.example", "NO_PROXY", true},
+		{"nondefault-port", "files.example:8443", "http://gateway.example", "NO_PROXY", false},
+		{"IP-port-is-not-a-domain-match", "127.0.0.1:443", "http://gateway.example", "NO_PROXY", false},
+		{"no-upstream", "files.example:443", "", "NO_PROXY", false},
+		{"urllib-only-port-is-ignored", "files.example:443", "http://gateway.example", "No_Proxy", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, item := range os.Environ() {
+				key, _, _ := strings.Cut(item, "=")
+				if strings.HasSuffix(strings.ToLower(key), "_proxy") {
+					t.Setenv(key, "")
+					if err := os.Unsetenv(key); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			t.Setenv("HTTPS_PROXY", test.upstream)
+			t.Setenv(test.key, test.bypass)
+			_, _, err := discoverPoetryProxies(func() (pythonproxy.Settings, error) { return pythonproxy.Settings{}, nil })
+			if (err != nil) != test.reject {
+				t.Fatalf("reject=%v, error=%v", test.reject, err)
+			}
+			if err != nil && !strings.Contains(err.Error(), "explicit HTTPS port 443") {
+				t.Fatalf("missing precise compatibility diagnostic: %v", err)
+			}
+		})
+	}
+}

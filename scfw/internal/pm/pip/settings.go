@@ -147,6 +147,11 @@ func (pip Pip) settings(args []string) (pipDiscoveryResult, error) {
 	} else if explicit == "" {
 		result.FallbackHTTP, result.FallbackHTTPS = "", ""
 	}
+	if result.HTTPS != result.FallbackHTTPS {
+		if err := pythonproxy.ValidateHTTPSBypass(result.NoProxy, result.LooseNoProxy); err != nil {
+			return pipDiscoveryResult{}, err
+		}
+	}
 	for _, target := range append(targets, strings.Fields(values["editable"])...) {
 		collectDirectURL(target, &result)
 	}

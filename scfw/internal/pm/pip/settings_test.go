@@ -351,3 +351,32 @@ func TestRequirementsFilesAreLeftToPip(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultHTTPSPortBypassDiagnostic(t *testing.T) {
+	for _, test := range []struct {
+		name, bypass, upstream, explicit string
+		reject                           bool
+	}{
+		{"default-port", "files.example:443", "http://gateway.example", "", true},
+		{"nondefault-port", "files.example:8443", "http://gateway.example", "", false},
+		{"IP-port-is-not-a-domain-match", "127.0.0.1:443", "http://gateway.example", "", false},
+		{"no-upstream", "files.example:443", "", "", false},
+		{"explicit-ignores-bypass", "files.example:443", "http://gateway.example", "http://explicit.example", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manager := goDiscoveryPip(t)
+			t.Setenv("HTTPS_PROXY", test.upstream)
+			t.Setenv("NO_PROXY", test.bypass)
+			if test.explicit != "" {
+				t.Setenv("PIP_PROXY", test.explicit)
+			}
+			_, err := manager.settings([]string{"download", "project"})
+			if (err != nil) != test.reject {
+				t.Fatalf("reject=%v, error=%v", test.reject, err)
+			}
+			if err != nil && !strings.Contains(err.Error(), "explicit HTTPS port 443") {
+				t.Fatalf("missing precise compatibility diagnostic: %v", err)
+			}
+		})
+	}
+}

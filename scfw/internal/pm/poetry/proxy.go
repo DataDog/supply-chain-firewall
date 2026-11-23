@@ -71,6 +71,11 @@ func discoverPoetryProxies(readSystem func() (pythonproxy.Settings, error)) (poe
 		config.HTTPProxy = native.Proxies["http"]
 		config.HTTPSProxy = native.Proxies["https"]
 	}
+	if config.HTTPSProxy != "" {
+		if err := pythonproxy.ValidateHTTPSBypass(config.requestsNoProxy, false); err != nil {
+			return poetryProxyConfiguration{}, native, err
+		}
+	}
 	for _, value := range []string{config.HTTPProxy, config.HTTPSProxy} {
 		if _, err := proxy.ParseUpstreamProxyURL(value); err != nil {
 			return poetryProxyConfiguration{}, native, err

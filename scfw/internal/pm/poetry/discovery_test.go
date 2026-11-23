@@ -106,7 +106,7 @@ func TestPoetrySourceIdentityRetainsExistingProxyMapping(t *testing.T) {
 	}
 	origin, _ := url.Parse("https://unconfigured.example/project.whl")
 	request := proxy.Request{URL: *origin, ClientIdentity: "poetry-default"}
-	hook, err := options.RequestHooks[0](context.Background(), request)
+	hook, err := options.RequestHooks[1](context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}

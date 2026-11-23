@@ -71,11 +71,6 @@ func discoverPoetryProxies(readSystem func() (pythonproxy.Settings, error)) (poe
 		config.HTTPProxy = native.Proxies["http"]
 		config.HTTPSProxy = native.Proxies["https"]
 	}
-	if config.HTTPSProxy != "" {
-		if err := pythonproxy.ValidateHTTPSBypass(config.requestsNoProxy, config.urllibNoProxy, false); err != nil {
-			return poetryProxyConfiguration{}, native, err
-		}
-	}
 	for _, value := range []string{config.HTTPProxy, config.HTTPSProxy} {
 		if _, err := proxy.ParseUpstreamProxyURL(value); err != nil {
 			return poetryProxyConfiguration{}, native, err
@@ -99,7 +94,7 @@ func (poetry Poetry) ProxyOptions(command []string) (proxy.Options, error) {
 		// Dulwich receives an authentication challenge. Its configuration and
 		// trust must never depend on which client first requested a URL.
 		AdditionalClients: clients,
-		RequestHooks:      []proxy.RequestHook{settings.redirectHook},
+		RequestHooks:      []proxy.RequestHook{settings.httpsBypassHook, settings.redirectHook},
 	}, nil
 }
 

@@ -1,0 +1,306 @@
+[
+  {
+    "name": "default",
+    "target": "https://files.example/project.whl",
+    "requests": "files.example:443",
+    "urllib": "files.example:443",
+    "loose": false,
+    "ambiguous": true
+  },
+  {
+    "name": "unicode-prepared-host",
+    "target": "https://xn--xample-9ua.test/project.whl",
+    "requests": "\u00e9xample.test:443",
+    "urllib": "\u00e9xample.test:443",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "legacy-unicode-prepared-host",
+    "target": "https://xn--xample-9ua.test/project.whl",
+    "requests": "\u00e9xample.test:443",
+    "urllib": "\u00e9xample.test:443",
+    "loose": true,
+    "ambiguous": false
+  },
+  {
+    "name": "suffix",
+    "target": "https://files.example/project.whl",
+    "requests": ".example:443",
+    "urllib": ".example:443",
+    "loose": false,
+    "ambiguous": true
+  },
+  {
+    "name": "spaces",
+    "target": "https://files.example/project.whl",
+    "requests": "localhost, files .example :443",
+    "urllib": "localhost, files .example :443",
+    "loose": false,
+    "ambiguous": true
+  },
+  {
+    "name": "legacy-port-only",
+    "target": "https://files.example/project.whl",
+    "requests": ":443",
+    "urllib": ":443",
+    "loose": true,
+    "ambiguous": true
+  },
+  {
+    "name": "modern-port-only-does-not-match",
+    "target": "https://files.example/project.whl",
+    "requests": ":443",
+    "urllib": ":443",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "bare-ipv6",
+    "target": "https://[2001:db8::1]/project.whl",
+    "requests": "2001:db8::1:443",
+    "urllib": "2001:db8::1:443",
+    "loose": false,
+    "ambiguous": true
+  },
+  {
+    "name": "legacy-ipv6-suffix",
+    "target": "https://[2001::db8:1]/project.whl",
+    "requests": "db8:1:443",
+    "urllib": "db8:1:443",
+    "loose": true,
+    "ambiguous": true
+  },
+  {
+    "name": "modern-ipv6-suffix",
+    "target": "https://[2001::db8:1]/project.whl",
+    "requests": "db8:1:443",
+    "urllib": "db8:1:443",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "legacy-ipv6-colon-suffix",
+    "target": "https://[2001::db8:1]/project.whl",
+    "requests": ":1:443",
+    "urllib": ":1:443",
+    "loose": true,
+    "ambiguous": true
+  },
+  {
+    "name": "modern-ipv6-colon-suffix",
+    "target": "https://[2001::db8:1]/project.whl",
+    "requests": ":1:443",
+    "urllib": ":1:443",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "ipv6-address-ending-in-443",
+    "target": "https://[2001:db8::443]/project.whl",
+    "requests": "2001:db8::443",
+    "urllib": "2001:db8::443",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "ipv6-address-ending-in-443-legacy",
+    "target": "https://[2001:db8::443]/project.whl",
+    "requests": "2001:db8::443",
+    "urllib": "2001:db8::443",
+    "loose": true,
+    "ambiguous": false
+  },
+  {
+    "name": "redundant-host-port",
+    "target": "https://files.example/project.whl",
+    "requests": "files.example,files.example:443",
+    "urllib": "files.example,files.example:443",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "redundant-suffix-port",
+    "target": "https://files.example/project.whl",
+    "requests": ".example,files.example:443",
+    "urllib": ".example,files.example:443",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "redundant-ipv6-port",
+    "target": "https://[2001:db8::1]/project.whl",
+    "requests": "2001:db8::1,2001:db8::1:443",
+    "urllib": "2001:db8::1,2001:db8::1:443",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "noncovering-host",
+    "target": "https://other.example/project.whl",
+    "requests": "files.example,other.example:443",
+    "urllib": "files.example,other.example:443",
+    "loose": false,
+    "ambiguous": true
+  },
+  {
+    "name": "noncovering-narrow-host",
+    "target": "https://other.example/project.whl",
+    "requests": "files.example,.example:443",
+    "urllib": "files.example,.example:443",
+    "loose": false,
+    "ambiguous": true
+  },
+  {
+    "name": "legacy-redundant-suffix",
+    "target": "https://filesexample/project.whl",
+    "requests": "example,filesexample:443",
+    "urllib": "example,filesexample:443",
+    "loose": true,
+    "ambiguous": false
+  },
+  {
+    "name": "modern-distinct-suffix",
+    "target": "https://filesexample/project.whl",
+    "requests": "example,filesexample:443",
+    "urllib": "example,filesexample:443",
+    "loose": false,
+    "ambiguous": true
+  },
+  {
+    "name": "ipv4-port-does-not-match",
+    "target": "https://127.0.0.1/project.whl",
+    "requests": "127.0.0.1:443",
+    "urllib": "127.0.0.1:443",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "bracketed-ipv6-does-not-match",
+    "target": "https://[2001:db8::1]/project.whl",
+    "requests": "[2001:db8::1]:443",
+    "urllib": "[2001:db8::1]:443",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "uppercase-port-does-not-match",
+    "target": "https://files.example/project.whl",
+    "requests": "FILES.example:443",
+    "urllib": "FILES.example:443",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "wildcard-port-does-not-match",
+    "target": "https://files.example/project.whl",
+    "requests": "*:443",
+    "urllib": "*:443",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "nondefault",
+    "target": "https://files.example:8443/project.whl",
+    "requests": "files.example:8443",
+    "urllib": "files.example:8443",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "http-default",
+    "target": "https://files.example/project.whl",
+    "requests": "files.example:80",
+    "urllib": "files.example:80",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "domain",
+    "target": "https://files.example/project.whl",
+    "requests": "files.example",
+    "urllib": "files.example",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "wildcard",
+    "target": "https://files.example/project.whl",
+    "requests": "*",
+    "urllib": "*",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "urllib-covers-independent-list",
+    "target": "https://files.example/project.whl",
+    "requests": "files.example:443",
+    "urllib": "files.example",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "urllib-independent-wildcard",
+    "target": "https://files.example/project.whl",
+    "requests": "files.example:443",
+    "urllib": "*",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "urllib-independent-unrelated",
+    "target": "https://files.example/project.whl",
+    "requests": "files.example:443",
+    "urllib": "other.example",
+    "loose": false,
+    "ambiguous": true
+  },
+  {
+    "name": "Requests-uppercase-independent",
+    "target": "https://files.example/project.whl",
+    "requests": "FILES.EXAMPLE,files.example:443",
+    "urllib": "other.example",
+    "loose": false,
+    "ambiguous": true
+  },
+  {
+    "name": "urllib-uppercase-independent",
+    "target": "https://files.example/project.whl",
+    "requests": "FILES.EXAMPLE,files.example:443",
+    "urllib": "FILES.EXAMPLE",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "urllib-IPv6-numeric-splitting",
+    "target": "https://[2001:db8::1]/project.whl",
+    "requests": "2001:db8::1:443",
+    "urllib": "2001:db8:",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "mixed-case-urllib-port-only",
+    "target": "https://files.example/project.whl",
+    "requests": "",
+    "urllib": "files.example:443",
+    "loose": false,
+    "ambiguous": false
+  },
+  {
+    "name": "empty-lowercase-Requests-upper",
+    "target": "https://files.example/project.whl",
+    "requests": "files.example:443",
+    "urllib": "",
+    "loose": false,
+    "ambiguous": true
+  },
+  {
+    "name": "unrelated-default-port-rule",
+    "target": "https://files.example/project.whl",
+    "requests": "unrelated.example:443",
+    "urllib": "unrelated.example:443",
+    "loose": false,
+    "ambiguous": false
+  }
+]

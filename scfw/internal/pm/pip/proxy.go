@@ -42,7 +42,7 @@ func (pip Pip) ProxyOptions(command []string) (proxy.Options, error) {
 	if err := validateUpstream(upstreamSettings(settings)); err != nil {
 		return proxy.Options{}, err
 	}
-	options := proxy.Options{Upstream: upstreamSettings(settings), TrustURL: pipTrustURL(settings.TrustedHosts), ProxyForURL: pipProxyForURL(settings)}
+	options := proxy.Options{Upstream: upstreamSettings(settings), TrustURL: pipTrustURL(settings.TrustedHosts), ProxyForURL: pipProxyForURL(settings), RequestHooks: []proxy.RequestHook{pipHTTPSBypassHook(settings)}}
 	options.UpstreamTLS, err = proxy.NewTLSConfig(proxy.TLSConfigOptions{
 		CABundlePaths:         []string{expandPipPath(settings.Cert), os.Getenv("GIT_SSL_CAINFO")},
 		ClientCertificatePath: expandPipPath(settings.ClientCert),
@@ -93,7 +93,7 @@ func pipProxyForURL(settings pipDiscoveryResult) func(*url.URL) (*url.URL, error
 		if target.Scheme == "https" {
 			value, fallback = settings.HTTPS, settings.FallbackHTTPS
 		}
-		if pipBypassesEnvironment(target, settings.NoProxy, settings.LooseNoProxy) ||
+		if pipBypassesEnvironment(target, settings.RequestsNoProxy, settings.NoProxy, settings.LooseNoProxy) ||
 			(settings.SystemProxyBypass != nil && settings.SystemProxyBypass(target)) {
 			value = fallback
 		}
@@ -101,7 +101,7 @@ func pipProxyForURL(settings pipDiscoveryResult) func(*url.URL) (*url.URL, error
 	}
 }
 
-func pipBypassesEnvironment(target *url.URL, noProxy string, loose bool) bool {
+func pipBypassesEnvironment(target *url.URL, requestsNoProxy, noProxy string, loose bool) bool {
 	host := strings.ToLower(target.Hostname())
 	hostPort := host
 	if target.Port() != "" {
@@ -111,7 +111,7 @@ func pipBypassesEnvironment(target *url.URL, noProxy string, loose bool) bool {
 	// Requests first applies its own matcher, which changed from suffix matching
 	// to domain boundaries in newer versions. Then urllib applies its case-
 	// insensitive domain matcher; only the entire value "*" is a wildcard.
-	for _, pattern := range strings.Split(strings.ReplaceAll(noProxy, " ", ""), ",") {
+	for _, pattern := range strings.Split(strings.ReplaceAll(requestsNoProxy, " ", ""), ",") {
 		if pattern == "" {
 			continue
 		}
@@ -139,35 +139,15 @@ func pipBypassesEnvironment(target *url.URL, noProxy string, loose bool) bool {
 	if noProxy == "*" {
 		return true
 	}
+	hostOnly := host
+	if index := strings.LastIndexByte(host, ':'); index >= 0 && strings.Trim(host[index+1:], "0123456789") == "" {
+		hostOnly = host[:index]
+	}
 	for _, pattern := range strings.Split(noProxy, ",") {
 		pattern = strings.ToLower(strings.TrimLeft(strings.TrimSpace(pattern), "."))
-		if pattern != "" && (host == pattern || strings.HasSuffix(host, "."+pattern)) {
+		if pattern != "" && (host == pattern || hostOnly == pattern || strings.HasSuffix(host, "."+pattern) || strings.HasSuffix(hostOnly, "."+pattern)) {
 			return true
 		}
 	}
 	return false
-}
-
-// samePipProxyEndpoint ignores URL spelling differences that do not change an
-// HTTPS CONNECT route, while retaining proxy TLS and authentication differences.
-func samePipProxyEndpoint(first, second string) bool {
-	if first == second {
-		return true
-	}
-	a, aErr := proxy.ParseUpstreamProxyURL(first)
-	b, bErr := proxy.ParseUpstreamProxyURL(second)
-	if aErr != nil || bErr != nil || a == nil || b == nil {
-		return false
-	}
-	port := func(u *url.URL) string {
-		if value := u.Port(); value != "" {
-			return value
-		}
-		if u.Scheme == "https" {
-			return "443"
-		}
-		return "80"
-	}
-	return a.Scheme == b.Scheme && strings.EqualFold(a.Hostname(), b.Hostname()) &&
-		port(a) == port(b) && a.User.String() == b.User.String()
 }

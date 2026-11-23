@@ -6,6 +6,7 @@
 package pip
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
 
 // No interpreter exists in this fixture. Discovering settings must only read
@@ -358,6 +360,7 @@ func TestDefaultHTTPSPortBypassDiagnostic(t *testing.T) {
 		reject                           bool
 	}{
 		{"default-port", "files.example:443", "http://gateway.example", "", true},
+		{"empty-lowercase-upper", "files.example:443", "http://gateway.example", "", true},
 		{"nondefault-port", "files.example:8443", "http://gateway.example", "", false},
 		{"IP-port-is-not-a-domain-match", "127.0.0.1:443", "http://gateway.example", "", false},
 		{"no-upstream", "files.example:443", "", "", false},
@@ -373,13 +376,20 @@ func TestDefaultHTTPSPortBypassDiagnostic(t *testing.T) {
 				key = "No_Proxy"
 			}
 			t.Setenv(key, test.bypass)
+			if test.name == "empty-lowercase-upper" {
+				t.Setenv("no_proxy", "")
+			}
 			if test.name == "mixed-case-urllib-covers-port" {
 				t.Setenv("No_Proxy", "files.example")
 			}
 			if test.explicit != "" {
 				t.Setenv("PIP_PROXY", test.explicit)
 			}
-			_, err := manager.settings([]string{"download", "project"})
+			settings, err := manager.settings([]string{"download", "project"})
+			if err != nil {
+				t.Fatalf("unrelated setup rejected: %v", err)
+			}
+			_, err = pipHTTPSBypassHook(settings)(context.Background(), proxy.Request{URL: url.URL{Scheme: "https", Host: "files.example"}})
 			if (err != nil) != test.reject {
 				t.Fatalf("reject=%v, error=%v", test.reject, err)
 			}
@@ -406,7 +416,11 @@ func TestDefaultHTTPSPortBypassEquivalentProxyEndpoints(t *testing.T) {
 		t.Setenv("PIP_PROXY", test.explicit)
 		t.Setenv("HTTPS_PROXY", test.environment)
 		t.Setenv("NO_PROXY", "files.example:443")
-		_, err := manager.settings([]string{"download", "project"})
+		settings, err := manager.settings([]string{"download", "project"})
+		if err != nil {
+			t.Fatalf("unrelated setup rejected: %v", err)
+		}
+		_, err = pipHTTPSBypassHook(settings)(context.Background(), proxy.Request{URL: url.URL{Scheme: "https", Host: "files.example"}})
 		if (err != nil) != test.reject {
 			t.Fatalf("%s versus %s reject=%v: %v", test.explicit, test.environment, test.reject, err)
 		}

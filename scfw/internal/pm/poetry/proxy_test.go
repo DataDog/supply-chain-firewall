@@ -447,7 +447,12 @@ func TestDefaultHTTPSPortBypassDiagnostic(t *testing.T) {
 			if test.name == "urllib-covers-port" {
 				t.Setenv("No_Proxy", "files.example")
 			}
-			_, _, err := discoverPoetryProxies(func() (pythonproxy.Settings, error) { return pythonproxy.Settings{}, nil })
+			config, _, err := discoverPoetryProxies(func() (pythonproxy.Settings, error) { return pythonproxy.Settings{}, nil })
+			if err != nil {
+				t.Fatalf("unrelated setup rejected: %v", err)
+			}
+			settings := poetryProxySettings{upstream: config}
+			_, err = settings.httpsBypassHook(context.Background(), proxy.Request{URL: url.URL{Scheme: "https", Host: "files.example"}})
 			if (err != nil) != test.reject {
 				t.Fatalf("reject=%v, error=%v", test.reject, err)
 			}

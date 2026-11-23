@@ -227,6 +227,27 @@ func (p Pnpm) switchingDisabled(root string, parsed parsedCommand) bool {
 	return yaml.Unmarshal(data, &settings) == nil && settings.PmOnFail != "" && settings.PmOnFail != "download"
 }
 
+// scriptsAt reads the scripts of the package.json in the directory the command
+// runs in, where pnpm looks the script that replaces an overridable built-in
+// up. An unreadable manifest has no scripts, which leaves the built-in.
+func (p Pnpm) scriptsAt(parsed parsedCommand) func(string) bool {
+	dir := p.commandDirectory(parsed)
+	scripts := map[string]bool{}
+	if dir != "" {
+		if data, err := nodeproxy.ReadConfigFile(filepath.Join(dir, "package.json")); err == nil {
+			var manifest struct {
+				Scripts map[string]string `json:"scripts"`
+			}
+			if json.Unmarshal(data, &manifest) == nil {
+				for name := range manifest.Scripts {
+					scripts[name] = true
+				}
+			}
+		}
+	}
+	return func(name string) bool { return scripts[name] }
+}
+
 func (p Pnpm) Executable() string {
 	return p.executable
 }
@@ -242,8 +263,20 @@ func (p Pnpm) RunCommand(ctx context.Context, command []string) error {
 }
 
 func (p Pnpm) ResolveInstallTargets(_ context.Context, command []string) (*pm.Set[pm.Package], error) {
-	if p.ProxyCommandSupported(command) {
+	if p.requiresProxy(command) {
 		return nil, errors.New("pnpm package operations require proxy mode (set SCFW_PROXY_ENABLED=1)")
 	}
 	return pm.NewSet[pm.Package](), nil
+}
+
+// requiresProxy reports whether the command may fetch packages outside the
+// proxy: the commands that resolve, fetch, or install, not the built-ins that
+// never do, so ' + bt + 'pnpm view' + bt + ' and ' + bt + 'pnpm list' + bt + ' keep running without proxy mode.
+func (p Pnpm) requiresProxy(command []string) bool {
+	major, err := p.major(command)
+	if err != nil {
+		return true
+	}
+	parsed := parseCommand(major, p.dlx, command)
+	return classifyCommand(major, parsed, p.scriptsAt(parsed)) == kindFetch
 }

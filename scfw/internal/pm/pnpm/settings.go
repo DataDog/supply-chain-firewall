@@ -45,9 +45,22 @@ func (p Pnpm) settings(command []string) (pnpmSettings, error) {
 		return pnpmSettings{}, err
 	}
 	parsed := parseCommand(major, p.dlx, command)
+	dir := p.commandDirectory(parsed)
+	if dir == "" {
+		return pnpmSettings{}, errors.New("could not resolve pnpm directory")
+	}
+	if major >= 11 {
+		return p.yamlSettings(major, parsed, dir)
+	}
+	return p.npmrcSettings(parsed, dir)
+}
+
+// commandDirectory resolves the directory the command runs in: the working
+// directory, or the -C/--dir it names.
+func (p Pnpm) commandDirectory(parsed parsedCommand) string {
 	dir, err := os.Getwd()
 	if err != nil {
-		return pnpmSettings{}, errors.New("could not resolve pnpm directory")
+		return ""
 	}
 	if parsed.dir != "" {
 		if filepath.IsAbs(parsed.dir) {
@@ -56,10 +69,7 @@ func (p Pnpm) settings(command []string) (pnpmSettings, error) {
 			dir = filepath.Join(dir, parsed.dir)
 		}
 	}
-	if major >= 11 {
-		return p.yamlSettings(major, parsed, dir)
-	}
-	return p.npmrcSettings(parsed, dir)
+	return dir
 }
 
 // layers resolves settings across configuration layers, highest precedence

@@ -119,11 +119,19 @@ func (p Pnpm) ProxyCommand(_ context.Context, command []string, config proxy.Cli
 		overrides = append(overrides, "--config."+registryCA.Key+":cafile="+ca)
 	}
 	parsed := parseCommand(major, p.dlx, command)
-	tail, err := withOverrides(major, parsed, overrides)
-	if err != nil {
-		return proxy.CommandSpec{}, err
+	args := []string{}
+	if parsed.passthroughNpm {
+		// pnpm hands a pass-through command to npm with the whole command
+		// line, so nothing may precede the command name: npm reads its
+		// routing and trust from the environment, above its .npmrc files.
+		args = parsed.args
+	} else {
+		tail, err := withOverrides(major, parsed, overrides)
+		if err != nil {
+			return proxy.CommandSpec{}, err
+		}
+		args = slices.Concat(overrides, tail)
 	}
-	args := slices.Concat(overrides, tail)
 
 	extraCAs, err := nodeproxy.NodeExtraCACerts(ca, pem)
 	if err != nil {

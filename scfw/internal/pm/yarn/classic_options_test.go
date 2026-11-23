@@ -38,6 +38,32 @@ func verifiesRegistry(t *testing.T, options proxy.Options) bool {
 	return err == nil
 }
 
+// tlsFixturePools loads the CA fixtures shared by the replaces-roots tests:
+// pems maps "registry" to tls/registry-ca.pem and "other" to tls/scfw-ca.pem,
+// and pool builds the exact root pool of the named fixtures' certificates.
+func tlsFixturePools(t *testing.T) (pems map[string]string, pool func(t *testing.T, names ...string) *x509.CertPool) {
+	t.Helper()
+	load := func(name string) string {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join(testdataDir, "tls", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	pems = map[string]string{"registry": load("registry-ca.pem"), "other": load("scfw-ca.pem")}
+	return pems, func(t *testing.T, names ...string) *x509.CertPool {
+		t.Helper()
+		certPool := x509.NewCertPool()
+		for _, name := range names {
+			if !certPool.AppendCertsFromPEM([]byte(pems[name])) {
+				t.Fatalf("no certificate in %s", name)
+			}
+		}
+		return certPool
+	}
+}
+
 func TestClassicProxyOptionsTrust(t *testing.T) {
 	caPath := filepath.Join(testdataDir, "tls", "registry-ca.pem")
 	caPEM, err := os.ReadFile(caPath)
@@ -70,6 +96,88 @@ func TestClassicProxyOptionsTrust(t *testing.T) {
 			}
 			if got := verifiesRegistry(t, options); got != test.trusted {
 				t.Fatalf("trusted = %v, want %v", got, test.trusted)
+			}
+		})
+	}
+}
+
+// As in Yarn Classic, a readable cafile, else a non-empty ca, replaces the
+// default roots, which also drops NODE_EXTRA_CA_CERTS; the Git bundle is
+// appended regardless.
+func TestClassicProxyOptionsReplacesRoots(t *testing.T) {
+	const registry, other = "registry", "other"
+	pems, poolOf := tlsFixturePools(t)
+	for _, test := range []struct {
+		name    string
+		prepare func(t *testing.T, root, registryPath, otherPath string)
+		want    []string
+	}{
+		{"cafile only", func(t *testing.T, root, registryPath, _ string) {
+			writeYarnFixture(t, filepath.Join(root, "parent", "project", ".yarnrc"), "yarnrc/cafile.yarnrc.tmpl", registryPath)
+		}, []string{registry}},
+		{"ca only", func(t *testing.T, _, _, _ string) { t.Setenv("YARN_CA", pems[registry]) }, []string{registry}},
+		{"readable cafile beats ca", func(t *testing.T, root, registryPath, _ string) {
+			writeYarnFixture(t, filepath.Join(root, "parent", "project", ".yarnrc"), "yarnrc/cafile.yarnrc.tmpl", registryPath)
+			t.Setenv("YARN_CA", pems[other])
+		}, []string{registry}},
+		{"missing cafile falls back to ca", func(t *testing.T, root, _, _ string) {
+			writeYarnFixture(t, filepath.Join(root, "parent", "project", ".yarnrc"), "yarnrc/cafile.yarnrc.tmpl", filepath.Join(t.TempDir(), "missing.pem"))
+			t.Setenv("YARN_CA", pems[registry])
+		}, []string{registry}},
+		{"cafile drops NODE_EXTRA_CA_CERTS", func(t *testing.T, root, registryPath, otherPath string) {
+			writeYarnFixture(t, filepath.Join(root, "parent", "project", ".yarnrc"), "yarnrc/cafile.yarnrc.tmpl", registryPath)
+			t.Setenv("NODE_EXTRA_CA_CERTS", otherPath)
+		}, []string{registry}},
+		{"ca drops NODE_EXTRA_CA_CERTS", func(t *testing.T, _, _, otherPath string) {
+			t.Setenv("YARN_CA", pems[registry])
+			t.Setenv("NODE_EXTRA_CA_CERTS", otherPath)
+		}, []string{registry}},
+		{"GIT_SSL_CAINFO is still appended", func(t *testing.T, root, registryPath, otherPath string) {
+			writeYarnFixture(t, filepath.Join(root, "parent", "project", ".yarnrc"), "yarnrc/cafile.yarnrc.tmpl", registryPath)
+			t.Setenv("GIT_SSL_CAINFO", otherPath)
+		}, []string{registry, other}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := isolateYarnEnvironment(t)
+			dir := t.TempDir()
+			registryPath, otherPath := filepath.Join(dir, "registry.pem"), filepath.Join(dir, "other.pem")
+			writeYarnFixture(t, registryPath, "tls/registry-ca.pem")
+			writeYarnFixture(t, otherPath, "tls/scfw-ca.pem")
+			test.prepare(t, root, registryPath, otherPath)
+			options, err := fakeYarn(t, "1.22.22").ProxyOptions(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !options.UpstreamTLS.RootCAs.Equal(poolOf(t, test.want...)) {
+				t.Fatalf("upstream roots differ from %v", test.want)
+			}
+		})
+	}
+}
+
+// Yarn treats an empty ca as unset, so Node keeps its default roots and the
+// NODE_EXTRA_CA_CERTS bundle still applies.
+func TestClassicProxyOptionsIgnoresEmptyCA(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		project string
+		fixture string
+	}{
+		{".yarnrc ca", ".yarnrc", "yarnrc/empty-ca.yarnrc"},
+		{".npmrc ca", ".npmrc", "yarnrc/empty-ca.npmrc"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := isolateYarnEnvironment(t)
+			caPath := filepath.Join(t.TempDir(), "extra.pem")
+			writeYarnFixture(t, caPath, "tls/registry-ca.pem")
+			t.Setenv("NODE_EXTRA_CA_CERTS", caPath)
+			writeYarnFixture(t, filepath.Join(root, "parent", "project", test.project), test.fixture)
+			options, err := fakeYarn(t, "1.22.22").ProxyOptions(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !verifiesRegistry(t, options) {
+				t.Fatal("an empty ca replaced the default roots instead of being ignored")
 			}
 		})
 	}

@@ -50,7 +50,8 @@ func berryWorkspace(dir, name string) (string, error) {
 
 // berryWorkspaces lists a Yarn 4 project's workspaces, each workspace's own
 // patterns adding nested ones: directories holds them all and names the named
-// ones. Patterns starting with "!" exclude matches. names is nil where Yarn
+// ones. Patterns starting with "!" exclude matches; unsupported also reports
+// a "**" that reached a symlinked directory. names is nil where Yarn
 // fails to load the project: a missing or malformed manifest, or a duplicate
 // name.
 func berryWorkspaces(project string) (names map[string]string, directories []string, unsupported bool, err error) {
@@ -120,5 +121,5 @@ func berryWorkspaces(project string) (names map[string]string, directories []str
 			}
 		}
 	}
-	return names, directories, unsupported, nil
+	return names, directories, unsupported || glob.incomplete, nil
 }

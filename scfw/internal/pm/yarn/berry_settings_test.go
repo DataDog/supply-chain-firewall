@@ -6,6 +6,7 @@
 package yarn
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -255,6 +256,31 @@ func TestBerryWorkspaceRefusesWhatSCFWCannotRoute(t *testing.T) {
 				t.Fatalf("error = %v, want one mentioning %q", err, test.want)
 			}
 		})
+	}
+}
+
+// fast-glob follows symlinked directories under "**" and the walk does not,
+// so a workspace reached only through one makes foreach fail closed.
+func TestBerryForeachRefusesWorkspacesBehindSymlinks(t *testing.T) {
+	root := isolateYarnEnvironment(t)
+	project := filepath.Join(root, "parent", "project")
+	writeYarnFixture(t, filepath.Join(project, "package.json"), "workspaces/root.json.tmpl", `["packages/**"]`)
+	writeYarnFixture(t, filepath.Join(project, "packages", "a", "package.json"), "workspaces/member.json.tmpl", "a")
+	writeYarnFixture(t, filepath.Join(root, "linked", "deep", "w", "package.json"), "workspaces/member.json.tmpl", "w")
+	writeYarnFixture(t, filepath.Join(root, "linked", "deep", "w", ".yarnrc.yml"), "yarnrc-yml/network-proxy.yml")
+	if _, err := fakeYarn(t, "4.18.1").UpstreamProxy([]string{"workspaces", "foreach", "-A", "install"}); err != nil {
+		t.Fatalf("without the symlink: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(root, "linked"), filepath.Join(project, "packages", "link")); err != nil {
+		t.Skip(err)
+	}
+	_, err := fakeYarn(t, "4.18.1").UpstreamProxy([]string{"workspaces", "foreach", "-A", "install"})
+	if err == nil || !strings.Contains(err.Error(), "could not list every workspace") {
+		t.Fatalf("error = %v, want foreach to fail closed", err)
+	}
+	// A workspace the walk finds still resolves.
+	if _, err := fakeYarn(t, "4.18.1").UpstreamProxy([]string{"workspace", "a", "add", "x"}); err != nil {
+		t.Fatalf("workspace a: %v", err)
 	}
 }
 

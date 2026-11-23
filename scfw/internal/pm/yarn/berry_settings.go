@@ -74,7 +74,7 @@ func (yarn Yarn) berrySettings(command []string) (berrySettings, error) {
 		return berrySettings{}, err
 	}
 	if names == nil || unsupported {
-		return berrySettings{}, errors.New("yarn workspaces foreach: SCFW could not list every workspace of the project, because a manifest is missing, malformed, or duplicated, or the workspaces patterns use brace ranges, extglobs, or POSIX classes; run the command in each workspace instead")
+		return berrySettings{}, errors.New("yarn workspaces foreach: SCFW could not list every workspace of the project, because a manifest is missing, malformed, or duplicated, or the workspaces patterns use brace ranges, extglobs, POSIX classes, or reach symlinked directories under **; run the command in each workspace instead")
 	}
 	for _, directory := range directories {
 		other, err := readBerrySettings(directory, environ, env)

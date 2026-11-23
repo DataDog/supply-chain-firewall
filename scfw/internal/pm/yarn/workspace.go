@@ -24,7 +24,7 @@ var maxWorkspaceEntries = 100000
 var errWorkspaceBound = errors.New("yarn workspace patterns cover more directories than SCFW inspects; run the command from the workspace directory instead")
 
 func unsupportedWorkspacePattern(name string) error {
-	return fmt.Errorf("yarn workspace %q was not found, and the workspaces patterns use brace ranges, extglobs, or POSIX classes, which SCFW does not evaluate; run the command from the workspace directory instead", name)
+	return fmt.Errorf("yarn workspace %q was not found, and the workspaces patterns use brace ranges, extglobs, POSIX classes, or symlinked directories under **, which SCFW does not evaluate; run the command from the workspace directory instead", name)
 }
 
 // unsupportedGlob reports constructs the walk does not evaluate: brace ranges
@@ -44,6 +44,9 @@ func unsupportedGlob(expanded string) bool {
 type workspaceGlob struct {
 	berry     bool
 	remaining int
+	// incomplete records a Yarn 4 "**" reaching a symlinked directory, which
+	// fast-glob descends through and the walk does not.
+	incomplete bool
 }
 
 func newWorkspaceGlob(berry bool) *workspaceGlob {
@@ -163,6 +166,7 @@ func (glob *workspaceGlob) globstar(root, spelled string, rest []string, top boo
 		case entry.Type()&fs.ModeSymlink != 0:
 			var directory bool
 			if directory, err = glob.isDirectory(glob.location(root, next)); directory {
+				glob.incomplete = glob.incomplete || glob.berry
 				err = glob.walk(root, next, rest, true, matches)
 			}
 		}

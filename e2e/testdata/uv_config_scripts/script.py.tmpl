@@ -1,0 +1,10 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [{{.Dependency}}]
+# [tool.uv]
+# index-url = "https://pypi.org/simple"
+# allow-insecure-host = ["pypi.org"]
+{{.Proxy}}# ///
+from pathlib import Path
+Path("script-executed").write_text("unexpected")
+raise RuntimeError("locking must never execute the script")

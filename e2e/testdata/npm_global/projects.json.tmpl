@@ -1,0 +1,9 @@
+{
+ "global-workspace-member": {
+  "package.json": {"name":"scfw-e2e-global-root","version":"1.0.0","private":true,"workspaces":["packages/member"],"dependencies":{"{{.Direct.Project}}":"{{.Direct.Version}}"}},
+  "packages/member/package.json": {"name":"scfw-e2e-member","version":"1.0.0","dependencies":{"{{.Leaf.Project}}":"{{.Leaf.Version}}"}}
+ },
+ "global-self": {
+  "package.json": {"name":"scfw-e2e-global-source","version":"1.0.0","dependencies":{"{{.Leaf.Project}}":"{{.Leaf.Version}}"}}
+ }
+}

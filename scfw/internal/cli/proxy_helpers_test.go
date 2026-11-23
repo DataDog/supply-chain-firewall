@@ -43,6 +43,82 @@ type upstreamProxyOptions struct {
 	hits           *atomic.Int32
 }
 
+// proxyCacheDir supports caches whose tools make subdirectories read-only.
+// Restore directory write permissions before TempDir's cleanup, without
+// following symlinks into environments or caches outside this test directory.
+func proxyCacheDir(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	t.Cleanup(func() {
+		err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if !entry.IsDir() {
+				return nil
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			return os.Chmod(path, info.Mode()|0200)
+		})
+		if err != nil {
+			t.Errorf("restore cache directory permissions: %v", err)
+		}
+	})
+	return root
+}
+
+func TestProxyCacheDirCleanup(t *testing.T) {
+	external := t.TempDir()
+	file := filepath.Join(external, "keep")
+	if err := os.WriteFile(file, nil, 0400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(external, 0700); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := os.Chmod(external, 0500); err != nil {
+		t.Fatal(err)
+	}
+	var cache string
+	t.Run("read-only seed image", func(t *testing.T) {
+		cache = proxyCacheDir(t)
+		image := filepath.Join(cache, "image")
+		seed := filepath.Join(image, "pip")
+		if err := os.MkdirAll(seed, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(seed, "METADATA"), nil, 0400); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(external, filepath.Join(image, "external")); err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range []string{seed, image} {
+			if err := os.Chmod(path, 0500); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+	if _, err := os.Stat(cache); !os.IsNotExist(err) {
+		t.Fatalf("cache survived cleanup: %v", err)
+	}
+	info, err := os.Stat(external)
+	if err != nil || info.Mode().Perm() != 0500 {
+		t.Fatalf("cleanup changed external directory permissions: %v / %v", info, err)
+	}
+	if _, err := os.Stat(file); err != nil {
+		t.Fatalf("cleanup removed an external file: %v", err)
+	}
+}
+
 func pypiWheel(t *testing.T) []byte {
 	t.Helper()
 	return pypiWheelNamed(t, "project")

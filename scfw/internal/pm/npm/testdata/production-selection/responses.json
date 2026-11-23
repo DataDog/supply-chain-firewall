@@ -1,0 +1,345 @@
+{
+  "production-flag": {
+    "command": [
+      "install",
+      "--production"
+    ],
+    "environment": {},
+    "project_config": "",
+    "configuration": {
+      "omit": [
+        "dev"
+      ]
+    },
+    "packages": {
+      "node_modules/production": {
+        "version": "1.0.0"
+      },
+      "node_modules/development": {
+        "version": "1.0.0",
+        "dev": true
+      },
+      "node_modules/shared": {
+        "version": "1.0.0"
+      },
+      "node_modules/development/node_modules/dev-leaf": {
+        "version": "1.0.0",
+        "dev": true
+      }
+    },
+    "expected": [
+      "production",
+      "shared"
+    ]
+  },
+  "production-environment": {
+    "command": [
+      "install"
+    ],
+    "environment": {
+      "NODE_ENV": "production"
+    },
+    "project_config": "",
+    "configuration": {
+      "omit": [
+        "dev"
+      ]
+    },
+    "packages": {
+      "node_modules/production": {
+        "version": "1.0.0"
+      },
+      "node_modules/development": {
+        "version": "1.0.0",
+        "dev": true
+      },
+      "node_modules/shared": {
+        "version": "1.0.0"
+      },
+      "node_modules/development/node_modules/dev-leaf": {
+        "version": "1.0.0",
+        "dev": true
+      }
+    },
+    "expected": [
+      "production",
+      "shared"
+    ]
+  },
+  "production-project": {
+    "command": [
+      "install"
+    ],
+    "environment": {},
+    "project_config": "omit=dev\n",
+    "configuration": {
+      "omit": [
+        "dev"
+      ]
+    },
+    "packages": {
+      "node_modules/production": {
+        "version": "1.0.0"
+      },
+      "node_modules/development": {
+        "version": "1.0.0",
+        "dev": true
+      },
+      "node_modules/shared": {
+        "version": "1.0.0"
+      },
+      "node_modules/development/node_modules/dev-leaf": {
+        "version": "1.0.0",
+        "dev": true
+      }
+    },
+    "expected": [
+      "production",
+      "shared"
+    ]
+  },
+  "include-override": {
+    "command": [
+      "install",
+      "--production",
+      "--include=dev"
+    ],
+    "environment": {},
+    "project_config": "",
+    "configuration": {
+      "omit": [
+        "dev"
+      ],
+      "include": [
+        "dev"
+      ]
+    },
+    "packages": {
+      "node_modules/production": {
+        "version": "1.0.0"
+      },
+      "node_modules/development": {
+        "version": "1.0.0",
+        "dev": true
+      },
+      "node_modules/shared": {
+        "version": "1.0.0"
+      },
+      "node_modules/development/node_modules/dev-leaf": {
+        "version": "1.0.0",
+        "dev": true
+      }
+    },
+    "expected": [
+      "production",
+      "shared",
+      "development",
+      "dev-leaf"
+    ]
+  },
+  "default": {
+    "command": [
+      "install"
+    ],
+    "environment": {},
+    "project_config": "",
+    "configuration": {
+      "omit": []
+    },
+    "packages": {
+      "node_modules/production": {
+        "version": "1.0.0"
+      },
+      "node_modules/development": {
+        "version": "1.0.0",
+        "dev": true
+      },
+      "node_modules/shared": {
+        "version": "1.0.0"
+      },
+      "node_modules/development/node_modules/dev-leaf": {
+        "version": "1.0.0",
+        "dev": true
+      }
+    },
+    "expected": [
+      "production",
+      "shared",
+      "development",
+      "dev-leaf"
+    ]
+  },
+  "global-short-production": {
+    "command": [
+      "install",
+      "-g",
+      "development"
+    ],
+    "environment": {
+      "NODE_ENV": "production"
+    },
+    "configuration": {
+      "omit": [
+        "dev"
+      ],
+      "include": [],
+      "global": true
+    },
+    "packages": {
+      "node_modules/development": {
+        "version": "1.0.0",
+        "dev": true
+      },
+      "node_modules/development/node_modules/dev-leaf": {
+        "version": "1.0.0",
+        "dev": true
+      }
+    },
+    "expected": [
+      "development",
+      "dev-leaf"
+    ]
+  },
+  "global-long-production": {
+    "command": [
+      "install",
+      "--global",
+      "development"
+    ],
+    "environment": {
+      "NODE_ENV": "production"
+    },
+    "configuration": {
+      "omit": [
+        "dev"
+      ],
+      "include": [],
+      "global": true
+    },
+    "packages": {
+      "node_modules/development": {
+        "version": "1.0.0",
+        "dev": true
+      },
+      "node_modules/development/node_modules/dev-leaf": {
+        "version": "1.0.0",
+        "dev": true
+      }
+    },
+    "expected": [
+      "development",
+      "dev-leaf"
+    ]
+  },
+  "explicit-local-production": {
+    "command": [
+      "install",
+      "--global=false"
+    ],
+    "environment": {
+      "NODE_ENV": "production"
+    },
+    "configuration": {
+      "omit": [
+        "dev"
+      ],
+      "include": [],
+      "global": false
+    },
+    "packages": {
+      "node_modules/development": {
+        "version": "1.0.0",
+        "dev": true
+      },
+      "node_modules/production": {
+        "version": "1.0.0"
+      }
+    },
+    "expected": [
+      "production"
+    ]
+  },
+  "production-no-save": {
+    "command": [
+      "install",
+      "development",
+      "--save-prod",
+      "--no-save",
+      "--omit=dev"
+    ],
+    "environment": {},
+    "configuration": {
+      "omit": [
+        "dev"
+      ],
+      "include": []
+    },
+    "initial_packages": {
+      "node_modules/development": {
+        "version": "1.0.0",
+        "dev": true
+      },
+      "node_modules/development/node_modules/dev-leaf": {
+        "version": "1.0.0",
+        "dev": true
+      }
+    },
+    "packages": {
+      "node_modules/development": {
+        "version": "1.0.0"
+      },
+      "node_modules/development/node_modules/dev-leaf": {
+        "version": "1.0.0"
+      }
+    },
+    "expected": [
+      "development",
+      "dev-leaf"
+    ]
+  },
+  "development-no-save": {
+    "command": [
+      "install",
+      "development",
+      "--save-dev",
+      "--no-save",
+      "--omit=dev"
+    ],
+    "environment": {},
+    "configuration": {
+      "omit": [
+        "dev"
+      ],
+      "include": []
+    },
+    "initial_packages": {
+      "node_modules/development": {
+        "version": "1.0.0",
+        "dev": true
+      },
+      "node_modules/development/node_modules/dev-leaf": {
+        "version": "1.0.0",
+        "dev": true
+      },
+      "node_modules/production": {
+        "version": "1.0.0"
+      }
+    },
+    "packages": {
+      "node_modules/development": {
+        "version": "1.0.0",
+        "dev": true
+      },
+      "node_modules/development/node_modules/dev-leaf": {
+        "version": "1.0.0",
+        "dev": true
+      },
+      "node_modules/production": {
+        "version": "1.0.0"
+      }
+    },
+    "expected": [
+      "production"
+    ]
+  }
+}

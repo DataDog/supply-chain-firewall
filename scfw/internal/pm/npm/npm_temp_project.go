@@ -44,16 +44,25 @@ type npmTempProject struct {
 	executable         string
 	projectRoot        string // empty if the current directory is not part of an npm project
 	dir                string
+	inspectionOptions  []string
+	global             *npmGlobalProject
 	resolvePublishDate func(context.Context, pm.Package) (time.Time, error)
 }
 
 // newNpmTempProject resolves the current npm project root (if any) and
 // copies its package.json, package-lock.json, node_modules, and .npmrc
 // into a fresh temporary directory. The caller must call cleanup when done.
-func newNpmTempProject(ctx context.Context, executable string) (*npmTempProject, error) {
-	projectRoot, err := resolveNpmProjectRoot(ctx, executable)
+func newNpmTempProject(ctx context.Context, executable string, command []string) (*npmTempProject, error) {
+	prefixOptions, configOptions, global, err := npmInspectionProjectOptions(ctx, executable, command)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve npm project root: %w", err)
+		return nil, err
+	}
+	projectRoot := ""
+	if global == nil {
+		projectRoot, err = resolveNpmProjectRoot(ctx, executable, prefixOptions)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve npm project root: %w", err)
+		}
 	}
 
 	dir, err := os.MkdirTemp("", "scfw-npm-")
@@ -68,7 +77,12 @@ func newNpmTempProject(ctx context.Context, executable string) (*npmTempProject,
 		dir = resolved
 	}
 
-	proj := &npmTempProject{executable: executable, projectRoot: projectRoot, dir: dir}
+	// Global targets must not disappear merely because the caller has the
+	// same package installed locally, including in a workspace member.
+	proj := &npmTempProject{executable: executable, projectRoot: projectRoot, dir: dir, global: global}
+	if global != nil || len(prefixOptions) != 0 {
+		proj.inspectionOptions = append(configOptions, "--prefix="+dir)
+	}
 
 	if projectRoot != "" {
 		if err := proj.copyProjectFiles(); err != nil {
@@ -104,8 +118,8 @@ func (p *npmTempProject) copyProjectFiles() error {
 // resolveNpmProjectRoot runs `<executable> prefix` and returns its output if
 // that directory contains a package.json, or "" if the current directory
 // isn't part of an npm project.
-func resolveNpmProjectRoot(ctx context.Context, executable string) (string, error) {
-	output, err := exec.CommandContext(ctx, executable, "prefix").Output()
+func resolveNpmProjectRoot(ctx context.Context, executable string, options []string) (string, error) {
+	output, err := exec.CommandContext(ctx, executable, append([]string{"prefix"}, options...)...).Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to run %q prefix: %w", executable, err)
 	}
@@ -125,6 +139,106 @@ func resolveNpmProjectRoot(ctx context.Context, executable string) (string, erro
 		prefix = resolved
 	}
 	return prefix, nil
+}
+
+// npmInspectionProjectOptions keeps explicit CLI project selection while
+// relocating inspection. Capture configuration paths before changing prefix:
+// npm derives its default globalconfig from that prefix, and relative CLI
+// configuration paths belong to the original invocation directory.
+func npmInspectionProjectOptions(ctx context.Context, executable string, command []string) ([]string, []string, *npmGlobalProject, error) {
+	// Native configuration owns global mode, including environment settings,
+	// configuration files, shorthand clusters, and explicit local overrides.
+	args := npmInspectionArgs(append([]string{"config", "list"}, withoutNpmWorkspaceSelection(command)...), "--json")
+	child := exec.CommandContext(ctx, executable, args...)
+	child.Env = withoutNpmWorkspaceEnvironment()
+	output, err := child.Output()
+	explicitPrefix := npmHasExplicitPrefix(command)
+	if err != nil {
+		// npm rejects implicit local workspace execution of config. Its
+		// command dispatcher rejects global/workspace combinations first,
+		// with a different error, so this code establishes local mode.
+		// Keep the native workspace root/configuration instead of forcing
+		// --workspaces=false, which would read the member's .npmrc.
+		var failure struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		var exitError *exec.ExitError
+		if !explicitPrefix && errors.As(err, &exitError) && json.Unmarshal(output, &failure) == nil && failure.Error.Code == "ENOWORKSPACES" {
+			return nil, nil, nil, nil
+		}
+		return nil, nil, nil, fmt.Errorf("failed to read npm inspection configuration: %w", err)
+	}
+	var config struct {
+		UserConfig   string `json:"userconfig"`
+		GlobalConfig string `json:"globalconfig"`
+		Global       bool   `json:"global"`
+		Prefix       string `json:"prefix"`
+	}
+	if err := json.Unmarshal(output, &config); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to decode npm inspection configuration: %w", err)
+	}
+	if !explicitPrefix && !config.Global {
+		return nil, nil, nil, nil
+	}
+	if config.UserConfig == "" || config.GlobalConfig == "" {
+		return nil, nil, nil, errors.New("npm returned empty configuration paths")
+	}
+	var prefixOptions []string
+	if explicitPrefix {
+		prefixOptions = npmInspectionArgs(command, "--global=false")
+	}
+	var global *npmGlobalProject
+	if config.Global {
+		if !filepath.IsAbs(config.Prefix) {
+			return nil, nil, nil, errors.New("npm returned an invalid global prefix")
+		}
+		global = &npmGlobalProject{prefix: config.Prefix}
+	}
+	return prefixOptions, []string{"--userconfig=" + config.UserConfig, "--globalconfig=" + config.GlobalConfig}, global, nil
+}
+
+// Recognize prefix-bearing options without trying to interpret their values.
+// npm/nopt accepts unambiguous prefi, any number of leading dashes, and
+// clusters made entirely of its one-character shorthands. Native npm still
+// determines the selected project and whether a cluster is valid in its version.
+func npmHasExplicitPrefix(command []string) bool {
+	for _, option := range parseNpmOptions(command) {
+		if option.name == "prefix" {
+			return true
+		}
+	}
+	for _, argument := range command {
+		if argument == "--" {
+			break
+		}
+		if !strings.HasPrefix(argument, "-") {
+			continue
+		}
+		name, _, _ := strings.Cut(strings.TrimLeft(argument, "-"), "=")
+		for strings.HasPrefix(name, "no-no-") {
+			name = strings.TrimPrefix(name, "no-no-")
+		}
+		if name == "prefix" || name == "prefi" {
+			return true
+		}
+		if strings.Contains(name, "C") && strings.Trim(name, "?aBcCdDEfghHlmnOpPqsSvyLw") == "" {
+			return true
+		}
+	}
+	return false
+}
+
+// Inspection overrides must precede --, which npm uses to end option parsing.
+// Clone the caller's command so the approved final invocation stays unchanged.
+func npmInspectionArgs(command []string, options ...string) []string {
+	args := slices.Clone(command)
+	index := slices.Index(args, "--")
+	if index < 0 {
+		index = len(args)
+	}
+	return slices.Insert(args, index, options...)
 }
 
 // rewriteRelativePath re-relativizes a path (relative to projectRoot) so
@@ -369,11 +483,19 @@ func writeNpmJSONFile(path string, content map[string]any) error {
 // with --package-lock-only to safely resolve those targets' names, versions,
 // and sources out of the updated lockfile.
 func (p *npmTempProject) resolveInstallCommandTargets(ctx context.Context, command []string) (*pm.Set[pm.Package], error) {
+	if p.global != nil {
+		return p.resolveGlobalInstallTargets(ctx, command)
+	}
 	// Global installs don't touch this temporary project's node_modules, so
 	// coerce them into local ones to resolve their targets here instead.
 	localCommand := withoutGlobalOptions(command)
 
-	dryRunArgs := append(slices.Clone(localCommand), "--dry-run", "--loglevel", "silly")
+	localCommand = npmInspectionArgs(localCommand, p.inspectionOptions...)
+	if len(p.inspectionOptions) != 0 {
+		// Clustered global flags cannot escape the private local inspection.
+		localCommand = npmInspectionArgs(localCommand, "--global=false")
+	}
+	dryRunArgs := npmInspectionArgs(localCommand, "--dry-run", "--loglevel", "silly")
 	dryRunCmd := exec.CommandContext(ctx, p.executable, dryRunArgs...)
 	dryRunCmd.Dir = p.dir
 	var stderr bytes.Buffer
@@ -398,8 +520,9 @@ func (p *npmTempProject) resolveInstallCommandTargets(ctx context.Context, comma
 		return pm.NewSet[pm.Package](), nil
 	}
 
-	// Safely run the install command to write or update the lockfile only.
-	lockOnlyArgs := append(slices.Clone(localCommand), "--package-lock-only", "--ignore-scripts")
+	// Refresh the private lock even when the final command uses --no-save;
+	// its current dependency flags must describe the dry-run target graph.
+	lockOnlyArgs := npmInspectionArgs(localCommand, "--package-lock-only", "--ignore-scripts", "--save")
 	lockOnlyCmd := exec.CommandContext(ctx, p.executable, lockOnlyArgs...)
 	lockOnlyCmd.Dir = p.dir
 	if output, err := lockOnlyCmd.CombinedOutput(); err != nil {
@@ -419,8 +542,26 @@ func (p *npmTempProject) resolveInstallCommandTargets(ctx context.Context, comma
 		return nil, errors.New("malformed dependencies data in package-lock.json")
 	}
 
+	// npm's dry-run diff includes dev-only nodes even when the final install
+	// omits them. Read effective configuration through npm so project/user/env
+	// settings and legacy production flags retain npm's precedence.
+	omitDev := false
+	for _, handle := range targetHandles {
+		entry, _ := dependencies[handle].(map[string]any)
+		if entry["dev"] == true {
+			omitDev, err = p.omitsDevelopmentDependencies(ctx, command)
+			if err != nil {
+				return nil, err
+			}
+			break
+		}
+	}
 	installTargets := pm.NewSet[pm.Package]()
 	for _, handle := range targetHandles {
+		entry, _ := dependencies[handle].(map[string]any)
+		if omitDev && entry["dev"] == true {
+			continue
+		}
 		pkg, err := resolveNpmInstallTarget(dependencies, p.dir, handle, "", nil)
 		if err != nil {
 			return nil, err
@@ -436,6 +577,61 @@ func (p *npmTempProject) resolveInstallCommandTargets(ctx context.Context, comma
 		installTargets.Add(pkg)
 	}
 	return installTargets, nil
+}
+
+// omitsDevelopmentDependencies asks the same npm executable and project for
+// configuration instead of interpreting selection flags ourselves. npm 7 may
+// report a type in both lists; explicit inclusion always wins.
+func (p *npmTempProject) omitsDevelopmentDependencies(ctx context.Context, command []string) (bool, error) {
+	args := append([]string{"config", "list"}, command...)
+	args = npmInspectionArgs(args, append(slices.Clone(p.inspectionOptions), "--json")...)
+	child := exec.CommandContext(ctx, p.executable, args...)
+	child.Dir = p.dir
+	output, err := child.Output()
+	if err != nil {
+		return false, fmt.Errorf("failed to read npm dependency selection: %w", err)
+	}
+	var config struct {
+		Omit    []string `json:"omit"`
+		Include []string `json:"include"`
+		Global  bool     `json:"global"`
+	}
+	if err := json.Unmarshal(output, &config); err != nil {
+		return false, fmt.Errorf("failed to decode npm dependency selection: %w", err)
+	}
+	// Global installs do not inherit the local project's dev-only classification.
+	return !config.Global && slices.Contains(config.Omit, "dev") && !slices.Contains(config.Include, "dev"), nil
+}
+
+func withoutNpmWorkspaceEnvironment() []string {
+	return slices.DeleteFunc(os.Environ(), func(value string) bool {
+		key, _, _ := strings.Cut(value, "=")
+		return strings.EqualFold(key, "npm_config_workspace") || strings.EqualFold(key, "npm_config_workspaces")
+	})
+}
+
+// Strip only workspace selectors for the read-only config subcommand.
+// The install invocations retain the original selectors and all other options.
+func withoutNpmWorkspaceSelection(command []string) []string {
+	var args []string
+	for i := 0; i < len(command); i++ {
+		option := command[i]
+		if option == "--" {
+			return append(args, command[i:]...)
+		}
+		switch {
+		case option == "--workspace" || option == "-w":
+			i++
+		case option == "--workspaces" || option == "--no-workspaces" || option == "-ws":
+			if i+1 < len(command) && (command[i+1] == "true" || command[i+1] == "false") {
+				i++
+			}
+		case strings.HasPrefix(option, "--workspace=") || strings.HasPrefix(option, "--workspaces="):
+		default:
+			args = append(args, option)
+		}
+	}
+	return args
 }
 
 // extractNpmTargetHandles scrapes an npm dry-run install's verbose log for

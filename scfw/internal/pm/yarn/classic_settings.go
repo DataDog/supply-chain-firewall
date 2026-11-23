@@ -28,7 +28,8 @@ type classicSettings struct {
 	// proxy to its HTTP client, which then ignores NO_PROXY for it.
 	NoProxy                   string
 	NoProxyHTTP, NoProxyHTTPS bool
-	// CAFile wins over CA, as in Yarn's request manager.
+	// A readable CAFile wins over CA; when Yarn cannot read the file it
+	// keeps CA, as in its request manager.
 	CAFile     string
 	CA         []string
 	StrictSSL  bool
@@ -115,9 +116,7 @@ func (yarn Yarn) classicSettings(command []string) (classicSettings, error) {
 	}
 
 	settings.CAFile = expandHome(config.get("cafile"), env["HOME"])
-	if settings.CAFile == "" {
-		settings.CA = config.values("ca")
-	}
+	settings.CA = config.values("ca")
 	// Yarn's default strict-ssl shadows npm's, so only Yarn layers count.
 	yarnOnly := classicConfig{options: config.options, yarn: config.yarn}
 	settings.StrictSSL = yarnOnly.get("strict-ssl") != "false"

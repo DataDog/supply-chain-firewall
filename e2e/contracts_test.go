@@ -66,11 +66,16 @@ type candidate struct {
 	Property         string             `json:"property"`
 	Module           string             `json:"module,omitempty"`
 	Metadata         []metadataEvidence `json:"metadata"`
+	Selection        *fileEvidence      `json:"selection,omitempty"`
 	Artifacts        []artifact         `json:"artifacts"`
 	ObservedAt       time.Time          `json:"observed_at"`
 	LatestValidStart time.Time          `json:"latest_valid_start"`
 	Constraints      []string           `json:"constraints"`
 	Evidence         []string           `json:"evidence"`
+
+	Related           map[string]candidate `json:"related,omitempty"`
+	AgeThresholdHours int                  `json:"age_threshold_hours,omitempty"`
+	ApplicableCells   []string             `json:"applicable_cells,omitempty"`
 }
 type discovery struct {
 	SchemaVersion int                  `json:"schema_version"`

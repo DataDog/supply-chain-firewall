@@ -108,7 +108,10 @@ jobs:
       - name: Install Poetry
         env:
           POETRY_REQUIREMENT: ${{ matrix.poetry }}
-        run: python -m pip install "$POETRY_REQUIREMENT"
+        run: |
+          python -m pip install "$POETRY_REQUIREMENT"
+          poetry --version
+          python -m virtualenv --version
 
       - name: Test Poetry proxy integration
         run: go test -count=1 ./scfw/internal/cli ./scfw/internal/pm/poetry -run 'TestPoetry|TestPyPIRegistrations'

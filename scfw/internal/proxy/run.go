@@ -31,6 +31,8 @@ type CommandSpec struct {
 	// EnvRemovals unsets child-only variables whose presence has meaning even
 	// when their value is empty. Overrides are applied after these removals.
 	EnvRemovals []string
+	// Dir is the child's working directory; empty keeps SCFW's.
+	Dir string
 }
 
 // CommandConfigurer is implemented by adapters which configure commands to use
@@ -90,6 +92,7 @@ func Run(ctx context.Context, options Options, command []string, configurer Comm
 	}
 
 	child := exec.CommandContext(ctx, spec.Executable, spec.Args...)
+	child.Dir = spec.Dir
 	environment := os.Environ()
 	if len(spec.EnvRemovals) > 0 {
 		filtered := make([]string, 0, len(environment))

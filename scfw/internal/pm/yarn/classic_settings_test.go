@@ -196,6 +196,8 @@ func TestClassicWorkspaceDiscoversFromTheWorkspace(t *testing.T) {
 			"yarnrc/https-proxy.yarnrc.tmpl", []string{"workspace", "a", "add", "x"}, "http://rc:1"},
 		{"rc-arg proxy in the workspace", "root-array.json", map[string]string{"a": "a", "packages/b": "b"}, "a",
 			"yarnrc/rc-arg.yarnrc.tmpl", []string{"workspace", "a", "add", "x"}, "http://rc:1"},
+		{"command after a separator", "root-array.json", map[string]string{"a": "a"}, "a",
+			"yarnrc/rc-arg-add.yarnrc.tmpl", []string{"workspace", "a", "--", "add", "x"}, "http://rc:1"},
 		{"another workspace is not affected", "root-array.json", map[string]string{"a": "a", "packages/b": "b"}, "a",
 			"yarnrc/https-proxy.yarnrc.tmpl", []string{"workspace", "b", "add", "x"}, ""},
 		{"unknown name keeps the starting directory", "root-array.json", map[string]string{"a": "a"}, "a",

@@ -1,0 +1,288 @@
+{
+  "valid": {
+    "name": "fixture-leaf",
+    "dist-tags": {
+      "latest": "1.1.0"
+    },
+    "time": {
+      "1.0.0": "2026-01-01T00:00:00Z",
+      "1.1.0": "2026-01-09T23:30:00Z",
+      "modified": "2026-01-09T23:30:00Z"
+    },
+    "versions": {
+      "1.0.0": {
+        "name": "fixture-leaf",
+        "version": "1.0.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://registry.npmjs.org/fixture-leaf/-/fixture-leaf-1.0.0.tgz",
+          "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      },
+      "1.1.0": {
+        "name": "fixture-leaf",
+        "version": "1.1.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://registry.npmjs.org/fixture-leaf/-/fixture-leaf-1.1.0.tgz",
+          "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      }
+    }
+  },
+  "missing_time": {
+    "name": "fixture-leaf",
+    "dist-tags": {
+      "latest": "1.1.0"
+    },
+    "time": {
+      "1.1.0": "2026-01-09T23:30:00Z",
+      "modified": "2026-01-09T23:30:00Z"
+    },
+    "versions": {
+      "1.0.0": {
+        "name": "fixture-leaf",
+        "version": "1.0.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://registry.npmjs.org/fixture-leaf/-/fixture-leaf-1.0.0.tgz",
+          "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      },
+      "1.1.0": {
+        "name": "fixture-leaf",
+        "version": "1.1.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://registry.npmjs.org/fixture-leaf/-/fixture-leaf-1.1.0.tgz",
+          "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      }
+    }
+  },
+  "runtime_dependency": {
+    "name": "fixture-leaf",
+    "dist-tags": {
+      "latest": "1.1.0"
+    },
+    "time": {
+      "1.0.0": "2026-01-01T00:00:00Z",
+      "1.1.0": "2026-01-09T23:30:00Z",
+      "modified": "2026-01-09T23:30:00Z"
+    },
+    "versions": {
+      "1.0.0": {
+        "name": "fixture-leaf",
+        "version": "1.0.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://registry.npmjs.org/fixture-leaf/-/fixture-leaf-1.0.0.tgz",
+          "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        },
+        "dependencies": {
+          "another-package": "^1.0.0"
+        }
+      },
+      "1.1.0": {
+        "name": "fixture-leaf",
+        "version": "1.1.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://registry.npmjs.org/fixture-leaf/-/fixture-leaf-1.1.0.tgz",
+          "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      }
+    }
+  },
+  "install_script": {
+    "name": "fixture-leaf",
+    "dist-tags": {
+      "latest": "1.1.0"
+    },
+    "time": {
+      "1.0.0": "2026-01-01T00:00:00Z",
+      "1.1.0": "2026-01-09T23:30:00Z",
+      "modified": "2026-01-09T23:30:00Z"
+    },
+    "versions": {
+      "1.0.0": {
+        "name": "fixture-leaf",
+        "version": "1.0.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://registry.npmjs.org/fixture-leaf/-/fixture-leaf-1.0.0.tgz",
+          "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        },
+        "scripts": {
+          "postinstall": "node install.js"
+        }
+      },
+      "1.1.0": {
+        "name": "fixture-leaf",
+        "version": "1.1.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://registry.npmjs.org/fixture-leaf/-/fixture-leaf-1.1.0.tgz",
+          "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      }
+    }
+  },
+  "bad_integrity": {
+    "name": "fixture-leaf",
+    "dist-tags": {
+      "latest": "1.1.0"
+    },
+    "time": {
+      "1.0.0": "2026-01-01T00:00:00Z",
+      "1.1.0": "2026-01-09T23:30:00Z",
+      "modified": "2026-01-09T23:30:00Z"
+    },
+    "versions": {
+      "1.0.0": {
+        "name": "fixture-leaf",
+        "version": "1.0.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://registry.npmjs.org/fixture-leaf/-/fixture-leaf-1.0.0.tgz",
+          "integrity": "sha512-invalid"
+        }
+      },
+      "1.1.0": {
+        "name": "fixture-leaf",
+        "version": "1.1.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://registry.npmjs.org/fixture-leaf/-/fixture-leaf-1.1.0.tgz",
+          "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      }
+    }
+  },
+  "foreign_tarball": {
+    "name": "fixture-leaf",
+    "dist-tags": {
+      "latest": "1.1.0"
+    },
+    "time": {
+      "1.0.0": "2026-01-01T00:00:00Z",
+      "1.1.0": "2026-01-09T23:30:00Z",
+      "modified": "2026-01-09T23:30:00Z"
+    },
+    "versions": {
+      "1.0.0": {
+        "name": "fixture-leaf",
+        "version": "1.0.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://example.invalid/fixture-leaf-1.0.0.tgz",
+          "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      },
+      "1.1.0": {
+        "name": "fixture-leaf",
+        "version": "1.1.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://registry.npmjs.org/fixture-leaf/-/fixture-leaf-1.1.0.tgz",
+          "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      }
+    }
+  },
+  "deprecated": {
+    "name": "fixture-leaf",
+    "dist-tags": {
+      "latest": "1.1.0"
+    },
+    "time": {
+      "1.0.0": "2026-01-01T00:00:00Z",
+      "1.1.0": "2026-01-09T23:30:00Z",
+      "modified": "2026-01-09T23:30:00Z"
+    },
+    "versions": {
+      "1.0.0": {
+        "name": "fixture-leaf",
+        "version": "1.0.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://registry.npmjs.org/fixture-leaf/-/fixture-leaf-1.0.0.tgz",
+          "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        },
+        "deprecated": "superseded"
+      },
+      "1.1.0": {
+        "name": "fixture-leaf",
+        "version": "1.1.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://registry.npmjs.org/fixture-leaf/-/fixture-leaf-1.1.0.tgz",
+          "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      }
+    }
+  },
+  "changed_time": {
+    "name": "fixture-leaf",
+    "dist-tags": {
+      "latest": "1.1.0"
+    },
+    "time": {
+      "1.0.0": "2026-01-02T00:00:00Z",
+      "1.1.0": "2026-01-09T23:30:00Z",
+      "modified": "2026-01-09T23:30:00Z"
+    },
+    "versions": {
+      "1.0.0": {
+        "name": "fixture-leaf",
+        "version": "1.0.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://registry.npmjs.org/fixture-leaf/-/fixture-leaf-1.0.0.tgz",
+          "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      },
+      "1.1.0": {
+        "name": "fixture-leaf",
+        "version": "1.1.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "dist": {
+          "tarball": "https://registry.npmjs.org/fixture-leaf/-/fixture-leaf-1.1.0.tgz",
+          "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+[
+  "csstype",
+  "@types/estree",
+  "@types/semver",
+  "undici-types",
+  "is-arrayish"
+]

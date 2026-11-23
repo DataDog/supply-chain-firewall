@@ -1,0 +1,9 @@
+{
+  "npm-old": [
+    "is-number",
+    "isarray"
+  ],
+  "npm-old-scoped": [
+    "@types/estree"
+  ]
+}

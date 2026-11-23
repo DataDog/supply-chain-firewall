@@ -50,6 +50,9 @@ func poetryForProxyTest(t *testing.T) poetry.Poetry {
 	}
 	t.Setenv("POETRY_CONFIG_DIR", t.TempDir())
 	t.Setenv("POETRY_CACHE_DIR", t.TempDir())
+	// virtualenv's seed cache is separate from Poetry's cache and may contain
+	// read-only directories. Keep it isolated even when a test changes HOME.
+	t.Setenv("VIRTUALENV_OVERRIDE_APP_DATA", proxyCacheDir(t))
 	t.Setenv("POETRY_VIRTUALENVS_IN_PROJECT", "true")
 	t.Setenv("POETRY_HTTP_BASIC_PRIVATE_USERNAME", "private")
 	t.Setenv("POETRY_HTTP_BASIC_PRIVATE_PASSWORD", "secret")
@@ -118,7 +121,6 @@ func TestPoetryProxyEndToEnd(t *testing.T) {
 		{name: "source TLS mTLS", command: "install", priority: "primary", outcome: evaluation.OutcomeAllow, tlsMode: "mTLS"},
 		{name: "source TLS mTLS verify false", command: "install", priority: "primary", outcome: evaluation.OutcomeAllow, tlsMode: "mTLS skip-verification"},
 		{name: "source TLS skip-verification", command: "install", priority: "primary", outcome: evaluation.OutcomeAllow, tlsMode: "skip-verification"},
-		{name: "unused empty repository", command: "install", priority: "primary", outcome: evaluation.OutcomeAllow, unusedRepository: true},
 		{name: "unused relative repository", command: "lock", priority: "primary", outcome: evaluation.OutcomeAllow, unusedRepository: true, unusedURL: "upload/packages"},
 		{name: "unused hostless repository", command: "install", priority: "primary", outcome: evaluation.OutcomeAllow, unusedRepository: true, unusedURL: "https:///upload"},
 		{name: "cached metadata block", command: "install", priority: "primary", outcome: evaluation.OutcomeBlock, cached: true},
@@ -388,6 +390,136 @@ func TestPoetryProxyEndToEnd(t *testing.T) {
 			}
 			assertProxyCleaned(t, runner.config)
 		})
+	}
+}
+
+// Poetry 2.5.2 rejects empty repository URLs while older versions accept them.
+// SCFW must preserve the installed Poetry's result, including its diagnostic.
+func TestPoetryEmptyRepositoryMatchesNative(t *testing.T) {
+	manager := poetryForProxyTest(t)
+	wheel := pypiWheel(t)
+	simple := readProxyFixture(t, "poetry/simple.html")
+	var requests, downloads atomic.Int32
+	registry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		switch r.URL.Path {
+		case "/python-packages/project/":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = io.WriteString(w, simple)
+		case "/python-packages/packages/project-1.0-py3-none-any.whl":
+			downloads.Add(1)
+			_, _ = w.Write(wheel)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer registry.Close()
+	ca := writeProxyTLSFile(t, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: registry.Certificate().Raw}))
+	t.Setenv("REQUESTS_CA_BUNDLE", ca)
+	manifest := fmt.Sprintf(readProxyFixture(t, "poetry/pyproject.toml.tmpl"), `project = "1.0"`, "", registry.URL, "primary")
+	configuration := readProxyFixture(t, "poetry/config.toml") + "\n" + fmt.Sprintf(readProxyFixture(t, "poetry/repository-tls.toml.tmpl"), "unused", strconv.Quote(""), "unused", strconv.Quote("/missing/unused-certificate.pem"))
+	nativeExit := 0
+	for _, proxied := range []bool{false, true} {
+		if !t.Run(fmt.Sprintf("proxied=%t", proxied), func(t *testing.T) {
+			// Separate projects and caches ensure the native run cannot prime
+			// the proxied run's lockfile, environment, or downloaded packages.
+			root := t.TempDir()
+			t.Setenv("POETRY_CONFIG_DIR", root)
+			t.Setenv("POETRY_CACHE_DIR", filepath.Join(root, "cache"))
+			files := map[string]string{
+				"pyproject.toml": manifest,
+				"config.toml":    configuration,
+				"poetry.toml":    readProxyFixture(t, "poetry/poetry.toml"),
+			}
+			for name, content := range files {
+				poetryTestFile(t, filepath.Join(root, name), content)
+			}
+			output, err := os.CreateTemp(root, "output")
+			if err != nil {
+				t.Fatal(err)
+			}
+			stdout, stderr := os.Stdout, os.Stderr
+			os.Stdout, os.Stderr = output, output
+			t.Cleanup(func() {
+				os.Stdout, os.Stderr = stdout, stderr
+				_ = output.Close()
+			})
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			defer cancel()
+			args := []string{"--directory", root, "--no-interaction", "install", "--no-root"}
+			beforeRequests, beforeDownloads := requests.Load(), downloads.Load()
+			var calls atomic.Int32
+			var commandErr error
+			if proxied {
+				runner := &capturingPoetryRunner{Poetry: manager}
+				configure := func(ctx context.Context, client *http.Client) ([]proxy.RequestHook, error) {
+					options, err := manager.PyPIClassifierOptions(args)
+					if err != nil {
+						return nil, err
+					}
+					hook, err := pypi.NewProxyHook(ctx, pypi.ProxyHookOptions{
+						Client: client, ClassifierOptions: options,
+						EvaluatePackage: func(_ context.Context, pkg pm.Package, err error) error {
+							calls.Add(1)
+							if pkg.Name != "project" || pkg.Version != "1.0" {
+								t.Errorf("unexpected package: %+v", pkg)
+							}
+							return err
+						},
+						ResolvePublishDate: func(context.Context, string, string, string) (time.Time, error) {
+							return time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), nil
+						},
+					})
+					return []proxy.RequestHook{hook}, err
+				}
+				var setupErr error
+				commandErr, setupErr = runThroughProxy(ctx, runner, args, configure)
+				if setupErr != nil {
+					t.Fatal(setupErr)
+				}
+				assertProxyCleaned(t, runner.config)
+			} else {
+				commandErr = manager.RunCommand(ctx, args)
+			}
+			data, err := os.ReadFile(output.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			exitCode := 0
+			if commandErr != nil {
+				var exit *exec.ExitError
+				if !errors.As(commandErr, &exit) || exit.ExitCode() != 1 || !strings.Contains(string(data), "The repository 'unused' is missing a url.") {
+					t.Fatalf("unexpected Poetry failure: %v\n%s", commandErr, data)
+				}
+				exitCode = exit.ExitCode()
+				if requests.Load() != beforeRequests || calls.Load() != 0 {
+					t.Fatal("invalid configuration reached the registry or package evaluation")
+				}
+				if _, err := os.Stat(filepath.Join(root, "poetry.lock")); !os.IsNotExist(err) {
+					t.Fatalf("invalid configuration produced a lockfile: %v", err)
+				}
+			} else {
+				if downloads.Load() == beforeDownloads || (proxied && calls.Load() == 0) {
+					t.Fatalf("successful install did not download/evaluate the package: evaluations=%d\n%s", calls.Load(), data)
+				}
+				if _, err := os.Stat(filepath.Join(root, "poetry.lock")); err != nil {
+					t.Fatalf("successful install did not write a lockfile: %v", err)
+				}
+			}
+			if !proxied {
+				nativeExit = exitCode
+			} else if exitCode != nativeExit {
+				t.Fatalf("proxied exit=%d, native exit=%d\n%s", exitCode, nativeExit, data)
+			}
+			for name, expected := range files {
+				data, err := os.ReadFile(filepath.Join(root, name))
+				if err != nil || string(data) != expected {
+					t.Fatalf("%s changed: %v", name, err)
+				}
+			}
+		}) {
+			return
+		}
 	}
 }
 

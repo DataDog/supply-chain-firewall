@@ -1,0 +1,6 @@
+{
+ "required":{"packages":{"":{"dependencies":{"root":"1"}},"node_modules/root":{"version":"1","resolved":"root-url","integrity":"root-hash","dependencies":{"leaf":"^2"}},"node_modules/leaf":{"version":"2","resolved":"leaf-url","integrity":"leaf-hash"}}},
+ "missing_edge":{"packages":{"":{"dependencies":{"root":"1"}},"node_modules/root":{"version":"1","resolved":"root-url","integrity":"root-hash"},"node_modules/leaf":{"version":"2","resolved":"leaf-url","integrity":"leaf-hash"}}},
+ "wrong_artifact":{"packages":{"":{"dependencies":{"root":"1"}},"node_modules/root":{"version":"1","resolved":"other-url","integrity":"root-hash","dependencies":{"leaf":"^2"}},"node_modules/leaf":{"version":"2","resolved":"leaf-url","integrity":"leaf-hash"}}},
+ "missing_leaf":{"packages":{"":{"dependencies":{"root":"1"}},"node_modules/root":{"version":"1","resolved":"root-url","integrity":"root-hash","dependencies":{"leaf":"^2"}}}}
+}

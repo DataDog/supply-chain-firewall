@@ -73,7 +73,9 @@ type candidate struct {
 	Constraints      []string           `json:"constraints"`
 	Evidence         []string           `json:"evidence"`
 
-	Related map[string]candidate `json:"related,omitempty"`
+	Related           map[string]candidate `json:"related,omitempty"`
+	AgeThresholdHours int                  `json:"age_threshold_hours,omitempty"`
+	ApplicableCells   []string             `json:"applicable_cells,omitempty"`
 }
 type discovery struct {
 	SchemaVersion int                  `json:"schema_version"`

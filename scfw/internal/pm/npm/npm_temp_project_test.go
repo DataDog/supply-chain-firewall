@@ -236,7 +236,12 @@ func TestResolveNpmInstallTarget_Errors(t *testing.T) {
 	tempDir := t.TempDir()
 
 	dependencies := map[string]any{
-		"node_modules/no-version": map[string]any{},
+		"node_modules/no-version":      map[string]any{},
+		"node_modules/missing-link":    map[string]any{"link": true, "resolved": "packages/missing"},
+		"node_modules/remote-link":     map[string]any{"link": true, "resolved": "packages/remote"},
+		"packages/remote":              map[string]any{"name": "remote", "resolved": "https://registry.npmjs.org/remote/-/remote.tgz"},
+		"node_modules/invalid-version": map[string]any{"link": true, "resolved": "packages/invalid"},
+		"packages/invalid":             map[string]any{"name": "invalid", "version": 42},
 	}
 
 	tests := []struct {
@@ -245,6 +250,9 @@ func TestResolveNpmInstallTarget_Errors(t *testing.T) {
 	}{
 		{name: "missing entry", handle: "node_modules/missing"},
 		{name: "missing version and not a link", handle: "node_modules/no-version"},
+		{name: "linked target must exist", handle: "node_modules/missing-link"},
+		{name: "remote link target still requires version", handle: "node_modules/remote-link"},
+		{name: "local version must have valid type", handle: "node_modules/invalid-version"},
 	}
 
 	for _, tc := range tests {

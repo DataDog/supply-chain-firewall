@@ -1,0 +1,25 @@
+{
+  "packages": {
+    "": {
+      "name": "root",
+      "workspaces": [
+        "packages/*"
+      ]
+    },
+    "node_modules/member": {
+      "resolved": "packages/member",
+      "link": true
+    },
+    "packages/member": {
+      "name": "member",
+      "private": true,
+      "dependencies": {
+        "is-number": "6.0.0"
+      }
+    },
+    "node_modules/is-number": {
+      "version": "6.0.0",
+      "resolved": "https://registry.npmjs.org/is-number/-/is-number-6.0.0.tgz"
+    }
+  }
+}

@@ -42,7 +42,7 @@ func init() {
 		suites["npm-projects"] = append(suites["npm-projects"], scenario{Scenario: id, Variant: mode + "-" + variant + map[bool]string{false: "-allow", true: "-block"}[block], Manager: "npm", Mode: mode, Backend: "local", RegistryProfile: "public-npm", DiscoveryKey: key, Capabilities: []string{capability}, Timeout: 5 * time.Minute, Run: func(r *caseRun) error { return runNPMProject(r, npmProjectOptions{variant, block}) }})
 	}
 	for _, mode := range []string{"resolution", "proxy"} {
-		for _, variant := range []string{"manifest-no-lock", "manifest-lock", "dev", "production", "duplicates", "upgrade", "downgrade", "workspace", "local", "marker", "ci"} {
+		for _, variant := range []string{"manifest-no-lock", "manifest-lock", "dev", "production", "production-no-save", "dev-no-save", "prefix-separate-no-save", "prefix-equals-no-save", "global-production", "duplicates", "upgrade", "downgrade", "workspace", "local", "marker", "ci"} {
 			id := "NPM-02"
 			if slices.Contains([]string{"workspace", "local", "marker"}, variant) {
 				id = "NPM-03"
@@ -124,11 +124,14 @@ func revalidateNPMProjects(ctx context.Context, c candidate, output string) erro
 }
 
 func npmProjectFiles(r *caseRun, variant string, direct, root candidate) (map[string]json.RawMessage, error) {
+	if npmGlobalVariant(variant) {
+		return npmGlobalFiles(r, variant, direct, root)
+	}
 	shape := variant
 	switch variant {
 	case "manifest-no-lock", "manifest-lock", "ci", "help", "version", "dry-run", "unresolved", "pre7-install", "pre7-version":
 		shape = "manifest"
-	case "production":
+	case "production", "production-no-save", "dev-no-save", "prefix-separate-no-save", "prefix-equals-no-save":
 		shape = "dev"
 	case "upgrade", "downgrade":
 		shape = "graph"
@@ -176,6 +179,13 @@ func npmProjectFiles(r *caseRun, variant string, direct, root candidate) (map[st
 }
 
 func prepareNPMProjectCase(r *caseRun, variant string, direct, initial candidate) ([]string, map[string][]byte, []npmProjectPackage, error) {
+	prefixed := variant == "prefix-separate-no-save" || variant == "prefix-equals-no-save"
+	if prefixed {
+		r.WorkDir = filepath.Join(r.Root, "prefixed project with spaces")
+		if err := os.MkdirAll(r.WorkDir, 0700); err != nil {
+			return nil, nil, nil, err
+		}
+	}
 	if _, err := prepareNPMProject(r); err != nil {
 		return nil, nil, nil, err
 	}
@@ -187,18 +197,38 @@ func prepareNPMProjectCase(r *caseRun, variant string, direct, initial candidate
 		return nil, nil, nil, err
 	}
 	args := []string{"install", "--ignore-scripts", "--loglevel=http"}
-	if variant == "manifest-lock" || variant == "ci" || variant == "upgrade" || variant == "downgrade" {
+	if prefixed || variant == "manifest-lock" || variant == "ci" || variant == "production-no-save" || variant == "dev-no-save" || variant == "upgrade" || variant == "downgrade" {
 		bootstrap := []string{r.Cell.Executable, "install", "--ignore-scripts"}
-		if variant == "manifest-lock" || variant == "ci" {
+		if prefixed || variant == "manifest-lock" || variant == "ci" || variant == "production-no-save" || variant == "dev-no-save" {
 			bootstrap = append(bootstrap, "--package-lock-only")
 		}
 		if _, err := r.Command("project-bootstrap", bootstrap...); err != nil {
 			return nil, nil, nil, classified("INFRASTRUCTURE_FAILURE", err)
 		}
 	}
+	if npmGlobalVariant(variant) {
+		if err := prepareNPMGlobalState(r, variant, initial); err != nil {
+			return nil, nil, nil, err
+		}
+	}
 	switch variant {
 	case "production":
 		args = append(args, "--production")
+	case "production-no-save", "dev-no-save", "prefix-separate-no-save", "prefix-equals-no-save":
+		saveType := "--save-prod"
+		if variant == "dev-no-save" {
+			saveType = "--save-dev"
+		}
+		args = append(args, initial.Project+"@"+initial.Version, saveType, "--no-save", "--omit=dev")
+	case "global-production":
+		r.Env["NODE_ENV"] = "production"
+		r.Env["npm_config_prefix"] = filepath.Join(r.Root, "global-prefix")
+		if err := os.MkdirAll(filepath.Join(r.Env["npm_config_prefix"], "lib", "node_modules"), 0700); err != nil {
+			return nil, nil, nil, err
+		}
+		args = append(args, "-g", direct.Project+"@"+direct.Version)
+	case "global-workspace-member", "global-self":
+		args = append(args, npmGlobalArgs(variant, initial)...)
 	case "ci":
 		args[0] = "ci"
 	case "help":
@@ -212,7 +242,17 @@ func prepareNPMProjectCase(r *caseRun, variant string, direct, initial candidate
 	case "unresolved":
 		args = append(args, direct.Project+"@0.0.0-scfw-e2e-unpublished")
 	}
+	if prefixed {
+		if variant == "prefix-separate-no-save" {
+			args = append(args, "--prefix", r.WorkDir)
+		} else {
+			args = append(args, "--prefix="+r.WorkDir)
+		}
+	}
 	paths := []string{"package-lock.json", "final-install.marker"}
+	if variant == "global-workspace-member" {
+		paths = append(paths, "packages/member/package-lock.json")
+	}
 	for path := range files {
 		paths = append(paths, path)
 	}
@@ -247,7 +287,15 @@ func npmProjectState(r *caseRun, label string) ([]npmProjectPackage, error) {
 	if err != nil {
 		return nil, err
 	}
-	command, err := r.Command("state-"+label, r.Cell.Runtime, script, r.WorkDir)
+	directory := r.WorkDir
+	if prefix := r.Env["npm_config_prefix"]; prefix != "" {
+		directory = filepath.Join(prefix, "lib")
+	}
+	args := []string{r.Cell.Runtime, script, directory}
+	if strings.Contains(r.Spec.Variant, "-global-self-") {
+		args = append(args, "node_modules/scfw-e2e-global-source")
+	}
+	command, err := r.Command("state-"+label, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -278,11 +326,14 @@ func runNPMProject(r *caseRun, options npmProjectOptions) error {
 		if options.variant == "downgrade" {
 			initial, target = graph.Roots[0], graph.Roots[1]
 		}
-		if options.variant == "dev" || options.variant == "production" && options.block {
+		if options.variant == "dev" || options.variant == "production-no-save" || options.variant == "prefix-separate-no-save" || options.variant == "prefix-equals-no-save" || (options.variant == "production" || options.variant == "dev-no-save") && options.block {
 			target = graph.Roots[0]
 		}
 		if options.variant == "duplicates" {
 			target = graph.Leaves[0]
+		}
+		if npmGlobalVariant(options.variant) {
+			initial, target = graph.Leaves[0], graph.Leaves[0]
 		}
 	} else {
 		candidates = []candidate{direct}
@@ -305,7 +356,12 @@ func runNPMProject(r *caseRun, options npmProjectOptions) error {
 	if options.variant == "upgrade" || options.variant == "downgrade" {
 		args = append(args, target.Project+"@"+target.Version)
 	}
+	nativeRoot := native.WorkDir
+	if options.variant == "global-workspace-member" {
+		native.WorkDir = filepath.Join(nativeRoot, "packages/member")
+	}
 	nativeCommand, nativeErr := native.Command("native-command", append([]string{r.Cell.Executable}, args...)...)
+	native.WorkDir = nativeRoot
 	if nativeCommand.TimedOut || nativeCommand.ExitCode < 0 {
 		return classified("INFRASTRUCTURE_FAILURE", fmt.Errorf("native launch: %w", nativeErr))
 	}
@@ -331,9 +387,12 @@ func runNPMProject(r *caseRun, options npmProjectOptions) error {
 	if err := npmProjectArtifacts(&native, expected, candidates); err != nil {
 		return err
 	}
-	_, before, previous, err := prepareNPMProjectCase(r, options.variant, direct, initial)
+	args, before, previous, err := prepareNPMProjectCase(r, options.variant, direct, initial)
 	if err != nil {
 		return err
+	}
+	if options.variant == "upgrade" || options.variant == "downgrade" {
+		args = append(args, target.Project+"@"+target.Version)
 	}
 	if !reflect.DeepEqual(previous, nativeBefore) {
 		return fmt.Errorf("native and wrapped starting installations differ")
@@ -346,7 +405,12 @@ func runNPMProject(r *caseRun, options npmProjectOptions) error {
 	if r.Spec.Mode == "proxy" {
 		r.Env["SCFW_PROXY_ENABLED"] = "1"
 	}
+	projectRoot := r.WorkDir
+	if options.variant == "global-workspace-member" {
+		r.WorkDir = filepath.Join(projectRoot, "packages/member")
+	}
 	command, commandErr := r.Command("scfw", append([]string{r.Binary, "run", "--error-on-block", "--", "npm"}, args...)...)
+	r.WorkDir = projectRoot
 	if command.TimedOut || command.ExitCode < 0 {
 		return classified("INFRASTRUCTURE_FAILURE", fmt.Errorf("SCFW launch: %w", commandErr))
 	}
@@ -402,8 +466,11 @@ func runNPMProject(r *caseRun, options npmProjectOptions) error {
 		r.Result.PolicyOutcome, r.Result.ResolvedAction = "NOT_OBSERVED", "REJECT"
 		return nil
 	}
-	blocked := options.block && options.variant != "production" && !(options.variant == "ci" && r.Spec.Mode == "resolution")
-	if options.variant == "production" && options.block {
+	if slices.Contains([]string{"global-production", "global-workspace-member", "global-self", "production-no-save", "dev-no-save", "prefix-separate-no-save", "prefix-equals-no-save"}, options.variant) && !reflect.DeepEqual(before, after) {
+		return fmt.Errorf("global/no-save install changed the local project")
+	}
+	blocked := options.block && options.variant != "production" && options.variant != "dev-no-save" && !(options.variant == "ci" && r.Spec.Mode == "resolution")
+	if (options.variant == "production" || options.variant == "dev-no-save") && options.block {
 		r.Result.Observations["omitted_dev_finding"] = target.Project + "@" + target.Version
 	}
 	if blocked && command.ExitCode == 0 || !blocked && command.ExitCode != nativeCommand.ExitCode {
@@ -470,8 +537,11 @@ func npmProjectArtifacts(r *caseRun, state []npmProjectPackage, candidates []can
 		return nil
 	}
 	var lock npmGraphLock
-	if err := readJSON(filepath.Join(r.WorkDir, "package-lock.json"), &lock); err != nil {
-		return err
+	global := r.Env["npm_config_prefix"] != ""
+	if !global {
+		if err := readJSON(filepath.Join(r.WorkDir, "package-lock.json"), &lock); err != nil {
+			return err
+		}
 	}
 	for _, pkg := range state {
 		if pkg.Local {
@@ -483,6 +553,27 @@ func npmProjectArtifacts(r *caseRun, state []npmProjectPackage, candidates []can
 				continue
 			}
 			found = true
+			if global {
+				downloaded := false
+				for _, command := range r.Result.Commands {
+					directory := r.WorkDir
+					if strings.Contains(r.Spec.Variant, "-global-workspace-member-") {
+						directory = filepath.Join(directory, "packages/member")
+					}
+					if command.Cwd != directory {
+						continue
+					}
+					log, err := os.ReadFile(command.Stderr.Path)
+					if err != nil {
+						return err
+					}
+					downloaded = downloaded || bytes.Contains(log, []byte(c.Artifacts[0].URL))
+				}
+				if !downloaded {
+					return fmt.Errorf("missing public global artifact download for %s@%s", c.Project, c.Version)
+				}
+				continue
+			}
 			// npm6 has lockfile v1; installed identity and retained registry artifact
 			// evidence still apply, while the v2/v3 path-specific check starts at npm7.
 			if strings.HasPrefix(r.Cell.ManagerVersion, "6.") {
@@ -496,6 +587,10 @@ func npmProjectArtifacts(r *caseRun, state []npmProjectPackage, candidates []can
 		if !found {
 			return fmt.Errorf("native selected an undiscovered package: %+v", pkg)
 		}
+	}
+	if global {
+		r.Result.Observations["global_artifact_evidence"] = "native installed identity and public tarball URL in client download log; npm global installs have no project lock"
+		return nil
 	}
 	return r.Keep("installed-lock-"+filepath.Base(r.Root), filepath.Join(r.WorkDir, "package-lock.json"))
 }

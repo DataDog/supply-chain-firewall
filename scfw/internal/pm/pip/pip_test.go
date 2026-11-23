@@ -8,6 +8,7 @@ package pip
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -35,6 +36,12 @@ func TestMain(m *testing.M) {
 }
 
 func runFakePip(fixtureDir string, args []string) int {
+	if path := os.Getenv("SCFW_TEST_PIP_ARGV"); path != "" {
+		data, err := json.Marshal(args)
+		if err != nil || os.WriteFile(path, data, 0600) != nil {
+			return 1
+		}
+	}
 	if slices.Contains(args, "--version") {
 		fmt.Println("pip 24.0 from /local/fixture/pip (python 3.12)")
 		return 0
@@ -86,6 +93,24 @@ func runFakePip(fixtureDir string, args []string) int {
 	report, err := os.ReadFile(filepath.Join(fixtureDir, "six-report.json"))
 	if err != nil {
 		return 1
+	}
+	// pip 22.2/22.3 can emit download progress even with -qqqqq when
+	// a global log file is configured. Only its progress option suppresses it.
+	progress := "on"
+	for i, arg := range args {
+		if arg == "--progress-bar" && i+1 < len(args) {
+			progress = args[i+1]
+		}
+		if value, ok := strings.CutPrefix(arg, "--progress-bar="); ok {
+			progress = value
+		}
+	}
+	if (slices.Contains(args, "--log") || slices.Contains(args, "--log-f")) && progress != "off" {
+		data, err := os.ReadFile(filepath.Join(fixtureDir, "log-progress.txt"))
+		if err != nil {
+			return 1
+		}
+		_, _ = os.Stdout.Write(data)
 	}
 	_, _ = os.Stdout.Write(report)
 	return 0
@@ -240,5 +265,42 @@ func TestParsePipInstallReportEntry(t *testing.T) {
 	missingVersion.Metadata.Version = ""
 	if _, err := parsePipInstallReportEntry(missingVersion); err == nil {
 		t.Fatal("parsePipInstallReportEntry() succeeded without a version")
+	}
+}
+
+func TestResolveInstallTargets_GlobalLogProgress(t *testing.T) {
+	for _, flag := range []string{"--log", "--log-f"} {
+		t.Run(flag, func(t *testing.T) {
+			pip := fixturePip(t)
+			command := make([]string, 0, 32)
+			command = append(command, flag, filepath.Join(t.TempDir(), "help"), "install", "--progress-bar=on", "six==1.16.0")
+			original := slices.Clone(command)
+			argvPath := filepath.Join(t.TempDir(), "argv.json")
+			t.Setenv("SCFW_TEST_PIP_ARGV", argvPath)
+			targets, err := pip.ResolveInstallTargets(t.Context(), command)
+			if err != nil {
+				t.Fatalf("ResolveInstallTargets() failed with global logging: %v", err)
+			}
+			if targets.Len() != 1 {
+				t.Fatalf("expected one resolved target, got %v", targets)
+			}
+			if !slices.Equal(command, original) {
+				t.Fatalf("resolution mutated caller's command: %v", command)
+			}
+			if err := pip.RunCommand(t.Context(), command); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(argvPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var actual []string
+			if err := json.Unmarshal(data, &actual); err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(actual, original) {
+				t.Fatalf("final command changed: got %v, want %v", actual, original)
+			}
+		})
 	}
 }

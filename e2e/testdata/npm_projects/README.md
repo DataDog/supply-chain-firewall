@@ -18,11 +18,11 @@ and changes from a previously installed version. Policy reports are checked
 separately from installed state. A manager failure must retain its native exit
 and diagnostic without becoming a policy BLOCK.
 
-The suite registers 58 cases. Both modes run the following modern npm variants:
+The suite registers 70 cases. Both modes run the following modern npm variants:
 
 | Scenario | Variants |
 | --- | --- |
-| NPM-02 | ALLOW/BLOCK from manifest with/without a lock; development and production selection (the production finding targets the omitted development package and must not block); duplicate versions; upgrade and downgrade from an existing installation |
+| NPM-02 | ALLOW/BLOCK from manifest with/without a lock; development and production selection (the production finding targets the omitted development package and must not block); an explicit global target under NODE_ENV=production with a case-local prefix; duplicate versions; upgrade and downgrade from an existing installation |
 | NPM-03 | ALLOW/BLOCK for workspaces, a local file dependency with a real public dependency, and a harmless final-project lifecycle marker |
 | NPM-04 | ALLOW/list-BLOCK npm ci; help, version, and dry-run with a finding that must not become a package evaluation |
 | CORE-14 | Unresolvable version with native ETARGET; an allowed installation whose final-project hook fails with the native exit |
@@ -81,3 +81,9 @@ are installed without evaluation. These cases deliberately remain FAIL until
 separate production fixes satisfy the same assertions. The corresponding proxy
 cases retain the intended behavior. A failing applicable case must never be
 converted to N/A or an expected failure to publish a green suite.
+
+Global production cases install only under the isolated case prefix. They check native and wrapped installed identity, exact policy selection, public tarball download URLs, and unchanged local project files; npm global installs do not create a project lockfile.
+
+Production no-save cases bootstrap a native lock with a dev-only package, then explicitly install it with --save-prod --no-save --omit=dev. They require the selected package and its dependencies to be evaluated, and preserve original manifest/lock bytes for both ALLOW and BLOCK.
+
+The paired --save-dev --no-save --omit=dev variants verify the opposite selection: the explicitly named dev-only graph remains omitted, including with an exact BLOCK finding, while the required production package is evaluated and installed.

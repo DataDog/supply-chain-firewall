@@ -1,0 +1,164 @@
+{
+  "required": {
+    "install": [
+      {
+        "requested": true,
+        "metadata": {
+          "name": "root",
+          "version": "1",
+          "requires_dist": [
+            "leaf>=2"
+          ]
+        },
+        "download_info": {
+          "url": "https://registry/root.whl",
+          "archive_info": {
+            "hashes": {
+              "sha256": "root-hash"
+            }
+          }
+        }
+      },
+      {
+        "requested": false,
+        "metadata": {
+          "name": "leaf",
+          "version": "2"
+        },
+        "download_info": {
+          "url": "https://registry/leaf.whl",
+          "archive_info": {
+            "hash": "sha256=leaf-hash"
+          }
+        }
+      }
+    ]
+  },
+  "optional": {
+    "install": [
+      {
+        "requested": true,
+        "metadata": {
+          "name": "root",
+          "version": "1",
+          "requires_dist": [
+            "leaf>=2; extra == feature"
+          ]
+        },
+        "download_info": {
+          "url": "https://registry/root.whl",
+          "archive_info": {
+            "hashes": {
+              "sha256": "root-hash"
+            }
+          }
+        }
+      },
+      {
+        "requested": false,
+        "metadata": {
+          "name": "leaf",
+          "version": "2"
+        },
+        "download_info": {
+          "url": "https://registry/leaf.whl",
+          "archive_info": {
+            "hash": "sha256=leaf-hash"
+          }
+        }
+      }
+    ]
+  },
+  "missing-leaf": {
+    "install": [
+      {
+        "requested": true,
+        "metadata": {
+          "name": "root",
+          "version": "1",
+          "requires_dist": [
+            "leaf>=2"
+          ]
+        },
+        "download_info": {
+          "url": "https://registry/root.whl",
+          "archive_info": {
+            "hashes": {
+              "sha256": "root-hash"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "wrong-hash": {
+    "install": [
+      {
+        "requested": true,
+        "metadata": {
+          "name": "root",
+          "version": "1",
+          "requires_dist": [
+            "leaf>=2"
+          ]
+        },
+        "download_info": {
+          "url": "https://registry/root.whl",
+          "archive_info": {
+            "hashes": {
+              "sha256": "root-hash"
+            }
+          }
+        }
+      },
+      {
+        "requested": false,
+        "metadata": {
+          "name": "leaf",
+          "version": "2"
+        },
+        "download_info": {
+          "url": "https://registry/leaf.whl",
+          "archive_info": {
+            "hash": "sha256=wrong"
+          }
+        }
+      }
+    ]
+  },
+  "explicit-leaf": {
+    "install": [
+      {
+        "requested": true,
+        "metadata": {
+          "name": "root",
+          "version": "1",
+          "requires_dist": [
+            "leaf>=2"
+          ]
+        },
+        "download_info": {
+          "url": "https://registry/root.whl",
+          "archive_info": {
+            "hashes": {
+              "sha256": "root-hash"
+            }
+          }
+        }
+      },
+      {
+        "requested": true,
+        "metadata": {
+          "name": "leaf",
+          "version": "2"
+        },
+        "download_info": {
+          "url": "https://registry/leaf.whl",
+          "archive_info": {
+            "hash": "sha256=leaf-hash"
+          }
+        }
+      }
+    ]
+  }
+}

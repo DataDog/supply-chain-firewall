@@ -18,4 +18,6 @@ function walk(directory) {
   }
 }
 walk(path.join(project, 'node_modules'));
+// Inspect selected nested installations without following local links.
+for (const member of process.argv.slice(3)) walk(path.join(project, member, 'node_modules'));
 process.stdout.write(JSON.stringify(packages.sort((a,b) => a.path.localeCompare(b.path))) + '\n');

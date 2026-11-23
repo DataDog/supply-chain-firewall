@@ -45,6 +45,7 @@ type npmTempProject struct {
 	projectRoot        string // empty if the current directory is not part of an npm project
 	dir                string
 	inspectionOptions  []string
+	global             *npmGlobalProject
 	resolvePublishDate func(context.Context, pm.Package) (time.Time, error)
 }
 
@@ -52,13 +53,16 @@ type npmTempProject struct {
 // copies its package.json, package-lock.json, node_modules, and .npmrc
 // into a fresh temporary directory. The caller must call cleanup when done.
 func newNpmTempProject(ctx context.Context, executable string, command []string) (*npmTempProject, error) {
-	prefixOptions, configOptions, err := npmInspectionProjectOptions(ctx, executable, command)
+	prefixOptions, configOptions, global, err := npmInspectionProjectOptions(ctx, executable, command)
 	if err != nil {
 		return nil, err
 	}
-	projectRoot, err := resolveNpmProjectRoot(ctx, executable, prefixOptions)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve npm project root: %w", err)
+	projectRoot := ""
+	if global == nil {
+		projectRoot, err = resolveNpmProjectRoot(ctx, executable, prefixOptions)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve npm project root: %w", err)
+		}
 	}
 
 	dir, err := os.MkdirTemp("", "scfw-npm-")
@@ -73,8 +77,10 @@ func newNpmTempProject(ctx context.Context, executable string, command []string)
 		dir = resolved
 	}
 
-	proj := &npmTempProject{executable: executable, projectRoot: projectRoot, dir: dir}
-	if len(prefixOptions) != 0 {
+	// Global targets must not disappear merely because the caller has the
+	// same package installed locally, including in a workspace member.
+	proj := &npmTempProject{executable: executable, projectRoot: projectRoot, dir: dir, global: global}
+	if global != nil || len(prefixOptions) != 0 {
 		proj.inspectionOptions = append(configOptions, "--prefix="+dir)
 	}
 
@@ -139,28 +145,58 @@ func resolveNpmProjectRoot(ctx context.Context, executable string, options []str
 // relocating inspection. Capture configuration paths before changing prefix:
 // npm derives its default globalconfig from that prefix, and relative CLI
 // configuration paths belong to the original invocation directory.
-func npmInspectionProjectOptions(ctx context.Context, executable string, command []string) ([]string, []string, error) {
-	if !npmHasExplicitPrefix(command) {
-		return nil, nil, nil
-	}
-	// Let npm interpret aliases and shorthand ordering. In particular, -Cs
-	// and -sC consume different values after npm expands the short options.
-	args := npmInspectionArgs(append([]string{"config", "list"}, command...), "--json")
-	output, err := exec.CommandContext(ctx, executable, args...).Output()
+func npmInspectionProjectOptions(ctx context.Context, executable string, command []string) ([]string, []string, *npmGlobalProject, error) {
+	// Native configuration owns global mode, including environment settings,
+	// configuration files, shorthand clusters, and explicit local overrides.
+	args := npmInspectionArgs(append([]string{"config", "list"}, withoutNpmWorkspaceSelection(command)...), "--json")
+	child := exec.CommandContext(ctx, executable, args...)
+	child.Env = withoutNpmWorkspaceEnvironment()
+	output, err := child.Output()
+	explicitPrefix := npmHasExplicitPrefix(command)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read npm configuration paths: %w", err)
+		// npm rejects implicit local workspace execution of config. Its
+		// command dispatcher rejects global/workspace combinations first,
+		// with a different error, so this code establishes local mode.
+		// Keep the native workspace root/configuration instead of forcing
+		// --workspaces=false, which would read the member's .npmrc.
+		var failure struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		var exitError *exec.ExitError
+		if !explicitPrefix && errors.As(err, &exitError) && json.Unmarshal(output, &failure) == nil && failure.Error.Code == "ENOWORKSPACES" {
+			return nil, nil, nil, nil
+		}
+		return nil, nil, nil, fmt.Errorf("failed to read npm inspection configuration: %w", err)
 	}
 	var config struct {
 		UserConfig   string `json:"userconfig"`
 		GlobalConfig string `json:"globalconfig"`
+		Global       bool   `json:"global"`
+		Prefix       string `json:"prefix"`
 	}
 	if err := json.Unmarshal(output, &config); err != nil {
-		return nil, nil, fmt.Errorf("failed to decode npm configuration paths: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to decode npm inspection configuration: %w", err)
+	}
+	if !explicitPrefix && !config.Global {
+		return nil, nil, nil, nil
 	}
 	if config.UserConfig == "" || config.GlobalConfig == "" {
-		return nil, nil, errors.New("npm returned empty configuration paths")
+		return nil, nil, nil, errors.New("npm returned empty configuration paths")
 	}
-	return npmInspectionArgs(command, "--global=false"), []string{"--userconfig=" + config.UserConfig, "--globalconfig=" + config.GlobalConfig}, nil
+	var prefixOptions []string
+	if explicitPrefix {
+		prefixOptions = npmInspectionArgs(command, "--global=false")
+	}
+	var global *npmGlobalProject
+	if config.Global {
+		if !filepath.IsAbs(config.Prefix) {
+			return nil, nil, nil, errors.New("npm returned an invalid global prefix")
+		}
+		global = &npmGlobalProject{prefix: config.Prefix}
+	}
+	return prefixOptions, []string{"--userconfig=" + config.UserConfig, "--globalconfig=" + config.GlobalConfig}, global, nil
 }
 
 // Recognize prefix-bearing options without trying to interpret their values.
@@ -447,6 +483,9 @@ func writeNpmJSONFile(path string, content map[string]any) error {
 // with --package-lock-only to safely resolve those targets' names, versions,
 // and sources out of the updated lockfile.
 func (p *npmTempProject) resolveInstallCommandTargets(ctx context.Context, command []string) (*pm.Set[pm.Package], error) {
+	if p.global != nil {
+		return p.resolveGlobalInstallTargets(ctx, command)
+	}
 	// Global installs don't touch this temporary project's node_modules, so
 	// coerce them into local ones to resolve their targets here instead.
 	localCommand := withoutGlobalOptions(command)
@@ -562,6 +601,37 @@ func (p *npmTempProject) omitsDevelopmentDependencies(ctx context.Context, comma
 	}
 	// Global installs do not inherit the local project's dev-only classification.
 	return !config.Global && slices.Contains(config.Omit, "dev") && !slices.Contains(config.Include, "dev"), nil
+}
+
+func withoutNpmWorkspaceEnvironment() []string {
+	return slices.DeleteFunc(os.Environ(), func(value string) bool {
+		key, _, _ := strings.Cut(value, "=")
+		return strings.EqualFold(key, "npm_config_workspace") || strings.EqualFold(key, "npm_config_workspaces")
+	})
+}
+
+// Strip only workspace selectors for the read-only config subcommand.
+// The install invocations retain the original selectors and all other options.
+func withoutNpmWorkspaceSelection(command []string) []string {
+	var args []string
+	for i := 0; i < len(command); i++ {
+		option := command[i]
+		if option == "--" {
+			return append(args, command[i:]...)
+		}
+		switch {
+		case option == "--workspace" || option == "-w":
+			i++
+		case option == "--workspaces" || option == "--no-workspaces" || option == "-ws":
+			if i+1 < len(command) && (command[i+1] == "true" || command[i+1] == "false") {
+				i++
+			}
+		case strings.HasPrefix(option, "--workspace=") || strings.HasPrefix(option, "--workspaces="):
+		default:
+			args = append(args, option)
+		}
+	}
+	return args
 }
 
 // extractNpmTargetHandles scrapes an npm dry-run install's verbose log for

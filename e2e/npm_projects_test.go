@@ -124,6 +124,9 @@ func revalidateNPMProjects(ctx context.Context, c candidate, output string) erro
 }
 
 func npmProjectFiles(r *caseRun, variant string, direct, root candidate) (map[string]json.RawMessage, error) {
+	if npmGlobalVariant(variant) {
+		return npmGlobalFiles(r, variant, direct, root)
+	}
 	shape := variant
 	switch variant {
 	case "manifest-no-lock", "manifest-lock", "ci", "help", "version", "dry-run", "unresolved", "pre7-install", "pre7-version":
@@ -203,6 +206,11 @@ func prepareNPMProjectCase(r *caseRun, variant string, direct, initial candidate
 			return nil, nil, nil, classified("INFRASTRUCTURE_FAILURE", err)
 		}
 	}
+	if npmGlobalVariant(variant) {
+		if err := prepareNPMGlobalState(r, variant, initial); err != nil {
+			return nil, nil, nil, err
+		}
+	}
 	switch variant {
 	case "production":
 		args = append(args, "--production")
@@ -219,6 +227,8 @@ func prepareNPMProjectCase(r *caseRun, variant string, direct, initial candidate
 			return nil, nil, nil, err
 		}
 		args = append(args, "-g", direct.Project+"@"+direct.Version)
+	case "global-workspace-member", "global-self":
+		args = append(args, npmGlobalArgs(variant, initial)...)
 	case "ci":
 		args[0] = "ci"
 	case "help":
@@ -240,6 +250,9 @@ func prepareNPMProjectCase(r *caseRun, variant string, direct, initial candidate
 		}
 	}
 	paths := []string{"package-lock.json", "final-install.marker"}
+	if variant == "global-workspace-member" {
+		paths = append(paths, "packages/member/package-lock.json")
+	}
 	for path := range files {
 		paths = append(paths, path)
 	}
@@ -278,7 +291,11 @@ func npmProjectState(r *caseRun, label string) ([]npmProjectPackage, error) {
 	if prefix := r.Env["npm_config_prefix"]; prefix != "" {
 		directory = filepath.Join(prefix, "lib")
 	}
-	command, err := r.Command("state-"+label, r.Cell.Runtime, script, directory)
+	args := []string{r.Cell.Runtime, script, directory}
+	if strings.Contains(r.Spec.Variant, "-global-self-") {
+		args = append(args, "node_modules/scfw-e2e-global-source")
+	}
+	command, err := r.Command("state-"+label, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -315,6 +332,9 @@ func runNPMProject(r *caseRun, options npmProjectOptions) error {
 		if options.variant == "duplicates" {
 			target = graph.Leaves[0]
 		}
+		if npmGlobalVariant(options.variant) {
+			initial, target = graph.Leaves[0], graph.Leaves[0]
+		}
 	} else {
 		candidates = []candidate{direct}
 	}
@@ -336,7 +356,12 @@ func runNPMProject(r *caseRun, options npmProjectOptions) error {
 	if options.variant == "upgrade" || options.variant == "downgrade" {
 		args = append(args, target.Project+"@"+target.Version)
 	}
+	nativeRoot := native.WorkDir
+	if options.variant == "global-workspace-member" {
+		native.WorkDir = filepath.Join(nativeRoot, "packages/member")
+	}
 	nativeCommand, nativeErr := native.Command("native-command", append([]string{r.Cell.Executable}, args...)...)
+	native.WorkDir = nativeRoot
 	if nativeCommand.TimedOut || nativeCommand.ExitCode < 0 {
 		return classified("INFRASTRUCTURE_FAILURE", fmt.Errorf("native launch: %w", nativeErr))
 	}
@@ -380,7 +405,12 @@ func runNPMProject(r *caseRun, options npmProjectOptions) error {
 	if r.Spec.Mode == "proxy" {
 		r.Env["SCFW_PROXY_ENABLED"] = "1"
 	}
+	projectRoot := r.WorkDir
+	if options.variant == "global-workspace-member" {
+		r.WorkDir = filepath.Join(projectRoot, "packages/member")
+	}
 	command, commandErr := r.Command("scfw", append([]string{r.Binary, "run", "--error-on-block", "--", "npm"}, args...)...)
+	r.WorkDir = projectRoot
 	if command.TimedOut || command.ExitCode < 0 {
 		return classified("INFRASTRUCTURE_FAILURE", fmt.Errorf("SCFW launch: %w", commandErr))
 	}
@@ -436,7 +466,7 @@ func runNPMProject(r *caseRun, options npmProjectOptions) error {
 		r.Result.PolicyOutcome, r.Result.ResolvedAction = "NOT_OBSERVED", "REJECT"
 		return nil
 	}
-	if slices.Contains([]string{"global-production", "production-no-save", "dev-no-save", "prefix-separate-no-save", "prefix-equals-no-save"}, options.variant) && !reflect.DeepEqual(before, after) {
+	if slices.Contains([]string{"global-production", "global-workspace-member", "global-self", "production-no-save", "dev-no-save", "prefix-separate-no-save", "prefix-equals-no-save"}, options.variant) && !reflect.DeepEqual(before, after) {
 		return fmt.Errorf("global/no-save install changed the local project")
 	}
 	blocked := options.block && options.variant != "production" && options.variant != "dev-no-save" && !(options.variant == "ci" && r.Spec.Mode == "resolution")
@@ -526,7 +556,11 @@ func npmProjectArtifacts(r *caseRun, state []npmProjectPackage, candidates []can
 			if global {
 				downloaded := false
 				for _, command := range r.Result.Commands {
-					if command.Cwd != r.WorkDir {
+					directory := r.WorkDir
+					if strings.Contains(r.Spec.Variant, "-global-workspace-member-") {
+						directory = filepath.Join(directory, "packages/member")
+					}
+					if command.Cwd != directory {
 						continue
 					}
 					log, err := os.ReadFile(command.Stderr.Path)

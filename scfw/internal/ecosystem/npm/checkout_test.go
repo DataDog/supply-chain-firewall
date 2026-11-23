@@ -102,6 +102,10 @@ func TestYarnCheckoutPackage(t *testing.T) {
 			manifest: "manifest/widget.json", want: widget, found: true},
 		{name: "zero previous without reflog", base: "xfs-0a1b2c3d", previous: "0000000000000000000000000000000000000000", manifest: "manifest/widget.json", want: widget, found: true},
 		{name: "not a Yarn clone", base: "xfs-project", previous: "def", manifest: "manifest/widget.json"},
+		// npm, which Yarn 4 runs to prepare npm repositories, clones their git
+		// dependencies itself; each of its checkouts is evaluated.
+		{name: "npm clone", base: filepath.Join("_cacache", "tmp", "git-cloneX"), previous: "0000000000000000000000000000000000000000", reflog: cloneReflog,
+			manifest: "manifest/widget.json", want: widget, found: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), test.base)

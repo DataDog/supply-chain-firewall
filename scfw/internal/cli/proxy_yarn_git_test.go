@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/pem"
+	"fmt"
 	"net/http"
 	"net/http/cgi"
 	"net/http/httptest"
@@ -65,6 +66,11 @@ func yarnGitRemote(t *testing.T, transport, manifest string) (dependency, remote
 // runYarnGitThroughProxy runs Yarn with SCFW's git hooks, as scfw run does.
 func runYarnGitThroughProxy(t *testing.T, executable string, args []string, outcome evaluation.Outcome) yarnProxyRun {
 	t.Helper()
+	return runYarnGitThroughProxyWith(t, executable, args, func(pm.Package) evaluation.Outcome { return outcome })
+}
+
+func runYarnGitThroughProxyWith(t *testing.T, executable string, args []string, outcome func(pm.Package) evaluation.Outcome) yarnProxyRun {
+	t.Helper()
 	manager, err := yarn.NewYarn(context.Background(), "yarn", executable)
 	if err != nil {
 		t.Fatal(err)
@@ -74,10 +80,12 @@ func runYarnGitThroughProxy(t *testing.T, executable string, args []string, outc
 	var details bytes.Buffer
 	evaluator := proxyEvaluatorFunc(func(_ context.Context, _ bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 		calls.Add(1)
+		result := evaluation.OutcomeAllow
 		for target := range targets.Items() {
 			run.sources = append(run.sources, target.Source)
+			result = outcome(target)
 		}
-		return evaluation.ScfwPolicyEvaluationReport{Outcome: outcome}, nil
+		return evaluation.ScfwPolicyEvaluationReport{Outcome: result}, nil
 	})
 	var decide githook.Decide
 	configure := func(ctx context.Context, client *http.Client) ([]proxy.RequestHook, error) {
@@ -222,6 +230,53 @@ func TestYarnGitDependencyRepositoryShapes(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// Yarn 4 prepares a git dependency configured for npm with npm install, which
+// checks out that repository's own git dependencies; those are evaluated too.
+func TestYarnGitDependencyPreparedWithNpm(t *testing.T) {
+	executable := yarnTestExecutable(t, "SCFW_TEST_YARN_BERRY")
+	if _, err := exec.LookPath("npm"); err != nil {
+		t.Skip("npm required for Yarn 4 npm preparation")
+	}
+	inner, innerRemote, innerSHA, marker, _ := yarnGitRemote(t, "ssh", "npm/git-package/package.json")
+	outer := filepath.Join(t.TempDir(), "outer")
+	if err := os.MkdirAll(outer, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string]string{
+		"package.json":      fmt.Sprintf(readProxyFixture(t, "yarn/git-package-npm/package.json.tmpl"), inner),
+		"package-lock.json": readProxyFixture(t, "yarn/git-package-npm/package-lock.json"),
+	} {
+		if err := os.WriteFile(filepath.Join(outer, name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	yarnGitFixture(t, "-C", outer, "init", "-q")
+	yarnGitFixture(t, "-C", outer, "add", ".")
+	yarnGitFixture(t, "-C", outer, "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "-c", "user.name=SCFW Test",
+		"-c", "user.email=scfw@example.invalid", "commit", "-q", "-m", "fixture")
+	bare := outer + ".git"
+	yarnGitFixture(t, "clone", "-q", "--bare", outer, bare)
+	dir, _, _ := newYarnGitProject(t, "berry")
+	t.Setenv("npm_config_audit", "false")
+	t.Setenv("npm_config_fund", "false")
+	run := runYarnGitThroughProxyWith(t, executable, []string{"add", "lab-git-outer@git+ssh://git@localhost" + bare}, func(pkg pm.Package) evaluation.Outcome {
+		if pkg.Name == "lab-git-pkg" {
+			return evaluation.OutcomeBlock
+		}
+		return evaluation.OutcomeAllow
+	})
+	assertYarnFailed(t, run)
+	if want := innerRemote + "#" + innerSHA; !slices.Contains(run.sources, want) {
+		t.Fatalf("sources = %v, want the nested dependency %s", run.sources, want)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("blocked nested git dependency's prepare script ran")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "node_modules", "lab-git-outer")); err == nil {
+		t.Fatal("git dependency with a blocked nested dependency was installed")
 	}
 }
 

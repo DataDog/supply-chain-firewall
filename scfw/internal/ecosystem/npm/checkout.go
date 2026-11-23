@@ -49,8 +49,12 @@ func CheckoutPackage(dir, origin, sha string) (pm.Package, bool, error) {
 // YarnCheckoutPackage identifies the package in a Yarn 4 git dependency
 // checkout like CheckoutPackage. Yarn 4 clones the default branch and then
 // checks out the dependency's commit; it never uses the clone's own checkout,
-// so only the later checkout is a package.
+// so only the later checkout is a package. Yarn 4 prepares a repository
+// configured for npm with npm, so npm's checkouts are identified as well.
 func YarnCheckoutPackage(dir, origin, previous, sha string) (pm.Package, bool, error) {
+	if strings.Contains(filepath.ToSlash(dir), gitCloneMarker) {
+		return checkoutPackage(dir, origin, sha)
+	}
 	if !yarnCloneName.MatchString(filepath.Base(dir)) || strings.Trim(previous, "0") == "" && clonedHead(dir) {
 		return pm.Package{}, false, nil
 	}

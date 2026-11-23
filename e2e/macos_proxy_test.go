@@ -202,22 +202,37 @@ func macOSProxyPhase(r *caseRun, route string, protected, blocked bool, system, 
 	if err != nil {
 		return err
 	}
-	for _, host := range []string{"pypi.org", artifactURL.Hostname()} {
-		systemExpected, envExpected := macOSExpectedRoute(route, host == artifactURL.Hostname(), blocked)
-		if err := assertForwardRoute(system.snapshot(), command, host, systemExpected); err != nil {
-			return fmt.Errorf("system proxy: %w", err)
+	if blocked {
+		if err := assertMacOSArtifactDenied(r, command); err != nil {
+			return err
 		}
-		if err := assertForwardRoute(environment.snapshot(), command, host, envExpected); err != nil {
-			return fmt.Errorf("environment proxy: %w", err)
+	}
+	return assertMacOSProxyRoutes(route, blocked, command, artifactURL.Hostname(), system.snapshot(), environment.snapshot())
+}
+
+func assertMacOSProxyRoutes(route string, blocked bool, command commandEvidence, artifactHost string, system, environment []forwardRoute) error {
+	for _, host := range []string{"pypi.org", artifactHost} {
+		systemExpected, envExpected := macOSExpectedRoute(route, host == artifactHost)
+		for _, recorder := range []struct {
+			name     string
+			routes   []forwardRoute
+			expected bool
+		}{{"system", system, systemExpected}, {"environment", environment, envExpected}} {
+			// PEP 658 metadata may use the selected artifact host before the
+			// wheel is blocked. Its presence is optional; forbidden routes
+			// remain forbidden, and the manager must observe an exact-wheel 403.
+			if blocked && host == artifactHost && recorder.expected {
+				continue
+			}
+			if err := assertForwardRoute(recorder.routes, command, host, recorder.expected); err != nil {
+				return fmt.Errorf("%s proxy: %w", recorder.name, err)
+			}
 		}
 	}
 	return nil
 }
 
-func macOSExpectedRoute(route string, artifact, blocked bool) (system, environment bool) {
-	if artifact && blocked {
-		return false, false
-	}
+func macOSExpectedRoute(route string, artifact bool) (system, environment bool) {
 	switch route {
 	case "system":
 		return true, false
@@ -228,6 +243,38 @@ func macOSExpectedRoute(route string, artifact, blocked bool) (system, environme
 	default:
 		return false, false
 	}
+}
+
+func assertMacOSArtifactDenied(r *caseRun, command commandEvidence) error {
+	for _, evidence := range []fileEvidence{command.Stdout, command.Stderr} {
+		output, err := os.ReadFile(evidence.Path)
+		if err != nil {
+			return err
+		}
+		if macOSArtifactDenial(string(output), r.Candidate.Artifacts[0].URL) {
+			r.Result.Observations["denied_artifact"] = map[string]any{"url": r.Candidate.Artifacts[0].URL, "manager_http_status": 403}
+			return nil
+		}
+	}
+	return fmt.Errorf("manager did not observe HTTP 403 for the exact discovered distribution")
+}
+
+func macOSArtifactDenial(output, artifactURL string) bool {
+	for _, line := range strings.Split(output, "\n") {
+		_, target, found := strings.Cut(line, "403 Client Error: Forbidden for url: ")
+		if !found {
+			continue
+		}
+		parsed, err := url.Parse(strings.TrimSpace(target))
+		if err != nil {
+			continue
+		}
+		parsed.Fragment, parsed.RawFragment = "", ""
+		if parsed.String() == artifactURL {
+			return true
+		}
+	}
+	return false
 }
 
 func TestHarnessMacOSProxyInventory(t *testing.T) {
@@ -285,4 +332,45 @@ func TestHarnessMacOSSettingsGuardAndLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = second.Close()
+}
+
+// A blocked wheel can be preceded by a PEP 658 metadata request on the same
+// host. A CONNECT recorder cannot distinguish those paths inside the tunnel.
+func TestHarnessMacOSBlockedMetadata(t *testing.T) {
+	start := time.Now().UTC()
+	command := commandEvidence{StartedAt: start, EndedAt: start.Add(time.Second)}
+	registry := forwardRoute{At: start.Add(time.Millisecond), Authority: "pypi.org:443", Authorized: true}
+	metadata := forwardRoute{At: start.Add(2 * time.Millisecond), Authority: "files.pythonhosted.org:443", Authorized: true}
+	for _, routes := range [][]forwardRoute{{registry}, {registry, metadata}} {
+		if err := assertMacOSProxyRoutes("system", true, command, "files.pythonhosted.org", routes, nil); err != nil {
+			t.Fatalf("valid blocked control with optional metadata: %v", err)
+		}
+		if err := assertMacOSProxyRoutes("environment", true, command, "files.pythonhosted.org", nil, routes); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := assertMacOSProxyRoutes("system", true, command, "files.pythonhosted.org", []forwardRoute{metadata}, nil); err == nil {
+		t.Fatal("missing registry route accepted")
+	}
+	if err := assertMacOSProxyRoutes("system", true, command, "files.pythonhosted.org", []forwardRoute{registry}, []forwardRoute{metadata}); err == nil {
+		t.Fatal("metadata on competing route accepted")
+	}
+	if err := assertMacOSProxyRoutes("system", false, command, "files.pythonhosted.org", []forwardRoute{registry}, nil); err == nil {
+		t.Fatal("missing allowed artifact route accepted")
+	}
+}
+
+func TestHarnessMacOSArtifactDenial(t *testing.T) {
+	var cases map[string]struct {
+		Output string `json:"output"`
+		Denied bool   `json:"denied"`
+	}
+	if err := readJSON("testdata/macos_proxy/responses.json", &cases); err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range cases {
+		if got := macOSArtifactDenial(c.Output, "https://files.pythonhosted.org/packages/fixture.whl"); got != c.Denied {
+			t.Errorf("%s: denied=%v, want %v", name, got, c.Denied)
+		}
+	}
 }

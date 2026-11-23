@@ -54,8 +54,10 @@ prove the selected recorder sees expected registry/artifact traffic and its
 competitor does not. Artifact-host bypass still passes registry traffic through
 the system proxy. NO_PROXY-only suppresses native discovery even though its value
 does not match either public host. ALLOW requires a successful exact install;
-BLOCK requires policy denial and no installation, including in outbound bypass
-cases. Native controls have separate result summaries, preserving protected BLOCK
+BLOCK requires policy denial, a manager-observed HTTP 403 for the exact discovered
+distribution URL, and no installation, including in outbound bypass cases. A
+selected artifact-host CONNECT is optional during BLOCK because PEP 658 metadata
+may be fetched before the wheel is denied; forbidden routes are still rejected. Native controls have separate result summaries, preserving protected BLOCK
 outcome and exit status.
 
 Evidence includes Xcode/Swift versions and sudo capability commands, active service

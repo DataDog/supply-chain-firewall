@@ -362,11 +362,16 @@ func TestDefaultHTTPSPortBypassDiagnostic(t *testing.T) {
 		{"IP-port-is-not-a-domain-match", "127.0.0.1:443", "http://gateway.example", "", false},
 		{"no-upstream", "files.example:443", "", "", false},
 		{"explicit-ignores-bypass", "files.example:443", "http://gateway.example", "http://explicit.example", false},
+		{"mixed-case-urllib-only", "files.example:443", "http://gateway.example", "", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			manager := goDiscoveryPip(t)
 			t.Setenv("HTTPS_PROXY", test.upstream)
-			t.Setenv("NO_PROXY", test.bypass)
+			key := "NO_PROXY"
+			if test.name == "mixed-case-urllib-only" {
+				key = "No_Proxy"
+			}
+			t.Setenv(key, test.bypass)
 			if test.explicit != "" {
 				t.Setenv("PIP_PROXY", test.explicit)
 			}

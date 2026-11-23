@@ -1,0 +1,14 @@
+[project]
+name = "scfw-uv-command"
+version = "0.1.0"
+description = "SCFW E2E uv command fixture"
+requires-python = {{printf "%q" (printf "==%s" .Python)}}
+dependencies = [{{range .Dependencies}}{{printf "%q" .}},{{end}}]
+{{if .Backend}}
+[build-system]
+requires = [{{printf "%q" .Backend}}]
+build-backend = "flit_core.buildapi"
+{{else}}
+[tool.uv]
+package = false
+{{end}}

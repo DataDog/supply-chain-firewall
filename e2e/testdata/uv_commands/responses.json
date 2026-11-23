@@ -1,0 +1,32 @@
+{
+  "read": {
+    "Native": "scfw-uv-command 0.1.0\n",
+    "Protected": "scfw-uv-command 0.1.0\n",
+    "Valid": true
+  },
+  "dry-run": {
+    "Native": "scfw-uv-command 0.1.0 => 0.1.1\n",
+    "Protected": "scfw-uv-command 0.1.0 => 0.1.1\n",
+    "Valid": true
+  },
+  "dropped-read": {
+    "Native": "scfw-uv-command 0.1.0\n",
+    "Protected": "",
+    "Valid": false
+  },
+  "suppressed-dry-run": {
+    "Native": "scfw-uv-command 0.1.0 => 0.1.1\n",
+    "Protected": "",
+    "Valid": false
+  },
+  "wrong-version": {
+    "Native": "scfw-uv-command 0.1.0\n",
+    "Protected": "scfw-uv-command 9.0.0\n",
+    "Valid": false
+  },
+  "empty-control": {
+    "Native": "",
+    "Protected": "",
+    "Valid": false
+  }
+}

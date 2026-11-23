@@ -26,7 +26,8 @@ func TestCommandClassification(t *testing.T) {
 				{"global", "--prefix", "/p", "add", "x"}, {"global", "list"}, {"global", "ls"},
 				{"policies", "set-version", "1.22.22"}, {"set", "version", "berry"}, {"check"}, {"check", "--verbose"},
 				{"init", "-2"}, {"init", "--install", "berry"}, {"init", "-i=berry"},
-				{"workspace", "a", "add", "x"}, {"workspace", "a", "install"},
+				{"workspace", "a", "add", "x"}, {"workspace", "a", "install"}, {"workspace", "a", "--", "install", "--help"},
+				{"--silent", "set", "version", "berry"},
 				// Help after the command still installs, and create runs the package.
 				{"add", "x", "--help"}, {"create", "foo", "-h"}, {"create", "foo", "--version"}, {"global", "add", "x", "-h"},
 				// These global options consume the next argument.
@@ -45,6 +46,7 @@ func TestCommandClassification(t *testing.T) {
 			yarnDirect: {
 				{"run", "build"}, {"build"}, {"test"}, {"exec", "tsc"}, {"node", "x.js"}, {"workspace", "a", "run", "build"},
 				{"workspace", "a", "build"}, {"workspaces", "run", "build"}, {"dlx", "x"}, {"--cwd", "pkg", "start"}, {"set", "x"},
+				{"set", "--silent", "version"}, {"set", "--", "version"}, {"workspace", "a", "--", "run", "build"},
 				{"--version"}, {"--help", "add", "x"},
 			},
 		},
@@ -58,7 +60,9 @@ func TestCommandClassification(t *testing.T) {
 				{"plugin", "import", "from", "sources"}, {"workspaces", "focus", "a"}, {"version", "patch"}, {"version", "apply"},
 				{"workspace", "a", "add", "x"}, {"workspaces", "foreach", "-A", "install"},
 				{"workspaces", "foreach", "--from", "a", "-pj", "4", "--include=b", "add", "x"},
-				{"workspaces", "foreach", "-A", "--", "add", "x"}, {"pack", "--install-if-needed"}, {"info", "--manifest", "x"},
+				{"workspaces", "foreach", "-A", "--", "add", "x"}, {"workspace", "a", "--", "install", "--help"},
+				{"workspace", "a", "workspaces", "foreach", "-A", "--", "add", "x"},
+				{"workspaces", "foreach", "-A", "workspace", "b", "--", "add", "x"}, {"pack", "--install-if-needed"}, {"info", "--manifest", "x"},
 				{"info", "-X", "manifest", "x"}, {"info", "--extra=manifest"},
 				// dlx passes everything after the binary name to the binary.
 				{"dlx", "cowsay", "-h"}, {"dlx", "cowsay", "--version"}, {"dlx", "-p", "cowsay", "cowsay", "--help"},
@@ -80,7 +84,10 @@ func TestCommandClassification(t *testing.T) {
 				{"policies", "set-version", "x"}, {"workspace", "a", "run", "build"}, {"workspace", "a", "build"},
 				{"workspaces", "foreach", "-A", "run", "build"}, {"workspaces", "foreach", "-Apt", "--since", "build"},
 				{"workspaces", "foreach", "-j", "2", "--exclude", "a", "exec", "x"},
-				{"workspaces", "foreach", "-A", "--", "node", "-p", "1"}, {"-h"}, {"--version"},
+				{"workspaces", "foreach", "-A", "--", "node", "-p", "1"},
+				{"workspace", "app", "workspaces", "foreach", "-A", "--", "node", "-p", "1"},
+				{"workspaces", "foreach", "-A", "workspace", "b", "--", "node", "-p", "1"},
+				{"workspace", "a", "--", "run", "build", "--", "--flag"}, {"-h"}, {"--version"},
 			},
 		},
 		// An unsupported version still takes the proxy path, which reports it.

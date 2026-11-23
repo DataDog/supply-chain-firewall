@@ -127,8 +127,13 @@ func (yarn Yarn) commandKind(command []string) yarnKind {
 // command runs a package script or binary. The built-in commands are those of
 // Yarn 1.22 and of Yarn 4 with its bundled plugins.
 func classifyCommand(gen generation, cmd yarnCommand) yarnKind {
-	if cmd.name == "workspace" && len(cmd.args) > 1 {
-		inner, _, _ := parseYarnCommand(gen, cmd.args[1:])
+	if cmd.name == "workspace" && len(cmd.tail) > 1 {
+		// The command keeps its own "--", and may follow one.
+		rest := cmd.tail[1:]
+		if rest[0] == "--" {
+			rest = rest[1:]
+		}
+		inner, _, _ := parseYarnCommand(gen, rest)
 		return classifyCommand(gen, inner)
 	}
 	if gen == classic {
@@ -153,8 +158,9 @@ func classifyCommand(gen generation, cmd yarnCommand) yarnKind {
 				return yarnFetch
 			}
 		case "set":
-			// Yarn runs set version as policies set-version; any other set is a script.
-			if cmd.sub == "version" {
+			// Yarn runs set version as policies set-version only when version
+			// directly follows set; any other set is a script.
+			if len(cmd.args) > 0 && cmd.args[0] == "version" {
 				return yarnFetch
 			}
 			return yarnDirect

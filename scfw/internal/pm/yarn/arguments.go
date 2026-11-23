@@ -27,6 +27,8 @@ type yarnCommand struct {
 	index int
 	// args follow the command name, before any "--".
 	args []string
+	// tail follows the command name, including any "--" and what follows it.
+	tail []string
 }
 
 // parseYarnCommand skips global options to find the command. A bare yarn
@@ -34,6 +36,7 @@ type yarnCommand struct {
 // count only before the command: after it Yarn still runs install commands,
 // and create and dlx pass them to the package they execute.
 func parseYarnCommand(gen generation, command []string) (cmd yarnCommand, help bool, cwd string) {
+	full := command
 	if index := slices.Index(command, "--"); index >= 0 {
 		command = command[:index]
 	}
@@ -44,7 +47,7 @@ func parseYarnCommand(gen generation, command []string) (cmd yarnCommand, help b
 	for index := 0; index < len(command); index++ {
 		argument := command[index]
 		if !strings.HasPrefix(argument, "-") {
-			cmd.name, cmd.index, cmd.args = argument, index, command[index+1:]
+			cmd.name, cmd.index, cmd.args, cmd.tail = argument, index, command[index+1:], full[index+1:]
 			break
 		}
 		if slices.Contains([]string{"-h", "--help", "-v", "--version"}, argument) {
@@ -134,8 +137,14 @@ func classifyCommand(gen generation, cmd yarnCommand) yarnKind {
 			return yarnDirect
 		case "", "install", "add", "remove", "upgrade", "upgrade-interactive", "upgradeInteractive", "create", "import", "licenses", "unplug":
 			return yarnFetch
+		case "check":
+			// Without these options check resolves the dependencies.
+			if !hasOption(cmd.args, "--integrity", "--verify-tree") {
+				return yarnFetch
+			}
 		case "global":
-			if slices.Contains([]string{"add", "remove", "upgrade", "upgrade-interactive", "upgradeInteractive"}, cmd.sub) {
+			// Every subcommand but bin and dir resolves the global packages.
+			if cmd.sub != "" && cmd.sub != "bin" && cmd.sub != "dir" {
 				return yarnFetch
 			}
 		case "policies":
@@ -143,19 +152,23 @@ func classifyCommand(gen generation, cmd yarnCommand) yarnKind {
 			if cmd.sub == "set-version" {
 				return yarnFetch
 			}
+		case "set":
+			// Yarn runs set version as policies set-version; any other set is a script.
+			if cmd.sub == "version" {
+				return yarnFetch
+			}
+			return yarnDirect
 		case "init":
 			// -2 and --install run policies set-version.
-			for _, argument := range cmd.args {
-				if name, _, _ := strings.Cut(argument, "="); name == "-2" || name == "-i" || name == "--install" {
-					return yarnFetch
-				}
+			if hasOption(cmd.args, "-2", "-i", "--install") {
+				return yarnFetch
 			}
 		case "workspaces":
 			// workspaces run starts `yarn run` in every workspace.
 			if cmd.sub == "run" {
 				return yarnDirect
 			}
-		case "access", "audit", "autoclean", "bin", "cache", "check", "config", "dedupe", "generate-lock-entry", "generateLockEntry",
+		case "access", "audit", "autoclean", "bin", "cache", "config", "dedupe", "generate-lock-entry", "generateLockEntry",
 			"help", "info", "link", "list", "lockfile", "login", "logout", "outdated", "owner", "pack", "prune", "publish", "tag",
 			"team", "unlink", "version", "versions", "why", "workspace":
 		default:
@@ -184,14 +197,29 @@ func classifyCommand(gen generation, cmd yarnCommand) yarnKind {
 		case "focus":
 			return yarnFetch
 		case "foreach":
-			return classifyCommand(gen, foreachCommand(cmd.args))
+			return classifyCommand(gen, foreachCommand(cmd.tail))
 		}
 	case "version":
 		// Applying a version installs.
 		if cmd.sub != "check" {
 			return yarnFetch
 		}
-	case "bin", "cache", "config", "constraints", "explain", "help", "info", "npm", "pack", "patch-commit", "stage", "why", "workspace":
+	case "pack":
+		if hasOption(cmd.args, "--install-if-needed") {
+			return yarnFetch
+		}
+	case "info":
+		// The manifest extra fetches every listed package.
+		for index, argument := range cmd.args {
+			name, value, assigned := strings.Cut(argument, "=")
+			if !assigned && index+1 < len(cmd.args) {
+				value = cmd.args[index+1]
+			}
+			if name == "--manifest" || (name == "-X" || name == "--extra") && value == "manifest" {
+				return yarnFetch
+			}
+		}
+	case "bin", "cache", "config", "constraints", "explain", "help", "npm", "patch-commit", "stage", "why", "workspace":
 	default:
 		return yarnDirect
 	}
@@ -207,6 +235,10 @@ func foreachCommand(args []string) yarnCommand {
 	args = args[slices.Index(args, "foreach")+1:]
 	for index := 0; index < len(args); index++ {
 		argument := args[index]
+		if argument == "--" {
+			inner, _, _ := parseYarnCommand(berry, args[index+1:])
+			return inner
+		}
 		if !strings.HasPrefix(argument, "-") {
 			inner, _, _ := parseYarnCommand(berry, args[index:])
 			return inner
@@ -219,4 +251,15 @@ func foreachCommand(args []string) yarnCommand {
 		}
 	}
 	return yarnCommand{}
+}
+
+// hasOption reports whether args contain one of the options, with or without
+// an assigned value.
+func hasOption(args []string, names ...string) bool {
+	for _, argument := range args {
+		if name, _, _ := strings.Cut(argument, "="); slices.Contains(names, name) {
+			return true
+		}
+	}
+	return false
 }

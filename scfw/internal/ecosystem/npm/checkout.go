@@ -24,19 +24,28 @@ import (
 // pacote clones every git dependency into a temporary directory of npm's cache.
 const gitCloneMarker = "/_cacache/tmp/git-clone"
 
-// CheckoutPackage identifies the npm package in a git dependency checkout from
-// its root package.json. Checkouts outside npm's temporary clone directories
-// are not packages, and neither are checkouts whose package.json is missing or
-// invalid JSON: npm fails on those by itself. npm installs a manifest without a
-// usable name or version and runs its lifecycle scripts, so that manifest is
-// identified by what it declares, possibly empty.
+// CheckoutPackage identifies the npm or pnpm package in a git dependency
+// checkout from its root package.json. Checkouts outside the managers'
+// temporary clone directories are not packages. An npm checkout whose
+// package.json is missing or invalid JSON is not a package either: npm fails
+// on those by itself. A pnpm checkout always identifies a package, with an
+// empty name and version when its root package.json is missing or invalid,
+// because pnpm can install a path: subdirectory whose root manifest is not
+// usable; every clone still gets a decision. A manifest without a usable name
+// or version is identified by what it declares, possibly empty.
 func CheckoutPackage(dir, origin, sha string) (pm.Package, bool, error) {
-	if !strings.Contains(filepath.ToSlash(dir), gitCloneMarker) {
+	npmClone := strings.Contains(filepath.ToSlash(dir), gitCloneMarker)
+	pnpmClone := !npmClone && isPnpmClone(dir)
+	if !npmClone && !pnpmClone {
 		return pm.Package{}, false, nil
 	}
+	pkg := pm.Package{Ecosystem: common.NPM, Source: redactGitRemote(origin) + "#" + sha}
 	file, err := os.Open(filepath.Join(dir, "package.json"))
 	if errors.Is(err, fs.ErrNotExist) {
-		return pm.Package{}, false, nil
+		if !pnpmClone {
+			return pm.Package{}, false, nil
+		}
+		return pkg, true, nil
 	}
 	if err != nil {
 		return pm.Package{}, false, err
@@ -53,15 +62,45 @@ func CheckoutPackage(dir, origin, sha string) (pm.Package, bool, error) {
 	}
 	artifact, found, err := parseManifest(manifest)
 	if err != nil {
-		return pm.Package{}, false, nil
+		if !pnpmClone {
+			return pm.Package{}, false, nil
+		}
+		return pkg, true, nil
 	}
 	if !found {
 		artifact.Name, artifact.Version = declaredIdentity(manifest)
 	}
-	return pm.Package{
-		Ecosystem: common.NPM, Name: artifact.Name, Version: artifact.Version,
-		Source: redactGitRemote(origin) + "#" + sha,
-	}, true, nil
+	pkg.Name, pkg.Version = artifact.Name, artifact.Version
+	return pkg, true, nil
+}
+
+// isPnpmClone reports whether dir is a temporary clone directory of a pnpm
+// git dependency. pnpm 10 and 11 clone into the store's tmp directory, whose
+// entries are named _tmp_* whatever the store location and version are, and
+// pnpm 12 clones into a .tmp* directory of the system temporary directory.
+func isPnpmClone(dir string) bool {
+	name := filepath.Base(dir)
+	if filepath.Base(filepath.Dir(dir)) == "tmp" && strings.HasPrefix(name, "_tmp_") {
+		return true
+	}
+	// pnpm 12 names its Rust tempfile clone .tmp plus random letters and
+	// digits; the parent must be the temporary directory, whose name may
+	// resolve differently in the hook process than in this one.
+	suffix, named := strings.CutPrefix(name, ".tmp")
+	if !named || suffix == "" {
+		return false
+	}
+	for _, character := range suffix {
+		if !strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", character) {
+			return false
+		}
+	}
+	parent, err := os.Stat(filepath.Dir(dir))
+	if err != nil {
+		return false
+	}
+	temp, err := os.Stat(os.TempDir())
+	return err == nil && os.SameFile(parent, temp)
 }
 
 // declaredIdentity returns the name and version a manifest declares, however

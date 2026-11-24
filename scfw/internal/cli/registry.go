@@ -62,8 +62,9 @@ var packageManagerFactories = []PackageManagerFactory{
 		},
 	},
 	{
-		Names:      pnpm.ExecutableNames,
-		ProxyHooks: []proxyHookFactory{newNpmProxyHook},
+		Names:        pnpm.ExecutableNames,
+		ProxyHooks:   []proxyHookFactory{newNpmProxyHook},
+		GitCheckouts: npmGitCheckoutPolicy,
 		New: func(ctx context.Context, name, executable string) (pm.PackageManager, error) {
 			return pnpm.NewPnpm(ctx, name, executable)
 		},

@@ -18,7 +18,8 @@ import (
 // gitCheckoutPolicy maps a package manager's git checkouts to policy decisions.
 type gitCheckoutPolicy func(evaluate func(context.Context, pm.Package, error) error) githook.Decide
 
-// npmGitCheckoutPolicy evaluates npm git dependencies from their checkout.
+// npmGitCheckoutPolicy evaluates npm and pnpm git dependencies from their
+// checkout.
 func npmGitCheckoutPolicy(evaluate func(context.Context, pm.Package, error) error) githook.Decide {
 	return func(ctx context.Context, checkout githook.Checkout) error {
 		pkg, found, err := npmregistry.CheckoutPackage(checkout.Dir, checkout.Origin, checkout.SHA)

@@ -12,9 +12,13 @@ import (
 	"testing"
 )
 
+// proxyTestdataDir is absolute because tests change directory before
+// reading fixtures.
+var proxyTestdataDir, _ = filepath.Abs("testdata")
+
 func readProxyFixture(t *testing.T, name string) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("testdata", name))
+	data, err := os.ReadFile(filepath.Join(proxyTestdataDir, name))
 	if err != nil {
 		t.Fatalf("read fixture %s: %v", name, err)
 	}

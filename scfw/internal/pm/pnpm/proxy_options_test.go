@@ -48,6 +48,33 @@ func verifiesTLSRoots(t *testing.T, config *tls.Config) bool {
 	return err == nil
 }
 
+// isolatedGitConfig keeps the host's Git configuration out of the snapshot.
+func isolatedGitConfig(t *testing.T) {
+	t.Helper()
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	for _, key := range []string{"GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_SSL_NO_VERIFY"} {
+		t.Setenv(key, "")
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestProxyOptionsAddsGitClient(t *testing.T) {
+	isolatedGitConfig(t)
+	for major, version := range pnpmVersions {
+		newPnpmWorkspace(t)
+		options, err := fakePnpm(t, version).ProxyOptions([]string{"add", "x"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if options.AdditionalClients["git"].RouteForRequest == nil {
+			t.Errorf("pnpm %d must route its Git traffic through a dedicated git client", major)
+		}
+	}
+}
+
 func TestProxyOptionsRouting(t *testing.T) {
 	registry := &url.URL{Scheme: "https", Host: "registry.test", Path: "/x"}
 	other := &url.URL{Scheme: "https", Host: "other.test"}

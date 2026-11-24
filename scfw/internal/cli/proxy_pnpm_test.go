@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -118,14 +119,18 @@ func runPnpmNamedThroughProxy(t *testing.T, name, executable string, args []stri
 	var run pnpmProxyRun
 	var calls atomic.Int32
 	var details bytes.Buffer
+	var sourcesMutex sync.Mutex
 	evaluator := proxyEvaluatorFunc(func(_ context.Context, interactive bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 		calls.Add(1)
 		if interactive {
 			t.Error("proxy evaluation must not prompt")
 		}
+		// Evaluations may run concurrently, each appending its package's source.
+		sourcesMutex.Lock()
 		for target := range targets.Items() {
 			run.sources = append(run.sources, target.Source)
 		}
+		sourcesMutex.Unlock()
 		return evaluation.ScfwPolicyEvaluationReport{Outcome: outcome}, nil
 	})
 	configure := func(ctx context.Context, client *http.Client) ([]proxy.RequestHook, error) {

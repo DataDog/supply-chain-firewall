@@ -312,14 +312,28 @@ func TestPnpm12GitHubDependencyClone(t *testing.T) {
 	})
 }
 
+// pnpmForcedArchiveDownloads is the tarball downloads the allow subcases of
+// TestPnpmForcedPartialAndCachedArchives expect: pnpm discards the forced 206
+// or 304 and asks again, and SCFW re-fetches one complete copy in between.
+// pnpm 12 asks a second time after a bodyless 304.
+func pnpmForcedArchiveDownloads(major, status int) int32 {
+	if major == 12 && status == http.StatusNotModified {
+		return 4
+	}
+	return 3
+}
+
 // TestPnpmForcedPartialAndCachedArchives covers responses pnpm itself never
 // asks for, forced by the origin: a tarball GET answered 206 with the complete
-// body, or 304, while later requests get full responses. SCFW must re-fetch a
-// complete copy, evaluate it, and only then release the original response, so
-// the forced download never reaches pnpm uninspected.
+// body, or 304, while later requests get full responses. pnpm discards a
+// forced 206 or 304 and asks again, so each subcase pins the exact number of
+// downloads: the allow subcases count one request more than pnpm's own, the
+// complete copy SCFW re-fetches and evaluates before releasing the forced
+// response, and the block subcases prove the blocked package is not installed
+// (their second request is SCFW's re-fetch or pnpm's own retry).
 func TestPnpmForcedPartialAndCachedArchives(t *testing.T) {
 	tarball := npmTarball(t)
-	forEachPnpm(t, func(t *testing.T, _ int, executable string) {
+	forEachPnpm(t, func(t *testing.T, major int, executable string) {
 		for _, status := range []struct {
 			name string
 			code int
@@ -385,15 +399,18 @@ func TestPnpmForcedPartialAndCachedArchives(t *testing.T) {
 					if len(sent) != 0 {
 						t.Fatalf("pnpm sent conditional headers %v; a forced response is no longer what exercises the hook", sent)
 					}
-					// pnpm's download and the evaluated full re-fetch; an
-					// allowed forced response makes pnpm ask again, a blocked
-					// one stops it.
+					// pnpm asks again after its download is answered with the
+					// forced status; without SCFW's re-fetch the allow subcases
+					// would count pnpm's requests alone, so the exact numbers
+					// prove the complete copy was fetched and evaluated before
+					// the forced response was released. A blocked package stops
+					// pnpm at the refusal, whatever made the second request.
 					wantRequests := int32(2)
 					if !test.failed {
-						wantRequests = 3
+						wantRequests = pnpmForcedArchiveDownloads(major, status.code)
 					}
-					if served := requests.Load(); served < wantRequests {
-						t.Fatalf("requests = %d, want at least %d: pnpm's download and the evaluated full re-fetch", served, wantRequests)
+					if served := requests.Load(); served != wantRequests {
+						t.Fatalf("requests = %d, want %d: pnpm's discarded download and retries, plus the evaluated full re-fetch", served, wantRequests)
 					}
 					if run.calls != 1 || !slices.Equal(run.sources, []string{registry.URL + npmDirectTarballPath}) {
 						t.Fatalf("evaluations = %d from %v, want 1 of %s", run.calls, run.sources, registry.URL+npmDirectTarballPath)

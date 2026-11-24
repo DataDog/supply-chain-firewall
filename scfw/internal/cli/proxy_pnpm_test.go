@@ -76,6 +76,11 @@ func enterPnpmTestProject(t *testing.T) string {
 	}
 	usePnpmStore(t, filepath.Join(root, "store"))
 	dir := filepath.Join(root, "project")
+	// The project directory must exist before entering it; its files are
+	// written by the caller.
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
 	t.Chdir(dir)
 	return dir
 }

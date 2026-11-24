@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
@@ -247,6 +248,45 @@ func TestProxyOptionsRegistryCA(t *testing.T) {
 					t.Error("the registry CA must not leak into the global roots")
 				}
 			}},
+			{"registry CA behind an upstream proxy", []string{"add", "x"}, func(t *testing.T, l pnpmLayout) {
+				writePnpmFixture(t, filepath.Join(l.workspace, ".npmrc"), "npmrc/registry-cafile.npmrc.tmpl", caPath)
+				writePnpmFixture(t, filepath.Join(l.home(), ".npmrc"), "npmrc/https-proxy.npmrc.tmpl", "http://upstream.test:1")
+			}, func(t *testing.T, options proxy.Options) {
+				route, err := options.RouteForRequest(proxy.Request{URL: *registry})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if major == 10 {
+					if route != nil {
+						t.Error("pnpm 10 must not apply a per-registry CA through an upstream proxy")
+					}
+					return
+				}
+				if route == nil || route.ProxyURL == nil {
+					t.Fatalf("pnpm %d must keep the per-registry CA and the upstream proxy on the route (route %v)", major, route)
+				}
+				if !verifiesTLSRoots(t, route.TLS) {
+					t.Errorf("pnpm %d must keep the per-registry CA through an upstream proxy", major)
+				}
+			}},
+			{"empty per-registry cafile keeps the system roots", []string{"--config.cafile=" + caPath, "add", "x"}, func(t *testing.T, l pnpmLayout) {
+				empty := filepath.Join(t.TempDir(), "empty.pem")
+				if err := os.WriteFile(empty, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+				writePnpmFixture(t, filepath.Join(l.workspace, ".npmrc"), "npmrc/registry-cafile.npmrc.tmpl", empty)
+			}, func(t *testing.T, options proxy.Options) {
+				route, err := options.RouteForRequest(proxy.Request{URL: *registry})
+				if err != nil || route == nil {
+					t.Fatalf("registry route missing (error %v)", err)
+				}
+				if verifiesTLSRoots(t, route.TLS) {
+					t.Error("an empty per-registry cafile must keep the system roots, not the registry's or the global CA")
+				}
+				if !verifiesRegistry(t, options) {
+					t.Error("the global CA must still apply to other hosts")
+				}
+			}},
 			{"strict-ssl=false skips verification on the route", []string{"add", "x"}, func(t *testing.T, l pnpmLayout) {
 				writePnpmFixture(t, filepath.Join(l.workspace, ".npmrc"), "npmrc/registry-cafile-strict-ssl.npmrc.tmpl", caPath)
 			}, func(t *testing.T, options proxy.Options) {
@@ -273,7 +313,9 @@ func TestProxyOptionsRegistryCA(t *testing.T) {
 	}
 }
 
-// pnpmRegistryCA matches npm-style //host[:port]/ keys against a request.
+// pnpmRegistryCA mirrors pnpm's per-URL setting resolution: the exact
+// nerf-dart, then its parent paths, then both again without the port, with
+// the most specific key winning and an empty setting skipped.
 func TestPnpmRegistryCASelection(t *testing.T) {
 	cafile, inline := registryCA{Key: "//a.test/", CAFile: "/ca.pem"}, registryCA{Key: "//a.test/", CA: "pem"}
 	for _, test := range []struct {
@@ -283,12 +325,16 @@ func TestPnpmRegistryCASelection(t *testing.T) {
 		want   registryCA
 		found  bool
 	}{
-		{"host", []registryCA{cafile}, "https://a.test/x", cafile, true},
-		{"default port", []registryCA{cafile}, "https://a.test:443/x", cafile, true},
-		{"explicit port match", []registryCA{{Key: "//a.test:8443/", CAFile: "/ca.pem"}}, "https://a.test:8443/x", registryCA{Key: "//a.test:8443/", CAFile: "/ca.pem"}, true},
-		{"explicit port mismatch", []registryCA{{Key: "//a.test:8443/", CAFile: "/ca.pem"}}, "https://a.test/x", registryCA{}, false},
-		{"http default port", []registryCA{cafile}, "http://a.test/x", cafile, true},
-		{"http port mismatch", []registryCA{cafile}, "http://a.test:8080/x", registryCA{}, false},
+		{"host root", []registryCA{cafile}, "https://a.test/x", cafile, true},
+		{"path-scoped key", []registryCA{{Key: "//a.test/foo/", CAFile: "/ca.pem"}}, "https://a.test/foo/x", registryCA{Key: "//a.test/foo/", CAFile: "/ca.pem"}, true},
+		{"path-scoped key excludes another path", []registryCA{{Key: "//a.test/foo/", CAFile: "/ca.pem"}}, "https://a.test/bar/x", registryCA{}, false},
+		{"most specific key wins", []registryCA{cafile, {Key: "//a.test/foo/", CAFile: "/foo.pem"}}, "https://a.test/foo/x", registryCA{Key: "//a.test/foo/", CAFile: "/foo.pem"}, true},
+		{"empty setting falls through to a shallower key", []registryCA{{Key: "//a.test/foo/", CA: ""}, cafile}, "https://a.test/foo/x", cafile, true},
+		{"explicit default port is normalized away", []registryCA{cafile}, "https://a.test:443/x", cafile, true},
+		{"port key", []registryCA{{Key: "//a.test:8443/", CAFile: "/ca.pem"}}, "https://a.test:8443/x", registryCA{Key: "//a.test:8443/", CAFile: "/ca.pem"}, true},
+		{"port key excludes the default port", []registryCA{{Key: "//a.test:8443/", CAFile: "/ca.pem"}}, "https://a.test/x", registryCA{}, false},
+		{"portless key matches a non-default port", []registryCA{cafile}, "https://a.test:8443/x", cafile, true},
+		{"portless key matches an http port", []registryCA{cafile}, "http://a.test:8080/x", cafile, true},
 		{"other host", []registryCA{cafile}, "https://b.test/x", registryCA{}, false},
 		{"inline ca beats cafile", []registryCA{cafile, inline}, "https://a.test/x", inline, true},
 	} {
@@ -302,6 +348,33 @@ func TestPnpmRegistryCASelection(t *testing.T) {
 				t.Fatalf("match = %v %#v, want %v %#v", found, got, test.found, test.want)
 			}
 		})
+	}
+}
+
+// pnpm 10 and 11 fail the command on a per-registry cafile they cannot read;
+// pnpm 12 ignores it and keeps the global CA for that registry.
+func TestProxyOptionsUnreadableRegistryCA(t *testing.T) {
+	caPath := filepath.Join(testdataDir, "tls", "registry-ca.pem")
+	for major, version := range pnpmVersions {
+		layout := newPnpmWorkspace(t)
+		writePnpmFixture(t, filepath.Join(layout.workspace, ".npmrc"), "npmrc/registry-cafile.npmrc.tmpl", filepath.Join(t.TempDir(), "missing.pem"))
+		options, err := fakePnpm(t, version).ProxyOptions([]string{"--config.cafile=" + caPath, "add", "x"})
+		if major < 12 {
+			if err == nil || strings.Contains(err.Error(), "missing") {
+				t.Fatalf("pnpm %d: error = %v, want a read failure without the path", major, err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("pnpm %d: %v", major, err)
+		}
+		route, err := options.RouteForRequest(proxy.Request{URL: url.URL{Scheme: "https", Host: "registry.test", Path: "/x"}})
+		if err != nil || route == nil {
+			t.Fatalf("pnpm 12 must fall back to the global CA (route %v, error %v)", route, err)
+		}
+		if !verifiesTLSRoots(t, route.TLS) {
+			t.Errorf("pnpm %d must trust the registry through the global CA", major)
+		}
 	}
 }
 

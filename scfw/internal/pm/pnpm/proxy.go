@@ -11,7 +11,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"maps"
-	"net"
 	"net/url"
 	"os"
 	"slices"
@@ -56,12 +55,25 @@ func (p Pnpm) ProxyOptions(command []string) (proxy.Options, error) {
 		ProxyForURL: pnpmProxyForURL(settings),
 		TrustURL:    pnpmTrustURL(settings.StrictSSL),
 	}
+	major, err := p.major(command)
+	if err != nil {
+		return proxy.Options{}, err
+	}
+	// pnpm 10 and 11 fail the command on a per-registry cafile they cannot
+	// read; pnpm 12 ignores it and keeps the global CA.
+	for _, registryCA := range settings.RegistryCAs {
+		if registryCA.CA == "" && registryCA.CAFile != "" && major < 12 {
+			if _, err := os.ReadFile(registryCA.CAFile); err != nil {
+				return proxy.Options{}, errors.New("could not read a pnpm per-registry CA file")
+			}
+		}
+	}
 	options.UpstreamTLS, err = proxy.NewTLSConfig(pnpmTLSOptions(settings.CAFile, settings.CA, nil))
 	if err != nil {
 		return proxy.Options{}, err
 	}
 	if len(settings.RegistryCAs) > 0 {
-		options.RouteForRequest = pnpmRegistryRoutes(settings, options.UpstreamTLS)
+		options.RouteForRequest = pnpmRegistryRoutes(settings, major, options.UpstreamTLS)
 	}
 	return options, nil
 }
@@ -69,13 +81,19 @@ func (p Pnpm) ProxyOptions(command []string) (proxy.Options, error) {
 // pnpmTLSOptions builds pnpm's upstream trust. A readable, non-empty cafile
 // or a non-empty ca replaces the default roots, as in npm; an empty ca is
 // unset. pnpm, unlike npm, keeps NODE_EXTRA_CA_CERTS additive with a CA file.
-// A registryCA, when given, replaces the global CA for its registry. Git
-// requires GIT_SSL_CAINFO, so a missing bundle fails.
+// Git requires GIT_SSL_CAINFO, so a missing bundle fails. A registryCA, when
+// given, replaces the global CA for its registry: its empty file is pnpm's
+// empty ca, which keeps the system roots, and a cafile pnpm 12 cannot read is
+// ignored, leaving the global CA (pnpm 10 and 11 fail the command, which
+// ProxyOptions already rejects).
 func pnpmTLSOptions(caFile string, ca []string, registryCA *registryCA) proxy.TLSConfigOptions {
 	if registryCA != nil {
-		caFile, ca = registryCA.CAFile, nil
 		if registryCA.CA != "" {
-			ca = []string{registryCA.CA}
+			caFile, ca = "", []string{registryCA.CA}
+		} else if data, err := os.ReadFile(registryCA.CAFile); err == nil && len(data) > 0 {
+			caFile, ca = registryCA.CAFile, nil
+		} else if err == nil {
+			caFile, ca = "", nil // an empty cafile keeps the system roots
 		}
 	}
 	options := proxy.TLSConfigOptions{CABundlePaths: []string{os.Getenv("GIT_SSL_CAINFO")}}
@@ -102,7 +120,7 @@ func pnpmTLSOptions(caFile string, ca []string, registryCA *registryCA) proxy.TL
 // pnpmRegistryRoutes scopes pnpm's per-registry CA settings to their
 // registry: pnpm applies //host/:cafile to that registry in place of the
 // global CA, and no other upstream host sees those roots.
-func pnpmRegistryRoutes(settings pnpmSettings, base *tls.Config) func(proxy.Request) (*proxy.OutboundRoute, error) {
+func pnpmRegistryRoutes(settings pnpmSettings, major int, base *tls.Config) func(proxy.Request) (*proxy.OutboundRoute, error) {
 	proxyForURL := pnpmProxyForURL(settings)
 	var mutex sync.Mutex
 	routes := map[string]*proxy.OutboundRoute{}
@@ -114,6 +132,12 @@ func pnpmRegistryRoutes(settings pnpmSettings, base *tls.Config) func(proxy.Requ
 		upstream, err := proxyForURL(&request.URL)
 		if err != nil {
 			return nil, err
+		}
+		// pnpm 10's proxy agent uses only the global CA, so a per-registry
+		// CA applies only without an upstream proxy; pnpm 11 and 12 keep it
+		// through theirs.
+		if upstream != nil && major == 10 {
+			return nil, nil
 		}
 		key := ca.Key
 		if upstream != nil {
@@ -142,46 +166,76 @@ func pnpmRegistryRoutes(settings pnpmSettings, base *tls.Config) func(proxy.Requ
 	}
 }
 
-// pnpmRegistryCA returns the per-registry CA setting that applies to target.
-// npm-style keys name a registry host, optionally with a port; a key without a
-// port covers the scheme's default port. An inline ca wins over a cafile, as
-// in npm.
+// pnpmRegistryCA returns the per-registry CA setting that applies to target,
+// mirroring pnpm's per-URL setting resolution (@pnpm/network.config's
+// pickSettingByUrl): the request's exact nerf-dart, then its parent paths,
+// then both again without the port. An empty setting is skipped, like a falsy
+// value in pnpm, so a shallower key can still win. Verified against pnpm
+// 10.34.9, 11.29.0, and 12.23.0, whose Rust fetcher matches these probes.
 func pnpmRegistryCA(cas []registryCA, target *url.URL) (registryCA, bool) {
-	defaultPort := "80"
-	if target.Scheme == "https" {
-		defaultPort = "443"
+	for _, host := range pnpmDartHosts(target) {
+		dart := "//" + host + pnpmDartPath(target.EscapedPath())
+		for _, candidate := range pnpmDartAncestors(dart) {
+			if ca, found := pnpmRegistryCALookup(cas, candidate); found {
+				return ca, true
+			}
+		}
 	}
-	targetPort := target.Port()
-	if targetPort == "" {
-		targetPort = defaultPort
+	return registryCA{}, false
+}
+
+// pnpmDartHosts lists the hosts of a URL's nerf-darts: the URL's host, with
+// the scheme's default port normalized away as a URL parser does, then the
+// host without any port, which pnpm retries when the first pass finds nothing.
+func pnpmDartHosts(target *url.URL) []string {
+	host := target.Hostname()
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
 	}
-	var fallback *registryCA
-	for index := range cas {
-		scoped := strings.TrimPrefix(cas[index].Key, "//")
-		if slash := strings.Index(scoped, "/"); slash >= 0 {
-			scoped = scoped[:slash]
-		}
-		host, port, err := net.SplitHostPort(scoped)
-		if err != nil {
-			host, port = scoped, ""
-		}
-		if port == "" {
-			port = defaultPort
-		}
-		if !strings.EqualFold(host, target.Hostname()) || port != targetPort {
+	if port := target.Port(); port == "" || (port == "443" && target.Scheme == "https") || (port == "80" && target.Scheme == "http") {
+		return []string{host}
+	}
+	return []string{target.Host, host}
+}
+
+// pnpmDartPath is the directory part of a URL's path, which a nerf-dart
+// names: pnpm resolves the path's parent, dropping the last segment.
+func pnpmDartPath(path string) string {
+	if slash := strings.LastIndex(path, "/"); slash > 0 {
+		return path[:slash+1]
+	}
+	return "/"
+}
+
+// pnpmDartAncestors lists a nerf-dart and its parent paths, most specific
+// first, down to the bare host.
+func pnpmDartAncestors(dart string) []string {
+	parts := strings.Split(dart, "/")
+	candidates := []string{dart}
+	for index := len(parts) - 2; index >= 3; index-- {
+		candidates = append(candidates, strings.Join(parts[:index], "/")+"/")
+	}
+	return candidates
+}
+
+// pnpmRegistryCALookup returns the setting for one nerf-dart, preferring an
+// inline ca over a cafile, as npm does. A setting with neither value is
+// skipped, like a falsy value in pnpm.
+func pnpmRegistryCALookup(cas []registryCA, dart string) (registryCA, bool) {
+	var cafile registryCA
+	found := false
+	for _, ca := range cas {
+		if ca.Key != dart || (ca.CA == "" && ca.CAFile == "") {
 			continue
 		}
-		if cas[index].CA != "" {
-			return cas[index], true
+		if ca.CA != "" {
+			return ca, true
 		}
-		if fallback == nil {
-			fallback = &cas[index]
+		if !found {
+			cafile, found = ca, true
 		}
 	}
-	if fallback == nil {
-		return registryCA{}, false
-	}
-	return *fallback, true
+	return cafile, found
 }
 
 var _ pm.ProxyOptionsProvider = Pnpm{}

@@ -1,0 +1,7 @@
+{
+  "name": "deps",
+  "private": true,
+  "dependencies": {
+    "lab-pkg": "1.0.0"
+  }
+}

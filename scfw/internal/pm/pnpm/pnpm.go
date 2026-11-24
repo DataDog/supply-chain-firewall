@@ -248,6 +248,13 @@ func (p Pnpm) scriptsAt(parsed parsedCommand) func(string) bool {
 	return func(name string) bool { return scripts[name] }
 }
 
+// scriptInstalls reports whether pnpm would install dependencies before the
+// script; what SCFW cannot decide counts as an install, so nothing is left
+// unevaluated.
+func (p Pnpm) scriptInstalls(major int, parsed parsedCommand) bool {
+	return installsBeforeScript(major, parsed, p.commandDirectory(parsed), os.Environ())
+}
+
 func (p Pnpm) Executable() string {
 	return p.executable
 }
@@ -270,13 +277,20 @@ func (p Pnpm) ResolveInstallTargets(_ context.Context, command []string) (*pm.Se
 }
 
 // requiresProxy reports whether the command may fetch packages outside the
-// proxy: the commands that resolve, fetch, or install, not the built-ins that
-// never do, so ' + bt + 'pnpm view' + bt + ' and ' + bt + 'pnpm list' + bt + ' keep running without proxy mode.
+// proxy: the commands that resolve, fetch, or install, and the scripts pnpm
+// 11 and 12 would install dependencies before, not the built-ins that never
+// do, so pnpm view and pnpm list keep running without proxy mode.
 func (p Pnpm) requiresProxy(command []string) bool {
 	major, err := p.major(command)
 	if err != nil {
 		return true
 	}
 	parsed := parseCommand(major, p.dlx, command)
-	return classifyCommand(major, parsed, p.scriptsAt(parsed)) == kindFetch
+	switch classifyCommand(major, parsed, p.scriptsAt(parsed)) {
+	case kindFetch:
+		return true
+	case kindScript:
+		return p.scriptInstalls(major, parsed)
+	}
+	return false
 }

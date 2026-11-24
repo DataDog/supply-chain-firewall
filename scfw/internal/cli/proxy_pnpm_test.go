@@ -503,13 +503,15 @@ func TestPnpmPinHandOff(t *testing.T) {
 	assertProxyCleaned(t, run.config)
 }
 
-// Scripts run directly, without the proxy or its environment.
+// Scripts run directly, without the proxy or its environment, once their
+// dependencies are installed and current.
 func TestPnpmDirectCommands(t *testing.T) {
 	scripts := readProxyFixture(t, "pnpm/scripts/package.json")
 	forEachPnpm(t, func(t *testing.T, _ int, executable string) {
 		registry := startNpmRegistry(t)
 		dir := newPnpmTestProject(t, registry, "")
 		writePnpmFile(t, filepath.Join(dir, "package.json"), scripts)
+		assertPnpmSucceeded(t, runPnpmThroughProxy(t, executable, []string{"add", "lab-pkg"}, evaluation.OutcomeAllow))
 		manager, err := pnpm.NewPnpm(context.Background(), "pnpm", executable)
 		if err != nil {
 			t.Fatal(err)
@@ -525,6 +527,45 @@ func TestPnpmDirectCommands(t *testing.T) {
 		if output, err := os.ReadFile(filepath.Join(dir, "hello.txt")); err != nil || string(output) != "direct" {
 			t.Fatalf("script saw HTTPS_PROXY %q (error %v), want no proxy", output, err)
 		}
+	})
+}
+
+// pnpm 11 and 12 install before a script when node_modules is missing, so the
+// script runs through the SCFW proxy and the blocked dependency stops the
+// install. A failed install only warns, so pnpm still runs the script, inside
+// the proxy environment. pnpm 10 has no such gate, so the script runs directly.
+func TestPnpmRunInstallsBeforeScript(t *testing.T) {
+	scripts := readProxyFixture(t, "pnpm/scripts/package.json")
+	forEachPnpm(t, func(t *testing.T, major int, executable string) {
+		registry := startNpmRegistry(t)
+		dir := newPnpmTestProject(t, registry, "")
+		writePnpmFile(t, filepath.Join(dir, "package.json"), scripts)
+		seedPnpmLockfile(t, executable, dir)
+		before := registry.TarballHits.Load()
+		run := runPnpmThroughProxy(t, executable, []string{"run", "hello"}, evaluation.OutcomeBlock)
+		if major == 10 {
+			assertPnpmSucceeded(t, run)
+			if run.calls != 0 || registry.TarballHits.Load() != before {
+				t.Fatalf("evaluations=%d downloads=%d, want the script to run directly", run.calls, registry.TarballHits.Load()-before)
+			}
+			return
+		}
+		if run.setupErr != nil {
+			t.Fatal(run.setupErr)
+		}
+		if run.calls != 1 {
+			t.Fatalf("evaluations = %d, want the dependency the script's install downloads evaluated", run.calls)
+		}
+		if hits := registry.TarballHits.Load() - before; hits != 0 {
+			t.Fatalf("tarball downloads = %d, want the blocked dependency not downloaded", hits)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "node_modules", "lab-pkg", "package.json")); err == nil {
+			t.Fatal("the blocked dependency must not be installed")
+		}
+		if output, err := os.ReadFile(filepath.Join(dir, "hello.txt")); err != nil || string(output) == "direct" {
+			t.Fatalf("the script saw %q (error %v), want the proxy environment of a proxied run", output, err)
+		}
+		assertProxyCleaned(t, run.config)
 	})
 }
 

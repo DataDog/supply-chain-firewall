@@ -119,7 +119,7 @@ func (p Pnpm) ProxyCommand(_ context.Context, command []string, config proxy.Cli
 		overrides = append(overrides, "--config."+registryCA.Key+":cafile="+ca)
 	}
 	parsed := parseCommand(major, p.dlx, command)
-	args := []string{}
+	var args []string
 	if parsed.passthroughNpm {
 		// pnpm hands a pass-through command to npm with the whole command
 		// line, so nothing may precede the command name: npm reads its

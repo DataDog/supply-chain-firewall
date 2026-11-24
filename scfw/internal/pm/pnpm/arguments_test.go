@@ -318,9 +318,8 @@ func TestCommandClassificationCoversProductionTables(t *testing.T) {
 }
 
 // A same-named package.json script replaces an overridable built-in, looked up
-// under the name as typed. A ' + bt + 'pm' + bt + ' prefix forces the built-in, and
-// pnpm 11 keeps it under --global; pnpm 10 has no overrides, so the name is a
-// script anyway.
+// under the name as typed. A pm prefix forces the built-in, and pnpm 11 keeps
+// it under --global; pnpm 10 has no overrides, so the name is a script anyway.
 func TestScriptOverrides(t *testing.T) {
 	root := isolatePnpmEnvironment(t)
 	writePnpmFixture(t, filepath.Join(root, "parent", "project", "package.json"), "manifest/scripts.json")

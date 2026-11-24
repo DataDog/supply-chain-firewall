@@ -401,7 +401,7 @@ func scriptCommand(major int, parsed parsedCommand, scriptExists func(string) bo
 	if !isBuiltin(major, parsed.name) {
 		return true
 	}
-	return !parsed.forced && !(major == 11 && parsed.global) &&
+	return !parsed.forced && (major != 11 || !parsed.global) &&
 		slices.Contains(overridableScripts[major], parsed.typed) &&
 		scriptExists != nil && scriptExists(parsed.typed)
 }
@@ -428,23 +428,21 @@ func classifyCommand(major int, parsed parsedCommand, scriptExists func(string) 
 	return kindOther
 }
 
-// proxyCommand reports whether SCFW proxies the parsed command, which is
-// every command except scripts.
-func proxyCommand(major int, parsed parsedCommand, scriptExists func(string) bool) bool {
-	return classifyCommand(major, parsed, scriptExists) != kindScript
-}
-
 // ProxyCommandSupported selects the commands pnpm runs through the SCFW
-// proxy: every command except scripts, which npm-like scripts run directly.
-// An unknown version is proxied so that the proxy path reports the version
-// error.
+// proxy: every command except scripts. A script pnpm 11 or 12 would install
+// dependencies before (verify_deps.go) is proxied too, so that install is
+// evaluated. An unknown version is proxied so that the proxy path reports
+// the version error.
 func (p Pnpm) ProxyCommandSupported(command []string) bool {
 	major, err := p.major(command)
 	if err != nil {
 		return true
 	}
 	parsed := parseCommand(major, p.dlx, command)
-	return proxyCommand(major, parsed, p.scriptsAt(parsed))
+	if classifyCommand(major, parsed, p.scriptsAt(parsed)) == kindScript {
+		return p.scriptInstalls(major, parsed)
+	}
+	return true
 }
 
 // pnpm 12 parses its command line with clap: long options are exact, and an

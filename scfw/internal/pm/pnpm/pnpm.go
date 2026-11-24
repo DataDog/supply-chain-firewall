@@ -29,6 +29,8 @@ type Pnpm struct {
 	dlx        bool
 	installed  pm.Version
 	versionErr error
+	// proxyState shares one Git snapshot between ProxyOptions and ProxyCommand.
+	proxyState *pnpmProxyState
 }
 
 // versionProbeEnvironment stops pnpm from switching to a pinned version, which
@@ -53,7 +55,7 @@ func NewPnpm(ctx context.Context, name, executable string) (Pnpm, error) {
 		}
 	}
 	base := filepath.Base(name)
-	manager := Pnpm{executable: executable, dlx: base == "pnpx" || base == "pnx"}
+	manager := Pnpm{executable: executable, dlx: base == "pnpx" || base == "pnx", proxyState: &pnpmProxyState{}}
 	manager.installed, manager.versionErr = probeVersion(ctx, versionExecutable(executable))
 	return manager, nil
 }

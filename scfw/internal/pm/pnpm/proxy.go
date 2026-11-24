@@ -21,6 +21,7 @@ import (
 	"golang.org/x/net/http/httpproxy"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/gitproxy"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/nodeproxy"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
 )
@@ -75,6 +76,12 @@ func (p Pnpm) ProxyOptions(command []string) (proxy.Options, error) {
 	if len(settings.RegistryCAs) > 0 {
 		options.RouteForRequest = pnpmRegistryRoutes(settings, major, options.UpstreamTLS)
 	}
+	git, err := p.gitSettings(command)
+	if err != nil {
+		return proxy.Options{}, err
+	}
+	options.AdditionalClients = git.AdditionalClients()
+	options.AdditionalClients["git"] = proxy.Options{RouteForRequest: git.Route}
 	return options, nil
 }
 
@@ -243,6 +250,35 @@ func pnpmRegistryCALookup(cas []registryCA, dart string) (registryCA, bool) {
 
 var _ pm.ProxyOptionsProvider = Pnpm{}
 
+// The same snapshot configures outbound Git requests and the child process.
+type pnpmProxyState struct {
+	mutex   sync.Mutex
+	command []string
+	git     *gitproxy.Settings
+}
+
+func (p Pnpm) gitSettings(command []string) (*gitproxy.Settings, error) {
+	if p.proxyState != nil {
+		p.proxyState.mutex.Lock()
+		defer p.proxyState.mutex.Unlock()
+		if p.proxyState.git != nil && slices.Equal(command, p.proxyState.command) {
+			return p.proxyState.git, nil
+		}
+	}
+	directory, err := p.ProjectDirectory(command)
+	if err != nil {
+		return nil, err
+	}
+	settings, err := gitproxy.Read(directory)
+	if err != nil {
+		return nil, err
+	}
+	if p.proxyState != nil {
+		p.proxyState.command, p.proxyState.git = slices.Clone(command), settings
+	}
+	return settings, nil
+}
+
 // noProxySentinel replaces pnpm's noproxy settings with a host that matches
 // nothing; pnpm ignores empty values, which would let a lower layer's entry
 // send registry traffic around SCFW.
@@ -294,7 +330,8 @@ func (p Pnpm) ProxyCommand(_ context.Context, command []string, config proxy.Cli
 	}
 	// The variables route nested pnpm and npm processes, which do not inherit
 	// the command line; pnpm 10 reads npm_config_* and pnpm 11 and 12 read
-	// pnpm_config_*, and a pinned version may be either.
+	// pnpm_config_*, and a pinned version may be either. Git receives its own
+	// client through gitproxy, whose ChildOverrides sets GIT_SSL_CAINFO.
 	canonical := config.EnvironmentOverrides()
 	maps.Copy(canonical, map[string]string{
 		"npm_config_proxy": config.URL, "npm_config_https_proxy": config.URL,
@@ -302,9 +339,24 @@ func (p Pnpm) ProxyCommand(_ context.Context, command []string, config proxy.Cli
 		"pnpm_config_proxy": config.URL, "pnpm_config_http_proxy": config.URL, "pnpm_config_https_proxy": config.URL,
 		"pnpm_config_noproxy": noProxySentinel, "pnpm_config_no_proxy": noProxySentinel,
 		"pnpm_config_cafile": ca, "pnpm_config_ca": string(pem),
-		"NODE_EXTRA_CA_CERTS": extraCAs, "GIT_SSL_CAINFO": ca,
+		"NODE_EXTRA_CA_CERTS": extraCAs,
 	})
-	return proxy.CommandSpec{Executable: p.executable, Args: args, EnvOverrides: nodeproxy.OverrideVariants(os.Environ(), canonical)}, nil
+	environment := nodeproxy.OverrideVariants(os.Environ(), canonical)
+	gitConfig := config
+	if git, exists := config.AdditionalClients["git"]; exists {
+		gitConfig = git
+		gitConfig.AdditionalClients = config.AdditionalClients
+	}
+	git, err := p.gitSettings(command)
+	if err != nil {
+		return proxy.CommandSpec{}, err
+	}
+	if err := git.ChildOverrides(environment, gitConfig); err != nil {
+		return proxy.CommandSpec{}, err
+	}
+	return proxy.CommandSpec{
+		Executable: p.executable, Args: args, EnvOverrides: environment, EnvRemovals: []string{"GIT_SSL_NO_VERIFY"},
+	}, nil
 }
 
 var _ pm.ProxyRunner = Pnpm{}

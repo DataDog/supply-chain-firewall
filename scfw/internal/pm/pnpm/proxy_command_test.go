@@ -156,6 +156,7 @@ func TestProxyCommandDlxPlacement(t *testing.T) {
 }
 
 func TestProxyCommandEnvironment(t *testing.T) {
+	isolatedGitConfig(t)
 	newPnpmWorkspace(t)
 	config, pem := testClientConfig(t)
 	t.Setenv("No_Proxy", "reg")
@@ -184,6 +185,33 @@ func TestProxyCommandEnvironment(t *testing.T) {
 	}
 	if _, found := spec.EnvOverrides["pnpm_config_registry"]; found {
 		t.Error("unrelated pnpm configuration must not be overridden")
+	}
+}
+
+func TestProxyCommandRoutesGitThroughGitClient(t *testing.T) {
+	isolatedGitConfig(t)
+	newPnpmWorkspace(t)
+	config, _ := testClientConfig(t)
+	gitCA := filepath.Join(t.TempDir(), "git-ca.pem")
+	config.AdditionalClients = map[string]proxy.ClientConfig{"git": {URL: "http://127.0.0.1:7", CACertificatePath: gitCA}}
+	spec, err := fakePnpm(t, "11.28.9").ProxyCommand(context.Background(), []string{"install"}, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	routed := false
+	for key, value := range spec.EnvOverrides {
+		if strings.HasPrefix(key, "GIT_CONFIG_KEY_") && value == "http.proxy" {
+			routed = spec.EnvOverrides["GIT_CONFIG_VALUE_"+strings.TrimPrefix(key, "GIT_CONFIG_KEY_")] == "http://127.0.0.1:7"
+		}
+	}
+	if !routed {
+		t.Fatalf("http.proxy must name the git client, overrides = %v", spec.EnvOverrides)
+	}
+	if spec.EnvOverrides["GIT_SSL_CAINFO"] != gitCA {
+		t.Fatalf("GIT_SSL_CAINFO = %q, want the git client CA", spec.EnvOverrides["GIT_SSL_CAINFO"])
+	}
+	if !slices.Contains(spec.EnvRemovals, "GIT_SSL_NO_VERIFY") {
+		t.Fatalf("EnvRemovals = %v, want GIT_SSL_NO_VERIFY", spec.EnvRemovals)
 	}
 }
 

@@ -7,6 +7,8 @@ package pnpm
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"maps"
 	"net/url"
@@ -14,6 +16,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/net/http/httpproxy"
 
@@ -52,30 +55,190 @@ func (p Pnpm) ProxyOptions(command []string) (proxy.Options, error) {
 		ProxyForURL: pnpmProxyForURL(settings),
 		TrustURL:    pnpmTrustURL(settings.StrictSSL),
 	}
-	// pnpm and Node ignore a CA file they cannot read; Git requires
-	// GIT_SSL_CAINFO, so a missing bundle fails.
-	candidates := []string{settings.CAFile}
-	pems := make([][]byte, 0, len(settings.CA))
-	for _, ca := range settings.CA {
-		pems = append(pems, []byte(ca))
+	major, err := p.major(command)
+	if err != nil {
+		return proxy.Options{}, err
 	}
+	// pnpm 10 and 11 fail the command on a per-registry cafile they cannot
+	// read, including an empty path; pnpm 12 ignores it and keeps the global CA.
 	for _, registryCA := range settings.RegistryCAs {
-		candidates = append(candidates, registryCA.CAFile)
+		if registryCA.CA == "" && !registryCA.EmptyCA && major < 12 {
+			if _, err := os.ReadFile(registryCA.CAFile); err != nil {
+				return proxy.Options{}, errors.New("could not read a pnpm per-registry CA file")
+			}
+		}
+	}
+	options.UpstreamTLS, err = proxy.NewTLSConfig(pnpmTLSOptions(settings.CAFile, settings.CA, nil))
+	if err != nil {
+		return proxy.Options{}, err
+	}
+	if len(settings.RegistryCAs) > 0 {
+		options.RouteForRequest = pnpmRegistryRoutes(settings, major, options.UpstreamTLS)
+	}
+	return options, nil
+}
+
+// pnpmTLSOptions builds pnpm's upstream trust. A readable, non-empty cafile
+// or a non-empty ca replaces the default roots, as in npm; an empty ca is
+// unset. pnpm, unlike npm, keeps NODE_EXTRA_CA_CERTS additive with a CA file.
+// Git requires GIT_SSL_CAINFO, so a missing bundle fails. A registryCA, when
+// given, replaces the global CA for its registry: a present-but-empty ca and
+// an empty cafile keep the system roots, and a cafile pnpm 12 cannot read is
+// ignored, leaving the global CA (pnpm 10 and 11 fail the command, which
+// ProxyOptions already rejects).
+func pnpmTLSOptions(caFile string, ca []string, registryCA *registryCA) proxy.TLSConfigOptions {
+	if registryCA != nil {
 		if registryCA.CA != "" {
-			pems = append(pems, []byte(registryCA.CA))
+			caFile, ca = "", []string{registryCA.CA}
+		} else if registryCA.EmptyCA {
+			caFile, ca = "", nil // a present-but-empty ca keeps the system roots
+		} else if data, err := os.ReadFile(registryCA.CAFile); err == nil && len(data) > 0 {
+			caFile, ca = registryCA.CAFile, nil
+		} else if err == nil {
+			caFile, ca = "", nil // an empty cafile keeps the system roots
 		}
 	}
-	var paths []string
-	for _, path := range append(candidates, os.Getenv("NODE_EXTRA_CA_CERTS")) {
-		if _, err := os.Stat(path); path != "" && err == nil {
-			paths = append(paths, path)
+	options := proxy.TLSConfigOptions{CABundlePaths: []string{os.Getenv("GIT_SSL_CAINFO")}}
+	if data, err := os.ReadFile(caFile); err == nil && len(data) > 0 {
+		options.RootCAs = x509.NewCertPool()
+		options.CABundlePaths = append(options.CABundlePaths, caFile)
+	} else {
+		for _, value := range ca {
+			if value != "" {
+				options.RootCAs = x509.NewCertPool()
+				options.CABundlePEM = append(options.CABundlePEM, []byte(value))
+			}
 		}
 	}
-	options.UpstreamTLS, err = proxy.NewTLSConfig(proxy.TLSConfigOptions{
-		CABundlePaths: append(paths, os.Getenv("GIT_SSL_CAINFO")),
-		CABundlePEM:   pems,
-	})
-	return options, err
+	if extra := os.Getenv("NODE_EXTRA_CA_CERTS"); extra != "" {
+		// Node ignores an unreadable bundle.
+		if _, err := os.Stat(extra); err == nil {
+			options.CABundlePaths = append(options.CABundlePaths, extra)
+		}
+	}
+	return options
+}
+
+// pnpmRegistryRoutes scopes pnpm's per-registry CA settings to their
+// registry: pnpm applies //host/:cafile to that registry in place of the
+// global CA, and no other upstream host sees those roots.
+func pnpmRegistryRoutes(settings pnpmSettings, major int, base *tls.Config) func(proxy.Request) (*proxy.OutboundRoute, error) {
+	proxyForURL := pnpmProxyForURL(settings)
+	var mutex sync.Mutex
+	routes := map[string]*proxy.OutboundRoute{}
+	return func(request proxy.Request) (*proxy.OutboundRoute, error) {
+		ca, matched := pnpmRegistryCA(settings.RegistryCAs, &request.URL)
+		if !matched {
+			return nil, nil
+		}
+		upstream, err := proxyForURL(&request.URL)
+		if err != nil {
+			return nil, err
+		}
+		// pnpm 10's proxy agent uses only the global CA, so a per-registry
+		// CA applies only without an upstream proxy; pnpm 11 and 12 keep it
+		// through theirs.
+		if upstream != nil && major == 10 {
+			return nil, nil
+		}
+		key := ca.Key
+		if upstream != nil {
+			key += "|" + upstream.String()
+		}
+		mutex.Lock()
+		defer mutex.Unlock()
+		if route := routes[key]; route != nil {
+			return route, nil
+		}
+		tlsConfig, err := proxy.NewTLSConfig(pnpmTLSOptions(settings.CAFile, settings.CA, &ca))
+		if err != nil {
+			return nil, err
+		}
+		// A route replaces the core's transports, so pnpm's strict-ssl
+		// exception must travel with the registry's own trust.
+		tlsConfig.InsecureSkipVerify = !settings.StrictSSL
+		route := &proxy.OutboundRoute{ProxyURL: upstream, TLS: tlsConfig}
+		if upstream != nil && upstream.Scheme == "https" {
+			// A registry's destination trust never reaches an HTTPS proxy,
+			// which the base roots verify.
+			route.ProxyTLS = &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: base.RootCAs}
+		}
+		routes[key] = route
+		return route, nil
+	}
+}
+
+// pnpmRegistryCA returns the per-registry CA setting that applies to target,
+// mirroring pnpm's per-URL setting resolution (@pnpm/network.config's
+// pickSettingByUrl): the request's exact nerf-dart, then its parent paths,
+// then both again without the port. An empty setting is skipped, like a falsy
+// value in pnpm, so a shallower key can still win. Verified against pnpm
+// 10.34.9, 11.29.0, and 12.23.0, whose Rust fetcher matches these probes.
+func pnpmRegistryCA(cas []registryCA, target *url.URL) (registryCA, bool) {
+	for _, host := range pnpmDartHosts(target) {
+		dart := "//" + host + pnpmDartPath(target.EscapedPath())
+		for _, candidate := range pnpmDartAncestors(dart) {
+			if ca, found := pnpmRegistryCALookup(cas, candidate); found {
+				return ca, true
+			}
+		}
+	}
+	return registryCA{}, false
+}
+
+// pnpmDartHosts lists the hosts of a URL's nerf-darts: the URL's host, with
+// the scheme's default port normalized away as a URL parser does, then the
+// host without any port, which pnpm retries when the first pass finds nothing.
+func pnpmDartHosts(target *url.URL) []string {
+	host := target.Hostname()
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	if port := target.Port(); port == "" || (port == "443" && target.Scheme == "https") || (port == "80" && target.Scheme == "http") {
+		return []string{host}
+	}
+	return []string{target.Host, host}
+}
+
+// pnpmDartPath is the directory part of a URL's path, which a nerf-dart
+// names: pnpm resolves the path's parent, dropping the last segment.
+func pnpmDartPath(path string) string {
+	if slash := strings.LastIndex(path, "/"); slash > 0 {
+		return path[:slash+1]
+	}
+	return "/"
+}
+
+// pnpmDartAncestors lists a nerf-dart and its parent paths, most specific
+// first, down to the bare host.
+func pnpmDartAncestors(dart string) []string {
+	parts := strings.Split(dart, "/")
+	candidates := []string{dart}
+	for index := len(parts) - 2; index >= 3; index-- {
+		candidates = append(candidates, strings.Join(parts[:index], "/")+"/")
+	}
+	return candidates
+}
+
+// pnpmRegistryCALookup returns the setting for one nerf-dart, preferring an
+// inline ca over a cafile, as npm does. A cafile with an empty path is
+// skipped, like a falsy value in pnpm, while a present-but-empty ca matches
+// its registry and keeps the system roots.
+func pnpmRegistryCALookup(cas []registryCA, dart string) (registryCA, bool) {
+	var cafile registryCA
+	found := false
+	for _, ca := range cas {
+		if ca.Key != dart || (ca.CA == "" && !ca.EmptyCA && ca.CAFile == "") {
+			continue
+		}
+		if ca.CA != "" || ca.EmptyCA {
+			return ca, true
+		}
+		if !found {
+			cafile, found = ca, true
+		}
+	}
+	return cafile, found
 }
 
 var _ pm.ProxyOptionsProvider = Pnpm{}

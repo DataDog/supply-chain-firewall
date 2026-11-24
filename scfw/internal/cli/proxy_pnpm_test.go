@@ -8,13 +8,16 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -42,9 +45,9 @@ func forEachPnpm(t *testing.T, test func(t *testing.T, major int, executable str
 	}
 }
 
-// newPnpmTestProject isolates pnpm from the host and enters a project whose
-// .npmrc selects the test registry and trusts its certificate.
-func newPnpmTestProject(t *testing.T, registry *npmTestRegistry, npmrcExtra string) string {
+// enterPnpmTestProject isolates pnpm from the host and enters a fresh
+// project directory whose .npmrc the caller writes.
+func enterPnpmTestProject(t *testing.T) string {
 	t.Helper()
 	for _, item := range os.Environ() {
 		key, _, _ := strings.Cut(item, "=")
@@ -73,8 +76,24 @@ func newPnpmTestProject(t *testing.T, registry *npmTestRegistry, npmrcExtra stri
 	}
 	usePnpmStore(t, filepath.Join(root, "store"))
 	dir := filepath.Join(root, "project")
-	writeNpmProject(t, dir, readProxyFixture(t, "npm/project/package.json"), "registry="+registry.URL+"/\ncafile="+registry.CAPath+"\n"+npmrcExtra)
+	// The project directory must exist before entering it; its files are
+	// written by the caller.
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
 	t.Chdir(dir)
+	return dir
+}
+
+// newPnpmTestProject isolates pnpm from the host and enters a project whose
+// .npmrc selects the test registry and trusts its certificate.
+func newPnpmTestProject(t *testing.T, registry *npmTestRegistry, npmrcExtra string) string {
+	t.Helper()
+	// Read the fixture before entering the project; fixtures resolve
+	// relative to the cli package directory.
+	manifest := readProxyFixture(t, "npm/project/package.json")
+	dir := enterPnpmTestProject(t)
+	writeNpmProject(t, dir, manifest, "registry="+registry.URL+"/\ncafile="+registry.CAPath+"\n"+npmrcExtra)
 	return dir
 }
 
@@ -139,6 +158,23 @@ func assertPnpmSucceeded(t *testing.T, run pnpmProxyRun) {
 	t.Helper()
 	if run.setupErr != nil || run.commandErr != nil {
 		t.Fatalf("pnpm failed: setup %v, command %v", run.setupErr, run.commandErr)
+	}
+}
+
+// The project helper runs wherever the cli tests run, without pnpm itself:
+// it must read its fixtures before entering the isolated project directory.
+func TestPnpmTestProjectSetup(t *testing.T) {
+	registry := startNpmRegistry(t)
+	dir := newPnpmTestProject(t, registry, "extra=1\n")
+	if _, err := os.Stat(filepath.Join(dir, "package.json")); err != nil {
+		t.Fatalf("project manifest missing: %v", err)
+	}
+	npmrc, err := os.ReadFile(filepath.Join(dir, ".npmrc"))
+	if err != nil || !strings.Contains(string(npmrc), "extra=1") {
+		t.Fatalf("project .npmrc = %q (error %v)", npmrc, err)
+	}
+	if cwd, err := os.Getwd(); err != nil || cwd != dir {
+		t.Fatalf("cwd = %s, want %s (error %v)", cwd, dir, err)
 	}
 }
 
@@ -236,6 +272,122 @@ func TestPnpmProxyEndToEnd(t *testing.T) {
 			})
 		}
 	})
+}
+
+// The child environment reruns this test as a child process: Go caches the
+// system pool per process, so only a fresh process can make the test
+// registry's CA its sole system root through SSL_CERT_FILE (Linux only).
+const (
+	pnpmCAChildEnv      = "SCFW_TEST_PNPM_CA_CHILD"    // set to run the child body
+	pnpmCAChildMajor    = "SCFW_TEST_PNPM_CA_MAJOR"    // the pnpm major under test
+	pnpmCAChildRegistry = "SCFW_TEST_PNPM_CA_REGISTRY" // the parent's registry URL
+	pnpmCAChildCAFile   = "SCFW_TEST_PNPM_CA_FILE"     // an unrelated CA, empty for the control
+	pnpmCAChildResult   = "SCFW_TEST_PNPM_CA_RESULT"   // where the child writes its result
+)
+
+// TestPnpmCAFileRejectsSystemRootUpstream shows registry traffic trusts
+// exactly the running pnpm's certificates: with a CA file configured, an
+// upstream signed only by a system root is rejected.
+func TestPnpmCAFileRejectsSystemRootUpstream(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("SSL_CERT_FILE feeds x509.SystemCertPool only on Linux")
+	}
+	if os.Getenv(pnpmCAChildEnv) != "" {
+		pnpmCAChildRun(t)
+		return
+	}
+	forEachPnpm(t, func(t *testing.T, major int, _ string) {
+		for _, test := range []struct {
+			name        string
+			caFile      bool // the pnpm CA file holds an unrelated CA
+			pnpmFailed  bool
+			hits, calls int32
+		}{
+			{name: "system-root upstream", hits: 1, calls: 1},
+			{name: "cafile rejects system-root upstream", caFile: true, pnpmFailed: true},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				registry := startNpmRegistry(t)
+				caFile := ""
+				if test.caFile {
+					_, unrelatedCA, _ := proxyTLSIdentity(t)
+					caFile = writeProxyTLSFile(t, unrelatedCA)
+				}
+				resultPath := filepath.Join(t.TempDir(), "result.json")
+				child := exec.Command(os.Args[0], "-test.run=^TestPnpmCAFileRejectsSystemRootUpstream$")
+				child.Env = append(os.Environ(),
+					pnpmCAChildEnv+"=1",
+					pnpmCAChildMajor+"="+strconv.Itoa(major),
+					pnpmCAChildRegistry+"="+registry.URL,
+					pnpmCAChildCAFile+"="+caFile,
+					pnpmCAChildResult+"="+resultPath,
+					// The child's system roots are exactly the registry's CA.
+					"SSL_CERT_FILE="+registry.CAPath,
+					"SSL_CERT_DIR="+t.TempDir(),
+				)
+				output, err := child.CombinedOutput()
+				if err != nil {
+					t.Fatalf("child test failed: %v\n%s", err, output)
+				}
+				var result struct {
+					SetupFailed   bool `json:"setupFailed"`
+					CommandFailed bool `json:"commandFailed"`
+					Evaluations   int  `json:"evaluations"`
+				}
+				if data, readErr := os.ReadFile(resultPath); readErr != nil {
+					t.Fatalf("child wrote no result: %v\n%s", readErr, output)
+				} else if jsonErr := json.Unmarshal(data, &result); jsonErr != nil {
+					t.Fatalf("child result: %v", jsonErr)
+				}
+				if result.SetupFailed {
+					t.Fatal("proxy setup failed")
+				}
+				if result.CommandFailed != test.pnpmFailed {
+					t.Fatalf("pnpm failed = %v, want %v", result.CommandFailed, test.pnpmFailed)
+				}
+				if int32(result.Evaluations) != test.calls {
+					t.Fatalf("evaluations = %d, want %d", result.Evaluations, test.calls)
+				}
+				if hits := registry.TarballHits.Load(); hits != test.hits {
+					t.Fatalf("tarball downloads = %d, want %d", hits, test.hits)
+				}
+			})
+		}
+	})
+}
+
+// pnpmCAChildRun installs lab-pkg from the parent's registry with the system
+// roots it set through SSL_CERT_FILE, and reports how pnpm fared. The pnpm
+// CA file, when configured, holds an unrelated CA, so its replacing the
+// roots must reject the registry the system roots would accept.
+func pnpmCAChildRun(t *testing.T) {
+	registryURL, caFile := os.Getenv(pnpmCAChildRegistry), os.Getenv(pnpmCAChildCAFile)
+	executable := os.Getenv("SCFW_TEST_PNPM_" + os.Getenv(pnpmCAChildMajor))
+	if executable == "" {
+		t.Fatal("pnpm executable missing")
+	}
+	manifest := readProxyFixture(t, "npm/project/package.json")
+	dir := enterPnpmTestProject(t)
+	rc := "registry=" + registryURL + "/\n"
+	if caFile != "" {
+		rc += "cafile=" + caFile + "\n"
+	}
+	writeNpmProject(t, dir, manifest, rc)
+	run := runPnpmThroughProxy(t, executable, []string{"add", "lab-pkg"}, evaluation.OutcomeAllow)
+	if run.setupErr == nil {
+		assertProxyCleaned(t, run.config)
+	}
+	result, err := json.Marshal(struct {
+		SetupFailed   bool `json:"setupFailed"`
+		CommandFailed bool `json:"commandFailed"`
+		Evaluations   int  `json:"evaluations"`
+	}{run.setupErr != nil, run.commandErr != nil, int(run.calls)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(os.Getenv(pnpmCAChildResult), result, 0600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func writePnpmFile(t *testing.T, path, content string) {
@@ -494,6 +646,12 @@ func TestPnpmPinHandOff(t *testing.T) {
 	}
 	registry := startNpmRegistry(t)
 	dir := newPnpmTestProject(t, registry, "")
+	// The pinned release downloads from the public registry, whose
+	// certificate only the system roots verify. A cafile replaces those
+	// roots, and real pnpm rejects the same fetch, so trust the test
+	// registry additively instead of through the project's cafile.
+	writePnpmFile(t, filepath.Join(dir, ".npmrc"), "registry="+registry.URL+"/\n")
+	t.Setenv("NODE_EXTRA_CA_CERTS", registry.CAPath)
 	writePnpmFile(t, filepath.Join(dir, "package.json"), `{"name":"pinned","private":true,"packageManager":"pnpm@`+strings.TrimSpace(string(output))+`"}`)
 	run := runPnpmThroughProxy(t, installed, []string{"add", "lab-pkg"}, evaluation.OutcomeBlock)
 	assertPnpmFailed(t, run)

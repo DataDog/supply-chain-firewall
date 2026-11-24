@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/evaluation"
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/githook"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/pnpm"
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/proxy"
@@ -76,6 +77,9 @@ func enterPnpmTestProject(t *testing.T) string {
 	}
 	usePnpmStore(t, filepath.Join(root, "store"))
 	dir := filepath.Join(root, "project")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	t.Chdir(dir)
 	return dir
 }
@@ -111,15 +115,23 @@ type pnpmProxyRun struct {
 	commandErr, setupErr error
 	calls                int32
 	details              string
+	sources              []string
 	config               proxy.ClientConfig
 }
 
 func runPnpmThroughProxy(t *testing.T, executable string, args []string, outcome evaluation.Outcome) pnpmProxyRun {
 	t.Helper()
-	return runPnpmNamedThroughProxy(t, "pnpm", executable, args, outcome)
+	return runPnpmNamedThroughProxy(t, "pnpm", executable, args, outcome, false)
 }
 
-func runPnpmNamedThroughProxy(t *testing.T, name, executable string, args []string, outcome evaluation.Outcome) pnpmProxyRun {
+// runPnpmGitThroughProxy also installs the git checkout hooks scfw run adds,
+// with the test binary standing in for the scfw executable.
+func runPnpmGitThroughProxy(t *testing.T, executable string, args []string, outcome evaluation.Outcome) pnpmProxyRun {
+	t.Helper()
+	return runPnpmNamedThroughProxy(t, "pnpm", executable, args, outcome, true)
+}
+
+func runPnpmNamedThroughProxy(t *testing.T, name, executable string, args []string, outcome evaluation.Outcome, gitHooks bool) pnpmProxyRun {
 	t.Helper()
 	manager, err := pnpm.NewPnpm(context.Background(), name, executable)
 	if err != nil {
@@ -128,19 +140,31 @@ func runPnpmNamedThroughProxy(t *testing.T, name, executable string, args []stri
 	var run pnpmProxyRun
 	var calls atomic.Int32
 	var details bytes.Buffer
-	evaluator := proxyEvaluatorFunc(func(_ context.Context, interactive bool, _ *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
+	evaluator := proxyEvaluatorFunc(func(_ context.Context, interactive bool, targets *pm.Set[pm.Package]) (evaluation.ScfwPolicyEvaluationReport, error) {
 		calls.Add(1)
 		if interactive {
 			t.Error("proxy evaluation must not prompt")
 		}
+		for target := range targets.Items() {
+			run.sources = append(run.sources, target.Source)
+		}
 		return evaluation.ScfwPolicyEvaluationReport{Outcome: outcome}, nil
 	})
+	var decide githook.Decide
 	configure := func(ctx context.Context, client *http.Client) ([]proxy.RequestHook, error) {
 		packageEvaluator := newProxyPackageEvaluator(ctx, time.Now(), append([]string{"pnpm"}, args...), "pnpm", manager.Executable(), "", evaluator, nopReporter{}, &details)
+		if gitHooks {
+			decide = npmGitCheckoutPolicy(packageEvaluator.evaluatePackage)
+		}
 		hook, err := newNpmProxyHook(ctx, manager, args, client, packageEvaluator.evaluatePackage)
 		return []proxy.RequestHook{hook}, err
 	}
-	runner := capturingPnpmRunner{Pnpm: manager, capture: func(config proxy.ClientConfig) { run.config = config }}
+	var runner pm.ProxyRunner = capturingPnpmRunner{Pnpm: manager, capture: func(config proxy.ClientConfig) { run.config = config }}
+	if gitHooks {
+		hooked := &gitHookRunner{ProxyRunner: runner, executable: os.Args[0], decide: &decide}
+		defer hooked.Close()
+		runner = hooked
+	}
 	run.commandErr, run.setupErr = runThroughProxy(context.Background(), runner, args, configure)
 	run.calls, run.details = calls.Load(), details.String()
 	return run
@@ -568,7 +592,7 @@ func TestPnpmDlxEndToEnd(t *testing.T) {
 				}
 				registry := startNpmRegistry(t)
 				newPnpmTestProject(t, registry, "")
-				run := runPnpmNamedThroughProxy(t, test.invoked, test.executable, test.args, evaluation.OutcomeBlock)
+				run := runPnpmNamedThroughProxy(t, test.invoked, test.executable, test.args, evaluation.OutcomeBlock, false)
 				assertPnpmFailed(t, run)
 				if run.calls != 1 || registry.TarballHits.Load() != 0 {
 					t.Fatalf("evaluations=%d tarball downloads=%d, want the dlx download evaluated and blocked", run.calls, registry.TarballHits.Load())

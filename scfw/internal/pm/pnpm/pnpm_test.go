@@ -307,6 +307,10 @@ func TestResolveInstallTargetsRequiresProxyMode(t *testing.T) {
 		{version: "11.28.9", command: []string{"--version"}},
 		{version: "11.28.9", command: []string{"install", "--help"}},
 		{version: "11.28.9", command: nil},
+		// pnpm 12 runs `pnpm -- <script>` like `pnpm run <script>`, gate
+		// included; a bare pnpm still stops before the gate.
+		{version: "12.18.0", command: []string{"--", "hello"}, refused: true},
+		{version: "12.18.0", command: nil},
 	} {
 		packages, err := fakePnpm(t, test.version).ResolveInstallTargets(context.Background(), test.command)
 		if test.refused {

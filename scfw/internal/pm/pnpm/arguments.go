@@ -545,9 +545,11 @@ func parseStrict(tokens []string, dlx bool) parsedCommand {
 		}
 		switch {
 		case token == "--":
-			// A leading "--" makes the next argument a script name.
+			// A leading "--" makes the next argument a script name, which
+			// pnpm runs like `pnpm run <script>`; the install gate
+			// applies to it as to any script.
 			if len(positionals) == 0 {
-				return parsedCommand{network: parsed.network, args: tokens}
+				return parsedCommand{network: parsed.network, name: "run", typed: "run", args: tokens}
 			}
 			positionals = append(positionals, tokens[index+1:]...)
 			boundary = index

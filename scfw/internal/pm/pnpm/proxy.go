@@ -60,9 +60,9 @@ func (p Pnpm) ProxyOptions(command []string) (proxy.Options, error) {
 		return proxy.Options{}, err
 	}
 	// pnpm 10 and 11 fail the command on a per-registry cafile they cannot
-	// read; pnpm 12 ignores it and keeps the global CA.
+	// read, including an empty path; pnpm 12 ignores it and keeps the global CA.
 	for _, registryCA := range settings.RegistryCAs {
-		if registryCA.CA == "" && registryCA.CAFile != "" && major < 12 {
+		if registryCA.CA == "" && !registryCA.EmptyCA && major < 12 {
 			if _, err := os.ReadFile(registryCA.CAFile); err != nil {
 				return proxy.Options{}, errors.New("could not read a pnpm per-registry CA file")
 			}
@@ -82,14 +82,16 @@ func (p Pnpm) ProxyOptions(command []string) (proxy.Options, error) {
 // or a non-empty ca replaces the default roots, as in npm; an empty ca is
 // unset. pnpm, unlike npm, keeps NODE_EXTRA_CA_CERTS additive with a CA file.
 // Git requires GIT_SSL_CAINFO, so a missing bundle fails. A registryCA, when
-// given, replaces the global CA for its registry: its empty file is pnpm's
-// empty ca, which keeps the system roots, and a cafile pnpm 12 cannot read is
+// given, replaces the global CA for its registry: a present-but-empty ca and
+// an empty cafile keep the system roots, and a cafile pnpm 12 cannot read is
 // ignored, leaving the global CA (pnpm 10 and 11 fail the command, which
 // ProxyOptions already rejects).
 func pnpmTLSOptions(caFile string, ca []string, registryCA *registryCA) proxy.TLSConfigOptions {
 	if registryCA != nil {
 		if registryCA.CA != "" {
 			caFile, ca = "", []string{registryCA.CA}
+		} else if registryCA.EmptyCA {
+			caFile, ca = "", nil // a present-but-empty ca keeps the system roots
 		} else if data, err := os.ReadFile(registryCA.CAFile); err == nil && len(data) > 0 {
 			caFile, ca = registryCA.CAFile, nil
 		} else if err == nil {
@@ -219,16 +221,17 @@ func pnpmDartAncestors(dart string) []string {
 }
 
 // pnpmRegistryCALookup returns the setting for one nerf-dart, preferring an
-// inline ca over a cafile, as npm does. A setting with neither value is
-// skipped, like a falsy value in pnpm.
+// inline ca over a cafile, as npm does. A cafile with an empty path is
+// skipped, like a falsy value in pnpm, while a present-but-empty ca matches
+// its registry and keeps the system roots.
 func pnpmRegistryCALookup(cas []registryCA, dart string) (registryCA, bool) {
 	var cafile registryCA
 	found := false
 	for _, ca := range cas {
-		if ca.Key != dart || (ca.CA == "" && ca.CAFile == "") {
+		if ca.Key != dart || (ca.CA == "" && !ca.EmptyCA && ca.CAFile == "") {
 			continue
 		}
-		if ca.CA != "" {
+		if ca.CA != "" || ca.EmptyCA {
 			return ca, true
 		}
 		if !found {

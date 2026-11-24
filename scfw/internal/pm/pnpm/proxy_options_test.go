@@ -287,6 +287,20 @@ func TestProxyOptionsRegistryCA(t *testing.T) {
 					t.Error("the global CA must still apply to other hosts")
 				}
 			}},
+			{"empty per-registry ca keeps the system roots", []string{"--config.cafile=" + caPath, "add", "x"}, func(t *testing.T, l pnpmLayout) {
+				writePnpmFixture(t, filepath.Join(l.workspace, ".npmrc"), "npmrc/registry-empty-ca.npmrc")
+			}, func(t *testing.T, options proxy.Options) {
+				route, err := options.RouteForRequest(proxy.Request{URL: *registry})
+				if err != nil || route == nil {
+					t.Fatalf("registry route missing (error %v)", err)
+				}
+				if verifiesTLSRoots(t, route.TLS) {
+					t.Error("a present-but-empty per-registry ca must keep the system roots, not the registry's or the global CA")
+				}
+				if !verifiesRegistry(t, options) {
+					t.Error("the global CA must still apply to other hosts")
+				}
+			}},
 			{"strict-ssl=false skips verification on the route", []string{"add", "x"}, func(t *testing.T, l pnpmLayout) {
 				writePnpmFixture(t, filepath.Join(l.workspace, ".npmrc"), "npmrc/registry-cafile-strict-ssl.npmrc.tmpl", caPath)
 			}, func(t *testing.T, options proxy.Options) {
@@ -329,7 +343,10 @@ func TestPnpmRegistryCASelection(t *testing.T) {
 		{"path-scoped key", []registryCA{{Key: "//a.test/foo/", CAFile: "/ca.pem"}}, "https://a.test/foo/x", registryCA{Key: "//a.test/foo/", CAFile: "/ca.pem"}, true},
 		{"path-scoped key excludes another path", []registryCA{{Key: "//a.test/foo/", CAFile: "/ca.pem"}}, "https://a.test/bar/x", registryCA{}, false},
 		{"most specific key wins", []registryCA{cafile, {Key: "//a.test/foo/", CAFile: "/foo.pem"}}, "https://a.test/foo/x", registryCA{Key: "//a.test/foo/", CAFile: "/foo.pem"}, true},
-		{"empty setting falls through to a shallower key", []registryCA{{Key: "//a.test/foo/", CA: ""}, cafile}, "https://a.test/foo/x", cafile, true},
+		{"empty cafile path falls through to a shallower key", []registryCA{{Key: "//a.test/foo/", CA: ""}, cafile}, "https://a.test/foo/x", cafile, true},
+		{"empty ca beats a shallower key", []registryCA{{Key: "//a.test/foo/", CA: "", EmptyCA: true}, cafile}, "https://a.test/foo/x", registryCA{Key: "//a.test/foo/", EmptyCA: true}, true},
+		{"empty ca beats a cafile at the same key", []registryCA{cafile, {Key: "//a.test/", EmptyCA: true}}, "https://a.test/x", registryCA{Key: "//a.test/", EmptyCA: true}, true},
+		{"port key beats a portless key", []registryCA{{Key: "//a.test:8443/", CAFile: "/8443.pem"}, {Key: "//a.test/", CAFile: "/root.pem"}}, "https://a.test:8443/x", registryCA{Key: "//a.test:8443/", CAFile: "/8443.pem"}, true},
 		{"explicit default port is normalized away", []registryCA{cafile}, "https://a.test:443/x", cafile, true},
 		{"port key", []registryCA{{Key: "//a.test:8443/", CAFile: "/ca.pem"}}, "https://a.test:8443/x", registryCA{Key: "//a.test:8443/", CAFile: "/ca.pem"}, true},
 		{"port key excludes the default port", []registryCA{{Key: "//a.test:8443/", CAFile: "/ca.pem"}}, "https://a.test/x", registryCA{}, false},
@@ -351,29 +368,44 @@ func TestPnpmRegistryCASelection(t *testing.T) {
 	}
 }
 
-// pnpm 10 and 11 fail the command on a per-registry cafile they cannot read;
-// pnpm 12 ignores it and keeps the global CA for that registry.
+// pnpm 10 and 11 fail the command on a per-registry cafile they cannot read,
+// including an empty path; pnpm 12 ignores it and keeps the global CA.
 func TestProxyOptionsUnreadableRegistryCA(t *testing.T) {
 	caPath := filepath.Join(testdataDir, "tls", "registry-ca.pem")
-	for major, version := range pnpmVersions {
-		layout := newPnpmWorkspace(t)
-		writePnpmFixture(t, filepath.Join(layout.workspace, ".npmrc"), "npmrc/registry-cafile.npmrc.tmpl", filepath.Join(t.TempDir(), "missing.pem"))
-		options, err := fakePnpm(t, version).ProxyOptions([]string{"--config.cafile=" + caPath, "add", "x"})
-		if major < 12 {
-			if err == nil || strings.Contains(err.Error(), "missing") {
-				t.Fatalf("pnpm %d: error = %v, want a read failure without the path", major, err)
+	for _, test := range []struct{ name, fixture, value string }{
+		{"missing cafile", "npmrc/registry-cafile.npmrc.tmpl", filepath.Join(t.TempDir(), "missing.pem")},
+		{"empty cafile path", "npmrc/registry-empty-cafile.npmrc", ""},
+	} {
+		for major, version := range pnpmVersions {
+			layout := newPnpmWorkspace(t)
+			writePnpmFixture(t, filepath.Join(layout.workspace, ".npmrc"), test.fixture, test.value)
+			options, err := fakePnpm(t, version).ProxyOptions([]string{"--config.cafile=" + caPath, "add", "x"})
+			if major < 12 {
+				if err == nil || (test.value != "" && strings.Contains(err.Error(), test.value)) {
+					t.Fatalf("%s pnpm %d: error = %v, want a read failure without the path", test.name, major, err)
+				}
+				continue
 			}
-			continue
-		}
-		if err != nil {
-			t.Fatalf("pnpm %d: %v", major, err)
-		}
-		route, err := options.RouteForRequest(proxy.Request{URL: url.URL{Scheme: "https", Host: "registry.test", Path: "/x"}})
-		if err != nil || route == nil {
-			t.Fatalf("pnpm 12 must fall back to the global CA (route %v, error %v)", route, err)
-		}
-		if !verifiesTLSRoots(t, route.TLS) {
-			t.Errorf("pnpm %d must trust the registry through the global CA", major)
+			if err != nil {
+				t.Fatalf("%s pnpm 12: %v", test.name, err)
+			}
+			if test.name == "missing cafile" {
+				// pnpm 12 keeps the registry's own route, falling back to the
+				// global CA inside it.
+				route, routeErr := options.RouteForRequest(proxy.Request{URL: url.URL{Scheme: "https", Host: "registry.test", Path: "/x"}})
+				if routeErr != nil || route == nil || !verifiesTLSRoots(t, route.TLS) {
+					t.Fatalf("%s pnpm 12 must fall back to the global CA on the route (route %v, error %v)", test.name, route, routeErr)
+				}
+				continue
+			}
+			// pnpm 12 skips an empty cafile path entirely, leaving the global CA.
+			route, routeErr := options.RouteForRequest(proxy.Request{URL: url.URL{Scheme: "https", Host: "registry.test", Path: "/x"}})
+			if routeErr != nil || route != nil {
+				t.Fatalf("%s pnpm 12 must skip the setting (route %v, error %v)", test.name, route, routeErr)
+			}
+			if !verifiesRegistry(t, options) {
+				t.Fatalf("%s pnpm 12 must trust the registry through the global CA", test.name)
+			}
 		}
 	}
 }

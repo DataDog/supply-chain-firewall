@@ -22,7 +22,12 @@ import (
 )
 
 // registryCA is a per-registry CA setting; Key is "//host[:port]/path/".
-type registryCA struct{ Key, CAFile, CA string }
+// EmptyCA marks a present-but-empty ca, which pnpm keeps as a truthy setting
+// that matches its registry and keeps the system roots.
+type registryCA struct {
+	Key, CAFile, CA string
+	EmptyCA         bool
+}
 
 // pnpmSettings is the configuration pnpm would use for one command before SCFW
 // overrides it.
@@ -127,7 +132,7 @@ func (all layers) registryCAs(home string) []registryCA {
 		if match[2] == "cafile" {
 			cas = append(cas, registryCA{Key: match[1], CAFile: expandPath(value, home)})
 		} else {
-			cas = append(cas, registryCA{Key: match[1], CA: value})
+			cas = append(cas, registryCA{Key: match[1], CA: value, EmptyCA: value == ""})
 		}
 	}
 	return cas

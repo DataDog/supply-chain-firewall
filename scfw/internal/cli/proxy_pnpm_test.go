@@ -89,8 +89,11 @@ func enterPnpmTestProject(t *testing.T) string {
 // .npmrc selects the test registry and trusts its certificate.
 func newPnpmTestProject(t *testing.T, registry *npmTestRegistry, npmrcExtra string) string {
 	t.Helper()
+	// Read the fixture before entering the project; fixtures resolve
+	// relative to the cli package directory.
+	manifest := readProxyFixture(t, "npm/project/package.json")
 	dir := enterPnpmTestProject(t)
-	writeNpmProject(t, dir, readProxyFixture(t, "npm/project/package.json"), "registry="+registry.URL+"/\ncafile="+registry.CAPath+"\n"+npmrcExtra)
+	writeNpmProject(t, dir, manifest, "registry="+registry.URL+"/\ncafile="+registry.CAPath+"\n"+npmrcExtra)
 	return dir
 }
 
@@ -155,6 +158,23 @@ func assertPnpmSucceeded(t *testing.T, run pnpmProxyRun) {
 	t.Helper()
 	if run.setupErr != nil || run.commandErr != nil {
 		t.Fatalf("pnpm failed: setup %v, command %v", run.setupErr, run.commandErr)
+	}
+}
+
+// The project helper runs wherever the cli tests run, without pnpm itself:
+// it must read its fixtures before entering the isolated project directory.
+func TestPnpmTestProjectSetup(t *testing.T) {
+	registry := startNpmRegistry(t)
+	dir := newPnpmTestProject(t, registry, "extra=1\n")
+	if _, err := os.Stat(filepath.Join(dir, "package.json")); err != nil {
+		t.Fatalf("project manifest missing: %v", err)
+	}
+	npmrc, err := os.ReadFile(filepath.Join(dir, ".npmrc"))
+	if err != nil || !strings.Contains(string(npmrc), "extra=1") {
+		t.Fatalf("project .npmrc = %q (error %v)", npmrc, err)
+	}
+	if cwd, err := os.Getwd(); err != nil || cwd != dir {
+		t.Fatalf("cwd = %s, want %s (error %v)", cwd, dir, err)
 	}
 }
 
@@ -346,12 +366,13 @@ func pnpmCAChildRun(t *testing.T) {
 	if executable == "" {
 		t.Fatal("pnpm executable missing")
 	}
+	manifest := readProxyFixture(t, "npm/project/package.json")
 	dir := enterPnpmTestProject(t)
 	rc := "registry=" + registryURL + "/\n"
 	if caFile != "" {
 		rc += "cafile=" + caFile + "\n"
 	}
-	writeNpmProject(t, dir, readProxyFixture(t, "npm/project/package.json"), rc)
+	writeNpmProject(t, dir, manifest, rc)
 	run := runPnpmThroughProxy(t, executable, []string{"add", "lab-pkg"}, evaluation.OutcomeAllow)
 	if run.setupErr == nil {
 		assertProxyCleaned(t, run.config)

@@ -1,0 +1,14 @@
+{
+  "name": "scripts",
+  "private": true,
+  "scripts": {
+    "build": "echo build",
+    "clean": "echo clean",
+    "purge": "echo purge",
+    "rebuild": "echo rebuild",
+    "rb": "echo rb",
+    "deploy": "echo deploy",
+    "setup": "echo setup",
+    "tasks": "echo tasks"
+  }
+}

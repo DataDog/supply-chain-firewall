@@ -1,0 +1,8 @@
+{
+  "name": "empty-script",
+  "private": true,
+  "scripts": {
+    "deploy": "",
+    "clean": "echo clean"
+  }
+}

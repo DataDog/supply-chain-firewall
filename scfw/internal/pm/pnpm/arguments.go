@@ -26,6 +26,14 @@ type noptOptions struct {
 
 type parsedCommand struct {
 	name, sub string
+	// typed is the command name as typed, which pnpm's script overrides and
+	// the script fallback look scripts up under.
+	typed string
+	// forced is a `pnpm pm <command>` prefix, which forces the built-in.
+	forced bool
+	// passthroughNpm is a pnpm 10 command pnpm hands to npm as the whole
+	// command line, so no option may precede the name.
+	passthroughNpm bool
 	// help is set by help or version flags, which stop pnpm from running the
 	// command.
 	help   bool
@@ -62,7 +70,11 @@ func networkSetting(key string) (recorded, stripped bool) {
 	case slices.Contains(strippedSettings, key), registryTLSKey.MatchString(key):
 		return true, true
 	case key == "registry", strings.HasPrefix(key, "@") && strings.HasSuffix(key, ":registry"),
-		key == "pm-on-fail", key == "manage-package-manager-versions", slices.Contains(configLocationOptions, key):
+		key == "pm-on-fail", key == "manage-package-manager-versions", slices.Contains(configLocationOptions, key),
+		// Recorded for the settings the script-install gate reads but pnpm
+		// keeps: verifyDepsBeforeRun and the layouts SCFW cannot decide.
+		key == "verify-deps-before-run", key == "lockfile-dir", key == "modules-dir",
+		key == "shared-workspace-lockfile", key == "git-branch-lockfile", key == "merge-git-branch-lockfiles":
 		return true, false
 	}
 	return false, false
@@ -85,6 +97,11 @@ func parseCommand(major int, dlx bool, command []string) parsedCommand {
 
 func parseNopt(major int, table noptOptions, tokens []string, dlx bool) parsedCommand {
 	parsed := parsedCommand{network: nodeproxy.Config{}}
+	// A pass-through command is handed to npm with the whole command line, so
+	// SCFW keeps parsing it, to strip the user's own proxy and trust options
+	// from what npm receives.
+	pnpmPassthrough := !dlx && major == 10 && len(tokens) > 0 && slices.Contains(npmPassthrough10, tokens[0])
+	parsed.passthroughNpm = pnpmPassthrough
 	var positionals []string
 	stripped := make([]bool, len(tokens))
 	dir, prefix := "", ""
@@ -98,7 +115,7 @@ func parseNopt(major int, table noptOptions, tokens []string, dlx bool) parsedCo
 		}
 		if !strings.HasPrefix(token, "-") || token == "-" {
 			positionals = append(positionals, token)
-			if escapes(major, table.aliases, positionals) {
+			if !pnpmPassthrough && escapes(major, table.aliases, positionals) {
 				boundary = index + 1
 				break
 			}
@@ -133,6 +150,7 @@ func parseNopt(major int, table noptOptions, tokens []string, dlx bool) parsedCo
 		}
 	}
 	parsed.name, parsed.sub, parsed.withCurrent = resolveCommand(major, table.aliases, positionals)
+	parsed.typed, parsed.forced = typedCommand(major, table.aliases, positionals)
 	parsed.dir = dir
 	if parsed.dir == "" {
 		parsed.dir = prefix
@@ -307,58 +325,133 @@ func resolveCommand(major int, aliases map[string]string, positionals []string) 
 	return name, sub, withCurrent
 }
 
+// typedCommand returns the name pnpm's script override looks a script up
+// under, which is the first positional as typed (argv.remain[0]), or the
+// command after a `pm` prefix, and whether that prefix forces the built-in.
+// The prefixes pnpm itself skips, like `recursive` and `with current`, do
+// not move the lookup: pnpm would run their own name as a script, not the
+// built-in they precede.
+func typedCommand(major int, aliases map[string]string, positionals []string) (typed string, forced bool) {
+	if major >= 11 && len(positionals) > 0 && positionals[0] == "pm" {
+		if len(positionals) > 1 {
+			typed = positionals[1]
+		}
+		return typed, true
+	}
+	if len(positionals) > 0 {
+		typed = positionals[0]
+	}
+	return typed, false
+}
+
 // escapes reports whether the remaining arguments belong to another program:
-// after create, exec, or a script, and after the package or script of dlx and
-// run. Commands SCFW does not proxy run unchanged, so their arguments are not
-// inspected either.
+// after create, exec, test, start, stop, and a script name, and after the
+// script of run and the package of dlx and the version of with. Built-ins keep
+// being parsed, so their proxy and trust options are still recorded and
+// stripped.
 func escapes(major int, aliases map[string]string, positionals []string) bool {
 	index := commandStart(major, aliases, positionals)
 	if index >= len(positionals) {
 		return false
 	}
 	switch name := canonical(aliases, positionals[index]); name {
-	case "create":
+	case "create", "exec", "restart", "test", "start", "stop":
 		return true
 	case "dlx", "run", "with":
 		return len(positionals) > index+1
 	case "store", "env", "runtime", "pipeline":
 		return false
 	default:
-		return !slices.Contains(proxiedCommands, name)
+		return !isBuiltin(major, name)
 	}
 }
 
-// proxiedCommands resolve, fetch, or install packages in every supported version.
-var proxiedCommands = []string{
+func isBuiltin(major int, name string) bool {
+	return slices.Contains(builtinCommands[major], name)
+}
+
+// fetchCommands resolve, fetch, or install packages in every supported version.
+var fetchCommands = []string{
 	"install", "add", "update", "remove", "link", "unlink", "import", "fetch", "dedupe", "rebuild", "prune",
 	"install-test", "patch", "patch-commit", "patch-remove", "deploy", "dlx", "create", "self-update", "env",
 	"approve-builds", "ci",
 }
 
-func proxyCommand(major int, parsed parsedCommand) bool {
+// commandKind describes what a command does with packages.
+type commandKind int
+
+const (
+	// kindScript runs a package script or hands its arguments to another
+	// program.
+	kindScript commandKind = iota
+	// kindFetch resolves, fetches, or installs packages.
+	kindFetch
+	// kindOther is a built-in command that does not fetch packages.
+	kindOther
+)
+
+// scriptCommand reports whether pnpm runs a package script or another program:
+// run, exec, and restart; a name that is not a built-in of its major, which
+// pnpm falls back to `pnpm run <name>` for; and a built-in a same-named
+// script in the command's package.json replaces, unless `pnpm pm` forces
+// the built-in (pnpm 11 also keeps it under --global). Help and version flags
+// stop pnpm, so nothing runs either way.
+func scriptCommand(major int, parsed parsedCommand, scriptExists func(string) bool) bool {
 	if parsed.help {
+		return true
+	}
+	if parsed.passthroughNpm {
 		return false
 	}
 	switch parsed.name {
-	case "store":
-		return parsed.sub == "add"
-	case "with", "runtime":
-		return major >= 11
-	case "pipeline":
-		return major >= 12
+	case "run", "exec", "restart", "test", "start", "stop":
+		return true
 	}
-	return slices.Contains(proxiedCommands, parsed.name)
+	if !isBuiltin(major, parsed.name) {
+		return true
+	}
+	return !parsed.forced && (major != 11 || !parsed.global) &&
+		slices.Contains(overridableScripts[major], parsed.typed) &&
+		scriptExists != nil && scriptExists(parsed.typed)
 }
 
-// ProxyCommandSupported selects commands that resolve, fetch, or install
-// packages. Scripts and other commands run directly. An unknown version is
-// proxied so that the proxy path reports the version error.
+// commandKind classifies a parsed command: scripts run directly and every
+// other command, fetching or not, runs through the proxy. pack-app downloads
+// the single-executable-application builder and a Node runtime; with,
+// runtime, and pipeline download package-manager or runtime releases.
+func classifyCommand(major int, parsed parsedCommand, scriptExists func(string) bool) commandKind {
+	if scriptCommand(major, parsed, scriptExists) {
+		return kindScript
+	}
+	switch parsed.name {
+	case "store":
+		if parsed.sub == "add" {
+			return kindFetch
+		}
+	case "with", "runtime", "pipeline", "pack-app":
+		return kindFetch
+	}
+	if slices.Contains(fetchCommands, parsed.name) {
+		return kindFetch
+	}
+	return kindOther
+}
+
+// ProxyCommandSupported selects the commands pnpm runs through the SCFW
+// proxy: every command except scripts. A script pnpm 11 or 12 would install
+// dependencies before (verify_deps.go) is proxied too, so that install is
+// evaluated. An unknown version is proxied so that the proxy path reports
+// the version error.
 func (p Pnpm) ProxyCommandSupported(command []string) bool {
 	major, err := p.major(command)
 	if err != nil {
 		return true
 	}
-	return proxyCommand(major, parseCommand(major, p.dlx, command))
+	parsed := parseCommand(major, p.dlx, command)
+	if classifyCommand(major, parsed, p.scriptsAt(parsed)) == kindScript {
+		return p.scriptInstalls(major, parsed)
+	}
+	return true
 }
 
 // pnpm 12 parses its command line with clap: long options are exact, and an
@@ -452,9 +545,12 @@ func parseStrict(tokens []string, dlx bool) parsedCommand {
 		}
 		switch {
 		case token == "--":
-			// A leading "--" makes the next argument a script name.
+			// A leading "--" makes the next argument a script name, which
+			// pnpm runs like `pnpm run <script>`, and pnpm keeps
+			// parsing the options written before it: the boundary keeps them
+			// recorded, stripped, and their directory in the command.
 			if len(positionals) == 0 {
-				return parsedCommand{network: parsed.network, args: tokens}
+				positionals = append(positionals, "run")
 			}
 			positionals = append(positionals, tokens[index+1:]...)
 			boundary = index
@@ -497,6 +593,7 @@ func parseStrict(tokens []string, dlx bool) parsedCommand {
 		}
 	}
 	parsed.name, parsed.sub, parsed.withCurrent = resolveCommand(12, strictAliases, positionals)
+	parsed.typed, parsed.forced = typedCommand(12, strictAliases, positionals)
 	parsed.args, parsed.passthrough = keptArguments(tokens, stripped, boundary, dlx)
 	return parsed
 }

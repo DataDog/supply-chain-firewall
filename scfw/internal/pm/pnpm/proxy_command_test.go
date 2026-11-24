@@ -195,3 +195,56 @@ func TestProxyCommandRejectsUnreadableCA(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+// A pnpm 10 pass-through command is handed to npm with the whole command line,
+// so the command name stays first, no option is prepended, and routing and
+// trust come from the environment npm reads above its .npmrc files.
+func TestProxyCommandNpmPassthrough(t *testing.T) {
+	for major, version := range pnpmVersions {
+		newPnpmWorkspace(t)
+		config, _ := testClientConfig(t)
+		manager := fakePnpm(t, version)
+		spec, err := manager.ProxyCommand(context.Background(), []string{"view", "x", "--https-proxy", "http://evil:1"}, config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []string{"view", "x"}
+		if major == 10 {
+			if !slices.Equal(spec.Args, want) {
+				t.Errorf("pnpm 10: args = %q, want %q", spec.Args, want)
+			}
+			if spec.EnvOverrides["npm_config_https_proxy"] != config.URL || spec.EnvOverrides["npm_config_cafile"] != config.CACertificatePath {
+				t.Errorf("pnpm 10: routing environment missing from %v", spec.EnvOverrides)
+			}
+		} else if !slices.Equal(spec.Args[len(spec.Args)-2:], []string{"view", "x"}) ||
+			!slices.Contains(spec.Args, "--config.https-proxy="+config.URL) {
+			t.Errorf("pnpm %d: passthrough only applies to pnpm 10, args = %q", major, spec.Args)
+		}
+		if upstream, err := manager.UpstreamProxy([]string{"view", "x", "--https-proxy", "http://evil:1"}); err != nil || upstream.HTTPSProxy != "http://evil:1" {
+			t.Errorf("pnpm %d: the stripped option must still select the upstream, got %q (error %v)", major, upstream.HTTPSProxy, err)
+		}
+	}
+}
+
+// The options pnpm keeps parsing before a leading -- name a script after
+// them, so the user's proxy option is stripped from the command line the
+// proxy runs while still selecting the upstream.
+func TestProxyCommandStripsOptionsBeforeScriptDashes(t *testing.T) {
+	for major, version := range pnpmVersions {
+		newPnpmWorkspace(t)
+		config, pem := testClientConfig(t)
+		manager := fakePnpm(t, version)
+		command := []string{"--https-proxy", "http://evil:1", "--", "hello"}
+		spec, err := manager.ProxyCommand(context.Background(), command, config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := append(proxyOverrides(config, pem), "--", "hello")
+		if !slices.Equal(spec.Args, want) {
+			t.Errorf("pnpm %d: args = %q, want %q", major, spec.Args, want)
+		}
+		if upstream, err := manager.UpstreamProxy(command); err != nil || upstream.HTTPSProxy != "http://evil:1" {
+			t.Errorf("pnpm %d: the stripped option must still select the upstream, got %q (error %v)", major, upstream.HTTPSProxy, err)
+		}
+	}
+}

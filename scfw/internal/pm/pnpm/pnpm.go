@@ -227,6 +227,41 @@ func (p Pnpm) switchingDisabled(root string, parsed parsedCommand) bool {
 	return yaml.Unmarshal(data, &settings) == nil && settings.PmOnFail != "" && settings.PmOnFail != "download"
 }
 
+// scriptsAt reads the scripts of the package.json in the directory the command
+// runs in, where pnpm looks the script that replaces an overridable built-in
+// up. Only a script with a command overrides, like pnpm's truthiness check,
+// and an unreadable manifest has no scripts, which leaves the built-in.
+func (p Pnpm) scriptsAt(parsed parsedCommand) func(string) bool {
+	dir := p.commandDirectory(parsed)
+	scripts := map[string]bool{}
+	if dir != "" {
+		if data, err := nodeproxy.ReadConfigFile(filepath.Join(dir, "package.json")); err == nil {
+			var manifest struct {
+				Scripts map[string]string `json:"scripts"`
+			}
+			if json.Unmarshal(data, &manifest) == nil {
+				for name, script := range manifest.Scripts {
+					if script != "" {
+						scripts[name] = true
+					}
+				}
+			}
+		}
+	}
+	return func(name string) bool { return scripts[name] }
+}
+
+// scriptInstalls reports whether pnpm would install dependencies before the
+// script; what SCFW cannot decide counts as an install, so nothing is left
+// unevaluated. Help and version flags, and an empty command, stop pnpm
+// before it reaches the gate, so those never install.
+func (p Pnpm) scriptInstalls(major int, parsed parsedCommand) bool {
+	if parsed.help || parsed.name == "" {
+		return false
+	}
+	return installsBeforeScript(major, parsed, p.commandDirectory(parsed), os.Environ())
+}
+
 func (p Pnpm) Executable() string {
 	return p.executable
 }
@@ -242,8 +277,27 @@ func (p Pnpm) RunCommand(ctx context.Context, command []string) error {
 }
 
 func (p Pnpm) ResolveInstallTargets(_ context.Context, command []string) (*pm.Set[pm.Package], error) {
-	if p.ProxyCommandSupported(command) {
+	if p.requiresProxy(command) {
 		return nil, errors.New("pnpm package operations require proxy mode (set SCFW_PROXY_ENABLED=1)")
 	}
 	return pm.NewSet[pm.Package](), nil
+}
+
+// requiresProxy reports whether the command may fetch packages outside the
+// proxy: the commands that resolve, fetch, or install, and the scripts pnpm
+// 11 and 12 would install dependencies before, not the built-ins that never
+// do, so pnpm view and pnpm list keep running without proxy mode.
+func (p Pnpm) requiresProxy(command []string) bool {
+	major, err := p.major(command)
+	if err != nil {
+		return true
+	}
+	parsed := parseCommand(major, p.dlx, command)
+	switch classifyCommand(major, parsed, p.scriptsAt(parsed)) {
+	case kindFetch:
+		return true
+	case kindScript:
+		return p.scriptInstalls(major, parsed)
+	}
+	return false
 }

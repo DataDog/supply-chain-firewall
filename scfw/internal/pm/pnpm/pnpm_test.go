@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm"
 )
@@ -282,10 +283,63 @@ func TestNewPnpmProbesPnpmBesidePnpx(t *testing.T) {
 	}
 }
 
+// Without proxy mode, the commands that resolve, fetch, or install are
+// refused, and so is a script pnpm 11 or 12 would install dependencies before.
+// Everything else keeps running: the built-ins that never fetch, and the
+// commands that stop pnpm before its install gate.
 func TestResolveInstallTargetsRequiresProxyMode(t *testing.T) {
-	isolatePnpmEnvironment(t)
-	_, err := fakePnpm(t, "11.28.9").ResolveInstallTargets(context.Background(), []string{"add", "x"})
-	if err == nil || err.Error() != "pnpm package operations require proxy mode (set SCFW_PROXY_ENABLED=1)" {
-		t.Fatalf("error = %v", err)
+	const refusal = "pnpm package operations require proxy mode (set SCFW_PROXY_ENABLED=1)"
+	root := isolatePnpmEnvironment(t)
+	project := filepath.Join(root, "parent", "project")
+	writePnpmFixture(t, filepath.Join(project, "package.json"), "manifest/dependencies.json")
+
+	for _, test := range []struct {
+		version string
+		command []string
+		refused bool
+	}{
+		{version: "11.28.9", command: []string{"add", "x"}, refused: true},
+		{version: "11.28.9", command: []string{"run", "hello"}, refused: true},
+		{version: "10.34.9", command: []string{"run", "hello"}},
+		{version: "11.28.9", command: []string{"view", "x"}},
+		{version: "11.28.9", command: []string{"list"}},
+		{version: "11.28.9", command: []string{"-v"}},
+		{version: "11.28.9", command: []string{"--version"}},
+		{version: "11.28.9", command: []string{"install", "--help"}},
+		{version: "11.28.9", command: nil},
+		// pnpm 12 runs `pnpm -- <script>` like `pnpm run <script>`, gate
+		// included; a bare pnpm and a help flag still stop before the gate.
+		{version: "12.18.0", command: []string{"--", "hello"}, refused: true},
+		{version: "12.18.0", command: []string{"--help", "--", "hello"}},
+		{version: "12.18.0", command: nil},
+	} {
+		packages, err := fakePnpm(t, test.version).ResolveInstallTargets(context.Background(), test.command)
+		if test.refused {
+			if err == nil || err.Error() != refusal {
+				t.Errorf("pnpm %s %v: error = %v, want the proxy-mode refusal", test.version, test.command, err)
+			}
+			continue
+		}
+		if err != nil || packages.Len() != 0 {
+			t.Errorf("pnpm %s %v: error = %v packages = %d, want an empty set", test.version, test.command, err, packages.Len())
+		}
+	}
+
+	// A script whose dependencies the workspace state proves current runs
+	// without proxy mode too.
+	writeGateState(t, project, "workspace-state/state.json.tmpl", time.Now().Add(time.Hour).UnixMilli())
+	installArtifacts(t, project)
+	if _, err := fakePnpm(t, "11.28.9").ResolveInstallTargets(context.Background(), []string{"run", "hello"}); err != nil {
+		t.Fatalf("an installed project's script must run without proxy mode: %v", err)
+	}
+
+	// pnpm runs the gate in the directory the command names, and keeps
+	// parsing the options before a leading --, so the dependencies of a
+	// subdirectory project are refused however the script is spelled.
+	writePnpmFixture(t, filepath.Join(project, "sub", "package.json"), "manifest/dependencies.json")
+	for _, command := range [][]string{{"-C", "sub", "run", "hello"}, {"-C", "sub", "--", "hello"}} {
+		if _, err := fakePnpm(t, "12.18.0").ResolveInstallTargets(context.Background(), command); err == nil || err.Error() != refusal {
+			t.Errorf("pnpm 12 %v: error = %v, want the proxy-mode refusal", command, err)
+		}
 	}
 }

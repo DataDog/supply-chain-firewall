@@ -646,6 +646,12 @@ func TestPnpmPinHandOff(t *testing.T) {
 	}
 	registry := startNpmRegistry(t)
 	dir := newPnpmTestProject(t, registry, "")
+	// The pinned release downloads from the public registry, whose
+	// certificate only the system roots verify. A cafile replaces those
+	// roots, and real pnpm rejects the same fetch, so trust the test
+	// registry additively instead of through the project's cafile.
+	writePnpmFile(t, filepath.Join(dir, ".npmrc"), "registry="+registry.URL+"/\n")
+	t.Setenv("NODE_EXTRA_CA_CERTS", registry.CAPath)
 	writePnpmFile(t, filepath.Join(dir, "package.json"), `{"name":"pinned","private":true,"packageManager":"pnpm@`+strings.TrimSpace(string(output))+`"}`)
 	run := runPnpmThroughProxy(t, installed, []string{"add", "lab-pkg"}, evaluation.OutcomeBlock)
 	assertPnpmFailed(t, run)

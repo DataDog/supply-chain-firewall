@@ -225,3 +225,26 @@ func TestProxyCommandNpmPassthrough(t *testing.T) {
 		}
 	}
 }
+
+// The options pnpm keeps parsing before a leading -- name a script after
+// them, so the user's proxy option is stripped from the command line the
+// proxy runs while still selecting the upstream.
+func TestProxyCommandStripsOptionsBeforeScriptDashes(t *testing.T) {
+	for major, version := range pnpmVersions {
+		newPnpmWorkspace(t)
+		config, pem := testClientConfig(t)
+		manager := fakePnpm(t, version)
+		command := []string{"--https-proxy", "http://evil:1", "--", "hello"}
+		spec, err := manager.ProxyCommand(context.Background(), command, config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := append(proxyOverrides(config, pem), "--", "hello")
+		if !slices.Equal(spec.Args, want) {
+			t.Errorf("pnpm %d: args = %q, want %q", major, spec.Args, want)
+		}
+		if upstream, err := manager.UpstreamProxy(command); err != nil || upstream.HTTPSProxy != "http://evil:1" {
+			t.Errorf("pnpm %d: the stripped option must still select the upstream, got %q (error %v)", major, upstream.HTTPSProxy, err)
+		}
+	}
+}

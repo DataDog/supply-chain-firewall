@@ -308,8 +308,9 @@ func TestResolveInstallTargetsRequiresProxyMode(t *testing.T) {
 		{version: "11.28.9", command: []string{"install", "--help"}},
 		{version: "11.28.9", command: nil},
 		// pnpm 12 runs `pnpm -- <script>` like `pnpm run <script>`, gate
-		// included; a bare pnpm still stops before the gate.
+		// included; a bare pnpm and a help flag still stop before the gate.
 		{version: "12.18.0", command: []string{"--", "hello"}, refused: true},
+		{version: "12.18.0", command: []string{"--help", "--", "hello"}},
 		{version: "12.18.0", command: nil},
 	} {
 		packages, err := fakePnpm(t, test.version).ResolveInstallTargets(context.Background(), test.command)
@@ -330,5 +331,15 @@ func TestResolveInstallTargetsRequiresProxyMode(t *testing.T) {
 	installArtifacts(t, project)
 	if _, err := fakePnpm(t, "11.28.9").ResolveInstallTargets(context.Background(), []string{"run", "hello"}); err != nil {
 		t.Fatalf("an installed project's script must run without proxy mode: %v", err)
+	}
+
+	// pnpm runs the gate in the directory the command names, and keeps
+	// parsing the options before a leading --, so the dependencies of a
+	// subdirectory project are refused however the script is spelled.
+	writePnpmFixture(t, filepath.Join(project, "sub", "package.json"), "manifest/dependencies.json")
+	for _, command := range [][]string{{"-C", "sub", "run", "hello"}, {"-C", "sub", "--", "hello"}} {
+		if _, err := fakePnpm(t, "12.18.0").ResolveInstallTargets(context.Background(), command); err == nil || err.Error() != refusal {
+			t.Errorf("pnpm 12 %v: error = %v, want the proxy-mode refusal", command, err)
+		}
 	}
 }

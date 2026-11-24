@@ -325,14 +325,23 @@ func resolveCommand(major int, aliases map[string]string, positionals []string) 
 	return name, sub, withCurrent
 }
 
-// typedCommand returns the command name as typed and whether a `pm`
-// prefix forces the built-in.
+// typedCommand returns the name pnpm's script override looks a script up
+// under, which is the first positional as typed (argv.remain[0]), or the
+// command after a `pm` prefix, and whether that prefix forces the built-in.
+// The prefixes pnpm itself skips, like `recursive` and `with current`, do
+// not move the lookup: pnpm would run their own name as a script, not the
+// built-in they precede.
 func typedCommand(major int, aliases map[string]string, positionals []string) (typed string, forced bool) {
-	index := commandStart(major, aliases, positionals)
-	if index < len(positionals) {
-		typed = positionals[index]
+	if major >= 11 && len(positionals) > 0 && positionals[0] == "pm" {
+		if len(positionals) > 1 {
+			typed = positionals[1]
+		}
+		return typed, true
 	}
-	return typed, major >= 11 && index > 0 && positionals[0] == "pm"
+	if len(positionals) > 0 {
+		typed = positionals[0]
+	}
+	return typed, false
 }
 
 // escapes reports whether the remaining arguments belong to another program:

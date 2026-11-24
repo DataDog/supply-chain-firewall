@@ -23,7 +23,10 @@ import (
 // runs. SCFW runs such a script through the proxy, so the install is
 // evaluated; everything it cannot decide is proxied too, because that keeps
 // ordinary scripts running while never leaving an install unevaluated. A
-// failed gate install only warns in pnpm, so the script still runs.
+// failed gate install only warns in pnpm, so the script still runs. The
+// checks below follow files, so a setting that changed only through the
+// command line or the environment, never through a file, can still reinstall
+// a project SCFW judged current.
 
 // installsBeforeScript reports whether pnpm major may install dependencies
 // before running a script in dir, from the environment, the command line, the
@@ -265,17 +268,30 @@ func currentProjects(root string, workspace nodeproxy.Config) (map[string]bool, 
 // workspaceProjects lists the projects the workspace's packages patterns
 // select, mirroring pnpm's `**`, `*`, `?`, and `[...]` globs while
 // skipping node_modules. Patterns using features the matcher does
-// not reproduce, such as braces, extglobs, and negation, cannot be decided.
+// not reproduce, such as braces, extglobs, negation, or `.`/`..` segments,
+// cannot be decided. The set must cover every project pnpm's own enumeration
+// finds, so anything uncertain is undecidable: an install SCFW misses is
+// unevaluated, one it proxies needlessly only loses direct scripts.
 func workspaceProjects(root string, patterns []string) (map[string]bool, bool) {
 	projects := map[string]bool{root: true}
 	if !regularFile(filepath.Join(root, "package.json")) {
 		delete(projects, root)
 	}
 	for _, pattern := range patterns {
+		for strings.HasPrefix(pattern, "./") {
+			pattern = pattern[2:]
+		}
+		pattern = strings.TrimSuffix(pattern, "/")
 		if pattern == "" || strings.ContainsAny(pattern, "{}!()") {
 			return nil, false
 		}
-		matches, ok := globProjects(root, strings.Split(pattern, "/"))
+		segments := strings.Split(pattern, "/")
+		for _, segment := range segments {
+			if segment == "" || segment == "." || segment == ".." {
+				return nil, false
+			}
+		}
+		matches, ok := globProjects(root, segments)
 		if !ok {
 			return nil, false
 		}
@@ -284,6 +300,19 @@ func workspaceProjects(root string, patterns []string) (map[string]bool, bool) {
 		}
 	}
 	return projects, true
+}
+
+// entryIsDir resolves a symlinked entry the way pnpm's glob follows
+// symlinked directories; a symlink that resolves to nothing is not a project.
+func entryIsDir(path string, entry os.DirEntry) bool {
+	if entry.IsDir() {
+		return true
+	}
+	if entry.Type()&os.ModeSymlink == 0 {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 // globProjects walks dir for the projects a pattern's segments select. Every
@@ -311,7 +340,7 @@ func globProjects(dir string, segments []string) (map[string]bool, bool) {
 			return projects, true
 		}
 		for _, entry := range entries {
-			if entry.IsDir() && entry.Name() != "node_modules" {
+			if entry.Name() != "node_modules" && entryIsDir(filepath.Join(dir, entry.Name()), entry) {
 				if found, ok := globProjects(filepath.Join(dir, entry.Name()), segments); ok {
 					for project := range found {
 						projects[project] = true
@@ -328,7 +357,7 @@ func globProjects(dir string, segments []string) (map[string]bool, bool) {
 		return projects, true
 	}
 	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == "node_modules" || !globSegment(segment, entry.Name()) {
+		if entry.Name() == "node_modules" || !entryIsDir(filepath.Join(dir, entry.Name()), entry) || !globSegment(segment, entry.Name()) {
 			continue
 		}
 		match := filepath.Join(dir, entry.Name())

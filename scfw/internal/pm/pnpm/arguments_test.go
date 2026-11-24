@@ -318,8 +318,11 @@ func TestCommandClassificationCoversProductionTables(t *testing.T) {
 }
 
 // A same-named package.json script replaces an overridable built-in, looked up
-// under the name as typed. A pm prefix forces the built-in, and pnpm 11 keeps
-// it under --global; pnpm 10 has no overrides, so the name is a script anyway.
+// under the first positional as typed (argv.remain[0]), or the command after a
+// pm prefix. Only a script with a command overrides, and the prefixes pnpm
+// skips (recursive, with current) do not move the lookup; pnpm 11 keeps the
+// built-in under --global, and pnpm 10 has no overrides, so the name is a
+// script anyway.
 func TestScriptOverrides(t *testing.T) {
 	root := isolatePnpmEnvironment(t)
 	writePnpmFixture(t, filepath.Join(root, "parent", "project", "package.json"), "manifest/scripts.json")
@@ -338,12 +341,36 @@ func TestScriptOverrides(t *testing.T) {
 		{"11.28.9", "-g clean", true},
 		{"11.28.9", "pm clean", true},
 		{"11.28.9", "outdated", true},
+		// The prefixes pnpm itself skips never move the script lookup.
+		{"11.28.9", "recursive clean", true},
+		{"11.28.9", "with current clean", true},
 		{"12.18.0", "rb", false},
 		{"12.18.0", "tasks", false},
 		{"12.18.0", "pm rb", true},
 		{"12.18.0", "pm tasks", true},
 		{"12.18.0", "-g clean", false},
 		{"12.18.0", "outdated", true},
+	} {
+		manager := fakePnpm(t, test.version)
+		if got := manager.ProxyCommandSupported(strings.Fields(test.command)); got != test.proxied {
+			t.Errorf("pnpm %s: %q proxied = %v, want %v", test.version, test.command, got, test.proxied)
+		}
+	}
+}
+
+// Only a script with a command overrides the built-in; an empty one runs it.
+func TestScriptOverridesNeedACommand(t *testing.T) {
+	root := isolatePnpmEnvironment(t)
+	writePnpmFixture(t, filepath.Join(root, "parent", "project", "package.json"), "manifest/empty-script.json")
+	for _, test := range []struct {
+		version string
+		command string
+		proxied bool
+	}{
+		{"11.28.9", "deploy", true},
+		{"11.28.9", "clean", false},
+		{"12.18.0", "deploy", true},
+		{"12.18.0", "clean", false},
 	} {
 		manager := fakePnpm(t, test.version)
 		if got := manager.ProxyCommandSupported(strings.Fields(test.command)); got != test.proxied {

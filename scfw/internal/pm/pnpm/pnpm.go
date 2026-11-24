@@ -229,7 +229,8 @@ func (p Pnpm) switchingDisabled(root string, parsed parsedCommand) bool {
 
 // scriptsAt reads the scripts of the package.json in the directory the command
 // runs in, where pnpm looks the script that replaces an overridable built-in
-// up. An unreadable manifest has no scripts, which leaves the built-in.
+// up. Only a script with a command overrides, like pnpm's truthiness check,
+// and an unreadable manifest has no scripts, which leaves the built-in.
 func (p Pnpm) scriptsAt(parsed parsedCommand) func(string) bool {
 	dir := p.commandDirectory(parsed)
 	scripts := map[string]bool{}
@@ -239,8 +240,10 @@ func (p Pnpm) scriptsAt(parsed parsedCommand) func(string) bool {
 				Scripts map[string]string `json:"scripts"`
 			}
 			if json.Unmarshal(data, &manifest) == nil {
-				for name := range manifest.Scripts {
-					scripts[name] = true
+				for name, script := range manifest.Scripts {
+					if script != "" {
+						scripts[name] = true
+					}
 				}
 			}
 		}
@@ -250,8 +253,12 @@ func (p Pnpm) scriptsAt(parsed parsedCommand) func(string) bool {
 
 // scriptInstalls reports whether pnpm would install dependencies before the
 // script; what SCFW cannot decide counts as an install, so nothing is left
-// unevaluated.
+// unevaluated. Help and version flags, and an empty command, stop pnpm
+// before it reaches the gate, so those never install.
 func (p Pnpm) scriptInstalls(major int, parsed parsedCommand) bool {
+	if parsed.help || parsed.name == "" {
+		return false
+	}
 	return installsBeforeScript(major, parsed, p.commandDirectory(parsed), os.Environ())
 }
 

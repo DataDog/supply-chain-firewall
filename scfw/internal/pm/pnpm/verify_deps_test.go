@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/DataDog/supply-chain-firewall/scfw/internal/pm/internal/nodeproxy"
 )
 
 // gateEnvironment isolates the gate from the host's pnpm configuration.
@@ -83,10 +85,11 @@ func scriptGate(major int, dir string, environ []string) bool {
 // dependencies and was never installed, so an install action installs.
 func TestInstallsBeforeScriptValues(t *testing.T) {
 	for _, test := range []struct {
-		name    string
-		command string
-		env     [2]string
-		want    bool
+		name              string
+		command           string
+		env               [2]string
+		workspace, global string
+		want              bool
 	}{
 		{name: "default installs", want: true},
 		{name: "env false", env: [2]string{"pnpm_config_verify_deps_before_run", "false"}, want: false},
@@ -99,18 +102,23 @@ func TestInstallsBeforeScriptValues(t *testing.T) {
 		{name: "command line false", command: "--config.verify-deps-before-run=false run hello", want: false},
 		{name: "env beats command line", command: "--config.verify-deps-before-run=false run hello",
 			env: [2]string{"pnpm_config_verify_deps_before_run", "install"}, want: true},
-		{name: "command line beats workspace", command: "--config.verify-deps-before-run=false run hello", want: false},
-		{name: "workspace warn", want: false},
-		{name: "workspace install", want: true},
+		{name: "command line beats workspace", command: "--config.verify-deps-before-run=false run hello",
+			workspace: "workspace-yaml/verify-deps-install.yaml", want: false},
+		{name: "workspace warn", workspace: "workspace-yaml/verify-deps-warn.yaml", want: false},
+		{name: "workspace install", workspace: "workspace-yaml/verify-deps-install.yaml", want: true},
+		{name: "workspace beats global", workspace: "workspace-yaml/verify-deps-install.yaml",
+			global: "workspace-yaml/verify-deps-warn.yaml", want: true},
+		{name: "global warn", global: "workspace-yaml/verify-deps-warn.yaml", want: false},
+		{name: "global install", global: "workspace-yaml/verify-deps-install.yaml", want: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			environ := gateEnvironment(t)
 			dir := gateProject(t, "manifest/dependencies.json")
-			if test.name == "command line beats workspace" || test.name == "workspace install" {
-				writePnpmFixture(t, filepath.Join(dir, "pnpm-workspace.yaml"), "workspace-yaml/verify-deps-install.yaml")
+			if test.workspace != "" {
+				writePnpmFixture(t, filepath.Join(dir, "pnpm-workspace.yaml"), test.workspace)
 			}
-			if test.name == "workspace warn" {
-				writePnpmFixture(t, filepath.Join(dir, "pnpm-workspace.yaml"), "workspace-yaml/verify-deps-warn.yaml")
+			if test.global != "" {
+				writePnpmFixture(t, filepath.Join(gateGlobalConfig(t, environ), "config.yaml"), test.global)
 			}
 			command := strings.Fields("run hello")
 			if test.command != "" {
@@ -124,6 +132,13 @@ func TestInstallsBeforeScriptValues(t *testing.T) {
 			}
 		})
 	}
+}
+
+// gateGlobalConfig returns the directory of pnpm's global config.yaml for the
+// environment gateEnvironment built.
+func gateGlobalConfig(t *testing.T, environ []string) string {
+	t.Helper()
+	return filepath.Join(nodeproxy.LookupEnvironment(environ)["XDG_CONFIG_HOME"], "pnpm")
 }
 
 // The gate only ever reports an install for pnpm 11 and 12: pnpm 10 has no
@@ -248,6 +263,33 @@ func TestInstallsBeforeScriptWorkspace(t *testing.T) {
 		{name: "brace glob", layout: func(t *testing.T, root string) {
 			writePnpmFixture(t, filepath.Join(root, "pnpm-workspace.yaml"), "workspace-yaml/packages-braces.yaml")
 			writeGateState(t, root, "workspace-state/state.json.tmpl", timestamp)
+		}},
+		{name: "./-prefixed glob", fresh: true, layout: func(t *testing.T, root string) {
+			writePnpmFixture(t, filepath.Join(root, "pnpm-workspace.yaml"), "workspace-yaml/packages-dot.yaml")
+			member := filepath.Join(root, "packages", "a")
+			writePnpmFixture(t, filepath.Join(member, "package.json"), "manifest/plain.json")
+			writeGateState(t, root, "workspace-state/state-two.json.tmpl", timestamp, member)
+		}},
+		{name: "trailing-slash glob", fresh: true, layout: func(t *testing.T, root string) {
+			writePnpmFixture(t, filepath.Join(root, "pnpm-workspace.yaml"), "workspace-yaml/packages-trailing.yaml")
+			member := filepath.Join(root, "packages", "a")
+			writePnpmFixture(t, filepath.Join(member, "package.json"), "manifest/plain.json")
+			writeGateState(t, root, "workspace-state/state-two.json.tmpl", timestamp, member)
+		}},
+		{name: "symlinked member", fresh: true, layout: func(t *testing.T, root string) {
+			// The member the packages glob matches is a symlink to a real
+			// project directory, like a workspace linked from elsewhere.
+			writePnpmFixture(t, filepath.Join(root, "pnpm-workspace.yaml"), "workspace-yaml/packages.yaml")
+			real := filepath.Join(root, "real-a")
+			writePnpmFixture(t, filepath.Join(real, "package.json"), "manifest/plain.json")
+			member := filepath.Join(root, "packages", "a")
+			if err := os.MkdirAll(filepath.Dir(member), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(real, member); err != nil {
+				t.Fatal(err)
+			}
+			writeGateState(t, root, "workspace-state/state-two.json.tmpl", timestamp, member)
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
